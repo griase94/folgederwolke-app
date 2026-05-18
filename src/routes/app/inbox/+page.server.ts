@@ -12,13 +12,14 @@
  */
 
 import { fail } from "@sveltejs/kit";
-import { isNull, desc } from "drizzle-orm";
+import { isNull, desc, eq } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { validateAuslageInput } from "$lib/server/domain/auslagen.js";
 import { manualImportSubmission } from "$lib/server/domain/audit-inbox-actions.js";
+import type { InboxSubmissionView } from "$lib/domain/inbox.js";
 
 // ---------------------------------------------------------------------------
 // load
@@ -27,12 +28,47 @@ import { manualImportSubmission } from "$lib/server/domain/audit-inbox-actions.j
 export const load: PageServerLoad = async ({ locals }) => {
   const db = getDb();
 
-  // All open (un-decided) submissions, newest first
-  const submissions = await db
-    .select()
+  // All open (un-decided) submissions, newest first, with the linked member
+  // joined in so we can show "Mitglied: Max Mustermann" with the live name
+  // (the snapshot `bezahlt_von_display` is preserved on the row for audit but
+  // we render the live name where possible). LEFT JOIN: members may have been
+  // deleted between submission and review.
+  const rows = await db
+    .select({
+      submission: auslagenSubmissions,
+      memberVorname: members.vorname,
+      memberNachname: members.nachname,
+    })
     .from(auslagenSubmissions)
+    .leftJoin(members, eq(members.id, auslagenSubmissions.bezahltVonMemberId))
     .where(isNull(auslagenSubmissions.decidedAt))
     .orderBy(desc(auslagenSubmissions.submittedAt));
+
+  const submissions: InboxSubmissionView[] = rows.map(
+    ({ submission: s, memberVorname, memberNachname }) => ({
+      id: s.id,
+      ausId: s.businessId,
+      bezeichnung: s.bezeichnung,
+      betragCents: Number(s.betragCents),
+      currency: s.currency,
+      bezahltVonKind: s.bezahltVonKind,
+      bezahltVonDisplay: s.bezahltVonDisplay,
+      bezahltVonMemberId: s.bezahltVonMemberId ?? null,
+      bezahltVonMemberDisplay:
+        memberVorname && memberNachname
+          ? `${memberVorname} ${memberNachname}`.trim()
+          : null,
+      rechnungsdatum: s.rechnungsdatum ?? null,
+      submittedAt: s.submittedAt.toISOString(),
+      reviewedAt: s.reviewedAt ? s.reviewedAt.toISOString() : null,
+      belegDriveFileId: s.belegDriveFileId ?? null,
+      belegOriginalName: s.belegOriginalName ?? null,
+      projectId: null, // submissions do not link a project yet
+      projectName: null,
+      wofuer: s.wofuer ?? null,
+      kommentar: s.kommentar ?? null,
+    }),
+  );
 
   // Members list for ManualImportSheet's BezahltVon picker
   const allMembers = await db

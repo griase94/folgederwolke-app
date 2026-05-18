@@ -1,0 +1,86 @@
+/**
+ * Client-safe inbox view types — used by Audit Inbox components
+ * (`/app/inbox` list + `/app/inbox/[ausId]` detail).
+ *
+ * Server load functions in src/routes/app/inbox project the schema rows into
+ * these shapes so components are not coupled to drizzle types and so all
+ * timestamps + cents are pre-serialised to JSON-safe primitives.
+ */
+
+export interface InboxSubmissionView {
+  /** UUID PK of the submission row. */
+  id: string;
+  /** Business ID, e.g. "AUS-2026-007". */
+  ausId: string;
+  bezeichnung: string;
+  /** Integer cents (post-JSON-serialise of bigint). */
+  betragCents: number;
+  currency: string;
+  bezahltVonKind: "member" | "extern" | "verein";
+  bezahltVonDisplay: string;
+  /** Member id when bezahlt_von_kind = 'member'. */
+  bezahltVonMemberId: string | null;
+  /** Member display string for the linked Mitglied, if any. */
+  bezahltVonMemberDisplay: string | null;
+  /** Optional Rechnungsdatum (ISO date). */
+  rechnungsdatum: string | null;
+  /** ISO timestamp of submission. */
+  submittedAt: string;
+  /** ISO timestamp of first admin open (null = unreviewed). */
+  reviewedAt: string | null;
+  /** Drive file ID for the Beleg, or null if none. */
+  belegDriveFileId: string | null;
+  /** Original filename of the Beleg. */
+  belegOriginalName: string | null;
+  /** Optional project id link — currently null on submissions but reserved. */
+  projectId: string | null;
+  /** Project display name when projectId is set. */
+  projectName: string | null;
+  /** Free-form "Wofür war die Ausgabe" string. */
+  wofuer: string | null;
+  /** Free-form admin comment from submitter. */
+  kommentar: string | null;
+}
+
+/**
+ * Detail-view extension with extra fields only the detail card renders:
+ * - extern IBAN (masked client-side, full value never serialised to wire)
+ * - extern email / name (already in display, but separated for layout)
+ * - member context block (austrittsDatum, totals — populated only when linked)
+ */
+export interface InboxSubmissionDetailView extends InboxSubmissionView {
+  externName: string | null;
+  /** Masked IBAN string ("DE12 …3000") — never the full IBAN. */
+  externIbanMasked: string | null;
+  externEmail: string | null;
+  /** Datenschutz consent text version (snapshot at submit time). */
+  consentTextVersion: string;
+  consentGivenAt: string;
+  /** ISO timestamp of submitter consent. */
+  submitterIpPrefix: string | null;
+  /**
+   * Pre-built Drive viewLink URL for embedding in the Beleg preview.
+   * Constructed as `https://drive.google.com/file/d/{fileId}/view` so it works
+   * regardless of whether the Drive API scope is currently authorised.
+   */
+  belegViewLink: string | null;
+  /** Member context block — populated only when bezahlt_von_kind = 'member'. */
+  memberContext: {
+    id: string;
+    vorname: string;
+    nachname: string;
+    email: string | null;
+    austrittsDatum: string | null;
+  } | null;
+}
+
+/**
+ * Mask an IBAN to "DE12 …3000" form (first 4 chars + last 4 chars).
+ * Used by server projections before the value reaches the client.
+ */
+export function maskIban(iban: string | null | undefined): string | null {
+  if (!iban) return null;
+  const trimmed = iban.replace(/\s+/g, "");
+  if (trimmed.length <= 8) return trimmed;
+  return `${trimmed.slice(0, 4)} … ${trimmed.slice(-4)}`;
+}

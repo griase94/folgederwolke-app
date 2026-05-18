@@ -35,6 +35,7 @@ async function loadTemplate(name: TemplateName) {
       return (await import("./templates/AufwandsspendenBestaetigung.svelte"))
         .default;
     case "auslage_abgelehnt":
+      return (await import("./templates/RejectionMail.svelte")).default;
     case "invoice_versendet":
       throw new Error(`Template "${name}" is not implemented in Phase 1.`);
   }
@@ -55,6 +56,8 @@ function subjectFor(
       return `Deine Auslage ${props.ausId ?? ""} ist bei uns angekommen`;
     case "auslage_erstattet":
       return `Deine Erstattung für ${props.ausId ?? ""} ist auf dem Weg`;
+    case "auslage_abgelehnt":
+      return `Zu deiner Auslage ${props.ausId ?? ""}`;
     case "beitrag_reminder":
       return `Erinnerung: dein Mitgliedsbeitrag ${props.jahr ?? ""} ist noch offen`;
     case "spende_bescheinigung":

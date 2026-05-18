@@ -20,13 +20,10 @@
  */
 
 import { randomUUID } from "node:crypto";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used by approve-pay-flow's additions
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used by approve-pay-flow's additions
 import { expenses } from "$lib/server/db/schema/expenses.js";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used by approve-pay-flow's additions
 import { members } from "$lib/server/db/schema/members.js";
 import { bus } from "$lib/server/events/index.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
@@ -161,4 +158,494 @@ export async function manualImportSubmission(
   });
 
   return { submissionId, ausId };
+}
+
+// ---------------------------------------------------------------------------
+// Festschreibung helper (ADR-0006)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the year stored under settings key `festgeschrieben_bis`, or `null`
+ * if not set. Years <= this value are immutable.
+ *
+ * Mirrors `members-actions.fetchFestgeschriebenBis` — kept local so the
+ * inbox actions don't pull in unrelated member domain code.
+ */
+async function fetchFestgeschriebenBis(): Promise<number | null> {
+  const db = getDb();
+  const rows = await db.execute<{ value: unknown }>(
+    sql`SELECT value FROM settings WHERE key = 'festgeschrieben_bis'`,
+  );
+  const row = (rows as { value: unknown }[])[0];
+  if (!row) return null;
+  const v = row.value;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const parsed = Number(v.replace(/^"|"$/g, ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+/**
+ * Compute the Buchungsjahr (Europe/Berlin) used for the Festschreibung gate
+ * given a submission's `rechnungsdatum`. Falls back to the current Berlin
+ * year when rechnungsdatum is null. ADR-0001 + ADR-0006.
+ */
+function buchungsjahrForSubmission(rechnungsdatum: string | null): number {
+  if (rechnungsdatum) {
+    // YYYY-MM-DD — slice the year. The receipt date is already TZ-agnostic.
+    const y = parseInt(rechnungsdatum.slice(0, 4), 10);
+    if (Number.isFinite(y)) return y;
+  }
+  return berlinYear();
+}
+
+// ---------------------------------------------------------------------------
+// approveSubmission
+// ---------------------------------------------------------------------------
+
+export interface ApproveSubmissionInput {
+  submissionId: string;
+  actorUserId: string;
+}
+
+export type ApproveSubmissionResult =
+  | {
+      ok: true;
+      /** True when this call created the expense; false when an earlier call already did. */
+      created: boolean;
+      expenseId: string;
+      expenseBusinessId: string;
+    }
+  | {
+      ok: false;
+      status: number;
+      error: string;
+    };
+
+/**
+ * Approve an audit-inbox submission — atomically:
+ *   1. Insert an `expenses` row with `status='geprueft'`, `approved_at = now()`,
+ *      `approved_by_user_id = actorUserId`, copying bezahlt_von discriminated
+ *      union fields (ADR-0007), with `source='form'` + `source_ref = ausId`.
+ *   2. Update the submission to set `decided_at`, `decision='approved'`,
+ *      `decided_by_user_id`, and `approved_expense_id`.
+ *
+ * Idempotency:
+ *   - If submission row's `approved_expense_id` is already set, return that
+ *     expense id and `created: false`. No re-insert.
+ *   - The two writes happen inside a single `db.transaction` so a partial
+ *     state can never persist; if INSERT fails the UPDATE is rolled back.
+ *
+ * Festschreibung gate (ADR-0006):
+ *   - Compute Buchungsjahr from `rechnungsdatum` (else current Berlin year)
+ *     and reject if <= settings.festgeschrieben_bis.
+ *
+ * Event:
+ *   - Emits `expense.approved` AFTER the transaction commits (audit handler
+ *     writes audit_log). Skipped on the idempotent no-op path.
+ *
+ * Business ID: the new `expenses` row reuses the submission's AUS-* business
+ * id so the audit trail stays anchored to a single identifier from submit
+ * through reimbursement.
+ */
+export async function approveSubmission(
+  input: ApproveSubmissionInput,
+): Promise<ApproveSubmissionResult> {
+  const { submissionId, actorUserId } = input;
+  if (!submissionId) {
+    return { ok: false, status: 400, error: "Fehlende Submission-ID" };
+  }
+
+  const db = getDb();
+
+  // ── 1. Load the submission ─────────────────────────────────────────────
+  const subRows = await db
+    .select()
+    .from(auslagenSubmissions)
+    .where(eq(auslagenSubmissions.id, submissionId))
+    .limit(1);
+
+  const submission = subRows[0];
+  if (!submission) {
+    return { ok: false, status: 404, error: "Einreichung nicht gefunden" };
+  }
+
+  // ── 1a. Idempotency short-circuit ──────────────────────────────────────
+  if (submission.approvedExpenseId) {
+    const existingRows = await db
+      .select({ id: expenses.id, businessId: expenses.businessId })
+      .from(expenses)
+      .where(eq(expenses.id, submission.approvedExpenseId))
+      .limit(1);
+    const existing = existingRows[0];
+    if (existing) {
+      return {
+        ok: true,
+        created: false,
+        expenseId: existing.id,
+        expenseBusinessId: existing.businessId,
+      };
+    }
+    // approvedExpenseId set but row missing — inconsistent state. Refuse
+    // rather than silently re-inserting (manual intervention required).
+    return {
+      ok: false,
+      status: 409,
+      error:
+        "Einreichung verweist auf nicht existierende Buchung — bitte prüfen",
+    };
+  }
+
+  // ── 1b. Reject if a previous decision was 'rejected' ───────────────────
+  if (submission.decision === "rejected") {
+    return {
+      ok: false,
+      status: 409,
+      error: "Einreichung wurde bereits abgelehnt",
+    };
+  }
+
+  // ── 2. Festschreibung gate (ADR-0006) ──────────────────────────────────
+  const buchungsjahr = buchungsjahrForSubmission(submission.rechnungsdatum);
+  const festBis = await fetchFestgeschriebenBis();
+  if (festBis !== null && buchungsjahr <= festBis) {
+    return {
+      ok: false,
+      status: 409,
+      error: `Jahr ${buchungsjahr} ist festgeschrieben`,
+    };
+  }
+
+  // ── 3. Atomic transaction: INSERT expense + UPDATE submission ──────────
+  const expenseBusinessId = submission.businessId;
+  const bezahltVonKind = submission.bezahltVonKind;
+
+  const result = await db.transaction(async (tx) => {
+    const [insertedExpense] = await tx
+      .insert(expenses)
+      .values({
+        businessId: expenseBusinessId,
+        source: "form",
+        sourceRef: submission.businessId,
+        // gebuchtAm defaults to now(); the year_for_booking() generated
+        // column derives year_of_buchung from it.
+        rechnungsdatum: submission.rechnungsdatum ?? null,
+        betragCents: submission.betragCents,
+        currency: submission.currency,
+        bezeichnung: submission.bezeichnung,
+        kommentar: submission.kommentar ?? null,
+        // ADR-0002 snapshots — placeholders until the admin assigns
+        // kategorie + sphere on the transaction detail page (Phase 5).
+        kategorieNameSnapshot: "(Unkategorisiert)",
+        sphereSnapshot: "ideeller",
+        // ADR-0007: copy discriminator + extern fields verbatim.
+        bezahltVonKind: bezahltVonKind,
+        bezahltVonMemberId: submission.bezahltVonMemberId,
+        externName: submission.externName,
+        externIban: submission.externIban,
+        externEmail: submission.externEmail,
+        bezahltVonDisplay: submission.bezahltVonDisplay,
+        belegDriveFileId: submission.belegDriveFileId,
+        belegOriginalName: submission.belegOriginalName,
+        status: "geprueft",
+        approvedAt: new Date(),
+        approvedByUserId: actorUserId,
+        createdByUserId: actorUserId,
+      })
+      .returning({ id: expenses.id, businessId: expenses.businessId });
+
+    if (!insertedExpense) {
+      throw new Error(
+        `[approveSubmission] INSERT expenses returned no row for ${expenseBusinessId}`,
+      );
+    }
+
+    await tx
+      .update(auslagenSubmissions)
+      .set({
+        decidedAt: new Date(),
+        decision: "approved",
+        decidedByUserId: actorUserId,
+        approvedExpenseId: insertedExpense.id,
+      })
+      .where(eq(auslagenSubmissions.id, submissionId));
+
+    return insertedExpense;
+  });
+
+  // ── 4. Emit event (audit log written by handler) ───────────────────────
+  try {
+    await bus.emit("expense.approved", {
+      expenseId: result.id,
+      expenseBusinessId: result.businessId,
+      submissionId,
+      submissionBusinessId: submission.businessId,
+      actorUserId,
+      betragCents: Number(submission.betragCents),
+      bezeichnung: submission.bezeichnung,
+    });
+  } catch (busErr) {
+    // Surface to logs; do not roll the commit back. Audit recovery is OK.
+    console.error(
+      `[approveSubmission] bus.emit failed for ${expenseBusinessId}:`,
+      busErr,
+    );
+  }
+
+  return {
+    ok: true,
+    created: true,
+    expenseId: result.id,
+    expenseBusinessId: result.businessId,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// rejectSubmission
+// ---------------------------------------------------------------------------
+
+export interface RejectSubmissionInput {
+  submissionId: string;
+  actorUserId: string;
+  /** Free-form rejection reason — shown in the RejectionMail. */
+  grund: string;
+}
+
+export type RejectSubmissionResult =
+  | { ok: true; alreadyDecided: boolean }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Reject an audit-inbox submission — sets `decision='rejected'`, `decided_at`,
+ * `decided_by_user_id`, `decision_reason`. NO expense row is created.
+ *
+ * Idempotency: a second call on an already-decided submission returns
+ * `{ alreadyDecided: true }` without re-emitting any event.
+ */
+export async function rejectSubmission(
+  input: RejectSubmissionInput,
+): Promise<RejectSubmissionResult> {
+  const { submissionId, actorUserId, grund } = input;
+  if (!submissionId) {
+    return { ok: false, status: 400, error: "Fehlende Submission-ID" };
+  }
+  if (!grund || grund.trim().length < 3) {
+    return {
+      ok: false,
+      status: 422,
+      error: "Bitte gib eine Begründung an (mind. 3 Zeichen)",
+    };
+  }
+
+  const db = getDb();
+
+  const subRows = await db
+    .select()
+    .from(auslagenSubmissions)
+    .where(eq(auslagenSubmissions.id, submissionId))
+    .limit(1);
+  const submission = subRows[0];
+  if (!submission) {
+    return { ok: false, status: 404, error: "Einreichung nicht gefunden" };
+  }
+
+  if (submission.decidedAt && submission.decision) {
+    return { ok: true, alreadyDecided: true };
+  }
+
+  await db
+    .update(auslagenSubmissions)
+    .set({
+      decidedAt: new Date(),
+      decision: "rejected",
+      decidedByUserId: actorUserId,
+      decisionReason: grund,
+    })
+    .where(eq(auslagenSubmissions.id, submissionId));
+
+  // Resolve recipient email + vorname for the mail.
+  let email: string | null = null;
+  let vorname = "Mitglied";
+  if (submission.bezahltVonKind === "extern") {
+    email = submission.externEmail ?? null;
+    vorname =
+      (submission.externName ?? "").split(" ")[0] ||
+      submission.externName ||
+      vorname;
+  } else if (
+    submission.bezahltVonKind === "member" &&
+    submission.bezahltVonMemberId
+  ) {
+    const memberRows = await db
+      .select({ email: members.email, vorname: members.vorname })
+      .from(members)
+      .where(eq(members.id, submission.bezahltVonMemberId))
+      .limit(1);
+    if (memberRows[0]) {
+      email = memberRows[0].email ?? null;
+      vorname = memberRows[0].vorname || vorname;
+    }
+  }
+
+  try {
+    await bus.emit("auslage.rejected", {
+      submissionId,
+      submissionBusinessId: submission.businessId,
+      actorUserId,
+      email,
+      vorname,
+      bezeichnung: submission.bezeichnung,
+      betragCents: Number(submission.betragCents),
+      grund,
+    });
+  } catch (busErr) {
+    console.error(
+      `[rejectSubmission] bus.emit failed for ${submission.businessId}:`,
+      busErr,
+    );
+  }
+
+  return { ok: true, alreadyDecided: false };
+}
+
+// ---------------------------------------------------------------------------
+// markExpenseErstattet
+// ---------------------------------------------------------------------------
+
+export interface MarkExpenseErstattetInput {
+  expenseId: string;
+  /** ISO date string (YYYY-MM-DD) — the date the money moved. */
+  chosenDate: string;
+  zahlungsartId: string;
+  actorUserId: string;
+  /** Optional Verwendungszweck override (else uses bezeichnung). */
+  verwendungszweck?: string;
+}
+
+export type MarkExpenseErstattetResult =
+  | { ok: true; alreadyErstattet: boolean }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Mark an expense as reimbursed — sets `erstattet_am = chosenDate`,
+ * `zahlungsart_id`, `status='erstattet'`, then emits `expense.erstattet` so
+ * the bus handler fires the ErstattungsMail (DB-deduped via sent_mails
+ * UNIQUE — second emit is a no-op there too).
+ *
+ * Idempotency:
+ *   - If expense already has `erstattet_am`, return early with
+ *     `{ alreadyErstattet: true }`.
+ *
+ * Festschreibung gate: rejects when the expense's Buchungsjahr (derived
+ * from gebucht_am in Berlin TZ) is <= settings.festgeschrieben_bis.
+ *
+ * Phase 5 ownership: this helper is called from the transaction detail page
+ * (Phase 5 builds the UI). Phase 4 wires it from the audit-inbox UI only
+ * when the admin re-opens an already-approved expense to pay it.
+ */
+export async function markExpenseErstattet(
+  input: MarkExpenseErstattetInput,
+): Promise<MarkExpenseErstattetResult> {
+  const { expenseId, chosenDate, zahlungsartId, actorUserId } = input;
+  if (!expenseId || !chosenDate || !zahlungsartId) {
+    return { ok: false, status: 400, error: "Pflichtfelder fehlen" };
+  }
+  // Quick ISO YYYY-MM-DD shape check — strictness lives at the route layer.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(chosenDate)) {
+    return { ok: false, status: 422, error: "Ungültiges Datumsformat" };
+  }
+
+  const db = getDb();
+
+  const expRows = await db
+    .select()
+    .from(expenses)
+    .where(eq(expenses.id, expenseId))
+    .limit(1);
+  const expense = expRows[0];
+  if (!expense) {
+    return { ok: false, status: 404, error: "Buchung nicht gefunden" };
+  }
+
+  if (!expense.approvedAt) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Buchung ist noch nicht freigegeben",
+    };
+  }
+
+  // Idempotency short-circuit.
+  if (expense.erstattetAm) {
+    return { ok: true, alreadyErstattet: true };
+  }
+
+  // Festschreibung gate — derive Buchungsjahr from gebucht_am (Berlin TZ).
+  const buchungsjahr = berlinYear(expense.gebuchtAm);
+  const festBis = await fetchFestgeschriebenBis();
+  if (festBis !== null && buchungsjahr <= festBis) {
+    return {
+      ok: false,
+      status: 409,
+      error: `Jahr ${buchungsjahr} ist festgeschrieben`,
+    };
+  }
+
+  await db
+    .update(expenses)
+    .set({
+      erstattetAm: chosenDate,
+      zahlungsartId,
+      status: "erstattet",
+      abflussDatum: chosenDate,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(eq(expenses.id, expenseId), sql`${expenses.erstattetAm} IS NULL`),
+    );
+
+  // Resolve recipient email + vorname for the ErstattungsMail.
+  let email: string | null = null;
+  let vorname = "Mitglied";
+  if (expense.bezahltVonKind === "extern") {
+    email = expense.externEmail ?? null;
+    vorname =
+      (expense.externName ?? "").split(" ")[0] || expense.externName || vorname;
+  } else if (
+    expense.bezahltVonKind === "member" &&
+    expense.bezahltVonMemberId
+  ) {
+    const memberRows = await db
+      .select({ email: members.email, vorname: members.vorname })
+      .from(members)
+      .where(eq(members.id, expense.bezahltVonMemberId))
+      .limit(1);
+    if (memberRows[0]) {
+      email = memberRows[0].email ?? null;
+      vorname = memberRows[0].vorname || vorname;
+    }
+  }
+
+  try {
+    await bus.emit("expense.erstattet", {
+      expenseId,
+      expenseBusinessId: expense.businessId,
+      actorUserId,
+      email,
+      vorname,
+      bezeichnung: expense.bezeichnung,
+      betragCents: Number(expense.betragCents),
+      verwendungszweck: input.verwendungszweck ?? expense.bezeichnung,
+      erstattungsAm: new Date(`${chosenDate}T00:00:00Z`),
+    });
+  } catch (busErr) {
+    console.error(
+      `[markExpenseErstattet] bus.emit failed for ${expense.businessId}:`,
+      busErr,
+    );
+  }
+
+  return { ok: true, alreadyErstattet: false };
 }
