@@ -1,5 +1,21 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// CI debug: log which env vars are present when playwright loads this config.
+// Helps diagnose secrets propagation issues. Safe — only logs presence (not values).
+if (process.env.CI) {
+  const keys = [
+    "DATABASE_URL",
+    "DIRECT_DATABASE_URL",
+    "SESSION_SECRET",
+    "GOOGLE_OAUTH_CLIENT_ID",
+    "SMTP_HOST",
+  ];
+  console.log(
+    "[playwright.config] env presence:",
+    Object.fromEntries(keys.map((k) => [k, !!process.env[k]])),
+  );
+}
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false,
