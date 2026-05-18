@@ -1,0 +1,91 @@
+/**
+ * Public-form submissions before audit-inbox approval converts them into
+ * an `expenses` row.
+ *
+ * The public form (Phase 2, `/auslage`) writes here. Admin "audit inbox"
+ * (Phase 4) reviews, approves, and on approve creates an `expenses` row
+ * linked via `expenses.source = 'form' + expenses.source_ref = submission.business_id`.
+ *
+ * Stores the same `bezahlt_von` discriminated union as expenses (ADR-0007)
+ * so admins don't have to re-enter member/extern info on approve.
+ *
+ * Receipt file lands in Drive `_incoming/`; admin move-to-Belege/<year>/
+ * happens on approve.
+ */
+// TODO multi-tenant: add verein_id
+
+import {
+  bigint,
+  char,
+  date,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+import { bezahltVonKindEnum } from "./enums.js";
+import { members } from "./members.js";
+
+export const auslagenSubmissions = pgTable(
+  "auslagen_submissions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** AUS-{YYYY}-{NNN} business_id. */
+    businessId: text("business_id").notNull(),
+
+    submittedAt: timestamp("submitted_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
+    bezeichnung: text("bezeichnung").notNull(),
+    kommentar: text("kommentar"),
+    rechnungsdatum: date("rechnungsdatum"),
+    betragCents: bigint("betrag_cents", { mode: "bigint" }).notNull(),
+    currency: char("currency", { length: 3 }).notNull().default("EUR"),
+
+    /** Free-form Wofür string (legacy form's "Wofür war die Ausgabe"). */
+    wofuer: text("wofuer"),
+
+    // --- bezahlt_von discriminated union (ADR-0007 mirror) ---
+    bezahltVonKind: bezahltVonKindEnum("bezahlt_von_kind").notNull(),
+    bezahltVonMemberId: uuid("bezahlt_von_member_id").references(
+      () => members.id,
+      {
+        onDelete: "set null",
+      },
+    ),
+    externName: text("extern_name"),
+    externIban: text("extern_iban"),
+    externEmail: text("extern_email"),
+    bezahltVonDisplay: text("bezahlt_von_display").notNull(),
+
+    // --- Beleg uploaded to _incoming/ ---
+    belegDriveFileId: text("beleg_drive_file_id"),
+    belegOriginalName: text("beleg_original_name"),
+
+    // --- Audit-inbox state ---
+    /** NULL = open in inbox, set when approved or rejected. */
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /** 'approved' | 'rejected' (text, not enum — only two values and easy to extend). */
+    decision: text("decision"),
+    decidedByUserId: uuid("decided_by_user_id"),
+    decisionReason: text("decision_reason"),
+    /** If approved, link to the created expense row. */
+    approvedExpenseId: uuid("approved_expense_id"),
+
+    /** IP/UA fingerprint for abuse-tracking (no full IP stored). */
+    submitterIpPrefix: text("submitter_ip_prefix"),
+    submitterUaHash: text("submitter_ua_hash"),
+  },
+  (t) => ({
+    businessIdUq: uniqueIndex("auslagen_submissions_business_id_uq").on(
+      t.businessId,
+    ),
+    decidedAtIdx: index("auslagen_submissions_decided_at_idx").on(t.decidedAt),
+    submittedAtIdx: index("auslagen_submissions_submitted_at_idx").on(
+      t.submittedAt,
+    ),
+  }),
+);

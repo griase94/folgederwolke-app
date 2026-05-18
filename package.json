@@ -32,6 +32,7 @@
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/svelte": "^5.3.1",
     "@types/node": "^25.9.0",
+    "@types/nodemailer": "^8.0.0",
     "@vitest/coverage-v8": "^4.1.6",
     "bits-ui": "^2.18.1",
     "clsx": "^2.1.1",
@@ -65,8 +66,10 @@
     "@googleapis/docs": "^9.2.1",
     "@googleapis/drive": "^20.1.0",
     "@googleapis/sheets": "^13.0.1",
+    "date-fns": "^4.2.1",
     "drizzle-orm": "^0.45.2",
     "google-auth-library": "^10.6.2",
+    "nodemailer": "^8.0.7",
     "postgres": "^3.4.9",
     "zod": "^4.4.3"
   }
