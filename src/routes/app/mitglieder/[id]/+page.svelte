@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import MemberInfoCard from '$lib/components/admin/members/MemberInfoCard.svelte';
@@ -10,18 +9,40 @@
 
 	let { data }: { data: PageData } = $props();
 
-	let activeTab = $state<'beitrag' | 'aktivitaet' | 'notizen'>('beitrag');
+	const tabs = [
+		{ key: 'beitrag', label: 'Beitrag' },
+		{ key: 'aktivitaet', label: 'Aktivität' },
+		{ key: 'notizen', label: 'Notizen' }
+	] as const;
+	type TabKey = (typeof tabs)[number]['key'];
+
+	let activeTab = $state<TabKey>('beitrag');
 	let reminderSheetOpen = $state(false);
 
 	const fullName = $derived(`${data.member.vorname} ${data.member.nachname}`);
+
+	function switchTab(key: TabKey) {
+		activeTab = key;
+	}
+
+	function handleTabKeydown(e: KeyboardEvent, currentKey: TabKey) {
+		const idx = tabs.findIndex((t) => t.key === currentKey);
+		let nextIdx: number | null = null;
+		if (e.key === 'ArrowRight') nextIdx = (idx + 1) % tabs.length;
+		else if (e.key === 'ArrowLeft') nextIdx = (idx - 1 + tabs.length) % tabs.length;
+		if (nextIdx !== null) {
+			e.preventDefault();
+			const nextKey = tabs[nextIdx]!.key;
+			switchTab(nextKey);
+			// Move focus to the newly active tab button
+			document.getElementById(`tab-${nextKey}`)?.focus();
+		}
+	}
 </script>
 
 <svelte:head>
 	<title>{fullName} – Mitglieder – Folge der Wolke</title>
 </svelte:head>
-
-<!-- Toaster for this page (send-reminder toast feedback) -->
-<Toaster richColors />
 
 <div class="container mx-auto max-w-5xl px-4 py-6 sm:px-6">
 	<!-- Breadcrumb + back -->
@@ -52,18 +73,16 @@
 				role="tablist"
 				aria-label="Mitglieds-Abschnitte"
 			>
-				{#each [
-					{ key: 'beitrag', label: 'Beitrag' },
-					{ key: 'aktivitaet', label: 'Aktivität' },
-					{ key: 'notizen', label: 'Notizen' }
-				] as tab (tab.key)}
+				{#each tabs as tab (tab.key)}
 					<button
 						type="button"
 						role="tab"
 						aria-selected={activeTab === tab.key}
 						aria-controls="tab-panel-{tab.key}"
 						id="tab-{tab.key}"
-						onclick={() => (activeTab = tab.key as typeof activeTab)}
+						tabindex={activeTab === tab.key ? 0 : -1}
+						onclick={() => switchTab(tab.key)}
+						onkeydown={(e) => handleTabKeydown(e, tab.key)}
 						class="flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring
 						{activeTab === tab.key
 							? 'bg-background text-foreground shadow-sm'
@@ -134,9 +153,11 @@
 	</div>
 </div>
 
-<!-- Sticky CTA bar -->
+<!-- Sticky CTA bar
+     Mobile: sits above the 56px MobileTabBar + safe-area-inset-bottom
+     Tablet+: aligned with sidebar width -->
 <div
-	class="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background/95 px-4 py-3 backdrop-blur-sm md:pl-[calc(4rem+1px)] lg:pl-[calc(15rem+1px)]"
+	class="fixed bottom-[calc(56px+env(safe-area-inset-bottom,0px))] left-0 right-0 z-40 border-t border-border bg-background/95 px-4 py-3 backdrop-blur-sm md:bottom-0 md:pl-[calc(4rem+1px)] lg:pl-[calc(15rem+1px)]"
 >
 	<div class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-0 sm:px-2">
 		<div class="min-w-0">

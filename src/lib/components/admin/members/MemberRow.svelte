@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import BeitragsBadge from './BeitragsBadge.svelte';
 	import { beitragStatusFor, type MemberView } from '$lib/domain/members.js';
 
@@ -19,16 +20,16 @@
 	}
 
 	const avatarColors = [
-		'bg-rose-200 text-rose-800',
-		'bg-pink-200 text-pink-800',
-		'bg-fuchsia-200 text-fuchsia-800',
-		'bg-purple-200 text-purple-800',
-		'bg-violet-200 text-violet-800',
-		'bg-indigo-200 text-indigo-800',
-		'bg-sky-200 text-sky-800',
-		'bg-teal-200 text-teal-800',
-		'bg-emerald-200 text-emerald-800',
-		'bg-amber-200 text-amber-800'
+		'bg-rose-100 text-rose-900',
+		'bg-pink-100 text-pink-900',
+		'bg-fuchsia-100 text-fuchsia-900',
+		'bg-purple-100 text-purple-900',
+		'bg-violet-100 text-violet-900',
+		'bg-indigo-100 text-indigo-900',
+		'bg-sky-100 text-sky-900',
+		'bg-teal-100 text-teal-900',
+		'bg-emerald-100 text-emerald-900',
+		'bg-amber-100 text-amber-900'
 	];
 
 	function avatarColor(name: string): string {
@@ -39,8 +40,8 @@
 		return (vorname.charAt(0) ?? '') + (nachname.charAt(0) ?? '');
 	}
 
-	let dropdownOpen = $state(false);
 	let markingYear = $state<number | null>(null);
+	let dropdownOpen = $state(false);
 </script>
 
 <div
@@ -75,125 +76,111 @@
 		{/each}
 	</div>
 
-	<!-- Actions kebab -->
-	<div class="relative">
-		<button
-			type="button"
-			onclick={() => (dropdownOpen = !dropdownOpen)}
+	<!-- Actions kebab — shadcn DropdownMenu (focus trap + Esc + arrow nav built-in) -->
+	<DropdownMenu.Root bind:open={dropdownOpen}>
+		<DropdownMenu.Trigger
 			aria-label="Aktionen für {member.vorname} {member.nachname}"
 			class="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 		>
-			<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
+			<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 				<circle cx="12" cy="5" r="1.5" />
 				<circle cx="12" cy="12" r="1.5" />
 				<circle cx="12" cy="19" r="1.5" />
 			</svg>
-		</button>
+		</DropdownMenu.Trigger>
 
-		{#if dropdownOpen}
-			<!-- Backdrop -->
-			<button
-				class="fixed inset-0 z-10 cursor-default"
-				aria-label="Menü schließen"
-				onclick={() => (dropdownOpen = false)}
-				tabindex="-1"
-			></button>
-
-			<div
-				class="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-xl border border-border bg-popover shadow-xl"
-				role="menu"
+		<DropdownMenu.Content align="end" class="w-52">
+			<!-- Edit -->
+			<DropdownMenu.Item
+				onSelect={() => {
+					dropdownOpen = false;
+					onEdit(member);
+				}}
 			>
-				<button
-					type="button"
-					role="menuitem"
-					class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
-					onclick={() => {
-						dropdownOpen = false;
-						onEdit(member);
-					}}
+				<svg
+					class="h-4 w-4 text-muted-foreground"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke="currentColor"
+					stroke-width="2"
+					aria-hidden="true"
 				>
-					<svg
-						class="h-4 w-4 text-muted-foreground"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-						stroke-width="2"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-						/>
-					</svg>
-					Bearbeiten
-				</button>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+					/>
+				</svg>
+				Bearbeiten
+			</DropdownMenu.Item>
 
-				{#each years as year (year)}
-					{@const b = member.beitrags[year]}
-					{@const status = b ? beitragStatusFor(b) : 'open'}
-					{#if status !== 'paid'}
-						<form
-							method="POST"
-							action="?/mark-beitrag-paid"
-							use:enhance={() => {
-								markingYear = year;
-								return async ({ update }) => {
-									await update();
-									markingYear = null;
-									dropdownOpen = false;
-								};
+			<!-- Mark beitrag paid (one item per unpaid year) -->
+			{#each years as year (year)}
+				{@const b = member.beitrags[year]}
+				{@const status = b ? beitragStatusFor(b) : 'open'}
+				{#if status !== 'paid'}
+					<form
+						method="POST"
+						action="?/mark-beitrag-paid"
+						use:enhance={() => {
+							markingYear = year;
+							return async ({ update }) => {
+								await update();
+								markingYear = null;
+								dropdownOpen = false;
+							};
+						}}
+					>
+						<input type="hidden" name="member_id" value={member.id} />
+						<input type="hidden" name="year" value={year} />
+						<DropdownMenu.Item
+							onSelect={(e) => {
+								// Let form submit naturally; prevent menu from closing early
+								e.preventDefault();
+								(e.currentTarget as HTMLElement).closest('form')?.requestSubmit();
 							}}
+							disabled={markingYear === year}
 						>
-							<input type="hidden" name="member_id" value={member.id} />
-							<input type="hidden" name="year" value={year} />
-							<button
-								type="submit"
-								role="menuitem"
-								disabled={markingYear === year}
-								class="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none disabled:opacity-50"
+							<svg
+								class="h-4 w-4 text-green-600"
+								fill="none"
+								viewBox="0 0 24 24"
+								stroke="currentColor"
+								stroke-width="2"
+								aria-hidden="true"
 							>
-								<svg
-									class="h-4 w-4 text-green-600"
-									fill="none"
-									viewBox="0 0 24 24"
-									stroke="currentColor"
-									stroke-width="2"
-								>
-									<path
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-									/>
-								</svg>
-								Beitrag {year} bezahlt
-							</button>
-						</form>
-					{/if}
-				{/each}
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+								/>
+							</svg>
+							Beitrag {year} bezahlt
+						</DropdownMenu.Item>
+					</form>
+				{/if}
+			{/each}
 
-				<div class="my-1 border-t border-border"></div>
-				<button
-					type="button"
-					role="menuitem"
-					class="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
-					onclick={() => (dropdownOpen = false)}
+			<DropdownMenu.Separator />
+
+			<!-- Send reminder (placeholder) -->
+			<DropdownMenu.Item class="text-muted-foreground" onSelect={() => (dropdownOpen = false)}>
+				<svg
+					class="h-4 w-4"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke="currentColor"
+					stroke-width="2"
+					aria-hidden="true"
 				>
-					<svg
-						class="h-4 w-4"
-						fill="none"
-						viewBox="0 0 24 24"
-						stroke="currentColor"
-						stroke-width="2"
-					>
-						<path
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-						/>
-					</svg>
-					Erinnerung senden
-				</button>
-			</div>
-		{/if}
-	</div>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+					/>
+				</svg>
+				Erinnerung senden
+			</DropdownMenu.Item>
+		</DropdownMenu.Content>
+	</DropdownMenu.Root>
 </div>

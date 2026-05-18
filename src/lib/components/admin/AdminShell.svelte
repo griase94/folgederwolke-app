@@ -26,6 +26,15 @@
   - Tablet  (md–lg):   sidebar 64px (icon-only) + flex-1 main
   - Desktop (≥ lg):    sidebar 240px + flex-1 main
 -->
+
+<!-- Skip-to-content link (screen readers + keyboard users) -->
+<a
+	href="#main-content"
+	class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-background focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-foreground focus:shadow-lg focus:ring-2 focus:ring-ring focus:outline-none"
+>
+	Zum Inhalt springen
+</a>
+
 <div class="flex h-svh overflow-hidden bg-background">
 	<!-- Sidebar: hidden on mobile, icon-only on tablet, full on desktop -->
 	<div class="hidden md:flex md:shrink-0">

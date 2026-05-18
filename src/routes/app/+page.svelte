@@ -5,33 +5,35 @@
 
 	let { data }: { data: PageData } = $props();
 
-	// ── Placeholder KPI data (Phase 3 stubs; real queries in Phase 4/5) ─────
-	const kpis = [
+	// ── KPI cards ─────────────────────────────────────────────────────────────
+	// Real: memberCount, activeMemberCount, openBeitragsCount (from server load)
+	// Deferred (Phase 4/5): auslagen counts, Spenden YTD → shown as '—'
+	const kpis = $derived([
 		{
-			label: 'Offene Auslagen',
-			value: '5',
-			sublabel: 'warten auf Prüfung',
-			href: '/app/inbox',
-		},
-		{
-			label: 'Zu erstatten heute',
-			value: '0 €',
-			sublabel: '0 genehmigte Auslagen',
-			href: '/app/transactions',
-		},
-		{
-			label: 'Mitgliederbeitrag fällig',
-			value: '2',
-			sublabel: 'Erinnerungen ausstehend',
+			label: 'Aktive Mitglieder',
+			value: String(data.activeMemberCount),
+			sublabel: `${data.memberCount} gesamt`,
 			href: '/app/mitglieder',
 		},
 		{
+			label: 'Offene Beiträge',
+			value: String(data.openBeitragsCount),
+			sublabel: 'laufendes Jahr',
+			href: '/app/mitglieder',
+		},
+		{
+			label: 'Offene Auslagen',
+			value: '—',
+			sublabel: 'verfügbar ab Phase 4',
+			href: '/app/inbox',
+		},
+		{
 			label: 'Spenden YTD',
-			value: '0 €',
-			sublabel: 'laufendes Geschäftsjahr',
+			value: '—',
+			sublabel: 'verfügbar ab Phase 5',
 			href: '/app/transactions',
 		},
-	] as const;
+	]);
 
 	// ── Placeholder checklist (Phase 3 stubs) ────────────────────────────────
 	function handleSepa() {
@@ -84,33 +86,35 @@
 		</div>
 
 		<div class="space-y-3">
-			<!-- Audit inbox -->
+			<!-- Beitrags-Erinnerungen (real count from load) -->
+			{#if data.openBeitragsCount > 0}
+				<ChecklistItem
+					count={data.openBeitragsCount}
+					label="Offene Beiträge im laufenden Jahr"
+					cta="Mitglieder öffnen →"
+					href="/app/mitglieder"
+				/>
+			{/if}
+
+			<!-- Audit inbox (Phase 4) -->
 			<ChecklistItem
-				count={5}
+				count={0}
 				label="Auslagen warten auf Prüfung"
 				cta="Audit Inbox öffnen →"
 				href="/app/inbox"
 			/>
 
-			<!-- SEPA XML -->
+			<!-- SEPA XML (Phase 5) -->
 			<ChecklistItem
-				count={3}
+				count={0}
 				label="Auslagen genehmigt — SEPA XML kopieren"
 				cta="SEPA XML kopieren"
 				onclick={handleSepa}
 			/>
-
-			<!-- Beitrags-Erinnerungen -->
-			<ChecklistItem
-				count={2}
-				label="Beitrags-Erinnerungen versenden"
-				cta="Mitglieder öffnen →"
-				href="/app/mitglieder"
-			/>
 		</div>
 
 		<p class="mt-6 text-xs text-muted-foreground">
-			Platzhalter-Daten · Echte Abfragen ab Phase 4
+			Mitglieder- und Beitragszahlen sind live · Auslagen und Spenden ab Phase 4/5
 		</p>
 	</section>
 </div>

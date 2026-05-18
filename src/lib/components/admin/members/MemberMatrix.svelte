@@ -139,7 +139,7 @@
 										<input type="hidden" name="year" value={year} />
 										<button
 											type="submit"
-											title="Als bezahlt markieren"
+											aria-label={`Beitrag ${year} für ${member.vorname} ${member.nachname} als bezahlt markieren`}
 											disabled={markingKey === `${member.id}-${year}`}
 											class="disabled:opacity-50"
 										>
