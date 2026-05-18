@@ -55,6 +55,7 @@ export const navItems: NavItem[] = [
     label: "Mitglieder",
     href: "/app/mitglieder",
     icon: "Users",
+    mobileTab: 4,
     group: "main",
   },
   {

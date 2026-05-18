@@ -99,7 +99,7 @@
 					placeholder="Suchen…"
 					bind:value={searchQuery}
 					aria-label="Mitglieder suchen"
-					class="border-input focus-visible:ring-ring/50 h-8 w-full rounded-lg border bg-transparent py-1 pl-8 pr-3 text-sm focus-visible:outline-none focus-visible:ring-2"
+					class="border-input focus-visible:ring-ring/50 h-8 w-full rounded-lg border bg-transparent py-1 pl-8 pr-3 text-base focus-visible:outline-none focus-visible:ring-2 sm:text-sm"
 				/>
 			</div>
 		{:else}
