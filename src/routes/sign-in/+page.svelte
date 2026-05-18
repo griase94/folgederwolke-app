@@ -1,0 +1,65 @@
+<script lang="ts">
+	import { enhance } from '$app/forms';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+
+	let { form }: { form: { ok?: boolean; message?: string; error?: string } | null } = $props();
+
+	let pending = $state(false);
+</script>
+
+<svelte:head>
+	<title>Anmelden – Folge der Wolke</title>
+</svelte:head>
+
+<main class="flex min-h-screen items-center justify-center px-4">
+	<div class="w-full max-w-sm space-y-6">
+		<div class="space-y-1">
+			<h1 class="text-2xl font-bold tracking-tight">Anmelden</h1>
+			<p class="text-muted-foreground text-sm">
+				Gib deine E-Mail-Adresse ein. Du erhältst einen Anmelde-Link.
+			</p>
+		</div>
+
+		{#if form?.ok}
+			<div
+				class="bg-primary/10 text-primary rounded-md border px-4 py-3 text-sm font-medium"
+				role="status"
+			>
+				{form.message}
+			</div>
+		{:else}
+			<form
+				method="POST"
+				use:enhance={() => {
+					pending = true;
+					return async ({ update }) => {
+						pending = false;
+						await update();
+					};
+				}}
+				class="space-y-4"
+			>
+				<div class="space-y-1.5">
+					<Label for="email">E-Mail-Adresse</Label>
+					<Input
+						id="email"
+						name="email"
+						type="email"
+						autocomplete="email"
+						placeholder="du@beispiel.de"
+						required
+					/>
+					{#if form?.error}
+						<p class="text-destructive text-xs">{form.error}</p>
+					{/if}
+				</div>
+
+				<Button type="submit" class="w-full" disabled={pending}>
+					{pending ? 'Wird gesendet…' : 'Anmelde-Link anfordern'}
+				</Button>
+			</form>
+		{/if}
+	</div>
+</main>
