@@ -75,21 +75,10 @@ const securityHandle: Handle = async ({ event, resolve }) => {
     "camera=(), microphone=(), geolocation=(), interest-cohort=(), browsing-topics=()",
   );
 
-  // Content Security Policy — baseline; tighten per-route as needed
-  response.headers.set(
-    "Content-Security-Policy",
-    [
-      "default-src 'self'",
-      "img-src 'self' blob: data: https://*.googleusercontent.com",
-      "style-src 'self' 'unsafe-inline'",
-      "script-src 'self'",
-      "connect-src 'self'",
-      "frame-ancestors 'none'",
-      "base-uri 'self'",
-      "object-src 'none'",
-      "form-action 'self'",
-    ].join("; "),
-  );
+  // Content-Security-Policy is now configured via svelte.config.js kit.csp
+  // (mode: 'auto'), which adds nonces/hashes for SvelteKit's own inline
+  // hydration scripts. Setting the header manually here would override
+  // SvelteKit's emission and block hydration.
 
   return response;
 };

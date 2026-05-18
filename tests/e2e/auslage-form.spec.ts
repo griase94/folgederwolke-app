@@ -15,18 +15,9 @@ import { expect, test, type Page } from "@playwright/test";
 
 test.describe("@phase-2 auslage form UI", () => {
   async function goToForm(page: Page) {
-    // Strip the CSP header so that SvelteKit's inline hydration <script> can
-    // execute. The production CSP (script-src 'self', no 'unsafe-inline')
-    // blocks the inline bootstrap snippet that sets up __sveltekit_* globals,
-    // preventing Svelte from hydrating and making JS-reactive assertions impossible.
-    // This intercept is test-only and does not change any source code.
-    await page.route("**/*", async (route) => {
-      const response = await route.fetch();
-      const headers = response.headers();
-      delete headers["content-security-policy"];
-      await route.fulfill({ response, headers });
-    });
-
+    // CSP is now configured via svelte.config.js kit.csp (mode: 'auto') —
+    // SvelteKit adds the right hashes/nonces for its inline hydration scripts
+    // so we no longer need to intercept and strip the header in tests.
     const res = await page.goto("/auslage-einreichen");
     if (res?.status() === 404) {
       test.skip();
