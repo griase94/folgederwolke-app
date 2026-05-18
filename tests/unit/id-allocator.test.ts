@@ -120,10 +120,12 @@ describe("validateAuslageInput", async () => {
   const { validateAuslageInput } =
     await import("$lib/server/domain/auslagen.js");
 
+  const { DATENSCHUTZ_VERSION } = await import("$lib/domain/datenschutz.js");
   const validBase = {
     bezeichnung: "Druckerpapier für Büro",
     betragCents: 2350,
     currency: "EUR",
+    consent_text_version: DATENSCHUTZ_VERSION,
     bezahlt_von: {
       kind: "extern" as const,
       name: "Lea Mustermann",
@@ -160,7 +162,7 @@ describe("validateAuslageInput", async () => {
       ...validBase,
       bezahlt_von: {
         kind: "member" as const,
-        member_id: "00000000-0000-0000-0000-000000000001",
+        member_id: "550e8400-e29b-41d4-a716-446655440000",
         display_name: "Max Mustermann",
       },
     });
