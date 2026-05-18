@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import { toast } from 'svelte-sonner';
 	import type { MemberView } from '$lib/domain/members.js';
 
 	let {
@@ -20,12 +22,14 @@
 	let deleteLoading = $state(false);
 	let errors = $state<Record<string, string[]>>({});
 	let confirmDelete = $state(false);
+	let deleteError = $state<string | null>(null);
 
 	function reset() {
 		errors = {};
 		loading = false;
 		deleteLoading = false;
 		confirmDelete = false;
+		deleteError = null;
 	}
 
 	$effect(() => {
@@ -34,17 +38,6 @@
 
 	function fieldError(key: string): string | undefined {
 		return errors[key]?.[0];
-	}
-
-	async function handleDelete() {
-		if (!member) return;
-		deleteLoading = true;
-		const fd = new FormData();
-		fd.append('id', member.id);
-		await fetch('?/delete', { method: 'POST', body: fd });
-		deleteLoading = false;
-		open = false;
-		onSuccess?.();
 	}
 </script>
 
@@ -66,6 +59,42 @@
 		</Dialog.Header>
 
 		{#if member}
+			<!--
+				Soft-delete form — sibling to the edit form so we can use SvelteKit's
+				`use:enhance` for proper action-result handling (toast + invalidate).
+				Buttons inside the edit form reference this one via `form="delete-member-form"`.
+			-->
+			<form
+				id="delete-member-form"
+				method="POST"
+				action="?/delete"
+				use:enhance={() => {
+					deleteLoading = true;
+					deleteError = null;
+					return async ({ result }) => {
+						deleteLoading = false;
+						if (result.type === 'success') {
+							toast.success('Mitglied gelöscht');
+							open = false;
+							reset();
+							onSuccess?.();
+							await invalidateAll();
+						} else if (result.type === 'failure') {
+							const msg =
+								(result.data?.error as string | undefined) ?? 'Löschen fehlgeschlagen';
+							deleteError = msg;
+							toast.error(msg);
+						} else if (result.type === 'error') {
+							const msg = result.error?.message ?? 'Löschen fehlgeschlagen';
+							deleteError = msg;
+							toast.error(msg);
+						}
+					};
+				}}
+			>
+				<input type="hidden" name="id" value={member.id} />
+			</form>
+
 			<form
 				method="POST"
 				action="?/edit"
@@ -77,6 +106,7 @@
 						if (result.type === 'failure') {
 							errors = (result.data?.errors as Record<string, string[]>) ?? {};
 						} else if (result.type === 'success') {
+							toast.success('Mitglied aktualisiert');
 							open = false;
 							reset();
 							onSuccess?.();
@@ -143,18 +173,34 @@
 
 				<div class="space-y-1">
 					<Label for="edit-telefon">Telefon</Label>
-					<Input id="edit-telefon" name="telefon" type="tel" value={member.telefon ?? ''} autocomplete="tel" />
+					<Input
+						id="edit-telefon"
+						name="telefon"
+						type="tel"
+						value={member.telefon ?? ''}
+						autocomplete="tel"
+					/>
 				</div>
 
 				<div class="space-y-1">
 					<Label for="edit-adresse">Adresse</Label>
-					<Input id="edit-adresse" name="adresse" value={member.adresse ?? ''} autocomplete="street-address" />
+					<Input
+						id="edit-adresse"
+						name="adresse"
+						value={member.adresse ?? ''}
+						autocomplete="street-address"
+					/>
 				</div>
 
 				<div class="grid grid-cols-2 gap-3">
 					<div class="space-y-1">
 						<Label for="edit-dob">Geburtsdatum</Label>
-						<Input id="edit-dob" name="date_of_birth" type="date" value={member.dateOfBirth ?? ''} />
+						<Input
+							id="edit-dob"
+							name="date_of_birth"
+							type="date"
+							value={member.dateOfBirth ?? ''}
+						/>
 						{#if fieldError('date_of_birth')}
 							<p class="text-xs text-destructive">{fieldError('date_of_birth')}</p>
 						{/if}
@@ -189,6 +235,12 @@
 					</p>
 				{/if}
 
+				{#if deleteError}
+					<p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+						{deleteError}
+					</p>
+				{/if}
+
 				<Dialog.Footer class="flex-col gap-2 sm:flex-row sm:justify-between">
 					<div>
 						{#if !confirmDelete}
@@ -203,12 +255,16 @@
 							</Button>
 						{:else}
 							<span class="text-sm text-muted-foreground">Wirklich löschen?</span>
+							<!--
+								Submits the sibling `delete-member-form` via the HTML5 `form`
+								attribute. This keeps `use:enhance` semantics (no nested forms).
+							-->
 							<Button
-								type="button"
+								type="submit"
+								form="delete-member-form"
 								variant="destructive"
 								class="ml-2"
 								disabled={deleteLoading}
-								onclick={handleDelete}
 							>
 								{deleteLoading ? 'Wird gelöscht…' : 'Ja, löschen'}
 							</Button>
