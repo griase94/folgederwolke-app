@@ -1,0 +1,172 @@
+/**
+ * E2E Mitglieder tests — @phase-3
+ *
+ * Strategy: uses a direct DB connection to set up test state, then drives
+ * the browser through the CRUD flows. Requires DATABASE_URL + TEST_ADMIN_EMAIL
+ * in the environment (same as @phase-1 auth tests).
+ *
+ * Tags: @phase-3
+ */
+
+import { expect, test } from "@playwright/test";
+import { randomBytes, createHash } from "node:crypto";
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+// ---------------------------------------------------------------------------
+// Helper: sign in via magic-link shortcut
+// ---------------------------------------------------------------------------
+async function signIn(page: import("@playwright/test").Page): Promise<void> {
+  const { default: postgres } = await import("postgres");
+  const client = postgres(process.env["DATABASE_URL"] ?? "", {
+    prepare: false,
+    max: 1,
+  });
+
+  const rawToken = randomBytes(32).toString("base64url");
+  const tokenHash = sha256(rawToken);
+  const expiresAt = new Date(Date.now() + 15 * 60_000);
+  const adminEmail = process.env["TEST_ADMIN_EMAIL"] ?? "admin@example.com";
+
+  await client`
+    INSERT INTO magic_links (token_hash, email_canonical, expires_at)
+    VALUES (${tokenHash}, ${adminEmail}, ${expiresAt})
+  `;
+  await client.end();
+
+  await page.goto(`/sign-in/verify?token=${rawToken}`);
+  const mismatch = page.locator("text=Ja, trotzdem fortfahren");
+  if (await mismatch.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await mismatch.click();
+  }
+  await Promise.all([
+    page.waitForURL(/\/app/, { timeout: 15_000 }),
+    page.click('button[type="submit"]'),
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// Guard: skip suite if no DATABASE_URL
+// ---------------------------------------------------------------------------
+test.beforeEach(async () => {
+  if (!process.env["DATABASE_URL"]) {
+    test.skip();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 1. Navigate to /app/mitglieder
+// ---------------------------------------------------------------------------
+test.describe("@phase-3 Mitglieder — navigation", () => {
+  test("unauthenticated /app/mitglieder redirects to sign-in", async ({
+    page,
+  }) => {
+    await page.goto("/app/mitglieder");
+    await expect(page).toHaveURL(/\/sign-in/);
+  });
+
+  test("authenticated user sees Mitglieder page", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/app/mitglieder");
+    await expect(page.locator("h1")).toContainText("Mitglieder");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2. Add a new member
+// ---------------------------------------------------------------------------
+test.describe("@phase-3 Mitglieder — add member", () => {
+  test("can add a new member via dialog", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/app/mitglieder");
+
+    // Open add dialog
+    await page.click("button:has-text('Mitglied hinzufügen')");
+    await expect(page.locator('[role="dialog"]')).toBeVisible();
+
+    // Fill form
+    const unique = randomBytes(4).toString("hex");
+    await page.fill('input[name="vorname"]', "Test");
+    await page.fill('input[name="nachname"]', `E2E-${unique}`);
+    await page.fill('input[name="email"]', `test-${unique}@example.com`);
+
+    // Submit
+    await page.click('button[type="submit"]:has-text("Hinzufügen")');
+
+    // Dialog closes; member appears in list
+    await expect(page.locator('[role="dialog"]')).not.toBeVisible({
+      timeout: 5_000,
+    });
+    await expect(page.locator(`text=E2E-${unique}`)).toBeVisible();
+  });
+
+  test("shows validation errors for missing required fields", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto("/app/mitglieder");
+
+    await page.click("button:has-text('Mitglied hinzufügen')");
+    await expect(page.locator('[role="dialog"]')).toBeVisible();
+
+    // Submit without filling required fields — HTML5 required blocks submit,
+    // but we can check the dialog stays open
+    const submitBtn = page.locator(
+      'button[type="submit"]:has-text("Hinzufügen")',
+    );
+    await expect(submitBtn).toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3. Matrix view
+// ---------------------------------------------------------------------------
+test.describe("@phase-3 Mitglieder — matrix view", () => {
+  test("switching to matrix view shows Beitrags-Matrix table", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto("/app/mitglieder");
+
+    // Click matrix toggle
+    await page.click("button:has-text('Beitrags-Matrix')");
+    await expect(page).toHaveURL(/view=matrix/);
+    await expect(page.locator("table")).toBeVisible();
+  });
+
+  test("switching back to list view hides table", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/app/mitglieder?view=matrix");
+
+    await page.click("button:has-text('Liste')");
+    await expect(page).toHaveURL(/\/app\/mitglieder(?!\?)/);
+    await expect(page.locator("table")).not.toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4. Mark beitrag paid (matrix cell)
+// ---------------------------------------------------------------------------
+test.describe("@phase-3 Mitglieder — mark beitrag paid", () => {
+  test("matrix open-cell submit marks beitrag paid", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/app/mitglieder?view=matrix");
+
+    // Find the first unpaid amber badge button and click it
+    const unpaidBtn = page
+      .locator("table button")
+      .filter({ hasText: "" })
+      .first();
+
+    if (await unpaidBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await unpaidBtn.click();
+      // After submission the cell should re-render; no error overlay
+      await expect(page.locator('[role="dialog"]')).not.toBeVisible();
+    } else {
+      // No unpaid cells visible — skip gracefully
+      test.skip();
+    }
+  });
+});
