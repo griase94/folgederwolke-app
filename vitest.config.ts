@@ -8,9 +8,7 @@ export default defineConfig({
     globals: true,
     include: ["src/**/*.{test,spec}.{js,ts}"],
     pool: "forks",
-    poolOptions: {
-      forks: { singleFork: true },
-    },
+    forks: { singleFork: true },
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
