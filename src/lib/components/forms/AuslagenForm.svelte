@@ -9,6 +9,7 @@
 	import { makeDebouncedSave, loadDraft, clearDraft, type DraftMetadata } from '$lib/client/drafts.js';
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
 
 	interface Member {
 		id: string;
@@ -61,6 +62,10 @@
 	let isSubmitting = $state(false);
 	let draftRestored = $state(false);
 	let hasUnsavedChanges = $state(false);
+	let ctaBottomOffset = $state(0);
+
+	// Idempotency key: generated once per page load
+	const submissionNonce = crypto.randomUUID();
 
 	// ---------------------------------------------------------------------------
 	// Draft persistence
@@ -118,14 +123,39 @@
 			if (draft) applyDraft(draft);
 		});
 
-		// Warn on navigation away with unsaved changes
+		// Warn on native browser navigation away with unsaved changes
 		const handleBeforeUnload = (e: BeforeUnloadEvent) => {
 			if (hasUnsavedChanges && !isSubmitting) {
 				e.preventDefault();
 			}
 		};
 		window.addEventListener('beforeunload', handleBeforeUnload);
+
+		// VisualViewport-aware sticky CTA: keep CTA visible when virtual keyboard opens
+		if (window.visualViewport) {
+			const vv = window.visualViewport;
+			const update = () => {
+				ctaBottomOffset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+			};
+			vv.addEventListener('resize', update);
+			vv.addEventListener('scroll', update);
+			update();
+			return () => {
+				window.removeEventListener('beforeunload', handleBeforeUnload);
+				vv.removeEventListener('resize', update);
+				vv.removeEventListener('scroll', update);
+			};
+		}
+
 		return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+	});
+
+	// SvelteKit navigation guard (C2)
+	beforeNavigate(({ cancel }) => {
+		if (hasUnsavedChanges && !isSubmitting) {
+			const ok = confirm('Du hast ungespeicherte Änderungen. Wirklich verlassen?');
+			if (!ok) cancel();
+		}
 	});
 
 	// ---------------------------------------------------------------------------
@@ -133,7 +163,14 @@
 	// ---------------------------------------------------------------------------
 
 	function parseBetragCents(raw: string): number | null {
-		const cleaned = raw.replace(/[^\d,.]/, '').replace(',', '.');
+		// Strip everything except digits, comma, and period (g flag required)
+		let cleaned = raw.replace(/[^\d,.]/g, '');
+		// Handle German thousands separator: if comma is present, dots are thousands separators
+		if (cleaned.includes(',')) {
+			// e.g. "1.234,50" → strip dots (thousands), replace comma with decimal point
+			cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+		}
+		// Otherwise: dot is the decimal separator already (e.g. "12.50")
 		const parsed = parseFloat(cleaned);
 		if (isNaN(parsed) || parsed <= 0) return null;
 		return Math.round(parsed * 100);
@@ -208,7 +245,8 @@
 			rechnungsdatum: rechnungsdatum || null,
 			wofuer: wofuer || null,
 			kommentar: kommentar || undefined,
-			consent_text_version: DATENSCHUTZ_VERSION
+			consent_text_version: DATENSCHUTZ_VERSION,
+			submissionNonce
 		});
 	}
 
@@ -217,6 +255,13 @@
 	// ---------------------------------------------------------------------------
 
 	async function handleSubmit(e: SubmitEvent) {
+		// C6: Double-submit guard — must be synchronous and first
+		if (isSubmitting) {
+			e.preventDefault();
+			return;
+		}
+		isSubmitting = true;
+
 		// Mark all fields as blurred to show all validation errors
 		blurred = {
 			'bezahlt_von.member_id': true,
@@ -230,6 +275,7 @@
 		};
 
 		if (!validate()) {
+			isSubmitting = false;
 			e.preventDefault();
 			// Scroll to first error
 			const firstError = document.querySelector('[aria-invalid="true"]');
@@ -237,7 +283,10 @@
 			return;
 		}
 
-		isSubmitting = true;
+		// C9: Clear unsaved changes flag before submit to prevent beforeunload/beforeNavigate
+		// from firing during the 303 redirect. Actual clearDraft happens on the success page (C1).
+		hasUnsavedChanges = false;
+
 		// Let the native form submit proceed (no JS fetch — SSR fallback works)
 		// The hidden `data` field is set by the form's hidden input below.
 		// We update it right before submit via the hidden input binding.
@@ -266,6 +315,8 @@
 >
 	<!-- Hidden JSON payload field -->
 	<input type="hidden" name="data" value={payloadJson} />
+	<!-- Idempotency key (C8) -->
+	<input type="hidden" name="submissionNonce" value={submissionNonce} />
 
 	<!-- Draft restored banner -->
 	{#if draftRestored}
@@ -324,7 +375,7 @@
 					<select
 						id="wofuer-select"
 						name="wofuer_select"
-						class="border-input bg-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none"
+						class="border-input bg-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-base md:text-sm focus-visible:ring-2 focus-visible:outline-none"
 						onchange={(e) => {
 							wofuer = e.currentTarget.value;
 							triggerDraftSave();
@@ -354,10 +405,11 @@
 					oninput={triggerDraftSave}
 					onblur={() => markBlurred('bezeichnung')}
 					aria-invalid={!!getError('bezeichnung')}
+					aria-describedby={getError('bezeichnung') ? 'err-bezeichnung' : undefined}
 				/>
 				<div class="flex justify-between">
 					{#if getError('bezeichnung')}
-						<p class="text-destructive text-xs">{getError('bezeichnung')}</p>
+						<p id="err-bezeichnung" class="text-destructive text-xs">{getError('bezeichnung')}</p>
 					{:else}
 						<span></span>
 					{/if}
@@ -387,10 +439,11 @@
 						oninput={triggerDraftSave}
 						onblur={() => markBlurred('betragCents')}
 						aria-invalid={!!getError('betragCents')}
+						aria-describedby={getError('betragCents') ? 'err-betragCents' : undefined}
 					/>
 				</div>
 				{#if getError('betragCents')}
-					<p class="text-destructive text-xs">{getError('betragCents')}</p>
+					<p id="err-betragCents" class="text-destructive text-xs">{getError('betragCents')}</p>
 				{/if}
 			</div>
 
@@ -402,6 +455,7 @@
 					id="rechnungsdatum"
 					name="rechnungsdatum_display"
 					type="date"
+					max={new Date().toISOString().split('T')[0]}
 					bind:value={rechnungsdatum}
 					oninput={triggerDraftSave}
 					onblur={() => markBlurred('rechnungsdatum')}
@@ -420,7 +474,7 @@
 					rows={3}
 					maxlength={1000}
 					placeholder="Optionaler Kommentar…"
-					class="border-input bg-background focus-visible:ring-ring flex w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+					class="border-input bg-background focus-visible:ring-ring flex w-full rounded-md border px-3 py-2 text-base md:text-sm focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
 					bind:value={kommentar}
 					oninput={triggerDraftSave}
 				></textarea>
@@ -461,6 +515,7 @@
 					}}
 					class="accent-primary mt-0.5 h-4 w-4 shrink-0"
 					aria-invalid={!!getError('consent')}
+					aria-describedby={getError('consent') ? 'err-consent' : undefined}
 				/>
 				<span class="text-sm">
 					Ich habe den Datenschutzhinweis gelesen und stimme der Verarbeitung meiner Daten zu.
@@ -468,18 +523,25 @@
 				</span>
 			</label>
 
+			<!-- Link to full privacy policy (C12) -->
+			<!-- Note: /datenschutz is Phase 7.5 — link will 404 until that route is deployed -->
+			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+			<a href="/datenschutz" target="_blank" rel="noopener noreferrer" class="underline text-primary text-sm">Vollständige Datenschutzerklärung</a>
+
 			<!-- Hidden version stamp for server -->
 			<input type="hidden" name="consent_text_version" value={DATENSCHUTZ_VERSION} />
 
 			{#if getError('consent')}
-				<p class="text-destructive text-xs">{getError('consent')}</p>
+				<p id="err-consent" class="text-destructive text-xs">{getError('consent')}</p>
 			{/if}
 		</CardContent>
 	</Card>
 
 	<!-- ── Sticky CTA ──────────────────────────────────────────────────────── -->
+	<!-- C3: ctaBottomOffset shifts the bar up when virtual keyboard opens on mobile -->
 	<div
 		class="bg-background/95 fixed right-0 bottom-0 left-0 z-50 border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm"
+		style="bottom: {ctaBottomOffset}px;"
 	>
 		<div class="mx-auto max-w-xl">
 			{#if Object.keys(fieldErrors).length > 0 && Object.keys(blurred).length > 0}

@@ -113,9 +113,10 @@
 				{:else}
 					<select
 						id="member-select"
-						class="border-input bg-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:outline-none"
+						class="border-input bg-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-base md:text-sm focus-visible:ring-2 focus-visible:outline-none"
 						onchange={onMemberSelect}
 						onblur={() => markBlurred('member_id')}
+						aria-describedby={getError('bezahlt_von.member_id') ? 'err-member_id' : undefined}
 					>
 						<option value="">— Mitglied wählen —</option>
 						{#each members as m (m.id)}
@@ -127,7 +128,7 @@
 					<input type="hidden" name="member_email" value={memberEmail} />
 				{/if}
 				{#if getError('bezahlt_von.member_id')}
-					<p class="text-destructive text-xs">{getError('bezahlt_von.member_id')}</p>
+					<p id="err-member_id" class="text-destructive text-xs">{getError('bezahlt_von.member_id')}</p>
 				{/if}
 			</div>
 		{/if}
@@ -148,9 +149,10 @@
 						oninput={onchange}
 						onblur={() => markBlurred('bezahlt_von.name')}
 						aria-invalid={!!getError('bezahlt_von.name')}
+						aria-describedby={getError('bezahlt_von.name') ? 'err-extern-name' : undefined}
 					/>
 					{#if getError('bezahlt_von.name')}
-						<p class="text-destructive text-xs">{getError('bezahlt_von.name')}</p>
+						<p id="err-extern-name" class="text-destructive text-xs">{getError('bezahlt_von.name')}</p>
 					{/if}
 				</div>
 
@@ -168,11 +170,12 @@
 						oninput={onIbanInput}
 						onblur={() => markBlurred('bezahlt_von.iban')}
 						aria-invalid={!!getError('bezahlt_von.iban')}
+						aria-describedby={getError('bezahlt_von.iban') ? 'err-extern-iban' : undefined}
 					/>
 					<!-- Normalized (no spaces) for server -->
 					<input type="hidden" name="extern_iban" value={externIban} />
 					{#if getError('bezahlt_von.iban')}
-						<p class="text-destructive text-xs">{getError('bezahlt_von.iban')}</p>
+						<p id="err-extern-iban" class="text-destructive text-xs">{getError('bezahlt_von.iban')}</p>
 					{/if}
 				</div>
 
@@ -192,9 +195,10 @@
 						oninput={onchange}
 						onblur={() => markBlurred('bezahlt_von.email')}
 						aria-invalid={!!getError('bezahlt_von.email')}
+						aria-describedby={getError('bezahlt_von.email') ? 'err-extern-email' : undefined}
 					/>
 					{#if getError('bezahlt_von.email')}
-						<p class="text-destructive text-xs">{getError('bezahlt_von.email')}</p>
+						<p id="err-extern-email" class="text-destructive text-xs">{getError('bezahlt_von.email')}</p>
 					{/if}
 				</div>
 			</div>

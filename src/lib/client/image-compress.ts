@@ -6,6 +6,8 @@
 
 import imageCompression from "browser-image-compression";
 
+const MAX_BELEG_BYTES = 10 * 1024 * 1024; // 10 MB
+
 export interface CompressOptions {
   maxWidthOrHeight?: number;
   quality?: number;
@@ -31,5 +33,14 @@ export async function compressImage(
   });
 
   // imageCompression returns a Blob; we need a File to carry the name.
-  return new File([compressed], file.name, { type: compressed.type });
+  const result = new File([compressed], file.name, { type: compressed.type });
+
+  // C5: Post-compression size guard
+  if (result.size > MAX_BELEG_BYTES) {
+    throw new Error(
+      "Datei zu groß auch nach Komprimierung. Bitte kleineres Foto wählen.",
+    );
+  }
+
+  return result;
 }

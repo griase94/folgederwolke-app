@@ -1,7 +1,15 @@
 <script lang="ts">
   import { page } from '$app/stores';
+  import { onMount } from 'svelte';
 
   const ausId = $page.url.searchParams.get('id') ?? '';
+
+  onMount(async () => {
+    // Clear the IndexedDB draft now that submission succeeded.
+    // Dynamic import because clearDraft uses IndexedDB (browser-only).
+    const { clearDraft } = await import('$lib/client/drafts.js');
+    await clearDraft();
+  });
 </script>
 
 <svelte:head>

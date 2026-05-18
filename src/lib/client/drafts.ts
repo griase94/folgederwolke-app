@@ -70,11 +70,21 @@ export async function saveDraft(
   }
 }
 
+const DRAFT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 export async function loadDraft(): Promise<Draft | null> {
   try {
     const db = await getDb();
     const metadata = await db.get("metadata", DRAFT_KEY);
     if (!metadata) return null;
+
+    // C15: Auto-discard drafts older than 24 hours
+    const savedAt = (metadata as DraftMetadata).savedAt ?? 0;
+    if (Date.now() - savedAt > DRAFT_TTL_MS) {
+      await clearDraft();
+      return null;
+    }
+
     const file = (await db.get("files", DRAFT_KEY)) ?? null;
     return { metadata: metadata as DraftMetadata, file };
   } catch (err) {

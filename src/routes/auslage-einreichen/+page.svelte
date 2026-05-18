@@ -2,7 +2,10 @@
 	import AuslagenForm from '$lib/components/forms/AuslagenForm.svelte';
 	import type { PageData } from './$types.js';
 
-	let { data }: { data: PageData } = $props();
+	// form is typed as ActionData from SvelteKit — the action (auto-fix-B) will add
+	// fail(N, { error }) responses so ActionData will include { error: string }.
+	// We use a loose type here to avoid a compile error until B's action is updated.
+	let { data, form }: { data: PageData; form: Record<string, string> | null | undefined } = $props();
 </script>
 
 <svelte:head>
@@ -28,5 +31,5 @@
 		</p>
 	</header>
 
-	<AuslagenForm members={data.members ?? []} projects={data.projects ?? []} />
+	<AuslagenForm members={data.members ?? []} projects={data.projects ?? []} serverError={form?.error ?? null} />
 </main>

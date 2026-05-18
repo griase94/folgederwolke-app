@@ -154,7 +154,7 @@
 						<!-- capture="environment" triggers the camera directly on mobile -->
 						<input
 							type="file"
-							name="beleg_camera"
+							name="beleg"
 							accept="image/*"
 							capture="environment"
 							class="sr-only"
