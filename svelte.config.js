@@ -13,6 +13,30 @@ const config = {
   },
   kit: {
     adapter: isVercel ? adapterVercel() : adapterNode(),
+    // CSP via SvelteKit: auto-mode adds nonces/hashes for SvelteKit's own inline
+    // hydration scripts. We define the rest of the directives here so the framework
+    // emits one coherent header (rather than the manual one previously set in
+    // hooks.server.ts, which blocked hydration). Other security headers (HSTS,
+    // X-Frame-Options, Permissions-Policy, etc.) remain in hooks.server.ts.
+    csp: {
+      mode: "auto",
+      directives: {
+        "default-src": ["self"],
+        "img-src": [
+          "self",
+          "blob:",
+          "data:",
+          "https://*.googleusercontent.com",
+        ],
+        "style-src": ["self", "unsafe-inline"],
+        "script-src": ["self"],
+        "connect-src": ["self"],
+        "frame-ancestors": ["none"],
+        "base-uri": ["self"],
+        "object-src": ["none"],
+        "form-action": ["self"],
+      },
+    },
   },
 };
 

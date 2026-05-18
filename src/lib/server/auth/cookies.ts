@@ -56,7 +56,10 @@ export function setSessionCookie(cookies: Cookies, rawToken: string): void {
   cookies.set(SESSION_COOKIE, sign(rawToken), {
     path: "/",
     httpOnly: true,
-    secure: true,
+    // Secure required for production HTTPS. Disable when running over plain http
+    // (local preview, Playwright e2e) — otherwise the browser silently drops the
+    // cookie and downstream auth fails.
+    secure: process.env["NODE_ENV"] === "production",
     sameSite: "lax",
     maxAge: SESSION_MAX_AGE,
   });
@@ -83,7 +86,10 @@ export function setIntentCookie(cookies: Cookies, tokenHash: string): void {
   cookies.set(INTENT_COOKIE, sign(tokenHash), {
     path: "/",
     httpOnly: true,
-    secure: true,
+    // Secure required for production HTTPS. Disable when running over plain http
+    // (local preview, Playwright e2e) — otherwise the browser silently drops the
+    // cookie and downstream auth fails.
+    secure: process.env["NODE_ENV"] === "production",
     sameSite: "lax",
     maxAge: INTENT_MAX_AGE,
   });

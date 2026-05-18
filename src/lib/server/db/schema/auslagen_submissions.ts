@@ -74,10 +74,26 @@ export const auslagenSubmissions = pgTable(
     decisionReason: text("decision_reason"),
     /** If approved, link to the created expense row. */
     approvedExpenseId: uuid("approved_expense_id"),
+    /**
+     * When admin first viewed/opened this submission in the audit inbox
+     * (Phase 4). Used to highlight unread items.
+     */
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
 
     /** IP/UA fingerprint for abuse-tracking (no full IP stored). */
     submitterIpPrefix: text("submitter_ip_prefix"),
     submitterUaHash: text("submitter_ua_hash"),
+
+    // --- DSGVO consent (Phase 2 hardening) ---
+    /**
+     * Snapshot of DATENSCHUTZ_VERSION the submitter agreed to. Stored so
+     * auditors can reconstruct exactly which legal text applied.
+     */
+    consentTextVersion: text("consent_text_version").notNull(),
+    /** Server-side timestamp of when the consent checkbox was submitted. */
+    consentGivenAt: timestamp("consent_given_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (t) => ({
     businessIdUq: uniqueIndex("auslagen_submissions_business_id_uq").on(

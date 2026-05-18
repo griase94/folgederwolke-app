@@ -187,15 +187,21 @@ export async function consumeMagicLink(
 
     // Allowlist check inside tx — consume is committed regardless (MUST-fix #3 + anti-retry)
     if (!isAdminEmail(email)) {
-      await logAudit({
-        action: "sign_in",
-        entityKind: "user",
-        entityId: null,
-        actorUserId: null,
-        actorKind: "system",
-        actorIpPrefix: meta.ip,
-        payload: { email, reason: "NOT_ADMIN" },
-      });
+      // Pass `tx` so the audit insert participates in the same transaction —
+      // otherwise the global getDb() opens a separate pooled connection that
+      // can't see the in-flight UPDATE, breaking ordering.
+      await logAudit(
+        {
+          action: "sign_in",
+          entityKind: "user",
+          entityId: null,
+          actorUserId: null,
+          actorKind: "system",
+          actorIpPrefix: meta.ip,
+          payload: { email, reason: "NOT_ADMIN" },
+        },
+        tx,
+      );
       return { ok: false, reason: "NOT_ADMIN" } as ConsumeResult;
     }
 
@@ -215,15 +221,23 @@ export async function consumeMagicLink(
     setSessionCookie(cookies, sessionToken);
     clearIntentCookie(cookies);
 
-    await logAudit({
-      action: "sign_in",
-      entityKind: "session",
-      entityId: null,
-      actorUserId: user.id,
-      actorKind: "user",
-      actorIpPrefix: meta.ip,
-      payload: { email },
-    });
+    // Pass `tx` so the audit insert sees the freshly-upserted user row and
+    // the FK `audit_log_actor_user_id_users_id_fk` is satisfied. Using the
+    // global db client here would open a separate pooled connection that
+    // can't see the in-transaction insert yet, producing a 23503 violation
+    // that bubbles up as a 500 to the verify POST.
+    await logAudit(
+      {
+        action: "sign_in",
+        entityKind: "session",
+        entityId: null,
+        actorUserId: user.id,
+        actorKind: "user",
+        actorIpPrefix: meta.ip,
+        payload: { email },
+      },
+      tx,
+    );
 
     return { ok: true, email };
   });
@@ -233,23 +247,28 @@ export async function consumeMagicLink(
 // Upsert user
 // ---------------------------------------------------------------------------
 
+/**
+ * Atomic UPSERT keyed on `users.email_canonical` (UNIQUE). Single round-trip;
+ * safe under concurrent calls — the UNIQUE index serialises insert collisions
+ * and ON CONFLICT DO UPDATE … RETURNING always yields the persisted row.
+ *
+ * The SET clause is a no-op-ish bump of updatedAt so RETURNING fires on the
+ * conflict path (DO NOTHING would not return a row).
+ */
 async function upsertUser(
   tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
   emailCanonical: string,
 ): Promise<typeof users.$inferSelect> {
-  // Try to find existing user first
-  const existing = await tx.query.users.findFirst({
-    where: eq(users.emailCanonical, emailCanonical),
-  });
-  if (existing) return existing;
-
-  // Insert new user
   const inserted = await tx
     .insert(users)
     .values({
       email: emailCanonical,
       emailCanonical,
       role: "admin",
+    })
+    .onConflictDoUpdate({
+      target: users.emailCanonical,
+      set: { updatedAt: new Date() },
     })
     .returning();
 

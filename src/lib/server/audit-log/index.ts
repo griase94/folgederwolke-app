@@ -29,8 +29,26 @@ export interface AuditEntry {
   payload?: Record<string, unknown>;
 }
 
-export async function logAudit(entry: AuditEntry): Promise<void> {
-  const db = getDb();
+/**
+ * Minimal Drizzle writer interface — accepts either the singleton db client
+ * or an in-flight transaction handle. Required so callers inside a
+ * `db.transaction()` callback can write the audit row on the SAME connection
+ * (and see rows they just inserted via FK satisfaction); otherwise the audit
+ * insert hits a separate pooled connection, can't see the uncommitted user
+ * row, and the `audit_log_actor_user_id_users_id_fk` constraint fires.
+ */
+type AuditWriter = Pick<ReturnType<typeof getDb>, "insert">;
+
+/**
+ * Insert an audit_log row. When invoked from inside a `db.transaction(tx => ...)`
+ * callback, pass `tx` as the second argument so the insert participates in the
+ * same transaction (see `AuditWriter` notes above).
+ */
+export async function logAudit(
+  entry: AuditEntry,
+  writer?: AuditWriter,
+): Promise<void> {
+  const db = writer ?? getDb();
   await db.insert(auditLog).values({
     action: entry.action,
     entityKind: entry.entityKind,

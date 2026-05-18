@@ -6,9 +6,12 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     globals: true,
-    include: ["src/**/*.{test,spec}.{js,ts}"],
+    include: [
+      "src/**/*.{test,spec}.{js,ts}",
+      "tests/unit/**/*.{test,spec}.{js,ts}",
+    ],
     pool: "forks",
-    forks: { singleFork: true },
+    poolOptions: { forks: { singleFork: true } },
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],

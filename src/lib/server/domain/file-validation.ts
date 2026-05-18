@@ -1,0 +1,279 @@
+/**
+ * Beleg file validation — server-side MIME allowlist + magic-byte sniff.
+ *
+ * Defence-in-depth for the public form: a malicious submitter can lie about
+ * `belegFile.type` (the browser-reported MIME), so we sniff the first bytes
+ * and require:
+ *   1. declared MIME is in ALLOWED_BELEG_MIMES
+ *   2. magic bytes match the declared MIME (mismatch → reject)
+ *   3. size <= MAX_BELEG_BYTES (10 MiB)
+ *
+ * No deps — magic-byte tables are hand-rolled here.
+ */
+
+export const MAX_BELEG_BYTES = 10 * 1024 * 1024; // 10 MiB
+/** Outer guard on the entire multipart body (header check before parsing). */
+export const MAX_REQUEST_BYTES = 20 * 1024 * 1024; // 20 MiB
+
+export const ALLOWED_BELEG_MIMES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/heic",
+  "image/heif",
+  "image/webp",
+] as const;
+
+export type AllowedBelegMime = (typeof ALLOWED_BELEG_MIMES)[number];
+
+export function isAllowedBelegMime(mime: string): mime is AllowedBelegMime {
+  return (ALLOWED_BELEG_MIMES as readonly string[]).includes(mime);
+}
+
+// ---------------------------------------------------------------------------
+// Magic-byte sniff
+// ---------------------------------------------------------------------------
+
+function bytesStartWith(buf: Uint8Array, prefix: readonly number[]): boolean {
+  if (buf.length < prefix.length) return false;
+  for (let i = 0; i < prefix.length; i++) {
+    if (buf[i] !== prefix[i]) return false;
+  }
+  return true;
+}
+
+function bytesAtMatch(
+  buf: Uint8Array,
+  offset: number,
+  expected: readonly number[],
+): boolean {
+  if (buf.length < offset + expected.length) return false;
+  for (let i = 0; i < expected.length; i++) {
+    if (buf[offset + i] !== expected[i]) return false;
+  }
+  return true;
+}
+
+const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d] as const; // %PDF-
+const JPEG_MAGIC = [0xff, 0xd8, 0xff] as const;
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
+const RIFF_MAGIC = [0x52, 0x49, 0x46, 0x46] as const; // "RIFF"
+const WEBP_MAGIC = [0x57, 0x45, 0x42, 0x50] as const; // "WEBP" at offset 8
+const FTYP_MAGIC = [0x66, 0x74, 0x79, 0x70] as const; // "ftyp" at offset 4
+
+// HEIC/HEIF major brands as 4-char ASCII at offset 8 of an ISO-BMFF file.
+const HEIC_BRANDS = new Set([
+  "heic",
+  "heix",
+  "heim",
+  "heis",
+  "heif",
+  "mif1",
+  "msf1",
+  "hevc",
+  "hevx",
+]);
+
+/**
+ * Inspects the leading bytes and returns the sniffed MIME type, or null if
+ * unknown. Caller decides whether to accept null (we don't, for the public
+ * form — only whitelisted types are allowed).
+ */
+export function sniffMime(buffer: Uint8Array): string | null {
+  if (!buffer || buffer.length < 8) return null;
+
+  if (bytesStartWith(buffer, PDF_MAGIC)) return "application/pdf";
+  if (bytesStartWith(buffer, JPEG_MAGIC)) return "image/jpeg";
+  if (bytesStartWith(buffer, PNG_MAGIC)) return "image/png";
+
+  // RIFF + WEBP signature for WebP.
+  if (
+    bytesStartWith(buffer, RIFF_MAGIC) &&
+    bytesAtMatch(buffer, 8, WEBP_MAGIC)
+  ) {
+    return "image/webp";
+  }
+
+  // ISO-BMFF "ftyp" box at offset 4, brand at offset 8 (4 chars).
+  if (bytesAtMatch(buffer, 4, FTYP_MAGIC) && buffer.length >= 12) {
+    const brand = String.fromCharCode(
+      buffer[8]!,
+      buffer[9]!,
+      buffer[10]!,
+      buffer[11]!,
+    ).toLowerCase();
+    if (HEIC_BRANDS.has(brand)) {
+      // Differentiate HEIC vs HEIF only loosely — both map to image/heic for
+      // our purposes; "heif"/"mif1" → image/heif.
+      if (brand === "heif" || brand === "mif1" || brand === "msf1") {
+        return "image/heif";
+      }
+      return "image/heic";
+    }
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Compatible MIME pairs
+// ---------------------------------------------------------------------------
+
+/**
+ * Two MIMEs are considered compatible iff they are equal OR one of the
+ * accepted aliases. HEIC and HEIF are technically the same container so we
+ * accept either declared type when the magic bytes resolve to the other.
+ */
+function mimesCompatible(declared: string, sniffed: string): boolean {
+  if (declared === sniffed) return true;
+  const heicSet = new Set(["image/heic", "image/heif"]);
+  if (heicSet.has(declared) && heicSet.has(sniffed)) return true;
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Filename sanitization
+// ---------------------------------------------------------------------------
+
+/**
+ * Strips control characters, path separators, and leading dots; limits the
+ * length to 120 chars. Preserves dots used as extension delimiters.
+ * Empty result → "beleg".
+ *
+ * Passes (in order):
+ *   1. Strip ASCII control chars NUL–0x1F and DEL 0x7F
+ *   2. Replace path separators (slash, backslash, colon) with underscore
+ *   3. Collapse whitespace to a single underscore
+ *   4. Strip leading dots (no hidden files / "..")
+ *   5. Truncate to 120 chars, preserving extension when possible
+ */
+export function sanitizeFilename(name: string): string {
+  if (!name || typeof name !== "string") return "beleg";
+
+  // 1. Strip control chars (NUL–0x1F and DEL 0x7F)
+  // eslint-disable-next-line no-control-regex
+  let safe = name.replace(/[\x00-\x1f\x7f]/g, "");
+
+  // 2. Strip path separators only (slash, backslash, colon)
+  safe = safe.replace(/[/\\:]/g, "_");
+
+  // 3. Collapse any whitespace to single underscore
+  safe = safe.replace(/\s+/g, "_");
+
+  // 4. Strip leading dots (no hidden files / "..")
+  safe = safe.replace(/^\.+/, "");
+
+  // 5. Truncate to 120 chars, preserving extension when possible
+  if (safe.length > 120) {
+    const lastDot = safe.lastIndexOf(".");
+    if (lastDot > 80 && lastDot > safe.length - 10) {
+      // Keep extension
+      const ext = safe.slice(lastDot);
+      safe = safe.slice(0, 120 - ext.length) + ext;
+    } else {
+      safe = safe.slice(0, 120);
+    }
+  }
+
+  return safe || "beleg";
+}
+
+// ---------------------------------------------------------------------------
+// Top-level validator
+// ---------------------------------------------------------------------------
+
+export type BelegValidation =
+  | { valid: true; sniffedMime: string }
+  | { valid: false; reason: string };
+
+/** Smallest prefix needed to sniff every supported format (ISO-BMFF needs 12). */
+export const SNIFF_PREFIX_BYTES = 32;
+
+/**
+ * Validates only the leading-byte prefix of a Beleg — used to reject hostile
+ * files BEFORE the full body is buffered into memory. The caller is
+ * responsible for the size cap (already enforced via Content-Length /
+ * MAX_BELEG_BYTES) and for streaming the body on the success path.
+ *
+ *   - declaredMime must be in ALLOWED_BELEG_MIMES
+ *   - sniffMime(prefix) must succeed and be compatible with declared
+ *   - prefix.byteLength must be > 0 (size cap is enforced separately)
+ */
+export function validateBelegPrefix(
+  prefix: Uint8Array,
+  declaredMime: string,
+): BelegValidation {
+  if (!prefix || prefix.byteLength === 0) {
+    return { valid: false, reason: "Beleg-Datei ist leer." };
+  }
+  if (!isAllowedBelegMime(declaredMime)) {
+    return {
+      valid: false,
+      reason: `Dateityp ${declaredMime} nicht erlaubt. Erlaubt: PDF, JPEG, PNG, HEIC/HEIF, WebP.`,
+    };
+  }
+
+  const sniffed = sniffMime(prefix);
+  if (!sniffed) {
+    return {
+      valid: false,
+      reason:
+        "Dateityp konnte nicht erkannt werden — die Datei ist evtl. beschädigt oder verschlüsselt.",
+    };
+  }
+
+  if (!mimesCompatible(declaredMime, sniffed)) {
+    return {
+      valid: false,
+      reason: `Dateityp-Mismatch: Datei wird als ${declaredMime} ausgewiesen, ist aber ${sniffed}.`,
+    };
+  }
+
+  return { valid: true, sniffedMime: sniffed };
+}
+
+/**
+ * Validates a Beleg upload buffer.
+ *   - declaredMime must be in ALLOWED_BELEG_MIMES
+ *   - sniffMime(buffer) must succeed
+ *   - sniffed MIME must be compatible with declared
+ *   - buffer.byteLength must be > 0 and <= MAX_BELEG_BYTES
+ */
+export function validateBeleg(
+  buffer: Uint8Array,
+  declaredMime: string,
+): BelegValidation {
+  if (!buffer || buffer.byteLength === 0) {
+    return { valid: false, reason: "Beleg-Datei ist leer." };
+  }
+  if (buffer.byteLength > MAX_BELEG_BYTES) {
+    return {
+      valid: false,
+      reason: `Beleg-Datei zu groß (max ${MAX_BELEG_BYTES / 1024 / 1024} MiB).`,
+    };
+  }
+  if (!isAllowedBelegMime(declaredMime)) {
+    return {
+      valid: false,
+      reason: `Dateityp ${declaredMime} nicht erlaubt. Erlaubt: PDF, JPEG, PNG, HEIC/HEIF, WebP.`,
+    };
+  }
+
+  const sniffed = sniffMime(buffer);
+  if (!sniffed) {
+    return {
+      valid: false,
+      reason:
+        "Dateityp konnte nicht erkannt werden — die Datei ist evtl. beschädigt oder verschlüsselt.",
+    };
+  }
+
+  if (!mimesCompatible(declaredMime, sniffed)) {
+    return {
+      valid: false,
+      reason: `Dateityp-Mismatch: Datei wird als ${declaredMime} ausgewiesen, ist aber ${sniffed}.`,
+    };
+  }
+
+  return { valid: true, sniffedMime: sniffed };
+}

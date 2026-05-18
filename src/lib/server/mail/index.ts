@@ -31,8 +31,10 @@ async function loadTemplate(name: TemplateName) {
       return (await import("./templates/ErstattungsMail.svelte")).default;
     case "beitrag_reminder":
       return (await import("./templates/BeitragsReminder.svelte")).default;
-    case "auslage_abgelehnt":
     case "spende_bescheinigung":
+      return (await import("./templates/AufwandsspendenBestaetigung.svelte"))
+        .default;
+    case "auslage_abgelehnt":
     case "invoice_versendet":
       throw new Error(`Template "${name}" is not implemented in Phase 1.`);
   }
@@ -55,6 +57,8 @@ function subjectFor(
       return `Deine Erstattung für ${props.ausId ?? ""} ist auf dem Weg`;
     case "beitrag_reminder":
       return `Erinnerung: dein Mitgliedsbeitrag ${props.jahr ?? ""} ist noch offen`;
+    case "spende_bescheinigung":
+      return "Deine Aufwandsspenden-Bestätigung von Folge der Wolke e.V.";
     default:
       return "Nachricht von Folge der Wolke e.V.";
   }

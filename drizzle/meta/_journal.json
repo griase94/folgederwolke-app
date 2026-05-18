@@ -8,6 +8,27 @@
       "when": 1779131271925,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779131272000,
+      "tag": "0001_phase2_additions",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779131273000,
+      "tag": "0002_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1779131274000,
+      "tag": "0003_phase2_constraints",
+      "breakpoints": true
     }
   ]
 }

@@ -50,6 +50,13 @@ export const sentMails = pgTable(
     failedAt: timestamp("failed_at", { withTimezone: true }),
   },
   (t) => ({
+    /**
+     * NOTE: The actual database UNIQUE index is created with `NULLS NOT DISTINCT`
+     * (PG 15+) via `drizzle/0003_phase2_constraints.sql`. Drizzle's pg-core
+     * `uniqueIndex` builder doesn't yet expose this option, so the raw SQL
+     * migration overrides this declaration. ADR-0005 requires settings-template
+     * mails (entity_id=NULL) to dedup; the SQL override enforces that.
+     */
     idempotencyUq: uniqueIndex("sent_mails_template_entity_attempt_uq").on(
       t.template,
       t.entityKind,
