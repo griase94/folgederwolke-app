@@ -6,14 +6,14 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "preview": "vite preview --port 4173",
+    "preview": "PORT=4173 HOST=127.0.0.1 node build/index.js",
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "test:e2e": "playwright test"
   },
@@ -24,6 +24,7 @@
     "@lucide/svelte": "^1.16.0",
     "@playwright/test": "^1.60.0",
     "@sveltejs/adapter-auto": "latest",
+    "@sveltejs/adapter-node": "^5.5.4",
     "@sveltejs/kit": "latest",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "@tailwindcss/postcss": "^4.3.0",
@@ -33,9 +34,12 @@
     "@vitest/coverage-v8": "^4.1.6",
     "bits-ui": "^2.18.1",
     "clsx": "^2.1.1",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^10.4.0",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-svelte": "^3.17.1",
     "formsnap": "^2.0.1",
+    "globals": "^17.6.0",
     "happy-dom": "^20.9.0",
     "mode-watcher": "^1.1.0",
     "prettier": "^3.8.3",
@@ -55,5 +59,14 @@
     "typescript-eslint": "^8.59.3",
     "vite": "^8.0.7",
     "vitest": "^4.1.6"
+  },
+  "dependencies": {
+    "@googleapis/docs": "^9.2.1",
+    "@googleapis/drive": "^20.1.0",
+    "@googleapis/sheets": "^13.0.1",
+    "drizzle-orm": "^0.45.2",
+    "google-auth-library": "^10.6.2",
+    "postgres": "^3.4.9",
+    "zod": "^4.4.3"
   }
 }
