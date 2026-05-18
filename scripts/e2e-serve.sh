@@ -33,6 +33,24 @@ export HOST="${HOST:-127.0.0.1}"
 export PUBLIC_FORM_ENABLED="${PUBLIC_FORM_ENABLED:-true}"
 export VEREIN_NAME="${VEREIN_NAME:-Folge der Wolke e.V.}"
 
+# CRITICAL — set ORIGIN so SvelteKit's CSRF check (adapter-node) accepts form
+# POSTs from Playwright. Without this, adapter-node defaults the protocol to
+# `https` (parse_origin guesses from PROTOCOL_HEADER || 'https'), so `url.origin`
+# becomes `https://127.0.0.1:4173`, while the actual Origin header is
+# `http://127.0.0.1:4173` — request_origin !== url.origin → 403.
+# Setting ORIGIN explicitly to the real http:// origin bypasses that mismatch.
+# Tests cannot use https for the preview server (no cert).
+export ORIGIN="${ORIGIN:-http://${HOST}:${PORT}}"
+
+# ADMIN_EMAILS: tests assume `admin@example.com` is on the allowlist for the
+# "admin email anti-enumeration" branch. In CI, the secret may differ — append
+# the test address only if not already present, so the verify-flow test gets
+# an admin email it can use.
+case "${ADMIN_EMAILS:-},," in
+  *admin@example.com,*) ;; # already present
+  *) export ADMIN_EMAILS="${ADMIN_EMAILS:+${ADMIN_EMAILS},}admin@example.com" ;;
+esac
+
 echo "[e2e-serve] launching node build/index.js on $HOST:$PORT" >&2
 echo "[e2e-serve] node will see DATABASE_URL of length ${#DATABASE_URL}" >&2
 
