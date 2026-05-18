@@ -10,6 +10,16 @@ import { sequence } from "@sveltejs/kit/hooks";
 import type { Handle } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import { resolveSession } from "$lib/server/auth/index.js";
+import { registerHandlers } from "$lib/server/events/index.js";
+
+// ---------------------------------------------------------------------------
+// One-time event-handler registration (§4.1.1 #2)
+// ---------------------------------------------------------------------------
+// Module-load side effect. SvelteKit imports hooks.server.ts exactly once per
+// server boot, so handlers are registered before any request is served.
+// `registerHandlers()` is idempotent (module-level guard) — safe to import in
+// tests too.
+registerHandlers();
 
 // ---------------------------------------------------------------------------
 // Auth + session handle

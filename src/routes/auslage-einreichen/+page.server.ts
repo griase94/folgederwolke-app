@@ -18,22 +18,23 @@ import { randomUUID } from "node:crypto";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
-import { auditLog } from "$lib/server/db/schema/audit_log.js";
 import { env } from "$lib/server/env.js";
 import {
   validateAuslageInput,
   composeBezahltVonDisplay,
 } from "$lib/server/domain/auslagen.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
-import { uploadBeleg } from "$lib/server/drive/index.js";
+import { driveFileStorage } from "$lib/server/files/drive-impl.js";
+import type { FileStorage } from "$lib/server/files/storage.js";
 import { getDriveAuth } from "$lib/server/drive/auth.js";
 import { drive as createDrive } from "@googleapis/drive";
-import { sendMail } from "$lib/server/mail/index.js";
+import { bus } from "$lib/server/events/index.js";
 import { checkAndRecord, RateLimitError } from "$lib/server/auth/rate-limit.js";
 import {
   MAX_BELEG_BYTES,
   MAX_REQUEST_BYTES,
-  validateBeleg,
+  SNIFF_PREFIX_BYTES,
+  validateBelegPrefix,
   sanitizeFilename,
 } from "$lib/server/domain/file-validation.js";
 import { DATENSCHUTZ_VERSION } from "$lib/server/domain/datenschutz.js";
@@ -42,10 +43,17 @@ import { DATENSCHUTZ_VERSION } from "$lib/server/domain/datenschutz.js";
 // Dependency injection seam for tests
 // ---------------------------------------------------------------------------
 
-/** Overrideable uploadBeleg — swapped out in tests via _setUploadBelegFn(). */
-export let _uploadBelegFn: typeof uploadBeleg = uploadBeleg;
-export function _setUploadBelegFn(fn: typeof uploadBeleg) {
-  _uploadBelegFn = fn;
+/**
+ * Test seam: replace the FileStorage implementation. When undefined the
+ * production `driveFileStorage` is used. Tests set this to a stub to avoid
+ * hitting Drive.
+ */
+export let _fileStorageOverride: FileStorage | undefined = undefined;
+export function _setFileStorageOverride(fs: FileStorage | undefined) {
+  _fileStorageOverride = fs;
+}
+function fileStorage(): FileStorage {
+  return _fileStorageOverride ?? driveFileStorage;
 }
 
 // ---------------------------------------------------------------------------
@@ -213,25 +221,39 @@ export const actions: Actions = {
     }
 
     // ── 2c. Beleg magic-byte sniff ────────────────────────────────────────────
+    // Two-phase: (1) sniff only a small prefix to reject hostile files cheaply,
+    // (2) buffer the full body only after the prefix passes validation.
     let belegBytes: Buffer | null = null;
     let belegSniffedMime: string | null = null;
     let belegFilenameSafe = "beleg";
     if (belegFile instanceof File && belegFile.size > 0) {
+      const declared =
+        input.beleg_mime_type || belegFile.type || "application/octet-stream";
+
+      // Phase 1: prefix sniff (≤ SNIFF_PREFIX_BYTES bytes in memory).
+      let prefix: Uint8Array;
+      try {
+        prefix = new Uint8Array(
+          await belegFile.slice(0, SNIFF_PREFIX_BYTES).arrayBuffer(),
+        );
+      } catch {
+        return fail(400, { error: "Beleg konnte nicht gelesen werden." });
+      }
+      const prefixCheck = validateBelegPrefix(prefix, declared);
+      if (!prefixCheck.valid) {
+        return fail(415, {
+          error: prefixCheck.reason,
+          errors: { beleg: [prefixCheck.reason] },
+        });
+      }
+      belegSniffedMime = prefixCheck.sniffedMime;
+
+      // Phase 2: buffer the full body for upload (size already capped).
       try {
         belegBytes = Buffer.from(await belegFile.arrayBuffer());
       } catch {
         return fail(400, { error: "Beleg konnte nicht gelesen werden." });
       }
-      const declared =
-        input.beleg_mime_type || belegFile.type || "application/octet-stream";
-      const v = validateBeleg(belegBytes, declared);
-      if (!v.valid) {
-        return fail(415, {
-          error: v.reason,
-          errors: { beleg: [v.reason] },
-        });
-      }
-      belegSniffedMime = v.sniffedMime;
       belegFilenameSafe = sanitizeFilename(belegFile.name || "beleg");
     }
 
@@ -248,13 +270,13 @@ export const actions: Actions = {
     let driveFileId: string | null = null;
     if (belegBytes && belegSniffedMime) {
       try {
-        const result = await _uploadBelegFn({
-          buffer: belegBytes,
+        const result = await fileStorage().upload({
+          buffer: new Uint8Array(belegBytes),
           mimeType: belegSniffedMime,
           name: `${ausId}_${belegFilenameSafe}`,
           idempotencyKey,
         });
-        driveFileId = result.driveFileId;
+        driveFileId = result.id;
       } catch (driveErr) {
         console.error(
           `[auslage-einreichen] Drive upload failed for ${ausId}:`,
@@ -310,66 +332,50 @@ export const actions: Actions = {
       });
     }
 
-    // ── 6. Send EingangsMail (best-effort) ────────────────────────────────────
+    // ── 6. Emit domain event (mail + audit log handled by bus) ────────────────
+    // §4.1.1 #2: route actions must not call sendMail()/auditLog() directly.
+    // Registered handlers (src/lib/server/events/handlers.ts) run the
+    // EingangsMail dispatch (best-effort) and the audit log insert (critical).
     const recipientEmail =
       bv.kind === "extern"
         ? bv.email
         : bv.kind === "member"
           ? (bv.email ?? null)
           : null;
+    const vorname =
+      bv.kind === "member"
+        ? (bv.display_name.split(" ")[0] ?? bv.display_name)
+        : bv.kind === "extern"
+          ? (bv.name.split(" ")[0] ?? bv.name)
+          : "Mitglied";
 
-    if (recipientEmail) {
-      const vorname =
-        bv.kind === "member"
-          ? (bv.display_name.split(" ")[0] ?? bv.display_name)
-          : bv.kind === "extern"
-            ? (bv.name.split(" ")[0] ?? bv.name)
-            : "Mitglied";
-
-      try {
-        await sendMail({
-          template: "auslage_eingang",
-          entity_kind: "auslagen_submission",
-          entity_id: submissionId,
-          to: recipientEmail,
-          props: {
-            vorname,
-            ausId,
-            bezeichnung: input.bezeichnung,
-            betragCents: input.betragCents,
-            eingereichtAm: new Date(),
-          },
-        });
-      } catch (mailErr) {
-        console.error(
-          `[auslage-einreichen] EingangsMail failed for ${ausId}:`,
-          mailErr,
-        );
-      }
-    }
-
-    // ── 7. Audit log ──────────────────────────────────────────────────────────
     try {
-      await db.insert(auditLog).values({
-        actorKind: "system",
-        action: "create",
-        entityKind: "auslagen_submission",
-        entityId: submissionId,
-        entityBusinessId: ausId,
-        actorIpPrefix: ipPrefixVal,
-        actorUaHash: hashString(ua),
-        payload: {
-          bezeichnung: input.bezeichnung,
-          betragCents: input.betragCents,
-          bezahltVonKind: bv.kind,
-          consentTextVersion: input.consent_text_version,
-        },
+      await bus.emit("auslagen.submitted", {
+        submissionId,
+        ausId,
+        email: recipientEmail,
+        vorname,
+        bezeichnung: input.bezeichnung,
+        betragCents: input.betragCents,
+        driveFileId,
+        consentTextVersion: input.consent_text_version,
+        ipPrefix: ipPrefixVal,
+        userAgentHash: hashString(ua),
+        bezahltVonKind: bv.kind,
       });
-    } catch (auditErr) {
-      console.error("[auslage-einreichen] Audit log insert failed:", auditErr);
+    } catch (busErr) {
+      // bus.emit throws AggregateError if any handler re-throws. The mail
+      // handler swallows its own errors, so the only re-throwing handler is
+      // the audit log insert. Log and continue — the user-visible result
+      // (submission saved + Drive uploaded) must not be hidden behind an
+      // audit-write transient failure.
+      console.error(
+        `[auslage-einreichen] event handler failure for ${ausId}:`,
+        busErr,
+      );
     }
 
-    // ── 8. Redirect ───────────────────────────────────────────────────────────
+    // ── 7. Redirect ───────────────────────────────────────────────────────────
     throw redirect(303, `/auslage-eingereicht?id=${encodeURIComponent(ausId)}`);
   },
 };
