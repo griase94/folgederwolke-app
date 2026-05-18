@@ -233,23 +233,28 @@ export async function consumeMagicLink(
 // Upsert user
 // ---------------------------------------------------------------------------
 
+/**
+ * Atomic UPSERT keyed on `users.email_canonical` (UNIQUE). Single round-trip;
+ * safe under concurrent calls — the UNIQUE index serialises insert collisions
+ * and ON CONFLICT DO UPDATE … RETURNING always yields the persisted row.
+ *
+ * The SET clause is a no-op-ish bump of updatedAt so RETURNING fires on the
+ * conflict path (DO NOTHING would not return a row).
+ */
 async function upsertUser(
   tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
   emailCanonical: string,
 ): Promise<typeof users.$inferSelect> {
-  // Try to find existing user first
-  const existing = await tx.query.users.findFirst({
-    where: eq(users.emailCanonical, emailCanonical),
-  });
-  if (existing) return existing;
-
-  // Insert new user
   const inserted = await tx
     .insert(users)
     .values({
       email: emailCanonical,
       emailCanonical,
       role: "admin",
+    })
+    .onConflictDoUpdate({
+      target: users.emailCanonical,
+      set: { updatedAt: new Date() },
     })
     .returning();
 

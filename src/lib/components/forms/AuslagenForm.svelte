@@ -30,9 +30,23 @@
 		projects?: Project[];
 		/** If set, show server-side error after a failed submission. */
 		serverError?: string | null;
+		/**
+		 * Per-field validation errors returned by the server action (e.g. Zod
+		 * issues). Merged into local `fieldErrors` state on mount/update so the
+		 * errors render immediately under each field. Field keys match the
+		 * client-side ones (`bezeichnung`, `betragCents`, `bezahlt_von.iban`,
+		 * `consent`, …).
+		 */
+		serverFieldErrors?: Record<string, string[]> | null;
 	}
 
-	let { action = '?/default', members = [], projects = [], serverError = null }: Props = $props();
+	let {
+		action = '?/default',
+		members = [],
+		projects = [],
+		serverError = null,
+		serverFieldErrors = null
+	}: Props = $props();
 
 	// ---------------------------------------------------------------------------
 	// Form state
@@ -58,6 +72,25 @@
 	// Validation errors (shown after blur)
 	let fieldErrors = $state<Record<string, string[]>>({});
 	let blurred = $state<Record<string, boolean>>({});
+
+	// Merge server-side per-field errors into local validation state whenever
+	// the action returns a new `form?.errors` payload. Marking the field as
+	// blurred forces the error to render immediately (matching the visible-
+	// after-touch UX rule for client-only errors).
+	$effect(() => {
+		const incoming = serverFieldErrors;
+		if (!incoming) return;
+		const merged: Record<string, string[]> = { ...fieldErrors };
+		const blurredNext: Record<string, boolean> = { ...blurred };
+		for (const [field, msgs] of Object.entries(incoming)) {
+			if (Array.isArray(msgs) && msgs.length > 0) {
+				merged[field] = msgs;
+				blurredNext[field] = true;
+			}
+		}
+		fieldErrors = merged;
+		blurred = blurredNext;
+	});
 
 	// UI state
 	let isSubmitting = $state(false);

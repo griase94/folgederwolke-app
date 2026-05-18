@@ -1,11 +1,17 @@
 <script lang="ts">
 	import AuslagenForm from '$lib/components/forms/AuslagenForm.svelte';
-	import type { PageData } from './$types.js';
+	import type { PageData, ActionData } from './$types.js';
 
-	// form is typed as ActionData from SvelteKit — the action (auto-fix-B) will add
-	// fail(N, { error }) responses so ActionData will include { error: string }.
-	// We use a loose type here to avoid a compile error until B's action is updated.
-	let { data, form }: { data: PageData; form: Record<string, string> | null | undefined } = $props();
+	// `form` carries ActionData from the POST action. auto-fix-B's action returns
+	// `fail(400, { error, errors })` where `errors` is a per-field
+	// `Record<string, string[]>`. Until B's full type lands we shape it as a
+	// loose intersection that surfaces both `error` (page-level) and `errors`
+	// (per-field) into the form component.
+	type FormShape =
+		| (ActionData & { error?: string; errors?: Record<string, string[]> })
+		| null
+		| undefined;
+	let { data, form }: { data: PageData; form: FormShape } = $props();
 </script>
 
 <svelte:head>
@@ -31,5 +37,10 @@
 		</p>
 	</header>
 
-	<AuslagenForm members={data.members ?? []} projects={data.projects ?? []} serverError={form?.error ?? null} />
+	<AuslagenForm
+		members={data.members ?? []}
+		projects={data.projects ?? []}
+		serverError={form?.error ?? null}
+		serverFieldErrors={form?.errors ?? null}
+	/>
 </main>
