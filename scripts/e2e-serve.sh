@@ -12,11 +12,15 @@ echo "[e2e-serve] env presence check:" >&2
 for k in DATABASE_URL DIRECT_DATABASE_URL SESSION_SECRET ADMIN_EMAILS \
          MAIL_PROVIDER MAIL_FROM SMTP_HOST GOOGLE_OAUTH_CLIENT_ID \
          GOOGLE_OAUTH_REFRESH_TOKEN PUBLIC_FORM_ENABLED VEREIN_NAME; do
-  if [ -n "${!k:-}" ]; then
-    echo "  $k: SET (len=${#k})" >&2
+  val="${!k:-}"
+  vlen="${#val}"
+  if [ -n "$val" ]; then
+    echo "  $k: SET (value-len=$vlen)" >&2
   else
     echo "  $k: EMPTY" >&2
   fi
+  # Make absolutely sure each var is exported (so `exec node` sees it)
+  export "$k=${val}"
 done
 
 # Build (cached deps via pnpm-action-setup)
