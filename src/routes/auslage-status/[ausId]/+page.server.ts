@@ -13,6 +13,8 @@ import { eq } from "drizzle-orm";
 import type { PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
+import { parseBusinessId } from "$lib/domain/business-id.js";
+import { checkAndRecord, RateLimitError } from "$lib/server/auth/rate-limit.js";
 
 function maskIban(iban: string): string {
   if (iban.length <= 4) return "****";
@@ -32,8 +34,28 @@ function deriveStatus(
   return "eingegangen";
 }
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, getClientAddress }) => {
   const { ausId } = params;
+
+  // Path validation — AUS-{YYYY}-{NNN} format, prefix must be AUS.
+  const parsed = parseBusinessId(ausId);
+  if (!parsed || parsed.prefix !== "AUS") {
+    throw error(404, `Keine Einreichung mit der ID „${ausId}" gefunden.`);
+  }
+
+  // Rate limit: 20 lookups / min / IP-prefix — prevents enumeration scraping.
+  const ip = getClientAddress();
+  const ipKey = ip.includes(":")
+    ? (ip.split(":")[0] ?? ip.slice(0, 8))
+    : ip.split(".").slice(0, 2).join(".");
+  try {
+    await checkAndRecord(`auslage:status:${ipKey}`, 20, 60 * 1000);
+  } catch (err) {
+    if (err instanceof RateLimitError) {
+      throw error(429, "Zu viele Anfragen — bitte einen Moment warten.");
+    }
+    throw err;
+  }
 
   const db = getDb();
 

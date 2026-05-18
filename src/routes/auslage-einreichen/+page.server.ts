@@ -2,14 +2,19 @@
  * /auslage-einreichen — public Auslage submission form.
  *
  * load()   → returns initial empty form state (PUBLIC_FORM_ENABLED gate).
- * actions  → validates, allocates AUS-ID, inserts DB row, uploads Beleg to
- *            Drive, sends EingangsMail, writes audit log, redirects.
+ * actions  → validates, rate-limits, validates Beleg (size + MIME + magic
+ *            bytes), allocates AUS-ID, uploads to Drive, inserts DB row
+ *            (Drive→DB ordering with best-effort cleanup on DB failure),
+ *            sends EingangsMail, writes audit log, redirects.
  *
  * PUBLIC_FORM_ENABLED=false → 404 on both load and action.
+ *
+ * Errors → action returns `fail()` so the form can render inline messages.
+ * Only the success path uses `throw redirect()`.
  */
 
-import { error, redirect } from "@sveltejs/kit";
-import { eq } from "drizzle-orm";
+import { error, fail, redirect } from "@sveltejs/kit";
+import { randomUUID } from "node:crypto";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
@@ -21,7 +26,17 @@ import {
 } from "$lib/server/domain/auslagen.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { uploadBeleg } from "$lib/server/drive/index.js";
+import { getDriveAuth } from "$lib/server/drive/auth.js";
+import { drive as createDrive } from "@googleapis/drive";
 import { sendMail } from "$lib/server/mail/index.js";
+import { checkAndRecord, RateLimitError } from "$lib/server/auth/rate-limit.js";
+import {
+  MAX_BELEG_BYTES,
+  MAX_REQUEST_BYTES,
+  validateBeleg,
+  sanitizeFilename,
+} from "$lib/server/domain/file-validation.js";
+import { DATENSCHUTZ_VERSION } from "$lib/server/domain/datenschutz.js";
 
 // ---------------------------------------------------------------------------
 // Dependency injection seam for tests
@@ -64,6 +79,30 @@ function ipPrefix(ip: string): string {
   return parts.slice(0, 2).join(".");
 }
 
+/**
+ * AUS-ID year in Europe/Berlin — avoids a UTC-rollover producing a 2025 ID
+ * at 01:30 Berlin time on Jan 1.
+ */
+function berlinYear(now: Date = new Date()): number {
+  return parseInt(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Europe/Berlin",
+      year: "numeric",
+    }).format(now),
+    10,
+  );
+}
+
+/** Best-effort delete of a Drive file (used to roll back upload on DB failure). */
+async function bestEffortDeleteDriveFile(fileId: string): Promise<void> {
+  try {
+    const drive = createDrive({ version: "v3", auth: getDriveAuth() });
+    await drive.files.delete({ fileId });
+  } catch (err) {
+    console.error("[auslage-einreichen] best-effort Drive delete failed:", err);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // actions
 // ---------------------------------------------------------------------------
@@ -75,23 +114,79 @@ export const actions: Actions = {
       throw error(404, "Das Formular ist momentan nicht verfügbar.");
     }
 
+    const ip = getClientAddress();
+    const ua = request.headers.get("user-agent") ?? "";
+    const ipPrefixVal = ipPrefix(ip);
+
+    // ── Outer body-size guard (cheap, before formData parse) ──────────────────
+    const contentLength = parseInt(
+      request.headers.get("content-length") ?? "0",
+      10,
+    );
+    if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
+      return fail(413, {
+        error: `Anfrage zu groß (max ${MAX_REQUEST_BYTES / 1024 / 1024} MiB).`,
+      });
+    }
+
+    // ── Rate limit (per-IP + global cap) ──────────────────────────────────────
+    try {
+      await checkAndRecord(`auslage:submit:${ipPrefixVal}`, 5, 5 * 60 * 1000);
+      await checkAndRecord("auslage:submit:global", 100, 5 * 60 * 1000);
+    } catch (err) {
+      if (err instanceof RateLimitError) {
+        return fail(429, {
+          error: "Zu viele Anfragen — bitte einen Moment warten.",
+        });
+      }
+      throw err;
+    }
+
     // ── 1. Parse FormData ─────────────────────────────────────────────────────
-    const formData = await request.formData();
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch {
+      return fail(400, { error: "Ungültige Anfrage: FormData defekt." });
+    }
+
     const jsonRaw = formData.get("data");
     const belegFile = formData.get("beleg");
 
     if (typeof jsonRaw !== "string") {
-      throw error(400, "Ungültige Anfrage: fehlendes Datenfeld.");
+      return fail(400, { error: "Ungültige Anfrage: fehlendes Datenfeld." });
     }
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(jsonRaw);
     } catch {
-      throw error(400, "Ungültige Anfrage: JSON konnte nicht geparst werden.");
+      return fail(400, {
+        error: "Ungültige Anfrage: JSON konnte nicht geparst werden.",
+      });
+    }
+
+    // Coordinate with form: it sends `submissionNonce` as a top-level
+    // formData field too. Prefer the JSON-payload value but fall back to
+    // the dedicated field for robustness.
+    const nonceFromForm = formData.get("submissionNonce");
+    if (
+      typeof nonceFromForm === "string" &&
+      nonceFromForm &&
+      typeof parsed === "object" &&
+      parsed !== null &&
+      (parsed as Record<string, unknown>).submissionNonce === undefined
+    ) {
+      (parsed as Record<string, unknown>).submissionNonce = nonceFromForm;
     }
 
     if (belegFile instanceof File && belegFile.size > 0) {
+      // Pre-flight: cap file size BEFORE we read it into memory.
+      if (belegFile.size > MAX_BELEG_BYTES) {
+        return fail(413, {
+          error: `Beleg-Datei zu groß (max ${MAX_BELEG_BYTES / 1024 / 1024} MiB).`,
+        });
+      }
       (parsed as Record<string, unknown>).beleg_name = belegFile.name;
       (parsed as Record<string, unknown>).beleg_mime_type = belegFile.type;
     }
@@ -99,87 +194,120 @@ export const actions: Actions = {
     // ── 2. Server-side validation ─────────────────────────────────────────────
     const validation = validateAuslageInput(parsed);
     if (!validation.ok) {
-      throw error(422, JSON.stringify({ errors: validation.errors }));
+      return fail(422, {
+        error: "Bitte korrigiere die markierten Felder.",
+        errors: validation.errors,
+      });
     }
 
     const input = validation.data;
     const bv = input.bezahlt_von;
 
-    // ── 3. Allocate business ID ───────────────────────────────────────────────
-    const year = new Date().getFullYear();
-    const ausId = await allocateBusinessId("AUS", year);
-
-    // ── 4. Insert DB row ──────────────────────────────────────────────────────
-    const db = getDb();
-    const ip = getClientAddress();
-    const ua = request.headers.get("user-agent") ?? "";
-
-    const [insertedRow] = await db
-      .insert(auslagenSubmissions)
-      .values({
-        businessId: ausId,
-        bezeichnung: input.bezeichnung,
-        kommentar: input.kommentar ?? null,
-        rechnungsdatum: input.rechnungsdatum ?? null,
-        betragCents: BigInt(input.betragCents),
-        currency: input.currency,
-        wofuer: input.wofuer ?? null,
-        bezahltVonKind: bv.kind,
-        bezahltVonMemberId: bv.kind === "member" ? bv.member_id : null,
-        externName: bv.kind === "extern" ? bv.name : null,
-        externIban: bv.kind === "extern" ? bv.iban : null,
-        externEmail: bv.kind === "extern" ? bv.email : null,
-        bezahltVonDisplay: composeBezahltVonDisplay(bv),
-        submitterIpPrefix: ipPrefix(ip),
-        submitterUaHash: hashString(ua),
-      })
-      .returning({ id: auslagenSubmissions.id });
-
-    if (!insertedRow) {
-      throw error(500, "Fehler beim Speichern der Einreichung.");
+    // ── 2b. DSGVO consent version match ───────────────────────────────────────
+    if (input.consent_text_version !== DATENSCHUTZ_VERSION) {
+      return fail(422, {
+        error:
+          "Die Datenschutzversion hat sich geändert. Bitte lade die Seite neu und stimme erneut zu.",
+        errors: { consent_text_version: ["Veraltete Datenschutzversion."] },
+      });
     }
 
-    const submissionId = insertedRow.id;
-
-    // ── 5. Upload Beleg to Drive ───────────────────────────────────────────────
+    // ── 2c. Beleg magic-byte sniff ────────────────────────────────────────────
+    let belegBytes: Buffer | null = null;
+    let belegSniffedMime: string | null = null;
+    let belegFilenameSafe = "beleg";
     if (belegFile instanceof File && belegFile.size > 0) {
       try {
-        const buffer = Buffer.from(await belegFile.arrayBuffer());
-        const mimeType = belegFile.type || "application/octet-stream";
-        const fileName = belegFile.name || "beleg";
-
-        const { driveFileId } = await _uploadBelegFn({
-          buffer,
-          mimeType,
-          name: `${ausId}_${fileName}`,
-          idempotencyKey: `${ausId}:${submissionId}`,
+        belegBytes = Buffer.from(await belegFile.arrayBuffer());
+      } catch {
+        return fail(400, { error: "Beleg konnte nicht gelesen werden." });
+      }
+      const declared =
+        input.beleg_mime_type || belegFile.type || "application/octet-stream";
+      const v = validateBeleg(belegBytes, declared);
+      if (!v.valid) {
+        return fail(415, {
+          error: v.reason,
+          errors: { beleg: [v.reason] },
         });
+      }
+      belegSniffedMime = v.sniffedMime;
+      belegFilenameSafe = sanitizeFilename(belegFile.name || "beleg");
+    }
 
-        await db
-          .update(auslagenSubmissions)
-          .set({ belegDriveFileId: driveFileId, belegOriginalName: fileName })
-          .where(eq(auslagenSubmissions.id, submissionId));
+    // ── 3. Allocate business ID (Berlin TZ) ───────────────────────────────────
+    const year = berlinYear();
+    const ausId = await allocateBusinessId("AUS", year);
+
+    // ── 4. Drive upload (BEFORE DB insert — Drive→DB ordering) ────────────────
+    // Use the client-supplied submissionNonce as idempotency key so retries
+    // de-dup at the Drive level. Generate a fallback if missing.
+    const submissionNonce = input.submissionNonce ?? randomUUID();
+    const idempotencyKey = `${ausId}:${submissionNonce}`;
+
+    let driveFileId: string | null = null;
+    if (belegBytes && belegSniffedMime) {
+      try {
+        const result = await _uploadBelegFn({
+          buffer: belegBytes,
+          mimeType: belegSniffedMime,
+          name: `${ausId}_${belegFilenameSafe}`,
+          idempotencyKey,
+        });
+        driveFileId = result.driveFileId;
       } catch (driveErr) {
         console.error(
           `[auslage-einreichen] Drive upload failed for ${ausId}:`,
           driveErr,
         );
-        // Best-effort cleanup: delete the orphaned DB row.
-        try {
-          await db
-            .delete(auslagenSubmissions)
-            .where(eq(auslagenSubmissions.id, submissionId));
-        } catch (cleanupErr) {
-          console.error(
-            "[auslage-einreichen] DB cleanup after Drive failure also failed:",
-            cleanupErr,
-          );
-        }
-        throw error(
-          502,
-          "Beleg-Upload fehlgeschlagen. Bitte erneut versuchen.",
-        );
+        return fail(502, {
+          error: "Beleg-Upload fehlgeschlagen. Bitte erneut versuchen.",
+        });
       }
+    }
+
+    // ── 5. Insert DB row ──────────────────────────────────────────────────────
+    const db = getDb();
+    let submissionId: string;
+    try {
+      const [insertedRow] = await db
+        .insert(auslagenSubmissions)
+        .values({
+          businessId: ausId,
+          bezeichnung: input.bezeichnung,
+          kommentar: input.kommentar ?? null,
+          rechnungsdatum: input.rechnungsdatum ?? null,
+          betragCents: BigInt(input.betragCents),
+          currency: input.currency,
+          wofuer: input.wofuer ?? null,
+          bezahltVonKind: bv.kind,
+          bezahltVonMemberId: bv.kind === "member" ? bv.member_id : null,
+          externName: bv.kind === "extern" ? bv.name : null,
+          externIban: bv.kind === "extern" ? bv.iban : null,
+          externEmail: bv.kind === "extern" ? bv.email : null,
+          bezahltVonDisplay: composeBezahltVonDisplay(bv),
+          belegDriveFileId: driveFileId,
+          belegOriginalName: belegFile instanceof File ? belegFile.name : null,
+          submitterIpPrefix: ipPrefixVal,
+          submitterUaHash: hashString(ua),
+          consentTextVersion: input.consent_text_version,
+        })
+        .returning({ id: auslagenSubmissions.id });
+
+      if (!insertedRow) throw new Error("INSERT returned no row");
+      submissionId = insertedRow.id;
+    } catch (dbErr) {
+      console.error(
+        `[auslage-einreichen] DB insert failed for ${ausId}:`,
+        dbErr,
+      );
+      // Roll back the orphan Drive file (best effort).
+      if (driveFileId) {
+        await bestEffortDeleteDriveFile(driveFileId);
+      }
+      return fail(500, {
+        error: "Fehler beim Speichern der Einreichung. Bitte erneut versuchen.",
+      });
     }
 
     // ── 6. Send EingangsMail (best-effort) ────────────────────────────────────
@@ -228,12 +356,13 @@ export const actions: Actions = {
         entityKind: "auslagen_submission",
         entityId: submissionId,
         entityBusinessId: ausId,
-        actorIpPrefix: ipPrefix(ip),
+        actorIpPrefix: ipPrefixVal,
         actorUaHash: hashString(ua),
         payload: {
           bezeichnung: input.bezeichnung,
           betragCents: input.betragCents,
           bezahltVonKind: bv.kind,
+          consentTextVersion: input.consent_text_version,
         },
       });
     } catch (auditErr) {
