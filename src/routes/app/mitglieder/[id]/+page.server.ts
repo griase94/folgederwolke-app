@@ -4,8 +4,13 @@
  * load()   → fetch member by id (404 if not found), all beitrags, activity feed,
  *             dedup-check for reminder mail (sent in last 30 days).
  * actions:
+ *   ?/edit              — edit master data (shared with the list route)
+ *   ?/delete            — soft-delete (sets austritts_datum = today)
  *   ?/mark-beitrag-paid — mark a member's beitrag year as fully paid
  *   ?/send-reminder     — send a BeitragsReminder mail (respects 30-day dedup)
+ *
+ * Edit/delete/mark-paid logic lives in `$lib/server/domain/members-actions.ts`
+ * so the same write paths run regardless of which route the form posts to.
  */
 
 import { error, fail } from "@sveltejs/kit";
@@ -15,7 +20,11 @@ import { getDb } from "$lib/server/db/index.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
 import { sentMails } from "$lib/server/db/schema/mails.js";
-import { bus } from "$lib/server/events/index.js";
+import {
+  editMember,
+  softDeleteMember,
+  markBeitragPaid,
+} from "$lib/server/domain/members-actions.js";
 import { sendMail } from "$lib/server/mail/index.js";
 import { env } from "$lib/server/env.js";
 
@@ -150,61 +159,56 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 export const actions: Actions = {
+  // ── Edit member ─────────────────────────────────────────────────────────────
+  edit: async ({ request, locals, params }) => {
+    const userId = locals.session?.user.id ?? null;
+    const formData = await request.formData();
+    const raw: Record<string, unknown> = {};
+    for (const [k, v] of formData.entries()) raw[k] = v;
+    // Fall back to the route param when the form omits the id.
+    if (!raw.id && params.id) raw.id = params.id;
+
+    const result = await editMember(raw, userId);
+    if (!result.ok) {
+      return fail(result.status, {
+        action: "edit",
+        errors: result.errors,
+        values: result.values,
+      });
+    }
+
+    return { action: "edit", success: true };
+  },
+
+  // ── Soft-delete member ──────────────────────────────────────────────────────
+  delete: async ({ request, locals, params }) => {
+    const userId = locals.session?.user.id ?? null;
+    const formData = await request.formData();
+    const id = formData.get("id")?.toString() || params.id || "";
+
+    const result = await softDeleteMember(id, userId);
+    if (!result.ok) {
+      return fail(result.status, { action: "delete", error: result.error });
+    }
+
+    return { action: "delete", success: true };
+  },
+
   // ── Mark Beitrag paid ─────────────────────────────────────────────────────
   "mark-beitrag-paid": async ({ request, locals, params }) => {
-    const userId = locals.session?.user.id;
+    const userId = locals.session?.user.id ?? null;
     const memberId = params.id;
     const formData = await request.formData();
     const yearStr = formData.get("year")?.toString() ?? "";
     const year = parseInt(yearStr, 10);
 
-    if (!memberId || isNaN(year)) {
-      return fail(400, {
+    const result = await markBeitragPaid(memberId, year, userId);
+    if (!result.ok) {
+      return fail(result.status, {
         action: "mark-beitrag-paid",
-        error: "Ungültige Parameter",
+        error: result.error,
       });
     }
-
-    const db = getDb();
-
-    const existing = await db
-      .select()
-      .from(memberBeitrags)
-      .where(
-        and(
-          eq(memberBeitrags.memberId, memberId),
-          eq(memberBeitrags.year, year),
-        ),
-      )
-      .limit(1);
-
-    const today = new Date().toISOString().slice(0, 10);
-
-    if (existing.length > 0 && existing[0]) {
-      const row = existing[0];
-      await db
-        .update(memberBeitrags)
-        .set({
-          paidCents: row.betragCents,
-          gezahltAm: today,
-          updatedAt: new Date(),
-        })
-        .where(eq(memberBeitrags.id, row.id));
-    } else {
-      await db.insert(memberBeitrags).values({
-        memberId,
-        year,
-        betragCents: DEFAULT_BEITRAG_CENTS,
-        paidCents: DEFAULT_BEITRAG_CENTS,
-        gezahltAm: today,
-      });
-    }
-
-    await bus.emit("member.beitrag_paid", {
-      memberId,
-      year,
-      actorUserId: userId ?? null,
-    });
 
     return { action: "mark-beitrag-paid", success: true };
   },

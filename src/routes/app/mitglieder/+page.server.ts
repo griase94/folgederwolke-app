@@ -7,22 +7,23 @@
  *   ?/edit                 → edit an existing member
  *   ?/delete               → soft-delete (sets austritts_datum = today)
  *   ?/mark-beitrag-paid    → mark a member's beitrag year as fully paid
+ *
+ * Action logic is delegated to `$lib/server/domain/members-actions.ts` so the
+ * same write paths are reused by `/app/mitglieder/[id]/+page.server.ts`.
  */
 
 import { fail } from "@sveltejs/kit";
-import { eq, and, inArray } from "drizzle-orm";
+import { and, inArray } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
+import { beitragYearsRange } from "$lib/server/domain/members.js";
 import {
-  validateAddMember,
-  validateEditMember,
-  beitragYearsRange,
-} from "$lib/server/domain/members.js";
-import { bus } from "$lib/server/events/index.js";
-
-// Default Beitrag rate in cents (69.69 €) — until Einstellungen tab in Phase 4.
-const DEFAULT_BEITRAG_CENTS = 6969n;
+  addMember,
+  editMember,
+  softDeleteMember,
+  markBeitragPaid,
+} from "$lib/server/domain/members-actions.js";
 
 export const load: PageServerLoad = async ({ url }) => {
   const db = getDb();
@@ -66,6 +67,9 @@ export const load: PageServerLoad = async ({ url }) => {
       nachname: m.nachname,
       email: m.email,
       iban: m.iban,
+      telefon: m.telefon,
+      adresse: m.adresse,
+      dateOfBirth: m.dateOfBirth,
       role: m.role,
       eintrittsDatum: m.eintrittsDatum,
       austrittsDatum: m.austrittsDatum,
@@ -94,165 +98,71 @@ export const load: PageServerLoad = async ({ url }) => {
 export const actions: Actions = {
   // ── Add member ─────────────────────────────────────────────────────────────
   default: async ({ request, locals }) => {
-    const userId = locals.session?.user.id;
+    const userId = locals.session?.user.id ?? null;
     const formData = await request.formData();
     const raw: Record<string, unknown> = {};
     for (const [k, v] of formData.entries()) raw[k] = v;
 
-    const result = validateAddMember(raw);
-    if (!result.success) {
-      return fail(422, { action: "add", errors: result.errors, values: raw });
+    const result = await addMember(raw, userId);
+    if (!result.ok) {
+      return fail(result.status, {
+        action: "add",
+        errors: result.errors,
+        values: result.values,
+      });
     }
 
-    const db = getDb();
-    const { vorname, nachname, email, eintritts_datum, role, iban } =
-      result.data;
-
-    const insertedRows = await db
-      .insert(members)
-      .values({
-        vorname,
-        nachname,
-        email: email || null,
-        emailCanonical: email ? email.toLowerCase().trim() : null,
-        iban: iban || null,
-        role,
-        eintrittsDatum: eintritts_datum,
-      })
-      .returning({ id: members.id });
-
-    const insertedId = insertedRows[0]?.id ?? "";
-
-    await bus.emit("member.created", {
-      memberId: insertedId,
-      actorUserId: userId ?? null,
-      vorname,
-      nachname,
-    });
-
-    return { action: "add", success: true, memberId: insertedId };
+    return { action: "add", success: true, memberId: result.memberId };
   },
 
   // ── Edit member ─────────────────────────────────────────────────────────────
   edit: async ({ request, locals }) => {
-    const userId = locals.session?.user.id;
+    const userId = locals.session?.user.id ?? null;
     const formData = await request.formData();
     const raw: Record<string, unknown> = {};
     for (const [k, v] of formData.entries()) raw[k] = v;
 
-    const result = validateEditMember(raw);
-    if (!result.success) {
-      return fail(422, { action: "edit", errors: result.errors, values: raw });
+    const result = await editMember(raw, userId);
+    if (!result.ok) {
+      return fail(result.status, {
+        action: "edit",
+        errors: result.errors,
+        values: result.values,
+      });
     }
-
-    const db = getDb();
-    const { id, vorname, nachname, email, eintritts_datum, role, iban } =
-      result.data;
-
-    await db
-      .update(members)
-      .set({
-        vorname,
-        nachname,
-        email: email || null,
-        emailCanonical: email ? email.toLowerCase().trim() : null,
-        iban: iban || null,
-        role,
-        eintrittsDatum: eintritts_datum,
-        updatedAt: new Date(),
-      })
-      .where(eq(members.id, id));
-
-    await bus.emit("member.updated", {
-      memberId: id,
-      actorUserId: userId ?? null,
-    });
 
     return { action: "edit", success: true };
   },
 
   // ── Soft-delete member ──────────────────────────────────────────────────────
   delete: async ({ request, locals }) => {
-    const userId = locals.session?.user.id;
+    const userId = locals.session?.user.id ?? null;
     const formData = await request.formData();
     const id = formData.get("id")?.toString() ?? "";
 
-    if (!id)
-      return fail(400, { action: "delete", error: "Fehlende Mitglieds-ID" });
-
-    const db = getDb();
-    await db
-      .update(members)
-      .set({
-        austrittsDatum: new Date().toISOString().slice(0, 10),
-        updatedAt: new Date(),
-      })
-      .where(eq(members.id, id));
-
-    await bus.emit("member.deleted", {
-      memberId: id,
-      actorUserId: userId ?? null,
-    });
+    const result = await softDeleteMember(id, userId);
+    if (!result.ok) {
+      return fail(result.status, { action: "delete", error: result.error });
+    }
 
     return { action: "delete", success: true };
   },
 
   // ── Mark Beitrag paid ───────────────────────────────────────────────────────
   "mark-beitrag-paid": async ({ request, locals }) => {
-    const userId = locals.session?.user.id;
+    const userId = locals.session?.user.id ?? null;
     const formData = await request.formData();
     const memberId = formData.get("member_id")?.toString() ?? "";
     const yearStr = formData.get("year")?.toString() ?? "";
     const year = parseInt(yearStr, 10);
 
-    if (!memberId || isNaN(year)) {
-      return fail(400, {
+    const result = await markBeitragPaid(memberId, year, userId);
+    if (!result.ok) {
+      return fail(result.status, {
         action: "mark-beitrag-paid",
-        error: "Ungültige Parameter",
+        error: result.error,
       });
     }
-
-    const db = getDb();
-
-    // Upsert: if row exists update, if not create
-    const existing = await db
-      .select()
-      .from(memberBeitrags)
-      .where(
-        and(
-          eq(memberBeitrags.memberId, memberId),
-          eq(memberBeitrags.year, year),
-        ),
-      )
-      .limit(1);
-
-    const today = new Date().toISOString().slice(0, 10);
-
-    if (existing.length > 0 && existing[0]) {
-      const row = existing[0];
-      await db
-        .update(memberBeitrags)
-        .set({
-          paidCents: row.betragCents,
-          gezahltAm: today,
-          updatedAt: new Date(),
-        })
-        .where(eq(memberBeitrags.id, row.id));
-    } else {
-      await db.insert(memberBeitrags).values({
-        memberId,
-        year,
-        betragCents: DEFAULT_BEITRAG_CENTS,
-        paidCents: DEFAULT_BEITRAG_CENTS,
-        gezahltAm: today,
-      });
-    }
-
-    await bus.emit("member.beitrag_paid", {
-      memberId,
-      year,
-      actorUserId: userId ?? null,
-    });
 
     return { action: "mark-beitrag-paid", success: true };
   },

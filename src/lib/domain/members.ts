@@ -24,6 +24,9 @@ export type MemberView = {
   nachname: string;
   email: string | null;
   iban: string | null;
+  telefon: string | null;
+  adresse: string | null;
+  dateOfBirth: string | null;
   role: string;
   eintrittsDatum: string | null;
   austrittsDatum: string | null;

@@ -9,6 +9,7 @@
  */
 
 import { z } from "zod";
+import { validateIban, normalizeIban } from "$lib/server/domain/iban.js";
 
 // Re-export shared client-safe items so callers that don't need browser
 // compatibility can import everything from one place.
@@ -48,7 +49,21 @@ const memberBaseSchema = z.object({
     z.string().email("Ungültige E-Mail").max(254, "E-Mail zu lang"),
   ),
   telefon: optionalText(z.string().max(30, "Telefon zu lang")),
-  iban: optionalText(z.string().max(34, "IBAN zu lang")),
+  iban: z
+    .string()
+    .optional()
+    .transform((v) =>
+      v === "" || v === undefined ? undefined : normalizeIban(v),
+    )
+    .pipe(
+      z.union([
+        z
+          .string()
+          .max(34, "IBAN zu lang")
+          .refine(validateIban, { message: "IBAN ungültig" }),
+        z.undefined(),
+      ]),
+    ),
   adresse: optionalText(z.string().max(300, "Adresse zu lang")),
   date_of_birth: optionalText(
     z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Datum im Format JJJJ-MM-TT"),

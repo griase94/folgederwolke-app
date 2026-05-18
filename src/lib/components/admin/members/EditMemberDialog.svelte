@@ -136,9 +136,29 @@
 				<div class="space-y-1">
 					<Label for="edit-iban">IBAN</Label>
 					<Input id="edit-iban" name="iban" value={member.iban ?? ''} placeholder="DE12 …" />
+					{#if fieldError('iban')}
+						<p class="text-xs text-destructive">{fieldError('iban')}</p>
+					{/if}
+				</div>
+
+				<div class="space-y-1">
+					<Label for="edit-telefon">Telefon</Label>
+					<Input id="edit-telefon" name="telefon" type="tel" value={member.telefon ?? ''} autocomplete="tel" />
+				</div>
+
+				<div class="space-y-1">
+					<Label for="edit-adresse">Adresse</Label>
+					<Input id="edit-adresse" name="adresse" value={member.adresse ?? ''} autocomplete="street-address" />
 				</div>
 
 				<div class="grid grid-cols-2 gap-3">
+					<div class="space-y-1">
+						<Label for="edit-dob">Geburtsdatum</Label>
+						<Input id="edit-dob" name="date_of_birth" type="date" value={member.dateOfBirth ?? ''} />
+						{#if fieldError('date_of_birth')}
+							<p class="text-xs text-destructive">{fieldError('date_of_birth')}</p>
+						{/if}
+					</div>
 					<div class="space-y-1">
 						<Label for="edit-eintritt">Eintrittsdatum</Label>
 						<Input
@@ -148,18 +168,19 @@
 							value={member.eintrittsDatum ?? ''}
 						/>
 					</div>
-					<div class="space-y-1">
-						<Label for="edit-role">Rolle</Label>
-						<select
-							id="edit-role"
-							name="role"
-							class="border-input bg-background h-8 w-full rounded-lg border px-2.5 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-						>
-							{#each ['mitglied', 'vorstand', 'kassenwart', 'schriftfuehrer', 'fördermitglied'] as r (r)}
-								<option value={r} selected={member.role === r}>{r}</option>
-							{/each}
-						</select>
-					</div>
+				</div>
+
+				<div class="space-y-1">
+					<Label for="edit-role">Rolle</Label>
+					<select
+						id="edit-role"
+						name="role"
+						class="border-input bg-background h-8 w-full rounded-lg border px-2.5 py-1 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
+					>
+						{#each ['mitglied', 'vorstand', 'kassenwart', 'schriftfuehrer', 'fördermitglied'] as r (r)}
+							<option value={r} selected={member.role === r}>{r}</option>
+						{/each}
+					</select>
 				</div>
 
 				{#if errors['_']}
