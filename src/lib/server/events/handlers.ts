@@ -16,6 +16,7 @@ import type { EventPayload } from "./types.js";
 import { sendMail } from "$lib/server/mail/index.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
+import { logAudit } from "$lib/server/audit-log/index.js";
 
 let registered = false;
 
@@ -72,6 +73,59 @@ export function registerHandlers(): void {
           bezahltVonKind: payload.bezahltVonKind,
           consentTextVersion: payload.consentTextVersion,
         },
+      });
+    },
+  );
+
+  // ── member.created ──────────────────────────────────────────────────────
+  bus.on<EventPayload<"member.created">>("member.created", async (payload) => {
+    await logAudit({
+      action: "create",
+      entityKind: "member",
+      entityId: payload.memberId,
+      actorUserId: payload.actorUserId,
+      actorKind: payload.actorUserId ? "user" : "system",
+      payload: payload.payload ?? {},
+    });
+  });
+
+  // ── member.updated ──────────────────────────────────────────────────────
+  bus.on<EventPayload<"member.updated">>("member.updated", async (payload) => {
+    await logAudit({
+      action: "update",
+      entityKind: "member",
+      entityId: payload.memberId,
+      actorUserId: payload.actorUserId,
+      actorKind: payload.actorUserId ? "user" : "system",
+      payload: payload.payload ?? {},
+    });
+  });
+
+  // ── member.deleted ──────────────────────────────────────────────────────
+  bus.on<EventPayload<"member.deleted">>("member.deleted", async (payload) => {
+    await logAudit({
+      action: "delete",
+      entityKind: "member",
+      entityId: payload.memberId,
+      actorUserId: payload.actorUserId,
+      actorKind: payload.actorUserId ? "user" : "system",
+      payload: payload.payload ?? {},
+    });
+  });
+
+  // ── member.beitrag_paid ─────────────────────────────────────────────────
+  // No `beitrag_paid` verb in audit_action enum; we use the closest match
+  // (`update`) and tag the kind in the payload for the activity feed.
+  bus.on<EventPayload<"member.beitrag_paid">>(
+    "member.beitrag_paid",
+    async (payload) => {
+      await logAudit({
+        action: "update",
+        entityKind: "member",
+        entityId: payload.memberId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: { kind: "beitrag_paid", ...(payload.payload ?? {}) },
       });
     },
   );
