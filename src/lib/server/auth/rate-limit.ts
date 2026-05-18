@@ -29,7 +29,10 @@ export async function checkAndRecord(
   windowMs: number,
 ): Promise<void> {
   const db = getDb();
-  const cutoff = new Date(Date.now() - windowMs);
+  // Cast to ISO string explicitly — Drizzle's sql`` tagged template passes the
+  // raw Date through `.toString()` (verbose locale-formatted), which Postgres
+  // cannot parse as timestamptz. Use ISO 8601 so the driver round-trips cleanly.
+  const cutoff = new Date(Date.now() - windowMs).toISOString();
 
   // Insert the new row AND count in one round-trip via CTE.
   const rows = await db.execute(sql`
@@ -40,7 +43,7 @@ export async function checkAndRecord(
     SELECT COUNT(*)::int AS n
     FROM rate_limit_attempts
     WHERE key = ${key}
-      AND occurred_at > ${cutoff}
+      AND occurred_at > ${cutoff}::timestamptz
   `);
 
   const n = (rows[0] as { n: number } | undefined)?.n ?? 0;
