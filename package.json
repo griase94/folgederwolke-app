@@ -25,6 +25,7 @@
     "@playwright/test": "^1.60.0",
     "@sveltejs/adapter-auto": "latest",
     "@sveltejs/adapter-node": "^5.5.4",
+    "@sveltejs/adapter-vercel": "^6.3.3",
     "@sveltejs/kit": "latest",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "@tailwindcss/postcss": "^4.3.0",
