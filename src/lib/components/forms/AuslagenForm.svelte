@@ -7,6 +7,7 @@
 	import BelegUpload from './BelegUpload.svelte';
 	import { DATENSCHUTZ_TEXT, DATENSCHUTZ_VERSION } from '$lib/domain/datenschutz.js';
 	import { makeDebouncedSave, loadDraft, clearDraft, type DraftMetadata } from '$lib/client/drafts.js';
+	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { beforeNavigate } from '$app/navigation';
@@ -159,24 +160,6 @@
 	});
 
 	// ---------------------------------------------------------------------------
-	// Betrag formatting
-	// ---------------------------------------------------------------------------
-
-	function parseBetragCents(raw: string): number | null {
-		// Strip everything except digits, comma, and period (g flag required)
-		let cleaned = raw.replace(/[^\d,.]/g, '');
-		// Handle German thousands separator: if comma is present, dots are thousands separators
-		if (cleaned.includes(',')) {
-			// e.g. "1.234,50" → strip dots (thousands), replace comma with decimal point
-			cleaned = cleaned.replace(/\./g, '').replace(',', '.');
-		}
-		// Otherwise: dot is the decimal separator already (e.g. "12.50")
-		const parsed = parseFloat(cleaned);
-		if (isNaN(parsed) || parsed <= 0) return null;
-		return Math.round(parsed * 100);
-	}
-
-	// ---------------------------------------------------------------------------
 	// Client-side validation
 	// ---------------------------------------------------------------------------
 
@@ -240,7 +223,7 @@
 		return JSON.stringify({
 			bezahlt_von: bv,
 			bezeichnung: bezeichnung.trim(),
-			betragCents: parseBetragCents(betrag) ?? 0,
+			betragCents: parseBetragCents(betrag) || 0,
 			currency: 'EUR',
 			rechnungsdatum: rechnungsdatum || null,
 			wofuer: wofuer || null,

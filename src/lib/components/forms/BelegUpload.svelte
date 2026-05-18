@@ -18,6 +18,7 @@
 
 	let isDragging = $state(false);
 	let isCompressing = $state(false);
+	let uploadError = $state<string | null>(null);
 	let previewUrl = $state<string | null>(null);
 	let previewType = $state<'image' | 'pdf' | null>(null);
 	let blurred = $state(false);
@@ -34,13 +35,17 @@
 	async function handleFile(incoming: File) {
 		isCompressing = true;
 		try {
-			const processed = await compressImage(incoming);
-			file = processed;
+			uploadError = null;
+			const compressed = await compressImage(incoming);
+			file = compressed;
 			revokePreview();
-			previewUrl = URL.createObjectURL(processed);
-			previewType = processed.type === 'application/pdf' ? 'pdf' : 'image';
-			onfile?.(processed);
+			previewUrl = URL.createObjectURL(compressed);
+			previewType = compressed.type === 'application/pdf' ? 'pdf' : 'image';
+			onfile?.(compressed);
 			onchange?.();
+		} catch (e) {
+			uploadError = e instanceof Error ? e.message : 'Datei-Upload fehlgeschlagen.';
+			return;
 		} finally {
 			isCompressing = false;
 		}
@@ -71,6 +76,7 @@
 
 	function removeFile() {
 		file = null;
+		uploadError = null;
 		revokePreview();
 		onfile?.(null);
 		onchange?.();
@@ -226,6 +232,10 @@
 					</button>
 				</div>
 			</div>
+		{/if}
+
+		{#if uploadError}
+			<p class="text-destructive text-xs mt-2" id="err-beleg-upload" role="alert">{uploadError}</p>
 		{/if}
 
 		{#if errorMsg}
