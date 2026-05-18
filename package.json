@@ -33,6 +33,7 @@
     "@vitest/coverage-v8": "^4.1.6",
     "bits-ui": "^2.18.1",
     "clsx": "^2.1.1",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^10.4.0",
     "eslint-plugin-svelte": "^3.17.1",
     "formsnap": "^2.0.1",
@@ -55,5 +56,15 @@
     "typescript-eslint": "^8.59.3",
     "vite": "^8.0.7",
     "vitest": "^4.1.6"
+  },
+  "dependencies": {
+    "@googleapis/docs": "^9.2.1",
+    "@googleapis/drive": "^20.1.0",
+    "@googleapis/sheets": "^13.0.1",
+    "@sveltejs/adapter-vercel": "^6.3.3",
+    "drizzle-orm": "^0.45.2",
+    "google-auth-library": "^10.6.2",
+    "postgres": "^3.4.9",
+    "zod": "^4.4.3"
   }
 }
