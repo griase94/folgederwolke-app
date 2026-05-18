@@ -13,7 +13,11 @@ export function formatIban(raw: string): string {
 }
 
 export function normalizeIban(formatted: string): string {
-  return formatted.replace(/\s/g, "").toUpperCase();
+  // Strip spaces and dashes (dashes are sometimes typed as visual separators)
+  // NOTE: The server-side equivalent in $lib/server/domain/iban.ts only strips
+  // spaces, not dashes. If dash-IBAN input is ever accepted server-side, that
+  // function should be updated too (tracked as auto-fix-F Phase 1 follow-up).
+  return formatted.replace(/[\s-]/g, "").toUpperCase();
 }
 
 /**

@@ -1,8 +1,13 @@
 /**
  * SvelteKit route param matcher for AUS-{YYYY}-{NNN} business IDs.
  *
- * Use as `/auslage-status/[ausId=ausId]` once routes are renamed; until then
- * `parseBusinessId()` is the inline guard.
+ * CURRENTLY UNUSED — the route folder is named `[ausId]` (no matcher suffix),
+ * so this matcher is not applied at the routing layer. The active guard is the
+ * inline `parseBusinessId()` call in `+page.server.ts:load()`.
+ *
+ * TODO Phase 2 backlog #20: rename the route folder to `[ausId=ausId]` to
+ * apply this matcher declaratively and remove the inline guard. Until then,
+ * keep this file so the pattern is documented and ready to activate.
  */
 
 import type { ParamMatcher } from "@sveltejs/kit";

@@ -69,10 +69,10 @@ const securityHandle: Handle = async ({ event, resolve }) => {
   // Limit referrer information to same-origin requests
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
 
-  // Disable unused browser features
+  // Disable unused browser features (including privacy-invasive APIs)
   response.headers.set(
     "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=()",
+    "camera=(), microphone=(), geolocation=(), interest-cohort=(), browsing-topics=()",
   );
 
   // Content Security Policy — baseline; tighten per-route as needed
@@ -85,6 +85,8 @@ const securityHandle: Handle = async ({ event, resolve }) => {
       "script-src 'self'",
       "connect-src 'self'",
       "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "object-src 'none'",
       "form-action 'self'",
     ].join("; "),
   );

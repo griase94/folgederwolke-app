@@ -133,7 +133,7 @@
 					<input
 						type="file"
 						name="beleg"
-						accept=".pdf,image/*"
+						accept=".pdf,image/jpeg,image/png,image/heic,image/heif,image/webp"
 						class="sr-only"
 						onchange={onInputChange}
 					/>
@@ -148,7 +148,7 @@
 						<input
 							type="file"
 							name="beleg"
-							accept=".pdf,image/*"
+							accept=".pdf,image/jpeg,image/png,image/heic,image/heif,image/webp"
 							class="sr-only"
 							onchange={onInputChange}
 						/>
@@ -161,7 +161,7 @@
 						<input
 							type="file"
 							name="beleg"
-							accept="image/*"
+							accept="image/jpeg,image/png,image/heic,image/heif,image/webp"
 							capture="environment"
 							class="sr-only"
 							onchange={onInputChange}

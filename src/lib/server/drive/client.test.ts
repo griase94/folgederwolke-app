@@ -662,3 +662,87 @@ describe("@phase-2 getOrCreateAppFolder race safety", () => {
     expect(filesCreateImpl).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// 8. archiveBelegToFolder — lock race for archive subfolder creation
+// ---------------------------------------------------------------------------
+
+describe("@phase-2 archiveBelegToFolder lock race", () => {
+  beforeEach(() => {
+    filesListImpl.mockReset();
+    filesGetImpl.mockReset();
+    filesCreateImpl.mockReset();
+    filesUpdateImpl.mockReset();
+    settingsStore.clear();
+    advisoryLockCalls.length = 0;
+    dbMock.transaction.mockClear();
+  });
+
+  it("lock key fingerprint matches drive_subfolder:<appFolder>:<folderName>", async () => {
+    // Seed the app folder so getOrCreateAppFolder uses the fast path
+    settingsStore.set("drive_app_folder_id", "test-app-root");
+
+    // The subfolder list returns empty (no existing subfolder) → creates it
+    filesListImpl.mockResolvedValueOnce({ data: { files: [] } });
+    filesCreateImpl.mockResolvedValueOnce({ data: { id: "new-subfolder" } });
+
+    // The file.get for current parents (needed by the move step)
+    filesGetImpl.mockResolvedValueOnce({ data: { parents: ["_incoming"] } });
+
+    // The file.update (move) succeeds
+    filesUpdateImpl.mockResolvedValueOnce({
+      data: { id: "file-1", parents: ["new-subfolder"] },
+    });
+
+    await client.archiveBelegToFolder("file-1", "Project-Alpha");
+
+    // Verify the advisory lock argument contains the expected fingerprint
+    expect(advisoryLockCalls).toHaveLength(1);
+    expect(advisoryLockCalls[0]).toBe(
+      "drive_subfolder:test-app-root:Project-Alpha",
+    );
+  });
+
+  it("race: 2 concurrent calls produce only 1 subfolder in Drive", async () => {
+    // Seed the app folder for fast-path lookup
+    settingsStore.set("drive_app_folder_id", "race-app-root");
+
+    // Simulate: the first concurrent call enters the transaction first and
+    // creates the subfolder. The second call's transaction mock finds the
+    // folder already exists in the list response (race winner wrote it).
+    let txCallCount = 0;
+    filesCreateImpl.mockResolvedValue({ data: { id: "only-one-folder" } });
+
+    dbMock.transaction.mockImplementation(
+      async (cb: (tx: unknown) => Promise<unknown>) => {
+        txCallCount++;
+        const tx = { execute: vi.fn(makeExecutor()) };
+        if (txCallCount === 1) {
+          // First caller: folder not found, creates it
+          filesListImpl.mockResolvedValueOnce({ data: { files: [] } });
+        } else {
+          // Second caller: folder was already created by first
+          filesListImpl.mockResolvedValueOnce({
+            data: { files: [{ id: "only-one-folder" }] },
+          });
+        }
+        return cb(tx);
+      },
+    );
+
+    // Both callers need the file.get (parents) and file.update (move) mocks
+    filesGetImpl.mockResolvedValue({ data: { parents: ["_incoming"] } });
+    filesUpdateImpl.mockResolvedValue({
+      data: { id: "file-x", parents: ["only-one-folder"] },
+    });
+
+    // Fire both concurrently
+    await Promise.all([
+      client.archiveBelegToFolder("file-a", "Project-Alpha"),
+      client.archiveBelegToFolder("file-b", "Project-Alpha"),
+    ]);
+
+    // Only one Drive folder should have been created
+    expect(filesCreateImpl).toHaveBeenCalledTimes(1);
+  });
+});

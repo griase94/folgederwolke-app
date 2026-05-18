@@ -223,24 +223,57 @@ describe("ALLOWED_BELEG_MIMES", () => {
 // ---------------------------------------------------------------------------
 
 describe("sanitizeFilename", () => {
-  it("strips path separators", () => {
-    expect(sanitizeFilename("../../etc/passwd")).not.toContain("/");
-    expect(sanitizeFilename("..\\..\\foo")).not.toContain("\\");
+  it("preserves a normal filename", () => {
+    expect(sanitizeFilename("Rechnung_2026.pdf")).toBe("Rechnung_2026.pdf");
   });
-  it("falls back to 'beleg' on empty", () => {
-    expect(sanitizeFilename("")).toBe("beleg");
-    expect(sanitizeFilename("...")).toBe("beleg");
+
+  it("preserves the .pdf extension (dot is not stripped)", () => {
+    expect(sanitizeFilename("beleg.pdf")).toBe("beleg.pdf");
+    expect(sanitizeFilename("Scan-2026.pdf")).toBe("Scan-2026.pdf");
   });
-  it("preserves the extension when truncating long names", () => {
+
+  it("strips control characters (NUL, TAB, LF, DEL)", () => {
+    // Build a string with embedded control chars
+    const withControl = "evil\x00file\x01name\x7f.pdf";
+    const out = sanitizeFilename(withControl);
+    // eslint-disable-next-line no-control-regex
+    expect(out).not.toMatch(/[\x00-\x1f\x7f]/);
+    expect(out.endsWith(".pdf")).toBe(true);
+  });
+
+  it("strips path separators and replaces them with underscores", () => {
+    // Slashes and backslashes are replaced with underscores, making path
+    // traversal impossible. Dots remaining in mid-position are harmless
+    // once separators are gone.
+    const out1 = sanitizeFilename("../../etc/passwd");
+    expect(out1).not.toContain("/");
+
+    const out2 = sanitizeFilename("C:\\Windows\\System32\\file.txt");
+    expect(out2).not.toContain("\\");
+    expect(out2).not.toContain(":");
+  });
+
+  it("preserves the extension when truncating names longer than 120 chars", () => {
     const long = "a".repeat(200) + ".pdf";
     const out = sanitizeFilename(long);
     expect(out.length).toBeLessThanOrEqual(120);
     expect(out.endsWith(".pdf")).toBe(true);
   });
-  it("strips leading dots", () => {
+
+  it("falls back to 'beleg' on empty input", () => {
+    expect(sanitizeFilename("")).toBe("beleg");
+  });
+
+  it("falls back to 'beleg' when only leading dots remain", () => {
+    expect(sanitizeFilename("...")).toBe("beleg");
+  });
+
+  it("strips leading dots (no hidden files)", () => {
     expect(sanitizeFilename(".hidden.pdf")).toBe("hidden.pdf");
   });
-  it("preserves a normal filename", () => {
-    expect(sanitizeFilename("Rechnung_2026.pdf")).toBe("Rechnung_2026.pdf");
+
+  it("collapses whitespace to underscores", () => {
+    const out = sanitizeFilename("my receipt 2026.pdf");
+    expect(out).toBe("my_receipt_2026.pdf");
   });
 });

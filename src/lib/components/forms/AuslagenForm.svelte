@@ -471,7 +471,7 @@
 					id="rechnungsdatum"
 					name="rechnungsdatum_display"
 					type="date"
-					max={new Date().toISOString().split('T')[0]}
+					max={new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' })}
 					bind:value={rechnungsdatum}
 					oninput={triggerDraftSave}
 					onblur={() => markBlurred('rechnungsdatum')}
