@@ -119,10 +119,12 @@ test.describe("@phase-1 Auth — verify flow", () => {
       await mismatchBtn.click();
     }
 
-    // Submit the POST form
-    await page.click('button[type="submit"]');
-
-    // Should redirect to /app
+    // Submit the POST form + wait for the SvelteKit-router navigation that
+    // use:enhance triggers on the 303 redirect response.
+    await Promise.all([
+      page.waitForURL(/\/app/, { timeout: 15_000 }),
+      page.click('button[type="submit"]'),
+    ]);
     await expect(page).toHaveURL(/\/app/);
 
     // Session cookie should be present

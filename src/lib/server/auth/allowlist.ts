@@ -13,7 +13,8 @@ let _allowlist: Set<string> | null = null;
 
 function getAdminAllowlist(): Set<string> {
   if (_allowlist !== null) return _allowlist;
-  const raw = env.ADMIN_EMAILS;
+  // Read from env.ts AND from process.env (bundle-stale workaround, mirrors db/index.ts).
+  const raw = env.ADMIN_EMAILS || process.env["ADMIN_EMAILS"] || "";
   _allowlist = new Set(
     raw
       .split(",")

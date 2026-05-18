@@ -52,10 +52,4 @@ case "${ADMIN_EMAILS:-},," in
 esac
 
 echo "[e2e-serve] launching node build/index.js on $HOST:$PORT" >&2
-echo "[e2e-serve] node will see DATABASE_URL of length ${#DATABASE_URL}" >&2
-
-# Sanity: explicit env-passing via env -i would replace inherited; instead,
-# print what env passes to the child via Node:
-node -e "console.error('[e2e-serve] node process.env.DATABASE_URL length=' + (process.env.DATABASE_URL || '').length)" 2>&1 1>&2
-
 exec node ./build/index.js
