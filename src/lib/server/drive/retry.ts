@@ -24,6 +24,12 @@ interface RetryOptions {
   maxAttempts?: number;
   /** Base delay for exponential backoff in ms. Default: 200 */
   baseDelayMs?: number;
+  /**
+   * Maximum number of attempts for 404 (eventual consistency) responses.
+   * The effective 404 cap is `min(maxAttempts, maxNotFoundAttempts)`.
+   * Default: 3
+   */
+  maxNotFoundAttempts?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +105,7 @@ export async function withDriveRetry<T>(
 ): Promise<T> {
   const maxAttempts = opts.maxAttempts ?? 4;
   const baseDelayMs = opts.baseDelayMs ?? 200;
+  const maxNotFoundAttempts = opts.maxNotFoundAttempts ?? 3;
 
   let lastErr: unknown;
 
@@ -157,10 +164,11 @@ export async function withDriveRetry<T>(
       }
 
       // -----------------------------------------------------------------------
-      // 404 — eventual consistency; retry up to 3 times
+      // 404 — eventual consistency; retry up to `maxNotFoundAttempts` (default 3)
+      // attempts. Effective cap is `min(maxAttempts, maxNotFoundAttempts)`.
       // -----------------------------------------------------------------------
       else if (status === 404) {
-        if (attempt >= Math.min(maxAttempts, 3)) {
+        if (attempt >= Math.min(maxAttempts, maxNotFoundAttempts)) {
           throw new DriveNotFoundError(
             `Drive resource not found after ${attempt} attempts (404)`,
             undefined,
@@ -192,8 +200,12 @@ export async function withDriveRetry<T>(
         throw err;
       }
 
-      // Exponential backoff: 200ms, 400ms, 800ms, …
-      const delay = baseDelayMs * Math.pow(2, attempt - 1);
+      // Exponential backoff with ±25% jitter to spread out retries when
+      // many concurrent callers hit the same transient failure.
+      // Base sequence: 200ms, 400ms, 800ms, … each multiplied by a random
+      // factor in [0.75, 1.25].
+      const delay =
+        baseDelayMs * Math.pow(2, attempt - 1) * (0.75 + Math.random() * 0.5);
       await sleep(delay);
     }
   }
