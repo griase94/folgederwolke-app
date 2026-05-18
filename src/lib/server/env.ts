@@ -55,9 +55,20 @@ export type Env = z.infer<typeof schema>;
 // Build-time SSR / prerender sees an empty env; that's OK.
 // Runtime callers can `requireEnv("DATABASE_URL")` to fail loudly if missing.
 function loadEnv(): Env {
-  const result = schema.safeParse(dynEnv);
+  // CI debug: log what $env/dynamic/private sees vs what process.env has.
+  if (process.env["CI"]) {
+    console.error(
+      "[env.ts] dynEnv.DATABASE_URL length=" +
+        (dynEnv.DATABASE_URL || "").length +
+        ", process.env.DATABASE_URL length=" +
+        (process.env["DATABASE_URL"] || "").length,
+    );
+  }
+  // Fallback: if dynEnv didn't pick it up (older SvelteKit behavior under
+  // adapter-node when env wasn't read at startup), supplement with process.env.
+  const merged = { ...process.env, ...dynEnv } as Record<string, string>;
+  const result = schema.safeParse(merged);
   if (result.success) return result.data;
-  // On any unexpected shape, fall back to all-empty (defaults).
   return schema.parse({});
 }
 
