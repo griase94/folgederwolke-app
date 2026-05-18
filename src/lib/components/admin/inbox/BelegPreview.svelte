@@ -27,6 +27,11 @@
 	let iframeFailed = $state(false);
 </script>
 
+<!--
+  Drive URLs are external (drive.google.com) but the linter cannot statically
+  distinguish them from internal app routes; disable for this file.
+-->
+<!-- eslint-disable svelte/no-navigation-without-resolve -->
 <figure class="flex h-full min-h-[24rem] flex-col overflow-hidden rounded-xl border border-border bg-muted/40">
 	<figcaption class="flex items-center justify-between gap-2 border-b border-border bg-card/60 px-3 py-2 text-xs">
 		<span class="truncate text-muted-foreground">
@@ -76,7 +81,7 @@
 			</svg>
 			<p class="text-sm text-foreground">Vorschau konnte nicht geladen werden.</p>
 			{#if openUrl}
-				<a
+					<a
 					href={openUrl}
 					target="_blank"
 					rel="noopener noreferrer"

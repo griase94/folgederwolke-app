@@ -49,6 +49,7 @@
 	const isUnread = $derived(submission.reviewedAt === null);
 </script>
 
+<!-- eslint-disable svelte/no-navigation-without-resolve -->
 <a
 	href="/app/inbox/{submission.ausId}"
 	data-inbox-card-index={index}

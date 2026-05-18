@@ -28,6 +28,8 @@
 		}
 		const active = document.activeElement;
 		if (!(active instanceof HTMLAnchorElement)) return;
+		// Only react when the focused element is one of OUR cards.
+		if (!rootEl.contains(active)) return;
 		const idxStr = active.dataset['inboxCardIndex'];
 		if (idxStr === undefined) return;
 		const idx = Number(idxStr);
@@ -41,12 +43,19 @@
 	}
 </script>
 
+<!--
+  Arrow-key navigation listens on window so the list reacts even when the
+  user is anywhere in the page; the handler short-circuits unless one of the
+  child <a> cards has focus. This avoids the a11y_no_noninteractive_element
+  warning that a div-level keydown handler triggers.
+-->
+<svelte:window onkeydown={onKeydown} />
+
 <div
 	bind:this={rootEl}
 	role="list"
 	aria-label="Offene Einreichungen"
 	class="space-y-2"
-	onkeydown={onKeydown}
 >
 	{#each submissions as submission, i (submission.id)}
 		<div role="listitem">

@@ -20,7 +20,10 @@
 	import AufwandsspendeStubModal from './AufwandsspendeStubModal.svelte';
 	import type { InboxSubmissionDetailView } from '$lib/domain/inbox.js';
 
-	let { submission }: { submission: InboxSubmissionDetailView } = $props();
+	let {
+		submission,
+		decided = false
+	}: { submission: InboxSubmissionDetailView; decided?: boolean } = $props();
 
 	let rejectOpen = $state(false);
 	let aufwandsspendeOpen = $state(false);
@@ -108,10 +111,8 @@
 			{#if submission.memberContext}
 				<dt class="text-muted-foreground">Mitglied</dt>
 				<dd class="text-foreground">
-					<a
-						href="/app/mitglieder/{submission.memberContext.id}"
-						class="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-					>
+					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+					<a href="/app/mitglieder/{submission.memberContext.id}" class="text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
 						{submission.memberContext.vorname}
 						{submission.memberContext.nachname}
 					</a>
@@ -153,7 +154,8 @@
 			</dd>
 		</dl>
 
-		<!-- Actions -->
+		<!-- Actions (hidden once decided) -->
+		{#if !decided}
 		<div class="mt-2 flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:flex-wrap">
 			<!-- Approve -->
 			<form
@@ -225,6 +227,7 @@
 		<p class="text-xs text-muted-foreground">
 			Erstattet markieren passiert nach der Freigabe auf der Transaktionsseite.
 		</p>
+		{/if}
 	</div>
 </article>
 
