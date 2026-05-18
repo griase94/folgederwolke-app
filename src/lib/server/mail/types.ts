@@ -71,11 +71,36 @@ export interface MagicLinkProps {
   expiresInMinutes: number;
 }
 
-/** Stub — Phase 2 (D9 deferred). */
+/**
+ * Props for the Aufwandsspenden-Bestätigung mail template.
+ *
+ * BMF-Pflichtfelder per §10b EStG / §§ 50–52 EStDV:
+ * - Name und Anschrift des Zuwendenden
+ * - Betrag der Zuwendung (in Worten und Ziffern)
+ * - Datum der Zuwendung (Verzichtdatum)
+ * - Erklärung über Freistellungsbescheid (Steuernummer, Finanzamt, Datum)
+ * - Nachweis der Satzungsmäßigkeit (VR-Nummer)
+ * - Verwendungszweck (steuerlich begünstigter Zweck)
+ */
 export interface AufwandsspendenBestaetigungProps {
   vorname: string;
   nachname: string;
+  /** Straße, Hausnummer, PLZ, Ort — single formatted string */
+  adresse: string;
+  /** Amount the member waived their reimbursement claim for, in cents */
   betragCents: number;
+  /** Date the member signed the Verzichtserklärung */
+  verzichtdatum: Date;
+  /** Vereinsregisternummer (e.g. "VR 12345 Amtsgericht München") */
+  vereinsregister: string;
+  /** Steuernummer des Vereins beim Finanzamt */
+  steuernummer: string;
+  /** Finanzamt name */
+  finanzamt: string;
+  /** Date of the most recent Freistellungsbescheid */
+  freistellungsbescheidDatum: Date;
+  /** Steuerlich begünstigter Verwendungszweck (Satzungszweck) */
+  verwendungszweck: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +112,8 @@ export interface TemplateProps {
   auslage_eingang: EingangsMailProps;
   auslage_erstattet: ErstattungsMailProps;
   auslage_abgelehnt: Record<string, never>; // Phase 2
-  spende_bescheinigung: Record<string, never>; // Phase 2
+  /** Aufwandsspende donation receipt — BMF-Pflichtfelder per §10b EStG. */
+  spende_bescheinigung: AufwandsspendenBestaetigungProps;
   beitrag_reminder: BeitragsReminderProps;
   invoice_versendet: Record<string, never>; // Phase 2
 }
