@@ -26,11 +26,14 @@ test.describe("@phase-2 auslage form UI", () => {
   test("form renders all major sections", async ({ page }) => {
     if (!(await goToForm(page))) return;
 
-    // Section headings visible
-    await expect(page.getByText("Wer hat bezahlt?")).toBeVisible();
-    await expect(page.getByText("Wofür ist die Auslage?")).toBeVisible();
-    await expect(page.getByText("Beleg")).toBeVisible();
-    await expect(page.getByText("Datenschutz")).toBeVisible();
+    // Section headings visible — string may appear in card title + sr-only legend,
+    // so accept any occurrence via .first()
+    await expect(page.getByText("Wer hat bezahlt?").first()).toBeVisible();
+    await expect(
+      page.getByText("Wofür ist die Auslage?").first(),
+    ).toBeVisible();
+    await expect(page.getByText("Beleg").first()).toBeVisible();
+    await expect(page.getByText("Datenschutz").first()).toBeVisible();
 
     // CTA visible
     await expect(
@@ -43,9 +46,16 @@ test.describe("@phase-2 auslage form UI", () => {
   }) => {
     if (!(await goToForm(page))) return;
 
-    await expect(page.getByText("Folge der Wolke e.V.")).toBeVisible();
-    await expect(page.getByText("Vereinsmitglied")).toBeVisible();
-    await expect(page.getByText("Externe Person")).toBeVisible();
+    // Use exact-text matcher to avoid colliding with paragraph copy
+    await expect(
+      page.getByText("Folge der Wolke e.V.", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Vereinsmitglied", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Externe Person", { exact: true }),
+    ).toBeVisible();
   });
 
   test("selecting Externe Person shows name/IBAN/email fields", async ({
@@ -53,7 +63,7 @@ test.describe("@phase-2 auslage form UI", () => {
   }) => {
     if (!(await goToForm(page))) return;
 
-    await page.getByText("Externe Person").click();
+    await page.getByText("Externe Person", { exact: true }).click();
 
     await expect(page.getByLabel(/Name/)).toBeVisible();
     await expect(page.getByLabel(/IBAN/)).toBeVisible();
