@@ -1,5 +1,5 @@
 import { getDriveAuth } from "$lib/server/drive/auth.js";
-import { client } from "$lib/server/db/index.js";
+import { getClient } from "$lib/server/db/index.js";
 import { env } from "$lib/server/env.js";
 import { drive as createDrive } from "@googleapis/drive";
 import { json } from "@sveltejs/kit";
@@ -7,6 +7,8 @@ import type { RequestHandler } from "./$types.js";
 
 async function checkDb(): Promise<"ok" | "fail"> {
   try {
+    if (!env.DATABASE_URL) return "fail";
+    const client = getClient();
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 3000);
     await client`SELECT 1`;
