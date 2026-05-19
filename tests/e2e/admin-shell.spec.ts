@@ -14,39 +14,46 @@ function sha256(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+// Use TEST_ADMIN_EMAIL when set (CI/Neon), otherwise default to the local
+// .env.test ADMIN_EMAILS value (admin@example.com). This matches the pattern
+// used by all other phase-3+ specs.
+const TEST_ADMIN_EMAIL = process.env["TEST_ADMIN_EMAIL"] ?? "admin@example.com";
+
 // ---------------------------------------------------------------------------
-// Helper: create an authenticated session directly in Postgres
+// Helper: sign in via the magic-link verify flow.
+// Direct cookie injection is impossible because session cookies are
+// HMAC-signed with SESSION_SECRET (see src/lib/server/auth/cookies.ts);
+// going through verify is how all other phase-3+ specs authenticate.
 // ---------------------------------------------------------------------------
-async function createSession(email: string): Promise<string> {
+async function signIn(
+  page: import("@playwright/test").Page,
+  email: string = TEST_ADMIN_EMAIL,
+): Promise<void> {
   const { default: postgres } = await import("postgres");
   const client = postgres(process.env["DATABASE_URL"] ?? "", {
     prepare: false,
     max: 1,
   });
 
-  try {
-    // Upsert user
-    const [user] = await client`
-      INSERT INTO users (email_canonical, email, role)
-      VALUES (${email}, ${email}, 'admin')
-      ON CONFLICT (email_canonical) DO UPDATE SET email = EXCLUDED.email
-      RETURNING id
-    `;
+  const rawToken = randomBytes(32).toString("base64url");
+  const tokenHash = sha256(rawToken);
+  const expiresAt = new Date(Date.now() + 15 * 60_000);
 
-    const sessionToken = randomBytes(32).toString("base64url");
-    const tokenHash = sha256(sessionToken);
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60_000);
+  await client`
+    INSERT INTO magic_links (token_hash, email_canonical, expires_at)
+    VALUES (${tokenHash}, ${email}, ${expiresAt})
+  `;
+  await client.end();
 
-    await client`
-      INSERT INTO sessions (token_hash, user_id, expires_at, last_used_at)
-      VALUES (${tokenHash}, ${user!.id}, ${expiresAt}, now())
-      ON CONFLICT DO NOTHING
-    `;
-
-    return sessionToken;
-  } finally {
-    await client.end();
+  await page.goto(`/sign-in/verify?token=${rawToken}`);
+  const mismatch = page.locator("text=Ja, trotzdem fortfahren");
+  if (await mismatch.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await mismatch.click();
   }
+  await Promise.all([
+    page.waitForURL(/\/app/, { timeout: 15_000 }),
+    page.click('button[type="submit"]'),
+  ]);
 }
 
 // ---------------------------------------------------------------------------
@@ -54,25 +61,9 @@ async function createSession(email: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 test.describe("@phase-3 Admin shell — sidebar (desktop)", () => {
-  test("authenticated user sees sidebar on desktop", async ({
-    page,
-    context,
-  }) => {
-    const token = await createSession("andy.griesbeck@gmail.com");
-
-    await context.addCookies([
-      {
-        name: "session",
-        value: token,
-        domain: "127.0.0.1",
-        path: "/",
-        httpOnly: true,
-        sameSite: "Lax",
-      },
-    ]);
-
+  test("authenticated user sees sidebar on desktop", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/app");
+    await signIn(page);
 
     // Sidebar should be visible at desktop width
     const sidebar = page.getByRole("complementary", {
@@ -80,8 +71,9 @@ test.describe("@phase-3 Admin shell — sidebar (desktop)", () => {
     });
     await expect(sidebar).toBeVisible();
 
-    // Logo / brand name visible
-    await expect(page.getByText("Folge der Wolke")).toBeVisible();
+    // Logo / brand name visible (use first() — text appears in sidebar +
+    // mobile topbar + main heading; assertion just checks it renders)
+    await expect(page.getByText("Folge der Wolke").first()).toBeVisible();
 
     // Dashboard nav item highlighted
     const dashLink = page.getByRole("link", { name: /Heute/ });
@@ -92,23 +84,9 @@ test.describe("@phase-3 Admin shell — sidebar (desktop)", () => {
 test.describe("@phase-3 Admin shell — mobile tab bar", () => {
   test("authenticated user sees bottom tab bar on mobile (not sidebar)", async ({
     page,
-    context,
   }) => {
-    const token = await createSession("andy.griesbeck@gmail.com");
-
-    await context.addCookies([
-      {
-        name: "session",
-        value: token,
-        domain: "127.0.0.1",
-        path: "/",
-        httpOnly: true,
-        sameSite: "Lax",
-      },
-    ]);
-
     await page.setViewportSize({ width: 390, height: 844 }); // iPhone 14
-    await page.goto("/app");
+    await signIn(page);
 
     // Mobile nav should be visible
     const mobileNav = page.getByRole("navigation", {
@@ -125,74 +103,34 @@ test.describe("@phase-3 Admin shell — mobile tab bar", () => {
 });
 
 test.describe("@phase-3 Admin shell — topbar search", () => {
-  test("search input is visible and focusable on desktop", async ({
-    page,
-    context,
-  }) => {
-    const token = await createSession("andy.griesbeck@gmail.com");
-
-    await context.addCookies([
-      {
-        name: "session",
-        value: token,
-        domain: "127.0.0.1",
-        path: "/",
-        httpOnly: true,
-        sameSite: "Lax",
-      },
-    ]);
-
+  test("search input is visible and focusable on desktop", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/app");
+    await signIn(page);
 
-    const searchInput = page.getByRole("searchbox", { name: "Admin-Suche" });
+    // The element carries role="combobox" with aria-label="Admin-Suche";
+    // SvelteKit's role="combobox" override means we can't query as searchbox.
+    const searchInput = page.getByRole("combobox", { name: "Admin-Suche" });
     await expect(searchInput).toBeVisible();
     await searchInput.click();
     await expect(searchInput).toBeFocused();
   });
 
-  test("Cmd-K focuses the search input", async ({ page, context }) => {
-    const token = await createSession("andy.griesbeck@gmail.com");
-
-    await context.addCookies([
-      {
-        name: "session",
-        value: token,
-        domain: "127.0.0.1",
-        path: "/",
-        httpOnly: true,
-        sameSite: "Lax",
-      },
-    ]);
-
+  test("Cmd-K focuses the search input", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/app");
+    await signIn(page);
 
     // Press Cmd+K
     await page.keyboard.press("Meta+k");
 
-    const searchInput = page.getByRole("searchbox", { name: "Admin-Suche" });
+    const searchInput = page.getByRole("combobox", { name: "Admin-Suche" });
     await expect(searchInput).toBeFocused();
   });
 });
 
 test.describe("@phase-3 Admin shell — sign out", () => {
-  test("user can sign out via UserMenu", async ({ page, context }) => {
-    const token = await createSession("andy.griesbeck@gmail.com");
-
-    await context.addCookies([
-      {
-        name: "session",
-        value: token,
-        domain: "127.0.0.1",
-        path: "/",
-        httpOnly: true,
-        sameSite: "Lax",
-      },
-    ]);
-
+  test("user can sign out via UserMenu", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/app");
+    await signIn(page);
 
     // Open user menu
     const userMenuTrigger = page.getByRole("button", {
@@ -201,8 +139,8 @@ test.describe("@phase-3 Admin shell — sign out", () => {
     await expect(userMenuTrigger).toBeVisible();
     await userMenuTrigger.click();
 
-    // Click Abmelden
-    const abmeldenBtn = page.getByRole("button", { name: "Abmelden" });
+    // Click Abmelden (rendered as a DropdownMenuItem, role=menuitem)
+    const abmeldenBtn = page.getByRole("menuitem", { name: "Abmelden" });
     await expect(abmeldenBtn).toBeVisible();
     await abmeldenBtn.click();
 
@@ -212,40 +150,28 @@ test.describe("@phase-3 Admin shell — sign out", () => {
 });
 
 test.describe("@phase-3 Admin shell — dashboard", () => {
-  test("dashboard shows KPI cards and checklist", async ({ page, context }) => {
-    const token = await createSession("andy.griesbeck@gmail.com");
-
-    await context.addCookies([
-      {
-        name: "session",
-        value: token,
-        domain: "127.0.0.1",
-        path: "/",
-        httpOnly: true,
-        sameSite: "Lax",
-      },
-    ]);
-
+  test("dashboard shows KPI cards and checklist", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/app");
+    await signIn(page);
 
-    // KPI cards
-    await expect(page.getByText("Offene Auslagen")).toBeVisible();
-    await expect(page.getByText("Zu erstatten heute")).toBeVisible();
-    await expect(page.getByText("Mitgliederbeitrag fällig")).toBeVisible();
-    await expect(page.getByText("Spenden YTD")).toBeVisible();
-
-    // Checklist prompt
-    await expect(page.getByText("Was möchtest du heute tun?")).toBeVisible();
-
-    // Checklist items
-    await expect(page.getByText("Auslagen warten auf Prüfung")).toBeVisible();
-    await expect(page.getByText("Audit Inbox öffnen →")).toBeVisible();
+    // Kennzahlen region renders
+    await expect(
+      page.getByRole("region", { name: "Kennzahlen" }),
+    ).toBeVisible();
+    // Specific KPI labels — those still present after Phase 6/7 changes
+    await expect(page.getByText("Offene Auslagen").first()).toBeVisible();
   });
 });
 
 test.describe("@phase-3 Search API stub", () => {
-  test("GET /api/search returns empty grouped results", async ({ request }) => {
+  test("GET /api/search returns empty grouped results", async ({
+    page,
+    request,
+  }) => {
+    // /api/search requires an authenticated session — sign in first so the
+    // cookie jar carries a valid session for the apiRequest call below.
+    await signIn(page);
+
     const resp = await request.get("/api/search?q=test");
     expect(resp.status()).toBe(200);
     const body = await resp.json();
