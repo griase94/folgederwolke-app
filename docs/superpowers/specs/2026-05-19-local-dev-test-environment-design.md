@@ -199,7 +199,9 @@ New dev-only mail backend, ~15 lines.
 
 Tests use a separate `no-op` provider (`src/lib/server/mail/no-op-impl.ts`, ~10 lines) selected via `MAIL_PROVIDER=no-op`. It writes the `sent_mails` row through the existing event-bus path and returns success without touching SMTP. Test assertions read `sent_mails` rows directly. This is deterministic — no reliance on "SMTP failing silently" — and isolates tests from any nodemailer behavior change.
 
-### 5.8 `drizzle/0010_default_privileges.sql`
+### 5.8 `drizzle/0012_default_privileges.sql`
+
+(Migrations 0010 and 0011 were taken on `phase-7.5-compliance-hardening` after the spec was first written — 0010 is post-review hardening, 0011 is the audit trigger digest path fix. This new migration shifts to 0012.)
 
 Fixes a latent bug surfaced by the dev-as-`app_runtime` switch: `0002_roles.sql` grants on existing tables but lacks `ALTER DEFAULT PRIVILEGES`, so new tables added in future migrations don't auto-grant.
 
@@ -286,7 +288,17 @@ Notes:
 
 CI does **not** use docker-compose. GitHub's `services:` is faster (cached on runner image) and cleaner. The 10-line YAML diff is a one-time cost; "single source of truth" loses to "less orchestration overhead per CI run."
 
-### 5.15 Documentation: `README.md` section
+### 5.15 Documentation: `README.md` section + `CLAUDE.md` updates
+
+**`CLAUDE.md`** (project conventions for AI agents and contributors) also needs updates — it currently has a 4-line "Testing" section that doesn't reflect the new harness. Specifically:
+
+- **§"Testing"** — expand to cover docker-compose stack, globalSetup auto-reset, tests connecting as `app_runtime`, `MAIL_PROVIDER=no-op` / `STORAGE_BACKEND=local-fs` defaults, pointer to README for full setup.
+- **§"Environment variables"** — update the "declare in env.ts → add to .env.example" pattern to include the new committed `.env.development` / `.env.test` files.
+- **§5 FileStorage convention** — note that `STORAGE_BACKEND` env var selects impl (drive vs local-fs).
+- **§"Database roles"** — note migration 0012 default privileges; note local-only LOGIN setup (Neon manages own role auth).
+- **§"Key references"** — fix stale `phase-2-public-form` reference (the actual protected branch is `main`, per the same file's branch protection section).
+
+**`README.md`** (user-facing) gets a new "Local development" section covering:
 
 A new "Local development" section is added to `README.md`, covering:
 
@@ -348,7 +360,7 @@ $ pnpm test
 | `DROP DATABASE` race with active connections                        | `ALTER DATABASE … WITH ALLOW_CONNECTIONS false` then `DROP DATABASE … WITH (FORCE)`. Single atomic kick.                                                                 |
 | Vite picks Neon URL from `.env.local` instead of `.env.development` | Audit which file holds the Neon URL today; document precedence in README; if needed, rename `.env` → `.env.production` so dev mode definitively uses `.env.development`. |
 | `init.sql` not re-run when changed                                  | Document loudly in README; any ongoing config goes in migrations, not init.                                                                                              |
-| New table added without grant in future migration                   | `0010_default_privileges.sql` adds `ALTER DEFAULT PRIVILEGES`.                                                                                                           |
+| New table added without grant in future migration                   | `0012_default_privileges.sql` adds `ALTER DEFAULT PRIVILEGES`.                                                                                                           |
 | Connection pool holds stale connections to a dropped DB             | Reset script runs in Playwright `globalSetup` **before** webServer boots; webServer never sees the drop.                                                                 |
 | `services: postgres:16` vs Neon's 17 in CI                          | Bumped to 17 in this PR.                                                                                                                                                 |
 
@@ -384,7 +396,7 @@ The implementation plan (next step) breaks these into ordered tasks. Listed here
 - `src/lib/server/files/local-fs-impl.ts`
 - `src/lib/server/mail/dev-eml-impl.ts`
 - `src/lib/server/mail/no-op-impl.ts`
-- `drizzle/0010_default_privileges.sql`
+- `drizzle/0012_default_privileges.sql`
 - `drizzle/0011_app_runtime_login.sql` (sets login + password for `app_runtime`; local-only guarded)
 - `.env.development`
 - `.env.test`
@@ -401,6 +413,7 @@ The implementation plan (next step) breaks these into ordered tasks. Listed here
 - `.github/workflows/ci.yml` (services blocks; remove Neon secrets from e2e/unit; bump 16→17 in backup-restore-smoke)
 - `.gitignore` (add `.dev-data/`)
 - `README.md` (new "Local development" section, ~50 lines)
+- `CLAUDE.md` (expand "Testing" section, update "Environment variables" + "Database roles" notes, fix stale "Key references" branch line)
 
 **Deleted files:**
 
