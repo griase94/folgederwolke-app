@@ -71,6 +71,27 @@
       "when": 1748044800000,
       "tag": "0009_audit_log_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779203339000,
+      "tag": "0010_post_review_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1779203925000,
+      "tag": "0011_audit_trigger_digest_path_fix",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1779207384669,
+      "tag": "0012_default_privileges",
+      "breakpoints": true
     }
   ]
 }

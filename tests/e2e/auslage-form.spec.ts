@@ -8,32 +8,35 @@
  * - Submitting an empty form shows validation errors (inline).
  * - The happy path (fill + submit) reaches the confirmation page.
  *
- * Tests skip gracefully when PUBLIC_FORM_ENABLED=false (dev/CI without DB).
+ * Fails loudly if PUBLIC_FORM_ENABLED is off — silent
+ * test.skip() previously masked the route 404 and made the entire form-UI
+ * suite a no-op in CI.
  */
 
 import { expect, test, type Page } from "@playwright/test";
 
 test.describe("@phase-2 auslage form UI", () => {
-  async function goToForm(page: Page) {
+  async function goToForm(page: Page): Promise<void> {
     // CSP is now configured via svelte.config.js kit.csp (mode: 'auto') —
     // SvelteKit adds the right hashes/nonces for its inline hydration scripts
     // so we no longer need to intercept and strip the header in tests.
     const res = await page.goto("/auslage-einreichen");
     if (res?.status() === 404) {
-      test.skip();
-      return false;
+      throw new Error(
+        "GET /auslage-einreichen returned 404 — PUBLIC_FORM_ENABLED is off. Fix .env.test (PUBLIC_FORM_ENABLED=true) instead of silently skipping the entire form UI suite.",
+      );
     }
+    expect(res?.status()).toBe(200);
     // Wait for Svelte hydration: the submit button must be interactive
     // before we start asserting reactive state or firing events.
     await page.waitForLoadState("networkidle");
     await expect(
       page.getByRole("button", { name: "Auslage einreichen" }),
     ).toBeVisible();
-    return true;
   }
 
   test("form renders all major sections", async ({ page }) => {
-    if (!(await goToForm(page))) return;
+    await goToForm(page);
 
     // Section headings visible — string may appear in card title + sr-only legend,
     // so accept any occurrence via .first()
@@ -53,7 +56,7 @@ test.describe("@phase-2 auslage form UI", () => {
   test("radio group renders all three bezahlt-von options", async ({
     page,
   }) => {
-    if (!(await goToForm(page))) return;
+    await goToForm(page);
 
     // Use role-based locator to target the actual radio inputs by their accessible name
     await expect(
@@ -70,7 +73,7 @@ test.describe("@phase-2 auslage form UI", () => {
   test("selecting Externe Person shows name/IBAN/email fields", async ({
     page,
   }) => {
-    if (!(await goToForm(page))) return;
+    await goToForm(page);
 
     // Click the label wrapping the radio — this fires the change event that
     // Svelte's onchange handler listens to and updates the `kind` reactive state.
@@ -88,7 +91,7 @@ test.describe("@phase-2 auslage form UI", () => {
   test("submit without required fields shows validation errors", async ({
     page,
   }) => {
-    if (!(await goToForm(page))) return;
+    await goToForm(page);
 
     // The JS handleSubmit handler marks all fields blurred, runs validate(),
     // calls e.preventDefault() on invalid forms, and shows .text-destructive errors.
@@ -111,7 +114,7 @@ test.describe("@phase-2 auslage form UI", () => {
   });
 
   test("bezeichnung counter shows character count", async ({ page }) => {
-    if (!(await goToForm(page))) return;
+    await goToForm(page);
 
     const input = page.locator("#bezeichnung");
     // pressSequentially dispatches individual key events that Svelte's oninput handler
@@ -124,7 +127,7 @@ test.describe("@phase-2 auslage form UI", () => {
   });
 
   test("datenschutz consent checkbox present", async ({ page }) => {
-    if (!(await goToForm(page))) return;
+    await goToForm(page);
 
     const checkbox = page.locator(
       'input[type="checkbox"][name="datenschutz_consent"]',
@@ -134,7 +137,7 @@ test.describe("@phase-2 auslage form UI", () => {
   });
 
   test("file upload zone visible", async ({ page }) => {
-    if (!(await goToForm(page))) return;
+    await goToForm(page);
 
     await expect(
       page.getByText(/Datei hierher ziehen oder auswählen/),

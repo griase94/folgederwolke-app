@@ -30,8 +30,7 @@ import { customers } from "$lib/server/db/schema/customers.js";
 import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
-import { driveFileStorage } from "$lib/server/files/drive-impl.js";
-import type { FileStorage } from "$lib/server/files/storage.js";
+import { getFileStorage, type FileStorage } from "$lib/server/files/storage.js";
 import { bus } from "$lib/server/events/index.js";
 import { env } from "$lib/server/env.js";
 import { pdfLibInvoiceRenderer } from "$lib/server/pdf/pdf-lib-renderer.js";
@@ -348,7 +347,7 @@ export async function runInvoiceJob(
 ): Promise<void> {
   const renderer = deps.renderer ?? pdfLibInvoiceRenderer;
   const storage: FileStorage | null =
-    deps.storage === undefined ? driveFileStorage : deps.storage;
+    deps.storage === undefined ? await getFileStorage() : deps.storage;
 
   const db = getDb();
 

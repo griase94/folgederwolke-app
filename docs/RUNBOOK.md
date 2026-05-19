@@ -303,7 +303,7 @@ gh run list --workflow=db-backup.yml --repo griase94/folgederwolke-app --limit 5
 SELECT MAX(chain_seq) AS chain_length, COUNT(*) AS total_rows FROM audit_log;
 ```
 
-### 5.5 Year-end Festschreibung
+### 5.4 Year-end Festschreibung
 
 1. Export EÜR: `/app/eur/export?year=YYYY` → save CSV
 2. Review all expenses and income for the year
@@ -312,3 +312,135 @@ SELECT MAX(chain_seq) AS chain_length, COUNT(*) AS total_rows FROM audit_log;
 5. System sets `festgeschrieben_at` on all rows for that year
 6. Export audit log for the year as evidence
 7. Archive EÜR-CSV in Google Drive: `Vereinsverwaltung/Jahresabschlüsse/YYYY/`
+
+## 6. Migration runbook
+
+### 6.1 One-time reconciliation before phase-8 merge
+
+`phase-8-local-dev-environment` adds `drizzle/0012_default_privileges.sql` and registers `_journal.json` entries for the previously-unjournaled `0010_post_review_hardening.sql` and `0011_audit_trigger_digest_path_fix.sql` (these were hand-applied to Neon during phase 7.5 but never registered with the drizzle migrator). Before merging phase-8 to `main`, reconcile Neon's `__drizzle_migrations` table so the upcoming automated migrate workflow doesn't try to re-apply 0010 and 0011 (0010 contains non-idempotent `ALTER TABLE ADD CONSTRAINT` statements that would throw on re-run).
+
+**Step 1 — Inspect current state on Neon:**
+
+```bash
+# Replace with your real Neon DIRECT URL (NOT pooled)
+export NEON_URL='postgres://...@<neon-host>/<db>?sslmode=require'
+
+psql "$NEON_URL" -c "SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY id;"
+```
+
+Expected: 4 rows covering migrations 0000–0003 only. Migrations 0004–0011 were hand-applied to Neon (the app uses tables/columns from all of them) but were never registered in `__drizzle_migrations` — that's the scope of this reconciliation.
+
+**Step 2 — Compute the SHA256 hashes drizzle expects:**
+
+```bash
+# Run in repo root — emits idx, when, hash, tag for every migration that
+# needs registering (0004 onwards on the current state of Neon).
+node -e '
+  const fs = require("fs");
+  const c = require("crypto");
+  const j = JSON.parse(fs.readFileSync("drizzle/meta/_journal.json", "utf8"));
+  for (const e of j.entries) {
+    if (e.idx < 4) continue;
+    const sql = fs.readFileSync(`drizzle/${e.tag}.sql`, "utf8");
+    const hash = c.createHash("sha256").update(sql).digest("hex");
+    console.log(`idx=${e.idx}  when=${e.when}  hash=${hash}  ${e.tag}`);
+  }
+'
+```
+
+**Step 2b — Sanity check: confirm Neon's schema is at the expected state:**
+
+```bash
+psql "$NEON_URL" <<'SQL'
+SELECT
+  EXISTS (SELECT 1 FROM information_schema.columns
+          WHERE table_name='members' AND column_name='nachname') AS has_0004,
+  EXISTS (SELECT 1 FROM information_schema.columns
+          WHERE table_name='invoices' AND column_name='pdf_bytes') AS has_0005,
+  EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_name='projects') AS has_0006,
+  EXISTS (SELECT 1 FROM information_schema.views
+          WHERE table_name='eur_summary') AS has_0007,
+  EXISTS (SELECT 1 FROM information_schema.columns
+          WHERE table_name='audit_log' AND column_name='chain_seq') AS has_0009;
+SQL
+```
+
+All `t` → safe to proceed. Any `f` → STOP and investigate; we'd be marking a migration as applied that isn't really applied.
+
+**Step 3 — Apply 0012 against Neon (new migration in phase-8):**
+
+```bash
+psql "$NEON_URL" -f drizzle/0012_default_privileges.sql
+```
+
+0004 through 0011 are already applied (hand-applied progressively over phase-1 through phase-7.5). 0012 is new; this is the only SQL to run.
+
+**Step 4 — Register all 9 missing hashes in `__drizzle_migrations`:**
+
+`created_at` values come from `drizzle/meta/_journal.json` (the canonical `when` per entry); using the journal values rather than `$(date +%s%3N)` keeps tracking aligned with the journal so future tooling that compares them stays consistent.
+
+Replace `HASH_xxxx` with the hashes printed in Step 2. (The values below are the values computed against the current file contents on `phase-8-local-dev-environment` as of 2026-05-19 — recompute via Step 2 if you suspect any SQL file has changed since.)
+
+```bash
+psql "$NEON_URL" <<SQL
+INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES
+  ('eb494bbf119482e7e4e5a1b4615775586c49aba607973e5602902d54dde215cb', 1747612800000),  -- 0004
+  ('5cc83a7c70f0ddececd1ea7c7f9076142f5555a67a70b0d3fa35d3505c88eefc', 1747699200000),  -- 0005
+  ('955e66c269cbc3abf5aa969420643cae33d86cc0f77ab523b7cd9b0d5e31444a', 1747785600000),  -- 0006
+  ('5c9c0e6c3f42408ee1ffe4ade90ef54e544608e2e26a6aec73a987bc5fecf6d8', 1747900000000),  -- 0007
+  ('3a8735281cf7eb8c45f40ec2cc4963f61029976c78ee3d7868bebdaccc412197', 1747958400000),  -- 0008
+  ('e4ed7e42247b407ebb843d2a177b540487ce6ba252418993f751a91787a7802d', 1748044800000),  -- 0009
+  ('e40da08c88a358f49faa60467d51211386dcf6c65f11f27accafb6572a98e954', 1779203339000),  -- 0010
+  ('2cd54a2a50d7215f4eb0d1322fecd3be407620c704bd4ff62e1e1d9b8108ba65', 1779203925000),  -- 0011
+  ('f4b2304c4509a4d5d3ad9c93f63dbbe72cd7af613b0bac54bb927f9ef68fb2b1', 1779207384669); -- 0012
+SQL
+```
+
+**Step 5 — Verify default privileges landed:**
+
+```bash
+psql "$NEON_URL" -c '\ddp public'
+```
+
+Expected: `app_runtime` has `arwd` (or `arwd*`) on tables; `app_export` has `r`.
+
+**Step 6 — Dry-run migrate.ts:**
+
+```bash
+DIRECT_DATABASE_URL="$NEON_URL" pnpm tsx scripts/migrate.ts
+```
+
+Expected: prints "Migrations complete." with no work done. If it tries to apply 0010/0011/0012, hashes don't match — recompute and re-register.
+
+Only after Step 6 prints clean → safe to merge phase-8 to main.
+
+### 6.2 Ongoing: automated migrate workflow
+
+After phase-8 merges, `.github/workflows/migrate.yml` runs when migration-related files change on `main` (`paths:` filter on `drizzle/**` and the workflow file itself), plus manual `workflow_dispatch`. It requires the repository secret `NEON_MIGRATE_DATABASE_URL` (DIRECT non-pooled URL with owner privileges). Set this in GitHub → Settings → Secrets and variables → Actions → New repository secret. If the secret is missing the workflow self-skips with a warning instead of failing.
+
+The workflow runs `pnpm tsx scripts/migrate.ts` twice — the second run must be a no-op, confirming idempotency.
+
+If a future migration fails mid-deploy:
+
+- Vercel will continue serving the previous deployment until you push a fix.
+- Migration state in Neon may be partially applied (drizzle wraps each migration in a transaction, so unless a SQL statement is split across transactions, you should see either fully-applied or not-applied).
+- Triage: re-run the workflow manually after fixing the migration file.
+
+### 6.3 Adding a new migration
+
+1. Edit `src/lib/server/db/schema/...` for schema changes.
+2. `pnpm drizzle-kit generate` produces `drizzle/<NNNN>_<name>.sql` + a snapshot.
+3. Inspect the generated SQL — drizzle-kit doesn't catch every case (e.g., it can't generate FK constraint changes well). Edit if needed.
+4. Test locally: `pnpm dev:reset` (purges volume and re-bootstraps with the new migration).
+5. Commit migration file + snapshot + journal entry together.
+6. On push to main, `.github/workflows/migrate.yml` applies it to Neon.
+
+### 6.4 Manual hotfix (avoid if possible)
+
+If you must apply SQL to Neon outside of the normal migration flow:
+
+1. Apply via `psql "$NEON_URL" -f hotfix.sql`.
+2. **IMMEDIATELY** add the corresponding migration file to `drizzle/` and journal entry to `drizzle/meta/_journal.json`.
+3. Manually register the migration in `__drizzle_migrations` (Step 3 above) so the next workflow run doesn't try to re-apply.
+4. Commit + push.

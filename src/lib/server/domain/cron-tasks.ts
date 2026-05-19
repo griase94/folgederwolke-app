@@ -18,8 +18,7 @@ import {
 import { invoices } from "$lib/server/db/schema/invoices.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 import { sendMail } from "$lib/server/mail/index.js";
-import { driveFileStorage } from "$lib/server/files/drive-impl.js";
-import type { FileStorage } from "$lib/server/files/storage.js";
+import { getFileStorage, type FileStorage } from "$lib/server/files/storage.js";
 import { verifyAuditChain } from "$lib/server/audit-log/verifier.js";
 
 // ---------------------------------------------------------------------------
@@ -90,10 +89,14 @@ export interface DriveRetryResult {
  * Accepts an optional `storage` dep (pass null in tests to skip real Drive).
  */
 export async function retryFailedDriveUploads(
-  storage: FileStorage | null = driveFileStorage,
+  storage?: FileStorage | null,
   batchSize = 10,
 ): Promise<DriveRetryResult> {
-  if (storage === null) {
+  // `undefined` → resolve the production-configured backend via the factory.
+  // `null` → caller explicitly skips Drive (test mode).
+  const resolved: FileStorage | null =
+    storage === undefined ? await getFileStorage() : storage;
+  if (resolved === null) {
     return { attempted: 0, succeeded: 0, failed: 0 };
   }
 
@@ -120,7 +123,7 @@ export async function retryFailedDriveUploads(
   for (const row of rows) {
     if (!row.pdfBytes) continue;
     try {
-      const result = await storage.upload({
+      const result = await resolved.upload({
         buffer: row.pdfBytes as unknown as Uint8Array,
         mimeType: "application/pdf",
         name: `rechnung-${row.businessId}.pdf`,

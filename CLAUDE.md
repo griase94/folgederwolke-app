@@ -10,7 +10,7 @@ Keep this in sync when ADRs or masterplan sections are updated.
 - **Masterplan**: `docs/` (internal; ask Andy for current version)
 - **Phase 2 backlog**: `docs/phase2-backlog.md`
 - **ADRs**: `docs/adr/` — binding decisions; do not contradict without a new ADR
-- **Branch**: `phase-2-public-form` — protected; no direct push to `main`
+- **Protected branch**: `main` — PRs only, no direct push. Feature work on `phase-N-*` branches.
 
 ---
 
@@ -40,9 +40,14 @@ Every income/expense row carries a `sphere` enum value (`ideeller`, `vermoegen`,
 
 ### 5. FileStorage interface — not drive client directly
 
-Callers upload/download/archive files via `src/lib/server/files/storage.ts`
-(`FileStorage` interface), not by importing `drive/client.ts` directly.
-The Drive implementation lives in `src/lib/server/files/drive-impl.ts`.
+Callers upload/download/archive files via `getFileStorage()` from
+`src/lib/server/files/storage.ts` (`FileStorage` interface). Never import
+`drive-impl.ts` or `local-fs-impl.ts` directly.
+
+The active implementation is selected by the `STORAGE_BACKEND` env var:
+
+- `drive` (default, prod) → `src/lib/server/files/drive-impl.ts`
+- `local-fs` (dev + test) → `src/lib/server/files/local-fs-impl.ts`, writes to `FILE_STORAGE_ROOT`
 
 ### 6. Audit log is append-only (ADR-0004)
 
@@ -82,6 +87,15 @@ submissions, `'sheet_import'` for importer rows, `'fixture'` for seed data.
 
 Roles are created idempotently in `drizzle/0002_roles.sql`.
 
+Default privileges for **future** tables are granted by `drizzle/0012_default_privileges.sql`
+— new tables added in later migrations automatically get the right grants for
+`app_runtime` (CRUD) and `app_export` (SELECT) without requiring per-migration GRANTs.
+
+In production (Neon), all three roles are NOLOGIN — Neon manages connection auth
+itself. In local dev and tests, `scripts/dev-up.sh` and `scripts/db/reset-test-db.sh`
+run `ALTER ROLE app_runtime WITH LOGIN PASSWORD 'app_runtime'` (and the same for
+`app_export`) so the connection URLs in `.env.development` / `.env.test` work.
+
 ---
 
 ## Key ADR summary
@@ -111,17 +125,95 @@ Roles are created idempotently in `drizzle/0002_roles.sql`.
 
 ---
 
+## Deployment + migrations
+
+- **Production**: Vercel (SvelteKit `@sveltejs/adapter-vercel`) against Neon Postgres 17.8.
+- **Every push to `main`** triggers two independent things:
+  - Vercel auto-deploys the app.
+  - `.github/workflows/migrate.yml` runs `pnpm tsx scripts/migrate.ts` against Neon (gated on the `NEON_MIGRATE_DATABASE_URL` repo secret).
+- **Migrations** live in `drizzle/<NNNN>_*.sql`. Generate via `pnpm drizzle-kit generate`. The migrator reads `drizzle/meta/_journal.json` and applies anything not in Neon's `drizzle.__drizzle_migrations` table (matched by SHA256 hash).
+- **Destructive migrations**: split into two phases — additive migration ships first, code change second, DROP last. Don't ship code that requires a not-yet-applied schema change.
+- **Manual hotfix to Neon**: avoid. If you must, follow `docs/RUNBOOK.md §6.4` to keep `__drizzle_migrations` in sync, or the next auto-migrate will try to re-apply and likely fail.
+- **GitHub secrets**: documented in `README.md` "Deploying to production" → "GitHub Actions secrets" table. Use `gh secret list` to inspect, `gh secret set <NAME> --body '<value>'` to add or rotate.
+- **Runbook for failure modes**: `docs/RUNBOOK.md` (§1 rotate secrets, §2 restore from backup, §3 emergency stop, §6 migration runbook).
+
+---
+
 ## Environment variables
 
 All env vars are declared and validated in `src/lib/server/env.ts` (Zod schema).
-Add new vars there first, then to `.env.example`, then to `.github/workflows/ci.yml`.
 Never read `process.env` directly in app code — use `env` from `env.ts`.
+
+When adding a new env var:
+
+1. Add it to the Zod schema in `src/lib/server/env.ts` with sensible default.
+2. Document it in `.env.example` (for prod / Neon documentation).
+3. If the var has a dev-specific value, add it to `.env.development` (committed,
+   no secrets). If test-specific, add to `.env.test` (committed).
+4. If CI needs to set it as a secret, add the GitHub secret reference to
+   `.github/workflows/ci.yml`.
+5. For dev-only secrets (rare), use `.env.development.local` (gitignored).
 
 ---
 
 ## Testing
 
-- Unit tests: `pnpm test --run` (Vitest, `tests/unit/` and `src/**/*.test.ts`)
-- E2E tests: `pnpm test:e2e` (Playwright, `tests/e2e/`)
+### Stack
+
+- Unit tests: `pnpm test --run` (Vitest — runs `tests/unit/` + `src/**/*.test.ts`)
+- E2E tests: `pnpm test:e2e` (Playwright — runs `tests/e2e/`)
+
+### Local + CI Postgres
+
+Both test types run against a **hermetic local Postgres** in docker compose
+(see `docker-compose.yml`). CI uses GitHub Actions' `services: postgres:17`
+block — same shape, faster on hosted runners.
+
+Both `vitest.config.ts` and `playwright.config.ts` register a **globalSetup**
+hook that runs `scripts/db/reset-test-db.sh` before any test starts. The reset
+script drops + recreates `folgederwolke_test`, applies all migrations, runs
+the seed (reference data + fixtures), and sets up `app_runtime` LOGIN. Each
+test invocation gets a known-clean DB. Reset takes ~3-6s on local.
+
+Within a single `pnpm test:e2e` run, Playwright tests share the seeded state
+(`fullyParallel: false`). Tests that mutate global state (festschreibung,
+year-close) should be ordered last in `testDir` or wrapped in `test.describe.serial()`.
+
+### Connection identities
+
+- Tests connect as **`app_runtime`** (CRUD + INSERT-only on `audit_log`).
+  This catches grant bugs early — if you add a table without grants, tests fail
+  immediately rather than surfacing in prod.
+- The reset script and seed scripts connect as **superuser** via `DIRECT_DATABASE_URL`.
+
+### Mail in tests
+
+- `MAIL_PROVIDER=no-op` is set in `.env.test`. The provider writes the
+  `sent_mails` row through the existing event-bus path and returns success
+  without any SMTP I/O.
+- Test assertions about outgoing mail read from the `sent_mails` table
+  directly (ADR-0005 idempotency).
+
+### File storage in tests
+
+- `STORAGE_BACKEND=local-fs` with `FILE_STORAGE_ROOT=./.dev-data/drive-test`.
+  Files written by tests land in `./.dev-data/drive-test/` and are wiped by
+  the reset script before each test run.
+
+### Tags + CI grep
+
 - Tag new E2E tests with `@phase-N` matching the current phase.
-- CI runs cumulative E2E grep: `@phase-0|@phase-1|@phase-2|...` (grows each phase).
+- CI runs cumulative E2E grep: `@phase-0|@phase-1|@phase-2` (will expand
+  in future phases as latent bugs in phase-3+ tests get triaged).
+
+### Watch mode
+
+- `pnpm test:watch` does **not** trigger a reset — it uses whatever DB the
+  shell env points at. For iterating on test code, run `pnpm dev:up` first.
+  When fixtures drift, exit watch and run `pnpm test --run` (which resets) or
+  `pnpm dev:reset` (nuclear).
+
+### Setup details
+
+See `README.md` "Local development" section for prerequisites, docker compose
+commands, and troubleshooting.

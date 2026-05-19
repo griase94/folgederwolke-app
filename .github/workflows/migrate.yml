@@ -1,0 +1,80 @@
+name: migrate
+
+# Runs migrations against Neon when migration files change on main. The
+# workflow needs the repository secret NEON_MIGRATE_DATABASE_URL set to a
+# DIRECT (non-pooled) connection string for an owner-role on Neon
+# (typically the project owner).
+#
+# IMPORTANT: this workflow assumes drizzle/meta/_journal.json and the live
+# __drizzle_migrations table on Neon agree on what's already applied. If you
+# add migration files outside of the normal drizzle-kit generate flow (e.g.
+# hand-applied via psql for a hotfix), you MUST manually update
+# __drizzle_migrations to keep them in sync — see docs/RUNBOOK.md
+# "Migration runbook" section.
+#
+# Security note: this workflow does NOT consume any github.event.* input
+# (no PR/issue/comment text reaches any `run:` step). The only external input
+# is the trusted repository secret NEON_MIGRATE_DATABASE_URL, passed via the
+# `env:` mapping (never inline-interpolated into shell commands).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # Only run when migrations actually change. Avoids racing Vercel deploys
+      # on every code push and keeps the workflow's intent self-documenting.
+      - "drizzle/**"
+      - ".github/workflows/migrate.yml"
+  workflow_dispatch:
+    # Manual run for catch-up if the path-filter ever misses a state change.
+
+concurrency:
+  group: migrate-main
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: migrate against Neon
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # NOTE: cannot use `if: ${{ secrets.* }}` at job level — the `secrets`
+    # context isn't available there (actions/runner#520). Instead we map the
+    # secret to a job-level env var and gate each step on its presence.
+    env:
+      DIRECT_DATABASE_URL: ${{ secrets.NEON_MIGRATE_DATABASE_URL }}
+    steps:
+      - name: Skip if NEON_MIGRATE_DATABASE_URL is not set
+        if: env.DIRECT_DATABASE_URL == ''
+        run: |
+          echo "::warning::NEON_MIGRATE_DATABASE_URL is not set — skipping migrations."
+          echo "Set it via: gh secret set NEON_MIGRATE_DATABASE_URL --body '<your Neon DIRECT URL>'"
+          exit 0
+
+      - uses: actions/checkout@v4
+        if: env.DIRECT_DATABASE_URL != ''
+
+      - uses: pnpm/action-setup@v4
+        if: env.DIRECT_DATABASE_URL != ''
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        if: env.DIRECT_DATABASE_URL != ''
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        if: env.DIRECT_DATABASE_URL != ''
+        run: pnpm install --frozen-lockfile
+
+      - name: Run drizzle migrations against Neon
+        if: env.DIRECT_DATABASE_URL != ''
+        run: pnpm tsx scripts/migrate.ts
+
+      - name: Smoke-check (re-run migrate; expect no-op)
+        if: env.DIRECT_DATABASE_URL != ''
+        run: |
+          echo "Re-running migrate to confirm idempotency..."
+          pnpm tsx scripts/migrate.ts
+          echo "Migrations idempotent — done."

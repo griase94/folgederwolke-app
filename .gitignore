@@ -22,8 +22,14 @@ Thumbs.db
 .env.*
 !.env.example
 !.env.test
+!.env.development
 
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Local dev state (Postgres files go in a docker volume; this is for file storage + mail)
+.dev-data/
+
+# Claude tooling (worktrees, plans, agent state)
 .claude/

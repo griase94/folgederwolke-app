@@ -1,0 +1,97 @@
+# Audit-log off-Postgres anchor — weekly export of the audit-log hash chain
+# to two independent storage backends (private GitHub repo + Drive backup
+# folder).
+#
+# ADR-0004 (Phase 7.5): the cryptographic chain INSIDE Postgres is only
+# tamper-evident relative to itself; an attacker with full PG access could
+# rewrite history and recompute hashes. The actual tamper-evidence comes
+# from anchoring the chain head + recent history to storage that the PG
+# attacker does NOT control:
+#
+#   1. A private GitHub repo Andy owns (`folgederwolke-audit-anchor`).
+#      Each weekly run appends a timestamped CSV of (chain_seq, row_hash,
+#      occurred_at) for ALL rows with row_hash IS NOT NULL.
+#   2. (TODO) The Drive backup folder via service account — wired once the
+#      Drive SA credential is ready for read+write to that folder.
+#
+# Schedule: 04:15 UTC Sunday. Off-peak; after Vercel daily-dispatcher
+# already ran the in-DB verifier multiple times that week.
+#
+# Required secrets (set in GitHub repo settings -> secrets):
+#   - DATABASE_URL_BACKUP : read-only Neon URL (use app_export role)
+#   - AUDIT_ANCHOR_REPO   : "andygriesbeck/folgederwolke-audit-anchor"
+#   - AUDIT_ANCHOR_TOKEN  : fine-grained PAT with Contents:Write on that repo
+#
+# If any of the *_ANCHOR_* secrets is unset, the push step exits 0 (stub mode)
+# so the workflow doesn't fail loudly until Andy has provisioned them.
+#
+# All untrusted inputs are surfaced via `env:` (no inline ${{ }} in run:),
+# per GitHub Actions injection guidance.
+
+name: Audit Anchor
+
+on:
+  schedule:
+    - cron: "15 4 * * 0"
+  workflow_dispatch: {}
+
+jobs:
+  anchor:
+    name: Export audit chain and push to private repo
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Export audit_log chain to CSV
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_BACKUP }}
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "DATABASE_URL_BACKUP not set — exiting (stub mode)"
+            exit 0
+          fi
+          TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
+          FILENAME="audit-anchor-${TIMESTAMP}.csv"
+          echo "AUDIT_FILE=${FILENAME}" >> "$GITHUB_ENV"
+          # Header + ordered chain. row_hash IS NOT NULL filter excludes
+          # pre-genesis rows (backfilled separately via
+          # scripts/backfill-audit-chain.ts).
+          psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 --csv \
+            -c "SELECT chain_seq, row_hash, occurred_at AT TIME ZONE 'UTC' AS occurred_at_utc
+                FROM audit_log
+                WHERE row_hash IS NOT NULL
+                ORDER BY chain_seq ASC" > "${FILENAME}"
+          echo "Exported $(wc -l < "${FILENAME}") lines (incl. header) to ${FILENAME}"
+          # Also store the tip-hash (sha256 of the file). Mismatching tip-hash
+          # week over week (without new rows) is a tamper signal.
+          sha256sum "${FILENAME}" | awk '{print $1}' > "${FILENAME}.tip"
+
+      - name: Push anchor to private GitHub repo
+        env:
+          ANCHOR_REPO: ${{ secrets.AUDIT_ANCHOR_REPO }}
+          ANCHOR_TOKEN: ${{ secrets.AUDIT_ANCHOR_TOKEN }}
+        run: |
+          if [ -z "${ANCHOR_REPO}" ] || [ -z "${ANCHOR_TOKEN}" ] || [ -z "${AUDIT_FILE:-}" ]; then
+            echo "Anchor repo/token unset or no file — skipping push (stub mode)"
+            exit 0
+          fi
+          git clone --depth=1 \
+            "https://x-access-token:${ANCHOR_TOKEN}@github.com/${ANCHOR_REPO}.git" \
+            anchor-repo
+          mkdir -p anchor-repo/audit-chain
+          cp "${AUDIT_FILE}" "${AUDIT_FILE}.tip" anchor-repo/audit-chain/
+          cd anchor-repo
+          git config user.email "audit-anchor-bot@folgederwolke.de"
+          git config user.name "Audit Anchor Bot"
+          git add "audit-chain/${AUDIT_FILE}" "audit-chain/${AUDIT_FILE}.tip"
+          git commit -m "anchor: ${AUDIT_FILE}"
+          git push
+
+      - name: Drive backup (TODO — wire when SA + folder ready)
+        if: false
+        run: echo "Drive backup not yet implemented — see ADR-0004."

@@ -24,10 +24,7 @@ import {
   composeBezahltVonDisplay,
 } from "$lib/server/domain/auslagen.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
-import { driveFileStorage } from "$lib/server/files/drive-impl.js";
-import type { FileStorage } from "$lib/server/files/storage.js";
-import { getDriveAuth } from "$lib/server/drive/auth.js";
-import { drive as createDrive } from "@googleapis/drive";
+import { getFileStorage, type FileStorage } from "$lib/server/files/storage.js";
 import { bus } from "$lib/server/events/index.js";
 import { checkAndRecord, RateLimitError } from "$lib/server/auth/rate-limit.js";
 import {
@@ -45,15 +42,15 @@ import { DATENSCHUTZ_VERSION } from "$lib/server/domain/datenschutz.js";
 
 /**
  * Test seam: replace the FileStorage implementation. When undefined the
- * production `driveFileStorage` is used. Tests set this to a stub to avoid
- * hitting Drive.
+ * production-configured backend (resolved via `getFileStorage()`) is used.
+ * Tests set this to a stub to avoid hitting Drive.
  */
 export let _fileStorageOverride: FileStorage | undefined = undefined;
 export function _setFileStorageOverride(fs: FileStorage | undefined) {
   _fileStorageOverride = fs;
 }
-function fileStorage(): FileStorage {
-  return _fileStorageOverride ?? driveFileStorage;
+async function fileStorage(): Promise<FileStorage> {
+  return _fileStorageOverride ?? (await getFileStorage());
 }
 
 // ---------------------------------------------------------------------------
@@ -99,16 +96,6 @@ function berlinYear(now: Date = new Date()): number {
     }).format(now),
     10,
   );
-}
-
-/** Best-effort delete of a Drive file (used to roll back upload on DB failure). */
-async function bestEffortDeleteDriveFile(fileId: string): Promise<void> {
-  try {
-    const drive = createDrive({ version: "v3", auth: getDriveAuth() });
-    await drive.files.delete({ fileId });
-  } catch (err) {
-    console.error("[auslage-einreichen] best-effort Drive delete failed:", err);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -270,7 +257,9 @@ export const actions: Actions = {
     let driveFileId: string | null = null;
     if (belegBytes && belegSniffedMime) {
       try {
-        const result = await fileStorage().upload({
+        const result = await (
+          await fileStorage()
+        ).upload({
           buffer: new Uint8Array(belegBytes),
           mimeType: belegSniffedMime,
           name: `${ausId}_${belegFilenameSafe}`,
@@ -323,9 +312,17 @@ export const actions: Actions = {
         `[auslage-einreichen] DB insert failed for ${ausId}:`,
         dbErr,
       );
-      // Roll back the orphan Drive file (best effort).
+      // Roll back the orphan uploaded file (best effort).
       if (driveFileId) {
-        await bestEffortDeleteDriveFile(driveFileId);
+        try {
+          const storage = await fileStorage();
+          await storage.delete(driveFileId);
+        } catch (rollbackErr) {
+          console.warn(
+            `[auslage-einreichen] rollback delete failed for ${driveFileId}:`,
+            rollbackErr,
+          );
+        }
       }
       return fail(500, {
         error: "Fehler beim Speichern der Einreichung. Bitte erneut versuchen.",

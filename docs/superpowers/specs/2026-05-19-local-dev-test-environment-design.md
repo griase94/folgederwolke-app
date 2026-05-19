@@ -288,7 +288,17 @@ Notes:
 
 CI does **not** use docker-compose. GitHub's `services:` is faster (cached on runner image) and cleaner. The 10-line YAML diff is a one-time cost; "single source of truth" loses to "less orchestration overhead per CI run."
 
-### 5.15 Documentation: `README.md` section
+### 5.15 Documentation: `README.md` section + `CLAUDE.md` updates
+
+**`CLAUDE.md`** (project conventions for AI agents and contributors) also needs updates — it currently has a 4-line "Testing" section that doesn't reflect the new harness. Specifically:
+
+- **§"Testing"** — expand to cover docker-compose stack, globalSetup auto-reset, tests connecting as `app_runtime`, `MAIL_PROVIDER=no-op` / `STORAGE_BACKEND=local-fs` defaults, pointer to README for full setup.
+- **§"Environment variables"** — update the "declare in env.ts → add to .env.example" pattern to include the new committed `.env.development` / `.env.test` files.
+- **§5 FileStorage convention** — note that `STORAGE_BACKEND` env var selects impl (drive vs local-fs).
+- **§"Database roles"** — note migration 0012 default privileges; note local-only LOGIN setup (Neon manages own role auth).
+- **§"Key references"** — fix stale `phase-2-public-form` reference (the actual protected branch is `main`, per the same file's branch protection section).
+
+**`README.md`** (user-facing) gets a new "Local development" section covering:
 
 A new "Local development" section is added to `README.md`, covering:
 
@@ -386,7 +396,8 @@ The implementation plan (next step) breaks these into ordered tasks. Listed here
 - `src/lib/server/files/local-fs-impl.ts`
 - `src/lib/server/mail/dev-eml-impl.ts`
 - `src/lib/server/mail/no-op-impl.ts`
-- `drizzle/0012_default_privileges.sql` (renumbered from 0010; 0010/0011 were taken on phase-7.5)
+- `drizzle/0012_default_privileges.sql`
+- `drizzle/0011_app_runtime_login.sql` (sets login + password for `app_runtime`; local-only guarded)
 - `.env.development`
 - `.env.test`
 - `tests/playwright-global-setup.ts`
@@ -402,6 +413,7 @@ The implementation plan (next step) breaks these into ordered tasks. Listed here
 - `.github/workflows/ci.yml` (services blocks; remove Neon secrets from e2e/unit; bump 16→17 in backup-restore-smoke)
 - `.gitignore` (add `.dev-data/`)
 - `README.md` (new "Local development" section, ~50 lines)
+- `CLAUDE.md` (expand "Testing" section, update "Environment variables" + "Database roles" notes, fix stale "Key references" branch line)
 
 **Deleted files:**
 
