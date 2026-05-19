@@ -37,7 +37,7 @@ async function loadTemplate(name: TemplateName) {
     case "auslage_abgelehnt":
       return (await import("./templates/RejectionMail.svelte")).default;
     case "invoice_versendet":
-      throw new Error(`Template "${name}" is not implemented in Phase 1.`);
+      return (await import("./templates/InvoiceVersendetMail.svelte")).default;
   }
 }
 
@@ -62,6 +62,8 @@ function subjectFor(
       return `Erinnerung: dein Mitgliedsbeitrag ${props.jahr ?? ""} ist noch offen`;
     case "spende_bescheinigung":
       return "Deine Aufwandsspenden-Bestätigung von Folge der Wolke e.V.";
+    case "invoice_versendet":
+      return `Rechnung ${props.invoiceNumber ?? ""} von Folge der Wolke e.V.`;
     default:
       return "Nachricht von Folge der Wolke e.V.";
   }
@@ -89,7 +91,10 @@ export async function sendMail<T extends TemplateName>(opts: {
   } = opts;
 
   const db = getDb();
-  const subject = subjectFor(template, props as Record<string, unknown>);
+  const subject = subjectFor(
+    template,
+    props as unknown as Record<string, unknown>,
+  );
 
   // ── 1. Idempotency insert ──────────────────────────────────────────────────
   const inserted = await db
@@ -121,7 +126,7 @@ export async function sendMail<T extends TemplateName>(opts: {
   // unknown to satisfy renderMailTemplate's loose signature without losing safety.
   const { html, text } = renderMailTemplate(
     component as unknown as Component,
-    props as Record<string, unknown>,
+    props as unknown as Record<string, unknown>,
   );
 
   // ── 3. Send ────────────────────────────────────────────────────────────────

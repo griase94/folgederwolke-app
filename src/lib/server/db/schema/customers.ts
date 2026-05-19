@@ -37,6 +37,7 @@ export const customers = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => ({
     nameIdx: index("customers_name_idx").on(t.name),

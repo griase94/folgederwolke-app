@@ -241,6 +241,185 @@ export function registerHandlers(): void {
     },
   );
 
+  // ── project.created ────────────────────────────────────────────────────
+  bus.on<EventPayload<"project.created">>(
+    "project.created",
+    async (payload) => {
+      await logAudit({
+        action: "create",
+        entityKind: "project",
+        entityId: payload.projectId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: payload.payload ?? {},
+      });
+    },
+  );
+
+  // ── project.updated ─────────────────────────────────────────────────────
+  bus.on<EventPayload<"project.updated">>(
+    "project.updated",
+    async (payload) => {
+      await logAudit({
+        action: "update",
+        entityKind: "project",
+        entityId: payload.projectId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: payload.payload ?? {},
+      });
+    },
+  );
+
+  // ── project.deleted ─────────────────────────────────────────────────────
+  bus.on<EventPayload<"project.deleted">>(
+    "project.deleted",
+    async (payload) => {
+      await logAudit({
+        action: "delete",
+        entityKind: "project",
+        entityId: payload.projectId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: payload.payload ?? {},
+      });
+    },
+  );
+
+  // ── customer.created ────────────────────────────────────────────────────
+  bus.on<EventPayload<"customer.created">>(
+    "customer.created",
+    async (payload) => {
+      await logAudit({
+        action: "create",
+        entityKind: "customer",
+        entityId: payload.customerId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: payload.payload ?? {},
+      });
+    },
+  );
+
+  // ── customer.updated ────────────────────────────────────────────────────
+  bus.on<EventPayload<"customer.updated">>(
+    "customer.updated",
+    async (payload) => {
+      await logAudit({
+        action: "update",
+        entityKind: "customer",
+        entityId: payload.customerId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: payload.payload ?? {},
+      });
+    },
+  );
+
+  // ── customer.deleted ────────────────────────────────────────────────────
+  bus.on<EventPayload<"customer.deleted">>(
+    "customer.deleted",
+    async (payload) => {
+      await logAudit({
+        action: "delete",
+        entityKind: "customer",
+        entityId: payload.customerId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: payload.payload ?? {},
+      });
+    },
+  );
+
+  // ── invoice.created ─────────────────────────────────────────────────────
+  bus.on<EventPayload<"invoice.created">>(
+    "invoice.created",
+    async (payload) => {
+      await logAudit({
+        action: "create",
+        entityKind: "invoice",
+        entityId: payload.invoiceId,
+        entityBusinessId: payload.invoiceBusinessId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: {
+          customerId: payload.customerId,
+          customerNameSnapshot: payload.customerNameSnapshot,
+          bruttoCents: payload.bruttoCents,
+        },
+      });
+    },
+  );
+
+  // ── invoice.pdf_generated ──────────────────────────────────────────────
+  bus.on<EventPayload<"invoice.pdf_generated">>(
+    "invoice.pdf_generated",
+    async (payload) => {
+      await logAudit({
+        action: "update",
+        entityKind: "invoice",
+        entityId: payload.invoiceId,
+        entityBusinessId: payload.invoiceBusinessId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: {
+          kind: "pdf_generated",
+          drivePdfFileId: payload.drivePdfFileId,
+          driveStatus: payload.driveStatus,
+        },
+      });
+    },
+  );
+
+  // ── invoice.superseded ─────────────────────────────────────────────────
+  bus.on<EventPayload<"invoice.superseded">>(
+    "invoice.superseded",
+    async (payload) => {
+      await logAudit({
+        action: "update",
+        entityKind: "invoice",
+        entityId: payload.invoiceId,
+        entityBusinessId: payload.invoiceBusinessId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: {
+          kind: "superseded",
+          supersedesId: payload.supersedesId,
+          supersedesBusinessId: payload.supersedesBusinessId,
+        },
+      });
+    },
+  );
+
+  // ── expense.created / expense.updated / income.created / income.updated /
+  // ── donation.created ───────────────────────────────────────────────────
+  // Direct-entry CRUD events emitted by /app/transactions/neu (create) and
+  // /app/transactions/[id] (update). Each handler writes a single audit_log
+  // row keyed by the corresponding entity_kind + action. Approval and
+  // reimbursement remain on their own events (expense.approved,
+  // expense.erstattet) so the activity timeline can distinguish a master-
+  // data edit from a workflow state change.
+  const txAuditMap = [
+    { event: "expense.created", entityKind: "expense", action: "create" },
+    { event: "expense.updated", entityKind: "expense", action: "update" },
+    { event: "income.created", entityKind: "income", action: "create" },
+    { event: "income.updated", entityKind: "income", action: "update" },
+    { event: "donation.created", entityKind: "donation", action: "create" },
+  ] as const;
+  for (const { event, entityKind, action } of txAuditMap) {
+    bus.on<EventPayload<typeof event>>(event, async (payload) => {
+      await logAudit({
+        action,
+        entityKind,
+        entityId: payload.id,
+        entityBusinessId: payload.businessId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: payload.payload ?? {},
+      });
+    });
+  }
+
   // ── member.created ──────────────────────────────────────────────────────
   bus.on<EventPayload<"member.created">>("member.created", async (payload) => {
     await logAudit({
@@ -290,6 +469,57 @@ export function registerHandlers(): void {
         actorUserId: payload.actorUserId,
         actorKind: payload.actorUserId ? "user" : "system",
         payload: { kind: "beitrag_paid", ...(payload.payload ?? {}) },
+      });
+    },
+  );
+
+  // ── spende.created ──────────────────────────────────────────────────────
+  bus.on<EventPayload<"spende.created">>("spende.created", async (payload) => {
+    await logAudit({
+      action: "create",
+      entityKind: "donation",
+      entityId: payload.donationId,
+      entityBusinessId: payload.businessId,
+      actorUserId: payload.actorUserId,
+      actorKind: payload.actorUserId ? "user" : "system",
+      payload: {
+        betragCents: payload.betragCents,
+        spendeKind: payload.spendeKind,
+        memberId: payload.memberId,
+      },
+    });
+  });
+
+  // ── spende.edited ───────────────────────────────────────────────────────
+  bus.on<EventPayload<"spende.edited">>("spende.edited", async (payload) => {
+    await logAudit({
+      action: "update",
+      entityKind: "donation",
+      entityId: payload.donationId,
+      actorUserId: payload.actorUserId,
+      actorKind: payload.actorUserId ? "user" : "system",
+      payload: { kind: "edited" },
+    });
+  });
+
+  // ── spende.bescheinigung_generated ──────────────────────────────────────
+  // Audit-only in v1; mail-send remains a manual admin step (download +
+  // attach PDF). Phase 2 can convert this to an automatic SendMail handler
+  // once Aufwandsspende workflow lands.
+  bus.on<EventPayload<"spende.bescheinigung_generated">>(
+    "spende.bescheinigung_generated",
+    async (payload) => {
+      await logAudit({
+        action: "update",
+        entityKind: "donation",
+        entityId: payload.donationId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: {
+          kind: "bescheinigung_generated",
+          bescheinigungNr: payload.bescheinigungNr,
+          betragCents: payload.betragCents,
+        },
       });
     },
   );

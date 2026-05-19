@@ -1,0 +1,83 @@
+/**
+ * /app/kunden/[id] — Customer detail page.
+ *
+ * load()   → fetch customer by id (404 if not found)
+ * actions:
+ *   ?/edit   — edit master data
+ *   ?/delete — soft-delete (sets deleted_at = now())
+ */
+
+import { error, fail } from "@sveltejs/kit";
+import { eq } from "drizzle-orm";
+import type { Actions, PageServerLoad } from "./$types.js";
+import { getDb } from "$lib/server/db/index.js";
+import { customers } from "$lib/server/db/schema/customers.js";
+import {
+  editCustomer,
+  softDeleteCustomer,
+} from "$lib/server/domain/customers-actions.js";
+
+export const load: PageServerLoad = async ({ params }) => {
+  const { id } = params;
+  const db = getDb();
+
+  const rows = await db
+    .select()
+    .from(customers)
+    .where(eq(customers.id, id))
+    .limit(1);
+
+  if (rows.length === 0 || !rows[0]) {
+    error(404, "Kunde nicht gefunden");
+  }
+
+  const c = rows[0];
+
+  return {
+    customer: {
+      id: c.id,
+      name: c.name,
+      anrede: c.anrede,
+      addressBlock: c.addressBlock,
+      email: c.email,
+      notes: c.notes,
+      isFixture: c.isFixture,
+      deletedAt: c.deletedAt?.toISOString() ?? null,
+      createdAt: c.createdAt.toISOString(),
+    },
+  };
+};
+
+export const actions: Actions = {
+  edit: async ({ request, locals, params }) => {
+    const userId = locals.session?.user.id ?? null;
+    const formData = await request.formData();
+    const raw: Record<string, unknown> = {};
+    for (const [k, v] of formData.entries()) raw[k] = v;
+    if (!raw.id && params.id) raw.id = params.id;
+
+    const result = await editCustomer(raw, userId);
+    if (!result.ok) {
+      return fail(result.status, {
+        action: "edit",
+        errors: result.errors,
+        values: result.values,
+      });
+    }
+
+    return { action: "edit", success: true };
+  },
+
+  delete: async ({ request, locals, params }) => {
+    const userId = locals.session?.user.id ?? null;
+    const formData = await request.formData();
+    const id = formData.get("id")?.toString() || params.id || "";
+
+    const result = await softDeleteCustomer(id, userId);
+    if (!result.ok) {
+      return fail(result.status, { action: "delete", error: result.error });
+    }
+
+    return { action: "delete", success: true };
+  },
+};

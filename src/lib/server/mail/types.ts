@@ -125,6 +125,26 @@ export interface AufwandsspendenBestaetigungProps {
 // Discriminated map for type-safe generic sendMail() overloads
 // ---------------------------------------------------------------------------
 
+/**
+ * Sent when an admin shares an invoice with a customer. Provides a
+ * lightweight per-recipient summary + optional download link. The PDF
+ * itself is attached at the provider layer (Phase 7 polish — for now the
+ * customer downloads via the link or admin attaches manually).
+ */
+export interface InvoiceVersendetMailProps {
+  customerName: string;
+  invoiceNumber: string;
+  bezeichnung: string;
+  bruttoCents: number;
+  currency: string;
+  /** ISO YYYY-MM-DD */
+  rechnungsdatum: string;
+  /** ISO YYYY-MM-DD or null */
+  faelligkeitsDatum: string | null;
+  /** Absolute URL to download the PDF from the app (optional). */
+  downloadUrl: string | null;
+}
+
 export interface TemplateProps {
   magic_link: MagicLinkProps;
   auslage_eingang: EingangsMailProps;
@@ -133,5 +153,5 @@ export interface TemplateProps {
   /** Aufwandsspende donation receipt — BMF-Pflichtfelder per §10b EStG. */
   spende_bescheinigung: AufwandsspendenBestaetigungProps;
   beitrag_reminder: BeitragsReminderProps;
-  invoice_versendet: Record<string, never>; // Phase 2
+  invoice_versendet: InvoiceVersendetMailProps;
 }
