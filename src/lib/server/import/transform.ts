@@ -311,7 +311,7 @@ function transformAusgaben(
       errors.push({
         tab: "Ausgaben",
         rowIndex: sheetRow,
-        message: `business_id "${businessId}" hat nicht das Format <PREFIX>-<YYYY>-<NNN>`,
+        message: `business_id "${businessId}" hat nicht das Format PREFIX-JJJJ-NNN`,
         preview,
       });
       return;
@@ -500,7 +500,7 @@ function transformEinnahmen(
       errors.push({
         tab: "Einnahmen",
         rowIndex: sheetRow,
-        message: `business_id "${businessId}" hat nicht das Format <PREFIX>-<YYYY>-<NNN>`,
+        message: `business_id "${businessId}" hat nicht das Format PREFIX-JJJJ-NNN`,
         preview,
       });
       return;
@@ -643,7 +643,7 @@ function transformSpenden(
       errors.push({
         tab: "Spenden",
         rowIndex: sheetRow,
-        message: `business_id "${businessId}" hat nicht das Format <PREFIX>-<YYYY>-<NNN>`,
+        message: `business_id "${businessId}" hat nicht das Format PREFIX-JJJJ-NNN`,
         preview,
       });
       return;
