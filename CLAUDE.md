@@ -125,6 +125,20 @@ run `ALTER ROLE app_runtime WITH LOGIN PASSWORD 'app_runtime'` (and the same for
 
 ---
 
+## Deployment + migrations
+
+- **Production**: Vercel (SvelteKit `@sveltejs/adapter-vercel`) against Neon Postgres 17.8.
+- **Every push to `main`** triggers two independent things:
+  - Vercel auto-deploys the app.
+  - `.github/workflows/migrate.yml` runs `pnpm tsx scripts/migrate.ts` against Neon (gated on the `NEON_MIGRATE_DATABASE_URL` repo secret).
+- **Migrations** live in `drizzle/<NNNN>_*.sql`. Generate via `pnpm drizzle-kit generate`. The migrator reads `drizzle/meta/_journal.json` and applies anything not in Neon's `drizzle.__drizzle_migrations` table (matched by SHA256 hash).
+- **Destructive migrations**: split into two phases — additive migration ships first, code change second, DROP last. Don't ship code that requires a not-yet-applied schema change.
+- **Manual hotfix to Neon**: avoid. If you must, follow `docs/RUNBOOK.md §6.4` to keep `__drizzle_migrations` in sync, or the next auto-migrate will try to re-apply and likely fail.
+- **GitHub secrets**: documented in `README.md` "Deploying to production" → "GitHub Actions secrets" table. Use `gh secret list` to inspect, `gh secret set <NAME> --body '<value>'` to add or rotate.
+- **Runbook for failure modes**: `docs/RUNBOOK.md` (§1 rotate secrets, §2 restore from backup, §3 emergency stop, §6 migration runbook).
+
+---
+
 ## Environment variables
 
 All env vars are declared and validated in `src/lib/server/env.ts` (Zod schema).

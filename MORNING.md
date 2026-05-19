@@ -71,8 +71,7 @@ After the tag pushes, Vercel will auto-deploy the new `main` to https://folgeder
 7. **(NEW) Fill `<!-- FILL -->` sections** in `docs/verfahrensdokumentation/` (Kassenwart names, Schwellenwerte, Schulungsprotokoll)
 8. (Optional) Engage lawyer for Datenschutzerklärung review.
 9. (Optional) Engage Steuerberater for Verfahrensdokumentation sign-off (`docs/verfahrensdokumentation/12-unterschriften.md`).
-10. **(NEW, phase-8)** Before merging phase-8 to main: complete the one-time Neon migration reconciliation per `docs/RUNBOOK.md` "Migration runbook → One-time reconciliation before phase-8 merge".
-11. **(NEW, phase-8)** After phase-8 merges: set GitHub repo secret `NEON_MIGRATE_DATABASE_URL` so the new `migrate.yml` workflow can run.
+10. **(NEW, phase-8) Phase-8 merge checklist** — follow `docs/PHASE-8-MERGE-CHECKLIST.md` end-to-end before opening the PR. Covers (a) the one-time Neon `__drizzle_migrations` reconciliation (RUNBOOK §6.1), (b) setting the `NEON_MIGRATE_DATABASE_URL` GitHub secret BEFORE merge so the auto-migrate workflow can run on first push to main, (c) opening + merging the PR, (d) verifying the workflow ran clean.
 
 ## How to resume
 
