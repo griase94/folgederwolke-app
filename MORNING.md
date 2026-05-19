@@ -60,17 +60,35 @@ After the tag pushes, Vercel will auto-deploy the new `main` to https://folgeder
 - **Operational** — `scripts/restore-smoke.sh` quarterly drill harness; `.github/workflows/db-backup.yml` nightly logical backup to Drive; RUNBOOK updated with restore + key-rotation + audit-anchor procedures
 - **Phase 2 backlog** — 19 deferred issues filed via `scripts/seed-phase2-issues.sh` (#9–#28, `phase-2` label)
 
-## ⚠ Required human steps
+## ⚠ Realistic launch checklist (~half a Sunday)
 
-1. Disable old Apps Script after Phase 6 importer (D5 hard cutover).
-2. Set old Sheet to view-only for non-Vorstand.
-3. Announce migration to Vereinsmitglieder.
-4. **(NEW) Sign Vercel DPA** — https://vercel.com/legal/dpa — then set status `signed` in `docs/legal/auftragsverarbeitung/README.md`
-5. **(NEW) Sign Neon DPA** — https://neon.tech/privacy — then set status `signed` in same file
-6. **(NEW) Set `DPA_GATE_PASSED=true`** in Vercel env after both AVVs signed (release gate for `PUBLIC_FORM_ENABLED`)
-7. **(NEW) Fill `<!-- FILL -->` sections** in `docs/verfahrensdokumentation/` (Kassenwart names, Schwellenwerte, Schulungsprotokoll)
-8. (Optional) Engage lawyer for Datenschutzerklärung review.
-9. (Optional) Engage Steuerberater for Verfahrensdokumentation sign-off (`docs/verfahrensdokumentation/12-unterschriften.md`).
+After the 2026-05-19 pragmatic-rebalance review the launch list is short.
+Everything else previously in this section has been **deferred to GitHub
+issues with trigger conditions** so it doesn't sit here as ambient guilt.
+
+| #   | Item                                                                                                                                                       | Where                               | Time   |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ------ |
+| 1   | Merge PR #29: stamp `reviewed-by-opus` + `gh pr merge 29 --squash` + tag `phase-7.5-green`                                                                 | terminal                            | 5 min  |
+| 2   | Accept Vercel click-DPA                                                                                                                                    | Vercel Dashboard → Settings → Legal | 5 min  |
+| 3   | Accept Neon click-DPA                                                                                                                                      | Neon Console → Settings → Security  | 5 min  |
+| 4   | Set `PUBLIC_BASE_URL=https://folgederwolke-app.vercel.app` in Vercel env (Production)                                                                      | Vercel env                          | 2 min  |
+| 5   | Set `DIRECT_DATABASE_URL` in Vercel env (Production, optionally Preview) — needed for the `vercel-build` migration step                                    | Vercel env                          | 2 min  |
+| 6   | Set `PUBLIC_FORM_ENABLED=true` in Vercel env when you're ready for Externe to submit                                                                       | Vercel env                          | 1 min  |
+| 7   | Create UptimeRobot/BetterStack ping on `/healthz` → your inbox (free tier)                                                                                 | uptimerobot.com                     | 5 min  |
+| 8   | Configure minimal backup per Issue #31 (create Drive folder + set `DATABASE_URL_BACKUP` and `DRIVE_BACKUP_FOLDER_ID` secrets, run workflow once to verify) | issue #31                           | 15 min |
+| 9   | Fill the Vorstand contact paragraph in `docs/verfahrensdokumentation/aktennotiz.md` §8                                                                     | text                                | 2 min  |
+
+## Deferred (filed as GitHub issues, will surface when triggers fire)
+
+- #30 — age-key backup encryption
+- #31 — minimal Drive backup setup (the action item in this list)
+- #32 — off-Postgres audit anchor
+- #33 — Sammelbestätigung
+- #34 — SEPA pain.001.001.09
+- #35 — real GoBD-Z3 export
+- #36 — Sentry / proper monitoring
+- #37 — lawyer-vetted DSE v2
+- #38 — pick one Externe Rechtsgrundlage + align DSE/VVT
 
 ## How to resume
 

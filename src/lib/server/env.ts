@@ -39,16 +39,10 @@ const schema = z.object({
   SMTP_PASSWORD: z.string().default(""),
 
   // Feature flags
+  // Default `false`: if the env var is missing or misspelled in production,
+  // the public Auslagen form stays off instead of accidentally exposing it.
+  // Vercel sets PUBLIC_FORM_ENABLED=true explicitly when we're ready to ship.
   PUBLIC_FORM_ENABLED: z
-    .string()
-    .default("true")
-    .transform((v) => v === "true"),
-  /**
-   * AVV/DPA release gate. PUBLIC_FORM_ENABLED is ONLY honoured when this is
-   * also "true". Documented in docs/legal/auftragsverarbeitung/README.md;
-   * Andy must flip this to true after Vercel + Neon DPAs are signed.
-   */
-  DPA_GATE_PASSED: z
     .string()
     .default("false")
     .transform((v) => v === "true"),
@@ -124,14 +118,17 @@ export function requireEnv<K extends keyof Env>(key: K): NonNullable<Env[K]> {
 }
 
 /**
- * Effective public-form gate. PUBLIC_FORM_ENABLED is documentation; the
- * actual runtime gate is the AND of PUBLIC_FORM_ENABLED and DPA_GATE_PASSED,
- * because routing data of non-members through subprocessors without signed
- * AVVs is a DSGVO Art. 28 violation. The ops + dsgvo reviews on 2026-05-19
- * flagged the original single-flag design as theatre.
+ * Public-form gate. Kept as a function (rather than reading env.PUBLIC_FORM_ENABLED
+ * directly at every callsite) so we have one place to add future preconditions
+ * (e.g. business-hours-only mode, regional restriction).
+ *
+ * The earlier DPA_GATE_PASSED double-flag was dropped on 2026-05-19 after the
+ * pragmatic-rebalance review: Vercel + Neon click-DPAs are enough for a small
+ * gemeinnütziger Verein, and a separate env flag was self-imposed bureaucracy.
+ * See docs/legal/auftragsverarbeitung/README.md.
  */
 export function isPublicFormEnabled(): boolean {
-  return env.PUBLIC_FORM_ENABLED && env.DPA_GATE_PASSED;
+  return env.PUBLIC_FORM_ENABLED;
 }
 
 /**
@@ -157,12 +154,6 @@ export function assertProductionEnvSafe(): void {
   if (isProd && !baseUrl) {
     throw new Error(
       "PUBLIC_BASE_URL (or ORIGIN) is required in production so magic-link URLs cannot be derived from an attacker-controlled Host header. See docs/reviews/2026-05-19-security-review.md CRIT-2.",
-    );
-  }
-
-  if (isProd && env.PUBLIC_FORM_ENABLED && !env.DPA_GATE_PASSED) {
-    console.warn(
-      "[env] PUBLIC_FORM_ENABLED=true but DPA_GATE_PASSED=false — public form will remain disabled until both Vercel + Neon DPAs are signed.",
     );
   }
 }

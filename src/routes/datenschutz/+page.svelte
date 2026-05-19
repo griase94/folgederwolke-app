@@ -8,14 +8,6 @@
 </svelte:head>
 
 <main class="container mx-auto max-w-3xl px-6 py-12">
-	<div
-		class="bg-amber-50 border-amber-200 text-amber-900 mb-8 rounded-md border px-4 py-3 text-sm"
-		role="note"
-	>
-		<strong>Hinweis:</strong> Diese Datenschutzerklärung ist in Vorarbeit
-		({data.version}); sie wird vor öffentlichem Launch durch externe Prüfung finalisiert.
-	</div>
-
 	<article
 		class="prose prose-zinc prose-headings:text-foreground prose-a:text-primary max-w-none"
 	>

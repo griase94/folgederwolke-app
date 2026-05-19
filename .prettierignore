@@ -16,3 +16,6 @@ yarn.lock
 # Review artifacts are generated reports + raw JSON dumps from review agents;
 # don't reformat them on every CI run.
 docs/reviews/
+
+# Local Claude Code worktrees / scratch — not part of the repo.
+.claude/
