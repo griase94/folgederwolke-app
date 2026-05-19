@@ -1,0 +1,101 @@
+[
+  {
+    "severity": "SHOULD",
+    "page": "/app",
+    "tried": "Direkter Aufruf der Seite als eingeloggter Admin",
+    "happened": "Status 200, Body enthält Fehlerindikator. Auszug: ' Zum Inhalt springen FW JU FW Folge der Wolke Heute Audit Inbox Transaktionen Mitglieder Rechnungen Projekte Kunden Jahresabschluss Einstellungen Mehr JU juliaschwarz97@web.de ju'",
+    "expected": "200 mit funktionierendem Layout",
+    "fix": "Loader + Komponente prüfen, Stack im Server-Log lesen",
+    "shot": "21-app-home"
+  },
+  {
+    "severity": "MUST",
+    "page": "/app/mitglieder",
+    "tried": "Direkter Aufruf der Seite als eingeloggter Admin",
+    "happened": "Status 500, Body enthält Fehlerindikator. Auszug: ' Zum Inhalt springen FW JU FW Folge der Wolke Heute Audit Inbox Transaktionen Mitglieder Rechnungen Projekte Kunden Jahresabschluss Einstellungen Mehr JU juliaschwarz97@web.de ju'",
+    "expected": "200 mit funktionierendem Layout",
+    "fix": "Loader + Komponente prüfen, Stack im Server-Log lesen",
+    "shot": "22-mitglieder"
+  },
+  {
+    "severity": "MUST",
+    "page": "/app/rechnungen",
+    "tried": "Direkter Aufruf der Seite als eingeloggter Admin",
+    "happened": "Status 500, Body enthält Fehlerindikator. Auszug: ' Zum Inhalt springen FW JU FW Folge der Wolke Heute Audit Inbox Transaktionen Mitglieder Rechnungen Projekte Kunden Jahresabschluss Einstellungen Mehr JU juliaschwarz97@web.de ju'",
+    "expected": "200 mit funktionierendem Layout",
+    "fix": "Loader + Komponente prüfen, Stack im Server-Log lesen",
+    "shot": "23-rechnungen"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/app/transactions",
+    "tried": "Direkter Aufruf der Seite als eingeloggter Admin",
+    "happened": "Status 200, Body enthält Fehlerindikator. Auszug: ' Zum Inhalt springen FW JU FW Folge der Wolke Heute Audit Inbox Transaktionen Mitglieder Rechnungen Projekte Kunden Jahresabschluss Einstellungen Mehr JU juliaschwarz97@web.de ju'",
+    "expected": "200 mit funktionierendem Layout",
+    "fix": "Loader + Komponente prüfen, Stack im Server-Log lesen",
+    "shot": "24-transactions"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/app/inbox",
+    "tried": "Direkter Aufruf der Seite als eingeloggter Admin",
+    "happened": "Status 200, Body enthält Fehlerindikator. Auszug: ' Zum Inhalt springen FW JU FW Folge der Wolke Heute Audit Inbox Transaktionen Mitglieder Rechnungen Projekte Kunden Jahresabschluss Einstellungen Mehr JU juliaschwarz97@web.de ju'",
+    "expected": "200 mit funktionierendem Layout",
+    "fix": "Loader + Komponente prüfen, Stack im Server-Log lesen",
+    "shot": "25-inbox"
+  },
+  {
+    "severity": "MUST",
+    "page": "/app/projekte",
+    "tried": "Direkter Aufruf der Seite als eingeloggter Admin",
+    "happened": "Status 500, Body enthält Fehlerindikator. Auszug: ' Zum Inhalt springen FW JU FW Folge der Wolke Heute Audit Inbox Transaktionen Mitglieder Rechnungen Projekte Kunden Jahresabschluss Einstellungen Mehr JU juliaschwarz97@web.de ju'",
+    "expected": "200 mit funktionierendem Layout",
+    "fix": "Loader + Komponente prüfen, Stack im Server-Log lesen",
+    "shot": "26-projekte"
+  },
+  {
+    "severity": "MUST",
+    "page": "/app/kunden",
+    "tried": "Direkter Aufruf der Seite als eingeloggter Admin",
+    "happened": "Status 500, Body enthält Fehlerindikator. Auszug: ' Zum Inhalt springen FW JU FW Folge der Wolke Heute Audit Inbox Transaktionen Mitglieder Rechnungen Projekte Kunden Jahresabschluss Einstellungen Mehr JU juliaschwarz97@web.de ju'",
+    "expected": "200 mit funktionierendem Layout",
+    "fix": "Loader + Komponente prüfen, Stack im Server-Log lesen",
+    "shot": "27-kunden"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/app/jahresabschluss",
+    "tried": "Direkter Aufruf der Seite als eingeloggter Admin",
+    "happened": "Status 200, Body enthält Fehlerindikator. Auszug: ' Zum Inhalt springen FW JU FW Folge der Wolke Heute Audit Inbox Transaktionen Mitglieder Rechnungen Projekte Kunden Jahresabschluss Einstellungen Mehr JU juliaschwarz97@web.de ju'",
+    "expected": "200 mit funktionierendem Layout",
+    "fix": "Loader + Komponente prüfen, Stack im Server-Log lesen",
+    "shot": "28-jahresabschluss"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/app/einstellungen",
+    "tried": "Direkter Aufruf der Seite als eingeloggter Admin",
+    "happened": "Status 200, Body enthält Fehlerindikator. Auszug: ' Zum Inhalt springen FW JU FW Folge der Wolke Heute Audit Inbox Transaktionen Mitglieder Rechnungen Projekte Kunden Jahresabschluss Einstellungen Mehr JU juliaschwarz97@web.de ju'",
+    "expected": "200 mit funktionierendem Layout",
+    "fix": "Loader + Komponente prüfen, Stack im Server-Log lesen",
+    "shot": "29-einstellungen"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/app/dsgvo",
+    "tried": "Direkter Aufruf der Seite als eingeloggter Admin",
+    "happened": "Status 200, Body enthält Fehlerindikator. Auszug: ' Zum Inhalt springen FW JU FW Folge der Wolke Heute Audit Inbox Transaktionen Mitglieder Rechnungen Projekte Kunden Jahresabschluss Einstellungen Mehr JU juliaschwarz97@web.de ju'",
+    "expected": "200 mit funktionierendem Layout",
+    "fix": "Loader + Komponente prüfen, Stack im Server-Log lesen",
+    "shot": "30-dsgvo"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/app/sheet-resync",
+    "tried": "Direkter Aufruf der Seite als eingeloggter Admin",
+    "happened": "Status 200, Body enthält Fehlerindikator. Auszug: ' Zum Inhalt springen FW JU FW Folge der Wolke Heute Audit Inbox Transaktionen Mitglieder Rechnungen Projekte Kunden Jahresabschluss Einstellungen Mehr JU juliaschwarz97@web.de ju'",
+    "expected": "200 mit funktionierendem Layout",
+    "fix": "Loader + Komponente prüfen, Stack im Server-Log lesen",
+    "shot": "31-sheet-resync"
+  }
+]

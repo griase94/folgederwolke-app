@@ -43,6 +43,17 @@ const schema = z.object({
     .string()
     .default("true")
     .transform((v) => v === "true"),
+  /**
+   * AVV/DPA release gate. PUBLIC_FORM_ENABLED is ONLY honoured when this is
+   * also "true". Documented in docs/legal/auftragsverarbeitung/README.md;
+   * Andy must flip this to true after Vercel + Neon DPAs are signed.
+   */
+  DPA_GATE_PASSED: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
+  /** Canonical public origin (https://folgederwolke-app.vercel.app). Required in prod. */
+  PUBLIC_BASE_URL: z.string().default(""),
 
   // Cron auth
   /** Secret shared between Vercel cron scheduler and the app. */
@@ -106,4 +117,48 @@ export function requireEnv<K extends keyof Env>(key: K): NonNullable<Env[K]> {
     throw new Error(`Missing required env var: ${String(key)}`);
   }
   return v as NonNullable<Env[K]>;
+}
+
+/**
+ * Effective public-form gate. PUBLIC_FORM_ENABLED is documentation; the
+ * actual runtime gate is the AND of PUBLIC_FORM_ENABLED and DPA_GATE_PASSED,
+ * because routing data of non-members through subprocessors without signed
+ * AVVs is a DSGVO Art. 28 violation. The ops + dsgvo reviews on 2026-05-19
+ * flagged the original single-flag design as theatre.
+ */
+export function isPublicFormEnabled(): boolean {
+  return env.PUBLIC_FORM_ENABLED && env.DPA_GATE_PASSED;
+}
+
+/**
+ * Production startup checks. Called from hooks.server.ts. Throws if any
+ * required env var would render the app insecure in production. In dev the
+ * checks are advisory only.
+ */
+export function assertProductionEnvSafe(): void {
+  const isProd = (process.env["NODE_ENV"] ?? "").toLowerCase() === "production";
+
+  const session = env.SESSION_SECRET || process.env["SESSION_SECRET"] || "";
+  if (session.length < 32) {
+    const msg = `SESSION_SECRET is missing or shorter than 32 chars (len=${session.length}). Cookies would be signed with a weak/empty key.`;
+    if (isProd) throw new Error(msg);
+    console.warn(`[env] ${msg} — non-prod, continuing.`);
+  }
+
+  const baseUrl =
+    env.PUBLIC_BASE_URL ||
+    process.env["PUBLIC_BASE_URL"] ||
+    process.env["ORIGIN"] ||
+    "";
+  if (isProd && !baseUrl) {
+    throw new Error(
+      "PUBLIC_BASE_URL (or ORIGIN) is required in production so magic-link URLs cannot be derived from an attacker-controlled Host header. See docs/reviews/2026-05-19-security-review.md CRIT-2.",
+    );
+  }
+
+  if (isProd && env.PUBLIC_FORM_ENABLED && !env.DPA_GATE_PASSED) {
+    console.warn(
+      "[env] PUBLIC_FORM_ENABLED=true but DPA_GATE_PASSED=false — public form will remain disabled until both Vercel + Neon DPAs are signed.",
+    );
+  }
 }

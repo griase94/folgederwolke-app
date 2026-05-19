@@ -12,3 +12,7 @@ pnpm-lock.yaml
 package-lock.json
 yarn.lock
 *.svg
+
+# Review artifacts are generated reports + raw JSON dumps from review agents;
+# don't reformat them on every CI run.
+docs/reviews/

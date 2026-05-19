@@ -18,7 +18,7 @@ import { randomUUID } from "node:crypto";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
-import { env } from "$lib/server/env.js";
+import { env, isPublicFormEnabled } from "$lib/server/env.js";
 import {
   validateAuslageInput,
   composeBezahltVonDisplay,
@@ -118,7 +118,7 @@ async function bestEffortDeleteDriveFile(fileId: string): Promise<void> {
 export const actions: Actions = {
   default: async ({ request, getClientAddress }) => {
     // ── Gate ──────────────────────────────────────────────────────────────────
-    if (!env.PUBLIC_FORM_ENABLED) {
+    if (!isPublicFormEnabled()) {
       throw error(404, "Das Formular ist momentan nicht verfügbar.");
     }
 

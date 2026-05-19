@@ -11,6 +11,15 @@ import type { Handle } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import { resolveSession } from "$lib/server/auth/index.js";
 import { registerHandlers } from "$lib/server/events/index.js";
+import { assertProductionEnvSafe } from "$lib/server/env.js";
+
+// ---------------------------------------------------------------------------
+// One-time startup safety checks
+// ---------------------------------------------------------------------------
+// In production: throws if SESSION_SECRET is missing/short or PUBLIC_BASE_URL
+// is unset — both would render auth insecure. See env.ts for the full list.
+// In dev: logs a warning and continues so local development isn't blocked.
+assertProductionEnvSafe();
 
 // ---------------------------------------------------------------------------
 // One-time event-handler registration (§4.1.1 #2)
