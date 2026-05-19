@@ -98,7 +98,7 @@ const {
 } = await import("$lib/server/domain/cron-tasks.js");
 
 const { sendMail } = await import("$lib/server/mail/index.js");
-const { driveFileStorage } = await import("$lib/server/files/drive-impl.js");
+await import("$lib/server/files/drive-impl.js");
 
 // ---------------------------------------------------------------------------
 // Helpers
