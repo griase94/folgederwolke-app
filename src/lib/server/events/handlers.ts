@@ -15,7 +15,6 @@ import { bus } from "./bus.js";
 import type { EventPayload } from "./types.js";
 import { sendMail } from "$lib/server/mail/index.js";
 import { getDb } from "$lib/server/db/index.js";
-import { auditLog } from "$lib/server/db/schema/audit_log.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { logAudit } from "$lib/server/audit-log/index.js";
 import { and, eq, isNull } from "drizzle-orm";
@@ -60,13 +59,12 @@ export function registerHandlers(): void {
   bus.on<EventPayload<"auslagen.submitted">>(
     "auslagen.submitted",
     async (payload) => {
-      const db = getDb();
-      await db.insert(auditLog).values({
-        actorKind: "system",
+      await logAudit({
         action: "create",
         entityKind: "auslagen_submission",
         entityId: payload.submissionId,
         entityBusinessId: payload.ausId,
+        actorKind: "system",
         actorIpPrefix: payload.ipPrefix,
         actorUaHash: payload.userAgentHash,
         payload: {
@@ -106,6 +104,11 @@ export function registerHandlers(): void {
   // ── expense.erstattet ───────────────────────────────────────────────────
   // Two handlers: (1) ErstattungsMail (best-effort, deduped by sent_mails
   // UNIQUE — second emit is a no-op at the DB layer); (2) audit_log.
+  //
+  // For verein-bezahlt expenses email is null (no external recipient), so the
+  // mail handler is a no-op via the `if (!payload.email) return` guard. The
+  // audit row is intentionally still written: it records the abfluss/sphere
+  // state change (erstattetAm + abflussDatum set) for the activity feed.
   bus.on<EventPayload<"expense.erstattet">>(
     "expense.erstattet",
     async (payload) => {
@@ -155,16 +158,17 @@ export function registerHandlers(): void {
   );
 
   // ── auslage.reviewed ────────────────────────────────────────────────────
-  // Two handlers: (1) UPDATE auslagen_submissions.reviewed_at if NULL — first
-  // admin to open the card "claims" the review; (2) write audit_log row.
-  // Re-emit on subsequent opens is a no-op at the DB layer (WHERE reviewed_at
-  // IS NULL guards the UPDATE) and produces no extra audit rows because we
-  // only emit when reviewed_at was previously NULL (see route load).
+  // A5 (TOCTOU): single handler that gates BOTH side-effects on RETURNING
+  // from the UPDATE. Two concurrent route loads both pass the load()-level
+  // wasUnreviewed check and both emit — but only the call whose UPDATE
+  // actually mutates a row (RETURNING one row) writes the audit log. The
+  // other sees an empty RETURNING set and is a clean no-op. Replaces the
+  // previous split (handler-1 UPDATE, handler-2 audit) which double-audited.
   bus.on<EventPayload<"auslage.reviewed">>(
     "auslage.reviewed",
     async (payload) => {
       const db = getDb();
-      await db
+      const updated = await db
         .update(auslagenSubmissions)
         .set({ reviewedAt: new Date() })
         .where(
@@ -172,13 +176,12 @@ export function registerHandlers(): void {
             eq(auslagenSubmissions.id, payload.submissionId),
             isNull(auslagenSubmissions.reviewedAt),
           ),
-        );
-    },
-  );
-
-  bus.on<EventPayload<"auslage.reviewed">>(
-    "auslage.reviewed",
-    async (payload) => {
+        )
+        .returning({ id: auslagenSubmissions.id });
+      if (updated.length === 0) {
+        // Lost the race or already reviewed — no audit row.
+        return;
+      }
       await logAudit({
         action: "update",
         entityKind: "auslagen_submission",

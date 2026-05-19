@@ -11,6 +11,7 @@
 -->
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { toast } from 'svelte-sonner';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -109,6 +110,7 @@
 						const data = result.data as { error?: string } | null;
 						error = data?.error ?? 'Ablehnung fehlgeschlagen.';
 					} else if (result.type === 'success' || result.type === 'redirect') {
+						toast.success('Abgelehnt');
 						open = false;
 						reset();
 						await update();

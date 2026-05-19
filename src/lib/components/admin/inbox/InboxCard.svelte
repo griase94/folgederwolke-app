@@ -53,6 +53,7 @@
 <a
 	href="/app/inbox/{submission.ausId}"
 	data-inbox-card-index={index}
+	data-testid="inbox-card"
 	aria-label="Einreichung {submission.ausId} öffnen"
 	class="group focus-visible:ring-ring relative flex items-stretch gap-4 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 sm:px-5 sm:py-4"
 	class:border-primary={isUnread}

@@ -70,7 +70,9 @@ test.describe("@phase-4 audit inbox", () => {
     page,
   }) => {
     await guardInbox(page);
-    const initialRows = await page.locator("tbody tr").count();
+    const initialRows = await page
+      .locator('[data-testid="inbox-card"]')
+      .count();
 
     await page.getByRole("button", { name: /Manuell hinzufügen/i }).click();
     await expect(
@@ -92,7 +94,9 @@ test.describe("@phase-4 audit inbox", () => {
 
     // New row appears in table (page invalidates after success)
     await page.waitForLoadState("networkidle");
-    const updatedRows = await page.locator("tbody tr").count();
+    const updatedRows = await page
+      .locator('[data-testid="inbox-card"]')
+      .count();
     expect(updatedRows).toBeGreaterThan(initialRows);
   });
 });

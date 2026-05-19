@@ -22,7 +22,8 @@ export interface AuditEntry {
   action: AuditAction;
   entityKind: EntityKind;
   entityId: string | null;
-  actorUserId: string | null;
+  entityBusinessId?: string;
+  actorUserId?: string | null;
   actorKind?: string;
   actorIpPrefix?: string;
   actorUaHash?: string;
@@ -53,6 +54,7 @@ export async function logAudit(
     action: entry.action,
     entityKind: entry.entityKind,
     entityId: entry.entityId ?? undefined,
+    entityBusinessId: entry.entityBusinessId,
     actorUserId: entry.actorUserId ?? undefined,
     actorKind: entry.actorKind ?? "user",
     actorIpPrefix: entry.actorIpPrefix,

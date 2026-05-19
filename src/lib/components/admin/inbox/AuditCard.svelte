@@ -13,6 +13,7 @@
 -->
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import BelegPreview from './BelegPreview.svelte';
@@ -170,6 +171,7 @@
 							const data = result.data as { error?: string } | null;
 							approveError = data?.error ?? 'Freigabe fehlgeschlagen.';
 						} else {
+							toast.success('Freigegeben');
 							await update();
 						}
 					};
@@ -177,7 +179,7 @@
 				class="sm:flex-1"
 			>
 				<input type="hidden" name="submissionId" value={submission.id} />
-				<Button type="submit" class="w-full" disabled={approving}>
+				<Button type="submit" class="h-11 w-full" disabled={approving}>
 					{#if approving}
 						<svg class="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
 							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
@@ -196,7 +198,7 @@
 			<Button
 				type="button"
 				variant="destructive"
-				class="sm:flex-1"
+				class="h-11 sm:flex-1"
 				onclick={() => (rejectOpen = true)}
 				disabled={approving}
 			>
@@ -210,7 +212,7 @@
 			<Button
 				type="button"
 				variant="outline"
-				class="sm:flex-1"
+				class="h-11 sm:flex-1"
 				onclick={() => (aufwandsspendeOpen = true)}
 				disabled={approving}
 			>

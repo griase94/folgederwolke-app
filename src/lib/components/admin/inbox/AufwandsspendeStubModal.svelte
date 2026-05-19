@@ -17,13 +17,12 @@
 		<Dialog.Header>
 			<Dialog.Title>Aufwandsspende</Dialog.Title>
 			<Dialog.Description>
-				Aufwandsspende-Workflow ab Phase 2 verfügbar.
+				Diese Funktion ist in Vorbereitung.
 			</Dialog.Description>
 		</Dialog.Header>
 		<div class="text-sm text-muted-foreground">
 			<p>
-				Sobald Phase 2 freigegeben ist, kann das Mitglied hier auf die Erstattung verzichten
-				und erhält automatisch eine BMF-konforme Zuwendungsbestätigung.
+				Wir richten den Workflow gemeinsam mit dem Steuerberater ein und schalten ihn bald frei.
 			</p>
 		</div>
 		<Dialog.Footer>
