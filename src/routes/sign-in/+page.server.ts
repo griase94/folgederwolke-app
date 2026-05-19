@@ -1,6 +1,6 @@
 /**
  * POST /sign-in — issues a magic link (or no-ops for non-admin emails).
- * Always returns { ok: true, message: "Check your inbox 💌" } (anti-enumeration).
+ * Always returns { ok: true, message: "Schau in dein Postfach 💌" } (anti-enumeration).
  */
 
 import { fail, type Actions } from "@sveltejs/kit";
@@ -25,12 +25,12 @@ export const actions: Actions = {
     } catch (err) {
       if (err instanceof RateLimitError) {
         // Still return identical message — don't reveal rate-limiting to caller
-        return { ok: true, message: "Check your inbox 💌" };
+        return { ok: true, message: "Schau in dein Postfach 💌" };
       }
       // Unexpected error — log but still return generic message
       console.error("[sign-in] issueMagicLink error:", err);
     }
 
-    return { ok: true, message: "Check your inbox 💌" };
+    return { ok: true, message: "Schau in dein Postfach 💌" };
   },
 };

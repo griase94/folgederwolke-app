@@ -18,7 +18,7 @@
  * }
  */
 
-import { json } from "@sveltejs/kit";
+import { error, json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types.js";
 
 export interface SearchResult {
@@ -41,7 +41,14 @@ export interface SearchResponse {
   took_ms: number;
 }
 
-export const GET: RequestHandler = ({ url }) => {
+export const GET: RequestHandler = ({ url, locals }) => {
+  // Stub or not, this endpoint must require an authenticated admin session —
+  // otherwise it leaks the response shape (and later the real data) to any
+  // unauthenticated caller. Flagged by the 2026-05-19 security review (HIGH-4).
+  if (!locals.session) {
+    throw error(401, "Authentication required");
+  }
+
   const q = url.searchParams.get("q") ?? "";
 
   const response: SearchResponse = {

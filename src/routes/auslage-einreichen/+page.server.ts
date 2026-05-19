@@ -364,15 +364,19 @@ export const actions: Actions = {
         bezahltVonKind: bv.kind,
       });
     } catch (busErr) {
-      // bus.emit throws AggregateError if any handler re-throws. The mail
-      // handler swallows its own errors, so the only re-throwing handler is
-      // the audit log insert. Log and continue — the user-visible result
-      // (submission saved + Drive uploaded) must not be hidden behind an
-      // audit-write transient failure.
+      // The mail handler swallows its own errors, so any error reaching here
+      // came from the audit-log handler — which is the exact tamper window
+      // ADR-0004 closes. Surface it to the caller; their idempotent retry
+      // (business_id uniqueness) will not duplicate the row. The 2026-05-19
+      // security review (HIGH-1) flagged the previous swallow-and-continue.
       console.error(
-        `[auslage-einreichen] event handler failure for ${ausId}:`,
+        `[auslage-einreichen] audit handler failure for ${ausId}:`,
         busErr,
       );
+      return fail(500, {
+        error:
+          "Deine Einreichung wurde zwischengespeichert, aber die Buchhaltung konnte sie nicht endgültig protokollieren. Bitte versuche es in einer Minute noch einmal — Doppeleinreichungen werden automatisch erkannt.",
+      });
     }
 
     // ── 7. Redirect ───────────────────────────────────────────────────────────

@@ -33,14 +33,14 @@
 				<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;">
 					<tbody>
 						<tr>
-							<td style="background:linear-gradient(135deg,oklch(0.43 0.20 350) 0%,oklch(0.32 0.18 350) 100%);padding:30px 40px;">
+							<td style="background:#be185d;padding:30px 40px;">
 								<p style="margin:0;color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;">Folge der Wolke e.V.</p>
 								<p style="margin:4px 0 0 0;color:#FBCFE8;font-size:13px;">Eine Rechnung von uns</p>
 							</td>
 						</tr>
 						<tr>
 							<td style="padding:36px 40px;line-height:1.6;font-size:14px;">
-								<p style="margin:0 0 14px 0;font-size:16px;color:oklch(0.43 0.20 350);"><strong>Liebe:r {customerName},</strong></p>
+								<p style="margin:0 0 14px 0;font-size:16px;color:#be185d;"><strong>Liebe:r {customerName},</strong></p>
 								<p style="margin:0 0 16px 0;">anbei sende ich dir/Ihnen unsere Rechnung im Anhang. Hier sind die wichtigsten Eckdaten:</p>
 								<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#FDF2F8;border-radius:8px;margin:0 0 22px 0;">
 									<tbody>
@@ -65,7 +65,7 @@
 									<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 22px 0;">
 										<tbody>
 											<tr>
-												<td style="background:oklch(0.43 0.20 350);border-radius:8px;text-align:center;">
+												<td style="background:#be185d;border-radius:8px;text-align:center;">
 													<!-- eslint-disable svelte/no-navigation-without-resolve --><a href={downloadUrl} style="display:inline-block;padding:12px 28px;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;">Rechnung herunterladen</a>
 												</td>
 											</tr>
@@ -73,7 +73,7 @@
 									</table>
 								{/if}
 								<p style="margin:0 0 14px 0;">Bei Rueckfragen zur Rechnung melde dich gerne jederzeit.</p>
-								<p style="margin:0;font-size:15px;color:oklch(0.43 0.20 350);">Mit herzlichen Gruessen<br /><strong>deine Folge der Wolke Finanz-Gschaftler:innen</strong></p>
+								<p style="margin:0;font-size:15px;color:#be185d;">Mit herzlichen Grüßen<br /><strong>deine Folge der Wolke Finanz-Geschäftler:innen</strong></p>
 							</td>
 						</tr>
 						<tr>

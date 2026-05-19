@@ -85,7 +85,7 @@ export async function issueMagicLink(
     // MUST-fix #3: consume rate-limit slot, perform constant-time hash,
     // do NOT send real email, do NOT reveal admin status.
     sha256(randomBytes(32).toString("base64url")); // no-op nonce hash
-    return { ok: true, message: "Check your inbox 💌" };
+    return { ok: true, message: "Schau in dein Postfach 💌" };
   }
 
   // Dedup: if a non-consumed, non-expired link was issued <60s ago, skip new insert
@@ -101,7 +101,7 @@ export async function issueMagicLink(
 
   if (recentLink) {
     // MUST-fix #9: dedup — skip insert + send (no inbox spam)
-    return { ok: true, message: "Check your inbox 💌" };
+    return { ok: true, message: "Schau in dein Postfach 💌" };
   }
 
   // Issue new magic link
@@ -160,7 +160,7 @@ export async function issueMagicLink(
   // Device-binding intent cookie (MUST-fix #7)
   setIntentCookie(cookies, tokenHash);
 
-  return { ok: true, message: "Check your inbox 💌" };
+  return { ok: true, message: "Schau in dein Postfach 💌" };
 }
 
 // ---------------------------------------------------------------------------
@@ -350,6 +350,15 @@ export async function resolveSession(
     where: eq(users.id, row.userId),
   });
   if (!user) return null;
+
+  // Re-check the admin allowlist on every request. Without this, removing
+  // a user from ADMIN_EMAILS has no effect for up to 30 days (the session
+  // absolute lifetime). Flagged by the 2026-05-19 security review (CRIT-3).
+  if (!isAdminEmail(user.emailCanonical)) {
+    await db.delete(sessions).where(eq(sessions.id, row.id));
+    clearSessionCookie(cookies);
+    return null;
+  }
 
   return {
     session: row,
