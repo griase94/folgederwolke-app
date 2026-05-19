@@ -1,5 +1,6 @@
 <script lang="ts">
 	import AuslagenForm from '$lib/components/forms/AuslagenForm.svelte';
+	import OfflineBanner from '$lib/components/pwa/OfflineBanner.svelte';
 	import type { PageData, ActionData } from './$types.js';
 
 	// `form` carries ActionData from the POST action. auto-fix-B's action returns
@@ -23,6 +24,8 @@
 	<!-- viewport-fit=cover for iOS notch / safe-area support -->
 	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 </svelte:head>
+
+<OfflineBanner />
 
 <main class="mx-auto max-w-xl px-4 py-8">
 	<header class="mb-6">

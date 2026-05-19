@@ -46,6 +46,15 @@ const authHandle: Handle = async ({ event, resolve }) => {
   // Protect /app/* routes
   if (event.url.pathname.startsWith("/app")) {
     if (!event.locals.session) {
+      // PM-007: an Externe who installs the PWA from /auslage-einreichen
+      // will have start_url=/app?source=pwa (per manifest.webmanifest).
+      // Without this branch they'd land on /sign-in?redirectTo=/app and
+      // be stuck — they have no admin credentials. Redirect them straight
+      // back to the public form instead. Authed admins on the same flow
+      // never hit this branch because event.locals.session is truthy.
+      if (event.url.searchParams.get("source") === "pwa") {
+        redirect(303, "/auslage-einreichen?source=pwa");
+      }
       redirect(
         303,
         `/sign-in?redirectTo=${encodeURIComponent(event.url.pathname)}`,
