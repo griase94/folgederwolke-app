@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  testMatch: ["julia-review*.spec.ts"],
+  testMatch: ["julia-review*.spec.ts", "julia-buchhaltung-*.spec.ts"],
   fullyParallel: false,
   forbidOnly: false,
   retries: 0,
