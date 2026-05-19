@@ -26,7 +26,9 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { bezahltVonKindEnum } from "./enums.js";
+import { expenses } from "./expenses.js";
 import { members } from "./members.js";
+import { users } from "./users.js";
 
 export const auslagenSubmissions = pgTable(
   "auslagen_submissions",
@@ -70,10 +72,18 @@ export const auslagenSubmissions = pgTable(
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     /** 'approved' | 'rejected' (text, not enum — only two values and easy to extend). */
     decision: text("decision"),
-    decidedByUserId: uuid("decided_by_user_id"),
+    // FK added in migration 0010 (schema review HIGH-F3 — was a bare uuid
+    // with no constraint). ON DELETE RESTRICT so a user delete doesn't leave
+    // an unattributed decision row.
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id, {
+      onDelete: "restrict",
+    }),
     decisionReason: text("decision_reason"),
     /** If approved, link to the created expense row. */
-    approvedExpenseId: uuid("approved_expense_id"),
+    approvedExpenseId: uuid("approved_expense_id").references(
+      () => expenses.id,
+      { onDelete: "restrict" },
+    ),
     /**
      * When admin first viewed/opened this submission in the audit inbox
      * (Phase 4). Used to highlight unread items.

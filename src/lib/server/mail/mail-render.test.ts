@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * @phase-1
+ * @phase-1 @gmail-safe
  *
  * Vitest unit tests for mail template rendering.
  *
@@ -8,10 +8,17 @@
  * - HTML contains key German phrases
  * - HTML contains VEREIN_NAME / footer text
  * - Plain-text fallback is non-empty and has key phrases
+ * - Rendered HTML uses ONLY mail-client-safe CSS (no oklch, no gradient).
+ *   The 2026-05-19 ux + test-coverage reviews flagged 5 templates that
+ *   used oklch() + linear-gradient(), both of which Gmail strips, leaving
+ *   unreadable headers. The Gmail-safe assertion below runs against every
+ *   shipped template so a future template can't regress.
  *
  * No real mail is sent; render.ts is tested in isolation.
  */
 
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderMailTemplate } from "./render.js";
 
@@ -194,5 +201,41 @@ describe("MagicLink", () => {
     expect(text.length).toBeGreaterThan(50);
     expect(text).toContain("lea@example.com");
     expect(text).toContain(VEREIN_NAME);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Gmail-safe CSS regression guard (Round E, 2026-05-19)
+// ---------------------------------------------------------------------------
+// Scans every *.svelte under templates/ and refuses to ship any that
+// references `oklch()` or `linear-gradient(`. Gmail's CSS sanitiser strips
+// both and the previous templates ended up with invisible headers / CTAs.
+//
+// The check operates on the SOURCE files rather than rendered output so it
+// fires even when a template is added but no test rendering it exists yet.
+
+describe("mail templates — Gmail-safe CSS sweep", () => {
+  it("no template uses oklch() or linear-gradient()", async () => {
+    const templateDir = new URL("./templates/", import.meta.url);
+    const entries = await readdir(templateDir);
+    const svelteFiles = entries.filter((f) => f.endsWith(".svelte"));
+    expect(svelteFiles.length).toBeGreaterThan(0);
+
+    const offenders: string[] = [];
+    for (const file of svelteFiles) {
+      const source = await readFile(join(templateDir.pathname, file), "utf-8");
+      // Strip comment blocks before checking — the MagicLink template
+      // intentionally documents "no oklch" in its header comment.
+      const stripped = source
+        .replace(/<!--[\s\S]*?-->/g, "")
+        .replace(/\/\*[\s\S]*?\*\//g, "");
+      if (/oklch\s*\(/.test(stripped)) {
+        offenders.push(`${file}: contains oklch()`);
+      }
+      if (/linear-gradient\s*\(/.test(stripped)) {
+        offenders.push(`${file}: contains linear-gradient()`);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });

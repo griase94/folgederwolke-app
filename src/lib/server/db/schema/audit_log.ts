@@ -35,8 +35,12 @@ export const auditLog = pgTable(
       .notNull()
       .defaultNow(),
 
+    // ON DELETE RESTRICT (changed from SET NULL in migration 0010): silently
+    // mutating audit_log rows when a user is deleted corrupts the hash chain
+    // (DSGVO review CRIT-07). Art. 17 erasure goes through pseudonymise()
+    // which redacts payload fields rather than nulling the FK.
     actorUserId: uuid("actor_user_id").references(() => users.id, {
-      onDelete: "set null",
+      onDelete: "restrict",
     }),
     /** "user" (signed-in admin) or "system" (cron/import). Free text for breadth. */
     actorKind: text("actor_kind").notNull().default("user"),

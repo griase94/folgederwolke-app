@@ -1,9 +1,10 @@
 /**
- * Audit log hash-chain — TypeScript reference of the SQL trigger logic.
+ * Audit log hash-chain v2 — TypeScript reference of the SQL trigger logic.
  *
- * The authoritative implementation lives in `drizzle/0009_audit_log_hardening.sql`
- * (PL/pgSQL trigger `audit_log_chain_trg`). This file documents and exports
- * the *exact* hash recipe used by the trigger so that:
+ * The authoritative implementation lives in
+ * `drizzle/0010_post_review_hardening.sql` (PL/pgSQL trigger
+ * `audit_log_chain_trg`). This file documents and exports the *exact* hash
+ * recipe used by the trigger so that:
  *
  *   1. The verifier (verifier.ts) can recompute `row_hash` per row and
  *      assert it matches what the DB stored.
@@ -12,54 +13,77 @@
  *   3. Anyone reviewing tamper-evidence guarantees can read the algorithm
  *      in TypeScript without parsing PL/pgSQL.
  *
- * Recipe (ADR-0004):
+ * Recipe v2 (post-2026-05-19 review). Replaces v1 in 0009; the differences
+ * are documented inline below. v1 is preserved as a comment in the migration
+ * file for archaeology, but no production deployment runs it.
  *
  *     row_hash = sha256(
- *       prev_hash   ||  -- '' for the very first row (chain_seq = 1)
- *       actor_user_id || '|' ||
- *       action || '|' ||
- *       entity_kind || '|' ||
- *       entity_id || '|' ||
- *       to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z" AT TIME ZONE UTC') || '|' ||
- *       payload_canonical_json
+ *       prev_hash   || '|' ||   -- '' on chain_seq = 1
+ *       id          || '|' ||   -- v2: id is now hashed (CRIT-01)
+ *       chain_seq   || '|' ||   -- v2: hashed as text
+ *       actor_user_id            || '|' ||   -- '\N' if NULL
+ *       actor_kind               || '|' ||   -- v2: hashed (CRIT-01)
+ *       actor_ip_prefix          || '|' ||   -- v2: hashed (CRIT-01)
+ *       actor_ua_hash            || '|' ||   -- v2: hashed (CRIT-01)
+ *       action                   || '|' ||
+ *       entity_kind              || '|' ||
+ *       entity_id                || '|' ||   -- '\N' if NULL
+ *       entity_business_id       || '|' ||   -- v2: hashed (CRIT-01)
+ *       occurred_at_ms           || '|' ||   -- v2: ms precision, not μs (CRIT-F1)
+ *       payload_text                          -- v2: NO jsonb_strip_nulls (HIGH-04)
  *     )
  *
- * - NULLs are serialized as the literal string `\N` (Postgres convention).
- * - `created_at` is the row's `occurred_at` (the trigger uses NEW.occurred_at).
- * - `payload_canonical_json` is `jsonb` cast to text via `jsonb::text` AFTER
- *   passing through `jsonb_strip_nulls` for stability.
- * - All field separators are single pipes ('|').
- *
- * The hex-encoded sha256 digest is stored in `row_hash` (text).
+ * Field-separator: `|`. NULLs are serialized as the literal string `\N`
+ * (Postgres convention). The hex-encoded sha256 digest is stored in row_hash.
  *
  * Serialization invariant: the trigger acquires
- * `pg_advisory_xact_lock(hashtext('audit_log_chain'))` BEFORE reading the
- * latest `chain_seq` / `prev_hash`. This serializes concurrent inserts
- * within a transaction so the chain has a single linear order.
+ * `pg_advisory_xact_lock(4711, 1)` BEFORE reading the chain head (v2:
+ * namespaced two-arg form so the lock cannot collide with the id-allocator
+ * or future advisory locks — schema CRIT-F2, audit-chain HIGH-01).
  */
 
 import { createHash } from "node:crypto";
 
-/** Postgres NULL serialization marker — matches `coalesce(x::text, '\\N')` in the trigger. */
+/** Postgres NULL serialization marker — matches `coalesce(x::text, '\\N')`. */
 export const NULL_MARKER = "\\N";
 
+/** Reserved advisory-lock namespace for the audit-log chain. */
+export const ADVISORY_LOCK_NAMESPACE = 4711 as const;
+
+/** Reserved advisory-lock key within the namespace. */
+export const ADVISORY_LOCK_KEY = 1 as const;
+
 export interface ChainInputs {
-  prevHash: string | null;
+  /** UUID — never null (it's the audit_log row PK). */
+  id: string;
+  /** Integer ≥ 1. */
+  chainSeq: number;
+  /** '' on chain_seq = 1, else the previous row's row_hash. */
+  prevHash: string;
   actorUserId: string | null;
+  actorKind: string | null;
+  actorIpPrefix: string | null;
+  actorUaHash: string | null;
   action: string;
   entityKind: string;
   entityId: string | null;
-  /** Row's `occurred_at` — the trigger uses NEW.occurred_at. */
+  entityBusinessId: string | null;
+  /** Row's `occurred_at`. The trigger truncates to ms before formatting. */
   occurredAt: Date;
-  /** Already-canonical jsonb payload (the trigger uses jsonb_strip_nulls + ::text). */
+  /** jsonb payload as text, NOT stripped of null-valued keys. */
   payloadCanonical: string;
 }
 
 /**
  * Format a Date as the same UTC string the trigger produces via
- * `to_char(NEW.occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US')`.
+ * `to_char(date_trunc('milliseconds', NEW.occurred_at) AT TIME ZONE 'UTC',
+ *         'YYYY-MM-DD"T"HH24:MI:SS.MS')`.
  *
- * Example: 2026-05-19T03:14:15.926000
+ * `MS` in Postgres' to_char vocabulary = 3-digit milliseconds (NOT
+ * microseconds). The v1 trigger used `US` (6 digits) which never matched
+ * JS Date's ms precision — schema review CRIT-F1.
+ *
+ * Example: 2026-05-19T03:14:15.926
  */
 export function formatOccurredAtForHash(d: Date): string {
   const pad = (n: number, w = 2) => String(n).padStart(w, "0");
@@ -69,22 +93,28 @@ export function formatOccurredAtForHash(d: Date): string {
   const hh = pad(d.getUTCHours());
   const mi = pad(d.getUTCMinutes());
   const ss = pad(d.getUTCSeconds());
-  // Postgres `US` = microseconds (6 digits). JS Date has ms-precision; pad with '000'.
-  const us = pad(d.getUTCMilliseconds(), 3) + "000";
-  return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}.${us}`;
+  const ms = pad(d.getUTCMilliseconds(), 3);
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}.${ms}`;
 }
 
 /**
- * Compute the hex sha256 row_hash for a chain input. Mirrors the PL/pgSQL
- * trigger byte-for-byte.
+ * Compute the hex sha256 row_hash for a chain input. Mirrors the v2 PL/pgSQL
+ * trigger byte-for-byte. Adding or reordering a part here MUST be matched in
+ * `audit_log_chain_fn()` and a new migration.
  */
 export function computeRowHash(input: ChainInputs): string {
   const parts = [
-    input.prevHash ?? "",
+    input.prevHash,
+    input.id,
+    String(input.chainSeq),
     input.actorUserId ?? NULL_MARKER,
+    input.actorKind ?? NULL_MARKER,
+    input.actorIpPrefix ?? NULL_MARKER,
+    input.actorUaHash ?? NULL_MARKER,
     input.action,
     input.entityKind,
     input.entityId ?? NULL_MARKER,
+    input.entityBusinessId ?? NULL_MARKER,
     formatOccurredAtForHash(input.occurredAt),
     input.payloadCanonical,
   ];
