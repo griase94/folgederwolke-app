@@ -271,7 +271,7 @@ export async function generateEurPdf(
   );
   y -= mm(4);
   page.drawText(
-    "Wirtschaftlicher Geschäftsbetrieb: steuerfrei unterhalb Freigrenze 50.000 € (§ 64 AO ab 2026).",
+    "Wirtschaftlicher Geschäftsbetrieb: steuerfrei unterhalb Freigrenze 50.000 € (§ 64 Abs. 3 AO, ab 2025).",
     {
       x: MARGIN_X,
       y,

@@ -101,9 +101,13 @@ export type Env = z.infer<typeof schema>;
 // Build-time SSR / prerender sees an empty env; that's OK.
 // Runtime callers can `requireEnv("DATABASE_URL")` to fail loudly if missing.
 function loadEnv(): Env {
-  // Supplement $env/dynamic/private with process.env — handles the bundle
-  // edge case where dynEnv is captured early and some keys aren't present yet.
-  const merged = { ...process.env, ...dynEnv } as Record<string, string>;
+  // Merge $env/dynamic/private with process.env. process.env wins so that
+  // vi.stubEnv() in tests is reflected on re-import, AND any runtime
+  // process.env update (e.g. CI-injected secrets) takes precedence over a
+  // stale captured dynEnv. We still pull dynEnv as the base layer because
+  // SvelteKit's loader has visibility into vars that aren't on process.env
+  // in some build modes.
+  const merged = { ...dynEnv, ...process.env } as Record<string, string>;
   const result = schema.safeParse(merged);
   if (result.success) return result.data;
   return schema.parse({});

@@ -165,17 +165,27 @@ describe("MagicLink", () => {
     const { html } = await renderTemplate("MagicLink", magicLinkProps);
 
     expect(html).toContain(VEREIN_NAME);
-    expect(html).toContain("Hallo");
+    // Headline (rewritten 2026-05-19 to be tighter than "Hallo!…")
+    expect(html).toContain("Dein Anmelde-Link");
+    // Email is shown in the "Du wurdest aufgefordert…" sentence so the
+    // user can spot phishing where the click-through identity doesn't
+    // match what they entered
     expect(html).toContain("lea@example.com");
+    // The CTA URL must be present and unmodified (no smart-quote escaping)
     expect(html).toContain(
       "https://app.folgederwolke.de/sign-in/verify?token=abc123",
     );
+    // Expiry minutes are surfaced (the old template said "15 Minuten",
+    // the new one says "{n} Minuten" — assert on the number)
     expect(html).toContain("15");
-    // Security note (phrase may span whitespace in SSR output — check key word)
-    expect(html).toContain("Sicherheitshinweis");
-    // Click-through note (D13)
-    expect(html).toContain("Als lea@example.com anmelden");
-    expect(html).toContain("Mit besten Grüßen");
+    // Fallback link section — guards against the link being stripped
+    // by Outlook-style aggressive sanitisers
+    expect(html).toContain("Funktioniert der Knopf nicht?");
+    // Anti-phishing language explaining what the user is about to do
+    expect(html).toContain("aufgefordert");
+    // No Gmail-stripped CSS slipped back in
+    expect(html).not.toContain("oklch(");
+    expect(html).not.toContain("linear-gradient(");
   });
 
   it("plain-text fallback is non-empty and has key German text", async () => {

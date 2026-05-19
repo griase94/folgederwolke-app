@@ -158,7 +158,13 @@ export async function loadDashboardKpis(): Promise<DashboardKpis> {
       ),
   ]);
 
-  const FREIGRENZE_CENTS = 4_500_000; // §19 UStG: 45.000 € gross
+  // § 64 Abs. 3 AO Besteuerungsfreigrenze for wirtschaftlicher Geschäftsbetrieb:
+  // 35.000 € until 2024, 45.000 € from 2024-01-01, 50.000 € from 2025-01-01
+  // (JStG 2024). § 19 UStG Kleinunternehmer is separate (and has its own
+  // thresholds of 25.000 / 100.000 € from 2025) — the WGB widget tracks
+  // the gemeinnützigkeitsrechtliche Freigrenze, not the USt one. Money
+  // review CRIT-5 (2026-05-19) flagged the obsolete 45.000 € constant.
+  const FREIGRENZE_CENTS = 5_000_000; // 50.000 €, § 64 Abs. 3 AO (ab 2025)
   const wgbCents = Number(wgbEinnahmen[0]?.sumCents ?? 0);
   const wgbPct = wgbCents / FREIGRENZE_CENTS;
   const wgbStatus: WgbStatus["status"] =
