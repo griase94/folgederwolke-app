@@ -18,6 +18,12 @@ const schema = z.object({
   DRIVE_PARENT_FOLDER_ID: z.string().default(""),
   TEMPLATE_DOC_ID: z.string().default(""),
 
+  // Sheets — legacy importer (Phase 6 one-shot cutover)
+  /** Spreadsheet ID of the legacy PROD sheet (read via SA or fallback CSV upload). */
+  LIVE_SHEET_ID: z.string().default(""),
+  /** Absolute path to service-account JSON. When set + readable, importer uses SA-read path. */
+  GOOGLE_SERVICE_ACCOUNT_KEY_FILE: z.string().default(""),
+
   // Admin
   ADMIN_EMAILS: z.string().default(""),
 
@@ -38,11 +44,21 @@ const schema = z.object({
     .default("true")
     .transform((v) => v === "true"),
 
+  // Cron auth
+  /** Secret shared between Vercel cron scheduler and the app. */
+  CRON_SECRET: z.string().default(""),
+
   // Org constants
   VEREIN_NAME: z.string().default(""),
   VEREIN_STEUERNUMMER: z.string().default(""),
   VEREIN_VR: z.string().default(""),
   VEREIN_ADRESSE: z.string().default(""),
+  /** Verein IBAN for Beitragsreminder + SEPA templates. */
+  VEREIN_IBAN: z.string().default(""),
+  /** Verein BIC. */
+  VEREIN_BIC: z.string().default(""),
+  /** Verein Bankname (display). */
+  VEREIN_BANK: z.string().default(""),
 
   // Spenden — Zuwendungsbestätigung (Bescheinigung) Pflichtfelder.
   // ZUWENDUNGSBESTAETIGUNG_ENABLED is derived 'auto' from BESCHEID_TYP +
