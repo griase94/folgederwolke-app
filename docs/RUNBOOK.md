@@ -328,23 +328,45 @@ export NEON_URL='postgres://...@<neon-host>/<db>?sslmode=require'
 psql "$NEON_URL" -c "SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY id;"
 ```
 
-Expected: rows 1-10 covering migrations 0000_init through 0009_audit_log_hardening. If 0010/0011 already appear, skip to Step 4.
+Expected: 4 rows covering migrations 0000–0003 only. Migrations 0004–0011 were hand-applied to Neon (the app uses tables/columns from all of them) but were never registered in `__drizzle_migrations` — that's the scope of this reconciliation.
 
 **Step 2 — Compute the SHA256 hashes drizzle expects:**
 
 ```bash
-# Run in repo root:
+# Run in repo root — emits idx, when, hash, tag for every migration that
+# needs registering (0004 onwards on the current state of Neon).
 node -e '
   const fs = require("fs");
   const c = require("crypto");
-  for (const f of ["0010_post_review_hardening", "0011_audit_trigger_digest_path_fix", "0012_default_privileges"]) {
-    const sql = fs.readFileSync(`drizzle/${f}.sql`, "utf8");
-    console.log(f, c.createHash("sha256").update(sql).digest("hex"));
+  const j = JSON.parse(fs.readFileSync("drizzle/meta/_journal.json", "utf8"));
+  for (const e of j.entries) {
+    if (e.idx < 4) continue;
+    const sql = fs.readFileSync(`drizzle/${e.tag}.sql`, "utf8");
+    const hash = c.createHash("sha256").update(sql).digest("hex");
+    console.log(`idx=${e.idx}  when=${e.when}  hash=${hash}  ${e.tag}`);
   }
 '
 ```
 
-Capture the two hashes.
+**Step 2b — Sanity check: confirm Neon's schema is at the expected state:**
+
+```bash
+psql "$NEON_URL" <<'SQL'
+SELECT
+  EXISTS (SELECT 1 FROM information_schema.columns
+          WHERE table_name='members' AND column_name='nachname') AS has_0004,
+  EXISTS (SELECT 1 FROM information_schema.columns
+          WHERE table_name='invoices' AND column_name='pdf_bytes') AS has_0005,
+  EXISTS (SELECT 1 FROM information_schema.tables
+          WHERE table_name='projects') AS has_0006,
+  EXISTS (SELECT 1 FROM information_schema.views
+          WHERE table_name='eur_summary') AS has_0007,
+  EXISTS (SELECT 1 FROM information_schema.columns
+          WHERE table_name='audit_log' AND column_name='chain_seq') AS has_0009;
+SQL
+```
+
+All `t` → safe to proceed. Any `f` → STOP and investigate; we'd be marking a migration as applied that isn't really applied.
 
 **Step 3 — Apply 0012 against Neon (new migration in phase-8):**
 
@@ -352,20 +374,26 @@ Capture the two hashes.
 psql "$NEON_URL" -f drizzle/0012_default_privileges.sql
 ```
 
-0010 and 0011 are already applied (hand-applied during phase-7.5). 0012 is new; this is the only SQL to run.
+0004 through 0011 are already applied (hand-applied progressively over phase-1 through phase-7.5). 0012 is new; this is the only SQL to run.
 
-**Step 4 — Register all three hashes in `__drizzle_migrations`:**
+**Step 4 — Register all 9 missing hashes in `__drizzle_migrations`:**
 
 `created_at` values come from `drizzle/meta/_journal.json` (the canonical `when` per entry); using the journal values rather than `$(date +%s%3N)` keeps tracking aligned with the journal so future tooling that compares them stays consistent.
 
-Replace `HASH_xxxx` with the hashes printed in Step 2:
+Replace `HASH_xxxx` with the hashes printed in Step 2. (The values below are the values computed against the current file contents on `phase-8-local-dev-environment` as of 2026-05-19 — recompute via Step 2 if you suspect any SQL file has changed since.)
 
 ```bash
 psql "$NEON_URL" <<SQL
-INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
-VALUES ('HASH_0010', 1779203339000),
-       ('HASH_0011', 1779203925000),
-       ('HASH_0012', 1779207384669);
+INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES
+  ('eb494bbf119482e7e4e5a1b4615775586c49aba607973e5602902d54dde215cb', 1747612800000),  -- 0004
+  ('5cc83a7c70f0ddececd1ea7c7f9076142f5555a67a70b0d3fa35d3505c88eefc', 1747699200000),  -- 0005
+  ('955e66c269cbc3abf5aa969420643cae33d86cc0f77ab523b7cd9b0d5e31444a', 1747785600000),  -- 0006
+  ('5c9c0e6c3f42408ee1ffe4ade90ef54e544608e2e26a6aec73a987bc5fecf6d8', 1747900000000),  -- 0007
+  ('3a8735281cf7eb8c45f40ec2cc4963f61029976c78ee3d7868bebdaccc412197', 1747958400000),  -- 0008
+  ('e4ed7e42247b407ebb843d2a177b540487ce6ba252418993f751a91787a7802d', 1748044800000),  -- 0009
+  ('e40da08c88a358f49faa60467d51211386dcf6c65f11f27accafb6572a98e954', 1779203339000),  -- 0010
+  ('2cd54a2a50d7215f4eb0d1322fecd3be407620c704bd4ff62e1e1d9b8108ba65', 1779203925000),  -- 0011
+  ('f4b2304c4509a4d5d3ad9c93f63dbbe72cd7af613b0bac54bb927f9ef68fb2b1', 1779207384669); -- 0012
 SQL
 ```
 

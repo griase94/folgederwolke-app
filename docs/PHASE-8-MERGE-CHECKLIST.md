@@ -35,50 +35,64 @@ Done. Phase-8 was integrated via `git merge origin/main` (merge commit `e90f568`
 
 ### Step 3 — One-time Neon `__drizzle_migrations` reconciliation
 
-`drizzle/0010_post_review_hardening.sql` and `drizzle/0011_audit_trigger_digest_path_fix.sql` were hand-applied to Neon during phase-7.5 but were never registered in the `drizzle.__drizzle_migrations` tracking table. This phase-8 PR adds journal entries for them (so a fresh local DB picks them up correctly), which means the next `pnpm tsx scripts/migrate.ts` run against Neon will try to re-apply them. **Migration 0010 has non-idempotent `ALTER TABLE … ADD CONSTRAINT` statements** that will throw "constraint already exists" and roll back the whole migration on re-run.
+**Discovered 2026-05-19 via direct Neon query**: the `drizzle.__drizzle_migrations` table on Neon contains only 4 rows (migrations 0000–0003). Migrations **0004 through 0011** were hand-applied to Neon (the app uses tables/columns from all of them — your prod app working confirms the schema is at the latest state) but were never registered in the tracking table. So we need to register 9 missing migrations (0004–0012), not just 3.
 
-Fix: manually insert rows for 0010 + 0011 + 0012 into `drizzle.__drizzle_migrations` so the migrator treats them as already-applied.
+This phase-8 PR fixes the `_journal.json` side so fresh local DBs work correctly. The remaining task is registering the 9 hashes on Neon so `migrate.yml` doesn't try to re-apply any of them (some — like 0010's `ALTER TABLE … ADD CONSTRAINT` — are non-idempotent and would explode).
 
-**Detailed procedure**: `docs/RUNBOOK.md` → §6.1 "One-time reconciliation before phase-8 merge". The runbook has copy-pastable psql commands. The condensed version:
+**Detailed procedure**: `docs/RUNBOOK.md` → §6.1. The condensed version:
 
 ```bash
-# Set this to your Neon DIRECT URL (NOT the pooled URL)
-export NEON_URL='postgres://<owner>:<password>@ep-...neon.tech/<db>?sslmode=require'
+cd /Users/andygriesbeck/Projects/private/folgederwolke/folgederwolke-app
+set -a && source .env && set +a
 
 # 1. Inspect current state
-psql "$NEON_URL" -c "SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY id;"
-# Expected: rows 1–10 covering 0000_init through 0009_audit_log_hardening.
+psql "$DIRECT_DATABASE_URL" -c "SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY id;"
+# Expected (as of 2026-05-19): 4 rows covering 0000–0003.
 
-# 2. Compute the SHA256 hashes drizzle expects (run in repo root)
-node -e '
-  const fs=require("fs"); const c=require("crypto");
-  for (const f of ["0010_post_review_hardening","0011_audit_trigger_digest_path_fix","0012_default_privileges"]) {
-    const sql=fs.readFileSync(`drizzle/${f}.sql`,"utf8");
-    console.log(f, c.createHash("sha256").update(sql).digest("hex"));
-  }'
+# 2. Sanity-check the schema is actually at the latest state
+psql "$DIRECT_DATABASE_URL" <<'SQL'
+SELECT
+  EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='members' AND column_name='nachname') AS has_0004,
+  EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='invoices' AND column_name='pdf_bytes') AS has_0005,
+  EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='projects') AS has_0006,
+  EXISTS (SELECT 1 FROM information_schema.views WHERE table_name='eur_summary') AS has_0007,
+  EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='audit_log' AND column_name='chain_seq') AS has_0009;
+SQL
+# All `t` → safe to proceed. Any `f` → STOP and tell me.
 
-# 3. Apply 0012 manually (NEW in phase-8)
-psql "$NEON_URL" -f drizzle/0012_default_privileges.sql
+# 3. Apply 0012 against Neon (only new SQL in phase-8)
+cd /Users/andygriesbeck/Projects/private/folgederwolke/folgederwolke-app/.claude/worktrees/phase-8-local-dev-environment
+psql "$DIRECT_DATABASE_URL" -f drizzle/0012_default_privileges.sql
 
-# 4. Register 0010, 0011, 0012 hashes (replace HASH_xxxx with values from step 2)
-psql "$NEON_URL" <<SQL
-INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
-VALUES ('HASH_0010', 1779203339000),
-       ('HASH_0011', 1779203925000),
-       ('HASH_0012', 1779207384669);
+# 4. Register all 9 missing migration hashes
+psql "$DIRECT_DATABASE_URL" <<'SQL'
+INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES
+  ('eb494bbf119482e7e4e5a1b4615775586c49aba607973e5602902d54dde215cb', 1747612800000),  -- 0004
+  ('5cc83a7c70f0ddececd1ea7c7f9076142f5555a67a70b0d3fa35d3505c88eefc', 1747699200000),  -- 0005
+  ('955e66c269cbc3abf5aa969420643cae33d86cc0f77ab523b7cd9b0d5e31444a', 1747785600000),  -- 0006
+  ('5c9c0e6c3f42408ee1ffe4ade90ef54e544608e2e26a6aec73a987bc5fecf6d8', 1747900000000),  -- 0007
+  ('3a8735281cf7eb8c45f40ec2cc4963f61029976c78ee3d7868bebdaccc412197', 1747958400000),  -- 0008
+  ('e4ed7e42247b407ebb843d2a177b540487ce6ba252418993f751a91787a7802d', 1748044800000),  -- 0009
+  ('e40da08c88a358f49faa60467d51211386dcf6c65f11f27accafb6572a98e954', 1779203339000),  -- 0010
+  ('2cd54a2a50d7215f4eb0d1322fecd3be407620c704bd4ff62e1e1d9b8108ba65', 1779203925000),  -- 0011
+  ('f4b2304c4509a4d5d3ad9c93f63dbbe72cd7af613b0bac54bb927f9ef68fb2b1', 1779207384669); -- 0012
 SQL
 
-# 5. Verify default privileges landed
-psql "$NEON_URL" -c '\ddp public'
+# 5. Verify default privileges landed (from 0012)
+psql "$DIRECT_DATABASE_URL" -c '\ddp public'
 # Expected: app_runtime gets arwd on tables; app_export gets r; sequences have rU for app_runtime.
 
-# 6. Dry-run migrate.ts — must be a no-op
-DIRECT_DATABASE_URL="$NEON_URL" pnpm tsx scripts/migrate.ts
-# Expected: "Migrations complete." with no work done. If it tries to apply
-# anything, hashes don't match — recompute step 2 and re-do step 4.
+# 6. Confirm __drizzle_migrations now has 13 rows
+psql "$DIRECT_DATABASE_URL" -c "SELECT id, substr(hash,1,12) AS hash_prefix, created_at FROM drizzle.__drizzle_migrations ORDER BY id;"
+
+# 7. Dry-run migrate.ts — must complete without applying anything
+DIRECT_DATABASE_URL="$DIRECT_DATABASE_URL" pnpm tsx scripts/migrate.ts
+# Expected: "Migrations complete." with no per-migration log lines. If it
+# tries to apply anything, hashes don't match — recompute via the node loop
+# in §6.1 step 2 of RUNBOOK and re-do step 4.
 ```
 
-**Only after step 6 prints "Migrations complete." with no work done is reconciliation done.**
+**Only after step 7 prints "Migrations complete." with no per-migration log lines is reconciliation done.**
 
 ### Step 4 — ✅ `NEON_MIGRATE_DATABASE_URL` GitHub secret already set
 
