@@ -15,6 +15,8 @@ export default [
       globals: {
         ...globals.browser,
         ...globals.node,
+        // Non-standard browser API declared in src/app.d.ts
+        BeforeInstallPromptEvent: "readonly",
       },
     },
   },

@@ -13,6 +13,16 @@ declare global {
     // interface PageState {}
     // interface Platform {}
   }
+
+  // ── PWA / Browser API types ────────────────────────────────────────────────
+  interface BeforeInstallPromptEvent extends Event {
+    readonly platforms: string[];
+    readonly userChoice: Promise<{
+      outcome: "accepted" | "dismissed";
+      platform: string;
+    }>;
+    prompt(): Promise<void>;
+  }
 }
 
 export {};

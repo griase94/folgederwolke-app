@@ -4,6 +4,7 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import UserMenu from './UserMenu.svelte';
 	import type { SessionUser } from '$lib/server/auth/index.js';
+	import InstallPrompt from '$lib/components/pwa/InstallPrompt.svelte';
 	import type { SearchResponse, SearchResult } from '../../../routes/api/search/+server.js';
 
 	interface Props {
@@ -432,6 +433,9 @@
 			<path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
 		</svg>
 	</button>
+
+	<!-- PWA install prompt (Android / Chrome — hidden until beforeinstallprompt fires) -->
+	<InstallPrompt />
 
 	<!-- User menu -->
 	<UserMenu {user} />

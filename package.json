@@ -34,6 +34,7 @@
     "@types/jszip": "^3.4.1",
     "@types/node": "^25.9.0",
     "@types/nodemailer": "^8.0.0",
+    "@vite-pwa/sveltekit": "^1.1.0",
     "@vitest/coverage-v8": "^4.1.6",
     "bits-ui": "^2.18.1",
     "clsx": "^2.1.1",
@@ -61,7 +62,8 @@
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.59.3",
     "vite": "^8.0.7",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.6",
+    "workbox-window": "^7.4.1"
   },
   "dependencies": {
     "@googleapis/docs": "^9.2.1",

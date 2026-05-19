@@ -4,6 +4,8 @@
 	import Topbar from './Topbar.svelte';
 	import MobileTabBar from './MobileTabBar.svelte';
 	import type { SessionUser } from '$lib/server/auth/index.js';
+	import IosInstallHint from '$lib/components/pwa/IosInstallHint.svelte';
+	import UpdateAvailableToast from '$lib/components/pwa/UpdateAvailableToast.svelte';
 
 	interface Props {
 		user: SessionUser;
@@ -67,3 +69,7 @@
 
 <!-- Mobile bottom tab bar (hidden md+) -->
 <MobileTabBar />
+
+<!-- PWA overlays (iOS install hint + SW update toast) -->
+<IosInstallHint />
+<UpdateAvailableToast />

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!-- Full bleed background for maskable icon (safe zone is inner ~80%) -->
+  <rect width="192" height="192" fill="#be185d"/>
+  <text
+    x="96"
+    y="120"
+    text-anchor="middle"
+    font-family="system-ui, -apple-system, sans-serif"
+    font-size="72"
+    font-weight="700"
+    fill="#ffffff"
+    letter-spacing="-2"
+  >FdW</text>
+</svg>

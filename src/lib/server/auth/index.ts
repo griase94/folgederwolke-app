@@ -363,6 +363,36 @@ export async function signOut(
 }
 
 // ---------------------------------------------------------------------------
+// Sign out everywhere — revoke ALL sessions for a user (phase-7 polish)
+// ---------------------------------------------------------------------------
+
+/**
+ * Delete every session row for `userId`, clear the current session cookie,
+ * and write an audit log entry.
+ *
+ * Used by the "Überall abmelden" action in Einstellungen.
+ */
+export async function signOutEverywhere(
+  cookies: Cookies,
+  userId: string,
+  meta: RequestMeta,
+): Promise<void> {
+  const db = getDb();
+  await db.delete(sessions).where(eq(sessions.userId, userId));
+  clearSessionCookie(cookies);
+
+  await logAudit({
+    action: "sign_out",
+    entityKind: "session",
+    entityId: null,
+    actorUserId: userId,
+    actorKind: "user",
+    actorIpPrefix: meta.ip,
+    payload: { everywhere: true },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Check intent cookie (for verify GET page)
 // ---------------------------------------------------------------------------
 

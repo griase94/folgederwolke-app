@@ -1,6 +1,7 @@
 <script lang="ts">
 	import MemberRow from './MemberRow.svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+	import NoEntries from '$lib/components/empty/NoEntries.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
 
 	let {
@@ -34,30 +35,7 @@
 		{/each}
 	</div>
 {:else if members.length === 0}
-	<div
-		class="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border bg-muted/30 px-6 py-16 text-center"
-	>
-		<svg
-			class="h-12 w-12 text-muted-foreground/50"
-			fill="none"
-			viewBox="0 0 24 24"
-			stroke="currentColor"
-			stroke-width="1"
-			aria-hidden="true"
-		>
-			<path
-				stroke-linecap="round"
-				stroke-linejoin="round"
-				d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
-			/>
-		</svg>
-		<div>
-			<p class="font-medium text-foreground">Noch keine Mitglieder</p>
-			<p class="mt-1 text-sm text-muted-foreground">
-				Füge das erste Mitglied mit dem Button oben hinzu.
-			</p>
-		</div>
-	</div>
+	<NoEntries entity="Mitglieder" hint="Füge das erste Mitglied mit dem Button oben hinzu." />
 {:else}
 	<div class="space-y-2" role="list" aria-label="Mitgliederliste">
 		{#each members as member (member.id)}
