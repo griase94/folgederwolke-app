@@ -11,3 +11,12 @@
 # The string was replaced with "not-a-real-token" in a later commit. The
 # old commit's diff still contains the original string.
 f0658851584c7fb12f817253ca6dadb23b7bd932:tests/e2e/julia-review.spec.ts:generic-api-key:300
+
+# Overnight 2026-05-20: secret-redact test fixtures and plan-doc examples of
+# synthetic "Bearer token=…" strings used to validate the redactor regex.
+# These are not real secrets — they're test inputs designed to look like
+# secrets so the redactor's positive cases can be asserted on.
+0994a6dfae224eab2d717e9bfc0bc84705c95f9f:tests/unit/orchestrate/secret-redact.test.ts:generic-api-key:19
+0994a6dfae224eab2d717e9bfc0bc84705c95f9f:tests/unit/orchestrate/secret-redact.test.ts:generic-api-key:22
+535528f8b2d0783616518ab862ebaf8f20a086f8:docs/superpowers/plans/2026-05-20-overnight-perfect-night.md:generic-api-key:463
+535528f8b2d0783616518ab862ebaf8f20a086f8:docs/superpowers/plans/2026-05-20-overnight-perfect-night.md:generic-api-key:466
