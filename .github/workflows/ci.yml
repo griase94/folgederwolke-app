@@ -14,6 +14,20 @@ jobs:
   unit-and-types:
     name: unit-and-types
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 15432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +42,14 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Install psql
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Create folgederwolke_dev (matches local init.sql)
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -p 15432 -U postgres -c "CREATE DATABASE folgederwolke_dev;"
 
       - name: Type check
         run: pnpm typecheck
@@ -75,18 +97,20 @@ jobs:
   e2e:
     name: e2e
     runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
-      GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
-      GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-      GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
-      SMTP_HOST: ${{ secrets.SMTP_HOST }}
-      SMTP_PORT: ${{ secrets.SMTP_PORT }}
-      SMTP_USER: ${{ secrets.SMTP_USER }}
-      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-      MAIL_PROVIDER: ${{ secrets.MAIL_PROVIDER }}
-      MAIL_FROM: ${{ secrets.MAIL_FROM }}
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 15432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -105,6 +129,14 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      - name: Install psql
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Create folgederwolke_dev (matches local init.sql)
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -p 15432 -U postgres -c "CREATE DATABASE folgederwolke_dev;"
+
       - name: E2E tests (cumulative phase-0|phase-1|phase-2)
         # Cumulative grep: each phase adds its tag — @phase-0|@phase-1|...|@phase-N
         run: pnpm test:e2e --grep '@phase-0|@phase-1|@phase-2'
@@ -117,7 +149,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
