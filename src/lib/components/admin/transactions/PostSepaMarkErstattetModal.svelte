@@ -134,6 +134,7 @@
 							<input
 								id="post-sepa-date"
 								type="date"
+								lang="de"
 								bind:value={chosenDate}
 								class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 							/>

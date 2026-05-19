@@ -151,11 +151,11 @@
 				<div class="grid grid-cols-2 gap-3">
 					<div class="space-y-1">
 						<Label for="edit-proj-start">Startdatum</Label>
-						<Input id="edit-proj-start" name="start_date" type="date" value={project.startDate ?? ''} />
+						<Input id="edit-proj-start" name="start_date" type="date" lang="de" value={project.startDate ?? ''} />
 					</div>
 					<div class="space-y-1">
 						<Label for="edit-proj-end">Enddatum</Label>
-						<Input id="edit-proj-end" name="end_date" type="date" value={project.endDate ?? ''} />
+						<Input id="edit-proj-end" name="end_date" type="date" lang="de" value={project.endDate ?? ''} />
 					</div>
 				</div>
 

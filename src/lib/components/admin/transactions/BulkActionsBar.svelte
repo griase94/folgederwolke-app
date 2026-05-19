@@ -58,6 +58,7 @@
 				<div class="flex flex-wrap items-center gap-2">
 					<input
 						type="date"
+						lang="de"
 						bind:value={chosenDate}
 						class="rounded-md border border-border bg-background px-2 py-1.5 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 					/>

@@ -130,14 +130,14 @@
 			<div class="grid grid-cols-2 gap-3">
 				<div class="space-y-1">
 					<Label for="add-dob">Geburtsdatum</Label>
-					<Input id="add-dob" name="date_of_birth" type="date" />
+					<Input id="add-dob" name="date_of_birth" type="date" lang="de" />
 					{#if fieldError('date_of_birth')}
 						<p class="text-xs text-destructive">{fieldError('date_of_birth')}</p>
 					{/if}
 				</div>
 				<div class="space-y-1">
 					<Label for="add-eintritt">Eintrittsdatum</Label>
-					<Input id="add-eintritt" name="eintritts_datum" type="date" value={todayIso} />
+					<Input id="add-eintritt" name="eintritts_datum" type="date" lang="de" value={todayIso} />
 				</div>
 			</div>
 

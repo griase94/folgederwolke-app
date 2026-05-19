@@ -199,6 +199,7 @@
 							id="edit-dob"
 							name="date_of_birth"
 							type="date"
+							lang="de"
 							value={member.dateOfBirth ?? ''}
 						/>
 						{#if fieldError('date_of_birth')}
@@ -211,6 +212,7 @@
 							id="edit-eintritt"
 							name="eintritts_datum"
 							type="date"
+							lang="de"
 							value={member.eintrittsDatum ?? ''}
 						/>
 					</div>

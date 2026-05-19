@@ -137,6 +137,7 @@
 				<label for="rechnungsdatum" class="mb-1 block text-sm font-medium">Rechnungsdatum</label>
 				<input
 					type="date"
+					lang="de"
 					id="rechnungsdatum"
 					name="rechnungsdatum"
 					bind:value={rechnungsdatum}
@@ -148,6 +149,7 @@
 				<label for="leistungsDatum" class="mb-1 block text-sm font-medium">Leistungsdatum (optional)</label>
 				<input
 					type="date"
+					lang="de"
 					id="leistungsDatum"
 					name="leistungsDatum"
 					bind:value={leistungsDatum}
@@ -160,6 +162,7 @@
 			<label for="faelligkeitsDatum" class="mb-1 block text-sm font-medium">Fällig bis (optional)</label>
 			<input
 				type="date"
+				lang="de"
 				id="faelligkeitsDatum"
 				name="faelligkeitsDatum"
 				bind:value={faelligkeitsDatum}

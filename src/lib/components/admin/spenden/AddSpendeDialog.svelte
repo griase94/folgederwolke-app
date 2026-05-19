@@ -195,6 +195,7 @@
 						id="add-spende-datum"
 						name="zugewendet_am"
 						type="date"
+						lang="de"
 						required
 						data-testid="zugewendet-am-input"
 					/>

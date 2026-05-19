@@ -104,11 +104,11 @@
 			<div class="grid grid-cols-2 gap-3">
 				<div class="space-y-1">
 					<Label for="add-proj-start">Startdatum</Label>
-					<Input id="add-proj-start" name="start_date" type="date" />
+					<Input id="add-proj-start" name="start_date" type="date" lang="de" />
 				</div>
 				<div class="space-y-1">
 					<Label for="add-proj-end">Enddatum</Label>
-					<Input id="add-proj-end" name="end_date" type="date" />
+					<Input id="add-proj-end" name="end_date" type="date" lang="de" />
 				</div>
 			</div>
 
