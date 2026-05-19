@@ -24,8 +24,7 @@ import {
   composeBezahltVonDisplay,
 } from "$lib/server/domain/auslagen.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
-import { driveFileStorage } from "$lib/server/files/drive-impl.js";
-import type { FileStorage } from "$lib/server/files/storage.js";
+import { getFileStorage, type FileStorage } from "$lib/server/files/storage.js";
 import { getDriveAuth } from "$lib/server/drive/auth.js";
 import { drive as createDrive } from "@googleapis/drive";
 import { bus } from "$lib/server/events/index.js";
@@ -45,15 +44,15 @@ import { DATENSCHUTZ_VERSION } from "$lib/server/domain/datenschutz.js";
 
 /**
  * Test seam: replace the FileStorage implementation. When undefined the
- * production `driveFileStorage` is used. Tests set this to a stub to avoid
- * hitting Drive.
+ * production-configured backend (resolved via `getFileStorage()`) is used.
+ * Tests set this to a stub to avoid hitting Drive.
  */
 export let _fileStorageOverride: FileStorage | undefined = undefined;
 export function _setFileStorageOverride(fs: FileStorage | undefined) {
   _fileStorageOverride = fs;
 }
-function fileStorage(): FileStorage {
-  return _fileStorageOverride ?? driveFileStorage;
+async function fileStorage(): Promise<FileStorage> {
+  return _fileStorageOverride ?? (await getFileStorage());
 }
 
 // ---------------------------------------------------------------------------
@@ -270,7 +269,9 @@ export const actions: Actions = {
     let driveFileId: string | null = null;
     if (belegBytes && belegSniffedMime) {
       try {
-        const result = await fileStorage().upload({
+        const result = await (
+          await fileStorage()
+        ).upload({
           buffer: new Uint8Array(belegBytes),
           mimeType: belegSniffedMime,
           name: `${ausId}_${belegFilenameSafe}`,

@@ -33,3 +33,38 @@ export interface FileStorage {
   /** Permanently delete a file by its storage id. */
   delete(id: string): Promise<void>;
 }
+
+// ---------------------------------------------------------------------------
+// Factory — selects the FileStorage implementation based on
+// env.STORAGE_BACKEND. The choice is cached per process; STORAGE_BACKEND is
+// not expected to change at runtime.
+//
+// Defaults to "drive" (production safety) — "local-fs" must be opted in
+// explicitly via env.
+// ---------------------------------------------------------------------------
+
+import { env } from "$lib/server/env.js";
+
+let cached: FileStorage | undefined;
+
+export async function getFileStorage(): Promise<FileStorage> {
+  if (cached) return cached;
+  if (env.STORAGE_BACKEND === "local-fs") {
+    const { LocalFsFileStorage } = await import("./local-fs-impl.js");
+    cached = new LocalFsFileStorage({ root: env.FILE_STORAGE_ROOT });
+  } else {
+    // Drive (default).
+    const { driveFileStorage } = await import("./drive-impl.js");
+    cached = driveFileStorage;
+  }
+  return cached;
+}
+
+/**
+ * Test helper — reset the cached FileStorage so the next `getFileStorage()`
+ * call re-evaluates `env.STORAGE_BACKEND`. Call in `beforeEach` when a test
+ * switches backends mid-suite.
+ */
+export function _resetFileStorageCache(): void {
+  cached = undefined;
+}
