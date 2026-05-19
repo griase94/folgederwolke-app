@@ -5,48 +5,55 @@
 	let { email, magicUrl, expiresInMinutes }: MagicLinkProps = $props();
 </script>
 
+<!--
+  Magic-link sign-in email.
+  All colors are solid hex — Gmail/Outlook/iOS Mail strip oklch() and CSS variables,
+  and gradients render unreliably in dark mode.
+-->
 <table
 	role="presentation"
 	cellspacing="0"
 	cellpadding="0"
 	border="0"
 	width="100%"
-	style="background:#FCE7F3;"
+	style="background:#f8f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;"
 >
 	<tbody>
 		<tr>
-			<td align="center" style="padding:30px 16px;">
+			<td align="center" style="padding:40px 16px;">
 				<table
 					role="presentation"
 					cellspacing="0"
 					cellpadding="0"
 					border="0"
-					width="600"
-					style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;"
+					width="560"
+					style="max-width:560px;background:#ffffff;border-radius:16px;border:1px solid #f1e6ec;"
 				>
 					<tbody>
-						<!-- Header -->
+						<!-- Brand strip -->
 						<tr>
 							<td
-								style="background:linear-gradient(135deg,oklch(0.43 0.20 350) 0%,oklch(0.32 0.18 350) 100%);padding:30px 40px;"
+								style="background:#be185d;padding:18px 32px;border-radius:16px 16px 0 0;"
 							>
 								<p
-									style="margin:0;color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;"
+									style="margin:0;color:#ffffff;font-size:13px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;"
 								>
-									Folge der Wolke e.V.
-								</p>
-								<p style="margin:4px 0 0 0;color:#FBCFE8;font-size:13px;">
-									Buchhaltungs-Verwaltung — Admin-Zugang
+									Folge der Wolke
 								</p>
 							</td>
 						</tr>
 
 						<!-- Body -->
 						<tr>
-							<td style="padding:36px 40px;line-height:1.6;font-size:14px;">
-								<p style="margin:0 0 18px 0;font-size:15px;">
-									Hallo! Hier ist dein Anmelde-Link für die Folge der Wolke
-									Buchhaltungs-Verwaltung.
+							<td style="padding:36px 32px 8px 32px;line-height:1.55;font-size:15px;color:#1f2937;">
+								<h1
+									style="margin:0 0 16px 0;font-size:22px;font-weight:700;color:#111827;letter-spacing:-0.2px;"
+								>
+									Dein Anmelde-Link
+								</h1>
+
+								<p style="margin:0 0 28px 0;color:#374151;">
+									Klick auf den Knopf, um dich in der Buchhaltung anzumelden.
 								</p>
 
 								<!-- CTA Button -->
@@ -56,65 +63,50 @@
 									cellpadding="0"
 									border="0"
 									width="100%"
-									style="margin:0 0 22px 0;"
+									style="margin:0 0 18px 0;"
 								>
 									<tbody>
 										<tr>
 											<td align="center">
-													<a
+												<a
 													href={magicUrl}
-													style="display:inline-block;padding:16px 40px;background:oklch(0.43 0.20 350);color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;border-radius:10px;letter-spacing:0.2px;"
+													style="display:inline-block;padding:14px 32px;background:#be185d;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;"
 												>
-													Als {email} anmelden
+													Jetzt anmelden
 												</a>
 											</td>
 										</tr>
 									</tbody>
 								</table>
 
-								<!-- Expiry note -->
-								<p style="margin:0 0 14px 0;text-align:center;font-size:12px;color:#6B7280;">
-									Dieser Link ist <strong>{expiresInMinutes} Minuten</strong> gültig und kann nur
-									einmal verwendet werden.
+								<p
+									style="margin:0 0 28px 0;text-align:center;font-size:13px;color:#6b7280;"
+								>
+									Gültig für <strong style="color:#374151;">{expiresInMinutes} Minuten</strong>, einmalig verwendbar.
+								</p>
+
+								<!-- Fallback link (some clients strip styled buttons) -->
+								<p style="margin:0 0 24px 0;font-size:12px;color:#9ca3af;line-height:1.5;">
+									Funktioniert der Knopf nicht? Kopiere diesen Link in den Browser:<br />
+									<span style="color:#6b7280;word-break:break-all;">{magicUrl}</span>
 								</p>
 
 								<!-- Divider -->
-								<table
-									role="presentation"
-									cellspacing="0"
-									cellpadding="0"
-									border="0"
-									width="100%"
-									style="margin:24px 0;"
+								<div
+									style="border-top:1px solid #f1e6ec;margin:8px 0 22px 0;font-size:1px;line-height:1px;"
 								>
-									<tbody>
-										<tr>
-											<td style="border-top:1px solid #F3E8FF;font-size:1px;line-height:1px;"
-												>&nbsp;</td
-											>
-										</tr>
-									</tbody>
-								</table>
+									&nbsp;
+								</div>
 
-								<!-- Security note -->
-								<p
-									style="margin:0 0 10px 0;font-size:13px;color:#6B7280;background:#F9FAFB;border-radius:6px;padding:12px 16px;border-left:3px solid oklch(0.43 0.20 350);"
-								>
-									<strong>Sicherheitshinweis:</strong> Dies ist ein Anmelde-Link. Wenn du ihn nicht
-									angefordert hast, ignoriere diese Mail einfach — dein Konto bleibt sicher. Der
-									Link läuft automatisch ab.
+								<p style="margin:0 0 12px 0;font-size:13px;color:#6b7280;line-height:1.5;">
+									Du wurdest gerade aufgefordert, dich als
+									<strong style="color:#374151;">{email}</strong> anzumelden. Aus
+									Sicherheitsgründen fragen wir nach dem Klick noch einmal nach, bevor
+									wir dich einloggen.
 								</p>
-
-								<!-- Click-through note (D13) -->
-								<p style="margin:16px 0 0 0;font-size:12px;color:#9CA3AF;text-align:center;">
-									Aus Sicherheitsgründen wirst du nach dem Klick noch einmal gefragt, ob du dich als
-									<strong>{email}</strong> anmelden möchtest, bevor der Link eingelöst wird.
-								</p>
-
-								<p style="margin:24px 0 0 0;font-size:15px;color:oklch(0.43 0.20 350);">
-									Mit besten Grüßen 💋<br /><strong
-										>deine Folge der Wolke Finanz-Gschaftler:innen</strong
-									>
+								<p style="margin:0;font-size:13px;color:#6b7280;line-height:1.5;">
+									Du hast keine Anmeldung angefordert? Ignoriere die Mail einfach —
+									der Link läuft von selbst ab.
 								</p>
 							</td>
 						</tr>
@@ -122,12 +114,10 @@
 						<!-- Footer -->
 						<tr>
 							<td
-								style="background:#FBCFE8;padding:18px 40px;text-align:center;font-size:11px;color:#831843;"
+								style="padding:24px 32px 28px 32px;text-align:center;font-size:11px;color:#9ca3af;line-height:1.6;border-top:1px solid #f1e6ec;"
 							>
-								Folge der Wolke e.V. · Westermühlstraße 6, 80469 München<br />
-								VR 211227 · Steuernummer 143/215/10028<br />
-								<br />
-								Du erhältst diese Mail, weil jemand einen Anmelde-Link für {email} angefordert hat.
+								<strong style="color:#6b7280;">Folge der Wolke e.V.</strong> · Westermühlstraße 6, 80469 München<br />
+								VR 211227 · Steuernummer 143/215/10028
 							</td>
 						</tr>
 					</tbody>

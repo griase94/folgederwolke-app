@@ -7,7 +7,7 @@ import { fail, type Actions } from "@sveltejs/kit";
 import { issueMagicLink, RateLimitError } from "$lib/server/auth/index.js";
 
 export const actions: Actions = {
-  default: async ({ request, cookies, getClientAddress }) => {
+  default: async ({ request, url, cookies, getClientAddress }) => {
     const data = await request.formData();
     const email = (data.get("email") as string | null)?.trim() ?? "";
 
@@ -21,7 +21,7 @@ export const actions: Actions = {
     const ua = request.headers.get("user-agent") ?? "";
 
     try {
-      await issueMagicLink(email, { ip, ua }, cookies);
+      await issueMagicLink(email, { ip, ua, origin: url.origin }, cookies);
     } catch (err) {
       if (err instanceof RateLimitError) {
         // Still return identical message — don't reveal rate-limiting to caller

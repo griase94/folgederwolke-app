@@ -42,6 +42,8 @@ export { RateLimitError } from "./rate-limit.js";
 export interface RequestMeta {
   ip: string;
   ua: string;
+  /** Origin of the current request (e.g. http://127.0.0.1:5175), used as fallback when PUBLIC_BASE_URL/ORIGIN are unset. */
+  origin?: string;
 }
 
 export interface SessionUser {
@@ -106,24 +108,32 @@ export async function issueMagicLink(
   const tokenHash = sha256(rawToken);
   const expiresAt = new Date(Date.now() + 15 * 60_000);
 
-  await db.insert(magicLinks).values({
-    tokenHash,
-    emailCanonical: canonical,
-    expiresAt,
-  });
+  const [magicLinkRow] = await db
+    .insert(magicLinks)
+    .values({
+      tokenHash,
+      emailCanonical: canonical,
+      expiresAt,
+    })
+    .returning({ id: magicLinks.id });
 
-  // Determine base URL from env or fallback
+  // Determine base URL: explicit env first, fall back to the request origin so
+  // local-dev links don't end up as http:///sign-in/verify (no host).
   const baseUrl = (
-    process.env["PUBLIC_BASE_URL"] ??
-    process.env["ORIGIN"] ??
+    process.env["PUBLIC_BASE_URL"] ||
+    process.env["ORIGIN"] ||
+    meta.origin ||
     ""
   ).replace(/\/$/, "");
   const verifyUrl = `${baseUrl}/sign-in/verify?token=${rawToken}`;
 
+  // Each magic_link issuance is a distinct event — use the magic_links.id as
+  // entity_id so the sent_mails UNIQUE(template, entity_kind, entity_id,
+  // send_attempt) index does not collapse all sends (NULLS NOT DISTINCT).
   await sendMail({
     template: "magic_link",
     entity_kind: "user",
-    entity_id: null,
+    entity_id: magicLinkRow!.id,
     to: canonical,
     props: { magicUrl: verifyUrl, email: canonical, expiresInMinutes: 15 },
   });
