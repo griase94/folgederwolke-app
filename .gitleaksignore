@@ -1,0 +1,13 @@
+# gitleaks fingerprints to ignore, one per line.
+#
+# Format:  <commit-sha>:<file>:<rule>:<line>
+#
+# This file is needed because gitleaks scans the PR's full commit history,
+# not just HEAD. A fix that lands in a later commit doesn't remove the
+# match in an earlier commit's diff.
+
+# Round A commit shipped a hand-typed fake magic-link token ("garbage123456789")
+# in a Playwright spec that asserts the bogus-token path returns an error.
+# The string was replaced with "not-a-real-token" in a later commit. The
+# old commit's diff still contains the original string.
+f0658851584c7fb12f817253ca6dadb23b7bd932:tests/e2e/julia-review.spec.ts:generic-api-key:300
