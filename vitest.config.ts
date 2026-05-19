@@ -3,6 +3,11 @@ import { sveltekit } from "@sveltejs/kit/vite";
 
 export default defineConfig({
   plugins: [sveltekit()],
+  // Use the browser export condition so @testing-library/svelte can mount
+  // components — Svelte's `mount()` is unavailable in the SSR build.
+  resolve: {
+    conditions: ["browser"],
+  },
   test: {
     environment: "happy-dom",
     globals: true,
