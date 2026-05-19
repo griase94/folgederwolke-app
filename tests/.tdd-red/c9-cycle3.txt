@@ -1,0 +1,23 @@
+C9 Cycle 3 — Submit-button labels + empty-state CTAs + soft-undo toasts
+
+Tests added (failing pre-impl):
+
+1) tests/unit/c9-submit-labels.test.ts
+   Reads form components and asserts honest submit labels:
+   - AddMemberDialog: "Mitglied anlegen" (not "Hinzufügen")
+   - AddCustomerDialog: "Kunden anlegen"
+   - AddProjectDialog: "Projekt anlegen"
+   - AddSpendeDialog: "Spende erfassen" (warmer than "Spende anlegen")
+   - InvoiceForm: "Rechnung erstellen & PDF" (label honestly describes both)
+
+2) tests/unit/c9-empty-state-ctas.test.ts
+   Reads list components and asserts they pass an `action` snippet to NoEntries
+   (or have an inline CTA inside their empty state):
+   - MemberList, ProjectList, CustomerList, InvoiceList, SpendenList
+
+3) tests/unit/c9-soft-undo-toasts.test.ts
+   Reads destructive action handlers and asserts they wire an undo action
+   into the success toast:
+   - EditMemberDialog (delete/archive flow)
+   - EditCustomerDialog (delete flow)
+   - EditProjectDialog (delete flow)
