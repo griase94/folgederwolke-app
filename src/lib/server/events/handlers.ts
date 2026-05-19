@@ -15,8 +15,9 @@ import { bus } from "./bus.js";
 import type { EventPayload } from "./types.js";
 import { sendMail } from "$lib/server/mail/index.js";
 import { getDb } from "$lib/server/db/index.js";
-import { auditLog } from "$lib/server/db/schema/audit_log.js";
+import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { logAudit } from "$lib/server/audit-log/index.js";
+import { and, eq, isNull } from "drizzle-orm";
 
 let registered = false;
 
@@ -58,13 +59,12 @@ export function registerHandlers(): void {
   bus.on<EventPayload<"auslagen.submitted">>(
     "auslagen.submitted",
     async (payload) => {
-      const db = getDb();
-      await db.insert(auditLog).values({
-        actorKind: "system",
+      await logAudit({
         action: "create",
         entityKind: "auslagen_submission",
         entityId: payload.submissionId,
         entityBusinessId: payload.ausId,
+        actorKind: "system",
         actorIpPrefix: payload.ipPrefix,
         actorUaHash: payload.userAgentHash,
         payload: {
@@ -72,6 +72,170 @@ export function registerHandlers(): void {
           betragCents: payload.betragCents,
           bezahltVonKind: payload.bezahltVonKind,
           consentTextVersion: payload.consentTextVersion,
+        },
+      });
+    },
+  );
+
+  // ── expense.approved ────────────────────────────────────────────────────
+  // No mail on approval — the user already received the EingangsMail and will
+  // be notified again on `expense.erstattet`. The handler just appends an
+  // audit_log row so the activity feed reflects the state change.
+  bus.on<EventPayload<"expense.approved">>(
+    "expense.approved",
+    async (payload) => {
+      await logAudit({
+        action: "approve",
+        entityKind: "expense",
+        entityId: payload.expenseId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: {
+          expenseBusinessId: payload.expenseBusinessId,
+          submissionId: payload.submissionId,
+          submissionBusinessId: payload.submissionBusinessId,
+          betragCents: payload.betragCents,
+          bezeichnung: payload.bezeichnung,
+        },
+      });
+    },
+  );
+
+  // ── expense.erstattet ───────────────────────────────────────────────────
+  // Two handlers: (1) ErstattungsMail (best-effort, deduped by sent_mails
+  // UNIQUE — second emit is a no-op at the DB layer); (2) audit_log.
+  //
+  // For verein-bezahlt expenses email is null (no external recipient), so the
+  // mail handler is a no-op via the `if (!payload.email) return` guard. The
+  // audit row is intentionally still written: it records the abfluss/sphere
+  // state change (erstattetAm + abflussDatum set) for the activity feed.
+  bus.on<EventPayload<"expense.erstattet">>(
+    "expense.erstattet",
+    async (payload) => {
+      if (!payload.email) return;
+      try {
+        await sendMail({
+          template: "auslage_erstattet",
+          entity_kind: "expense",
+          entity_id: payload.expenseId,
+          to: payload.email,
+          props: {
+            vorname: payload.vorname,
+            ausId: payload.expenseBusinessId,
+            bezeichnung: payload.bezeichnung,
+            betragCents: payload.betragCents,
+            verwendungszweck: payload.verwendungszweck,
+            erstattungsAm: payload.erstattungsAm,
+          },
+        });
+      } catch (mailErr) {
+        // Best-effort: log and swallow so a transient mail outage does not
+        // mask the successful DB write the user sees in the UI.
+        console.error(
+          `[events] ErstattungsMail failed for ${payload.expenseBusinessId}:`,
+          mailErr,
+        );
+      }
+    },
+  );
+
+  bus.on<EventPayload<"expense.erstattet">>(
+    "expense.erstattet",
+    async (payload) => {
+      await logAudit({
+        action: "reimburse",
+        entityKind: "expense",
+        entityId: payload.expenseId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: {
+          expenseBusinessId: payload.expenseBusinessId,
+          betragCents: payload.betragCents,
+          erstattungsAm: payload.erstattungsAm.toISOString(),
+        },
+      });
+    },
+  );
+
+  // ── auslage.reviewed ────────────────────────────────────────────────────
+  // A5 (TOCTOU): single handler that gates BOTH side-effects on RETURNING
+  // from the UPDATE. Two concurrent route loads both pass the load()-level
+  // wasUnreviewed check and both emit — but only the call whose UPDATE
+  // actually mutates a row (RETURNING one row) writes the audit log. The
+  // other sees an empty RETURNING set and is a clean no-op. Replaces the
+  // previous split (handler-1 UPDATE, handler-2 audit) which double-audited.
+  bus.on<EventPayload<"auslage.reviewed">>(
+    "auslage.reviewed",
+    async (payload) => {
+      const db = getDb();
+      const updated = await db
+        .update(auslagenSubmissions)
+        .set({ reviewedAt: new Date() })
+        .where(
+          and(
+            eq(auslagenSubmissions.id, payload.submissionId),
+            isNull(auslagenSubmissions.reviewedAt),
+          ),
+        )
+        .returning({ id: auslagenSubmissions.id });
+      if (updated.length === 0) {
+        // Lost the race or already reviewed — no audit row.
+        return;
+      }
+      await logAudit({
+        action: "update",
+        entityKind: "auslagen_submission",
+        entityId: payload.submissionId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: { kind: "reviewed", ausId: payload.ausId },
+      });
+    },
+  );
+
+  // ── auslage.rejected ────────────────────────────────────────────────────
+  bus.on<EventPayload<"auslage.rejected">>(
+    "auslage.rejected",
+    async (payload) => {
+      if (!payload.email) return;
+      try {
+        await sendMail({
+          template: "auslage_abgelehnt",
+          entity_kind: "auslagen_submission",
+          entity_id: payload.submissionId,
+          to: payload.email,
+          props: {
+            vorname: payload.vorname,
+            ausId: payload.submissionBusinessId,
+            bezeichnung: payload.bezeichnung,
+            betragCents: payload.betragCents,
+            grund: payload.grund,
+            abgelehntAm: new Date(),
+          },
+        });
+      } catch (mailErr) {
+        console.error(
+          `[events] RejectionMail failed for ${payload.submissionBusinessId}:`,
+          mailErr,
+        );
+      }
+    },
+  );
+
+  bus.on<EventPayload<"auslage.rejected">>(
+    "auslage.rejected",
+    async (payload) => {
+      await logAudit({
+        action: "reject",
+        entityKind: "auslagen_submission",
+        entityId: payload.submissionId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: {
+          submissionBusinessId: payload.submissionBusinessId,
+          betragCents: payload.betragCents,
+          bezeichnung: payload.bezeichnung,
+          grund: payload.grund,
         },
       });
     },

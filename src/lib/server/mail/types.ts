@@ -53,6 +53,24 @@ export interface ErstattungsMailProps {
   erstattungsAm: Date;
 }
 
+/**
+ * Props for the Auslage-Ablehnung mail template.
+ *
+ * Sent when an admin rejects a submission in the audit inbox. The
+ * `grund` field is a free-form message the admin can either pick from
+ * a template (Phase 4 stretch) or write directly. Kept deliberately
+ * minimal — emoji-free, formal-friendly German wording lives in the
+ * Svelte template itself.
+ */
+export interface RejectionMailProps {
+  vorname: string;
+  ausId: string;
+  bezeichnung: string;
+  betragCents: number;
+  grund: string;
+  abgelehntAm: Date;
+}
+
 export interface BeitragsReminderProps {
   vorname: string;
   nachname: string;
@@ -111,7 +129,7 @@ export interface TemplateProps {
   magic_link: MagicLinkProps;
   auslage_eingang: EingangsMailProps;
   auslage_erstattet: ErstattungsMailProps;
-  auslage_abgelehnt: Record<string, never>; // Phase 2
+  auslage_abgelehnt: RejectionMailProps;
   /** Aufwandsspende donation receipt — BMF-Pflichtfelder per §10b EStG. */
   spende_bescheinigung: AufwandsspendenBestaetigungProps;
   beitrag_reminder: BeitragsReminderProps;
