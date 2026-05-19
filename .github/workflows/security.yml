@@ -37,6 +37,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  check-env-files:
+    name: check committed env files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan committed env files for real-secret patterns
+        run: bash scripts/check-env-files.sh
+
   audit:
     name: audit
     runs-on: ubuntu-latest
