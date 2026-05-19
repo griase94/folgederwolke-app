@@ -22,65 +22,67 @@
 	);
 </script>
 
+<!--
+  Auslage-Erstattung confirmation email.
+  Brand-strip pattern matches MagicLink.svelte (UI-031, 2026-05-19 §3.13).
+-->
 <table
 	role="presentation"
 	cellspacing="0"
 	cellpadding="0"
 	border="0"
 	width="100%"
-	style="background:#FCE7F3;"
+	style="background:#f8f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;"
 >
 	<tbody>
 		<tr>
-			<td align="center" style="padding:30px 16px;">
+			<td align="center" style="padding:40px 16px;">
 				<table
 					role="presentation"
 					cellspacing="0"
 					cellpadding="0"
 					border="0"
-					width="600"
-					style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;"
+					width="560"
+					style="max-width:560px;background:#ffffff;border-radius:16px;border:1px solid #f1e6ec;"
 				>
 					<tbody>
-						<!-- Header -->
+						<!-- Brand strip -->
 						<tr>
-							<td
-								style="background:#be185d;padding:30px 40px;"
-							>
+							<td style="background:#be185d;padding:18px 32px;border-radius:16px 16px 0 0;">
 								<p
-									style="margin:0;color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;"
+									style="margin:0;color:#ffffff;font-size:13px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;"
 								>
-									Folge der Wolke e.V.
-								</p>
-								<p style="margin:4px 0 0 0;color:#FBCFE8;font-size:13px;">
-									Ein Liebesbrief von den Finanz-Geschäftler:innen
+									Folge der Wolke
 								</p>
 							</td>
 						</tr>
 
 						<!-- Body -->
 						<tr>
-							<td style="padding:36px 40px;line-height:1.6;font-size:14px;">
-								<p style="margin:0 0 14px 0;font-size:16px;color:#be185d;">
-									<strong>Liebste:r {vorname},</strong>
-								</p>
-								<p style="margin:0 0 18px 0;">
-									Hallo! So, das war's mit dem Vorstrecken — wir haben deine Erstattung gerade
-									rausgeschickt! 🚀
+							<td style="padding:36px 32px 8px 32px;line-height:1.55;font-size:15px;color:#1f2937;">
+								<h1
+									style="margin:0 0 16px 0;font-size:22px;font-weight:700;color:#111827;letter-spacing:-0.2px;"
+								>
+									Deine Erstattung ist raus
+								</h1>
+
+								<p style="margin:0 0 16px 0;color:#374151;">
+									<strong>Liebste:r {vorname},</strong> deine Erstattung für deine Auslage ist
+									gerade rausgegangen — Vorkasse-Modus aus, Wolken-Modus an.
 								</p>
 
-								<!-- Detail card (green) -->
+								<!-- Detail card (emerald-50 = success affordance, UI-031) -->
 								<table
 									role="presentation"
 									cellspacing="0"
 									cellpadding="0"
 									border="0"
 									width="100%"
-									style="background:#D1FAE5;border-radius:8px;margin:0 0 22px 0;"
+									style="background:#d1fae5;border-radius:12px;margin:0 0 22px 0;"
 								>
 									<tbody>
 										<tr>
-											<td style="padding:14px 20px;">
+											<td style="padding:16px 20px;">
 												<table
 													role="presentation"
 													cellspacing="0"
@@ -92,39 +94,39 @@
 													<tbody>
 														<tr>
 															<td
-																style="padding:5px 0;color:#065F46;width:160px;white-space:nowrap;vertical-align:top;"
+																style="padding:5px 0;color:#065f46;width:160px;white-space:nowrap;vertical-align:top;"
 																>AUS-ID</td
 															>
-															<td style="padding:5px 0;color:#064E3B;font-weight:700;">{ausId}</td>
+															<td style="padding:5px 0;color:#064e3b;font-weight:700;">{ausId}</td>
 														</tr>
 														<tr>
 															<td
-																style="padding:5px 0;color:#065F46;white-space:nowrap;vertical-align:top;"
+																style="padding:5px 0;color:#065f46;white-space:nowrap;vertical-align:top;"
 																>Bezeichnung</td
 															>
-															<td style="padding:5px 0;color:#064E3B;">{bezeichnung}</td>
+															<td style="padding:5px 0;color:#064e3b;">{bezeichnung}</td>
 														</tr>
 														<tr>
 															<td
-																style="padding:5px 0;color:#065F46;white-space:nowrap;vertical-align:top;"
+																style="padding:5px 0;color:#065f46;white-space:nowrap;vertical-align:top;"
 																>Betrag</td
 															>
-															<td style="padding:5px 0;color:#064E3B;font-weight:700;">{betragFmt}</td>
+															<td style="padding:5px 0;color:#064e3b;font-weight:700;">{betragFmt}</td>
 														</tr>
 														<tr>
 															<td
-																style="padding:5px 0;color:#065F46;white-space:nowrap;vertical-align:top;"
+																style="padding:5px 0;color:#065f46;white-space:nowrap;vertical-align:top;"
 																>Überwiesen am</td
 															>
-															<td style="padding:5px 0;color:#064E3B;">{datumFmt}</td>
+															<td style="padding:5px 0;color:#064e3b;">{datumFmt}</td>
 														</tr>
 														<tr>
 															<td
-																style="padding:5px 0;color:#065F46;white-space:nowrap;vertical-align:top;"
+																style="padding:5px 0;color:#065f46;white-space:nowrap;vertical-align:top;"
 																>Verwendungszweck</td
 															>
 															<td
-																style="padding:5px 0;color:#064E3B;font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:12px;"
+																style="padding:5px 0;color:#064e3b;font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:12px;"
 																>{verwendungszweck}</td
 															>
 														</tr>
@@ -135,15 +137,22 @@
 									</tbody>
 								</table>
 
-								<p style="margin:0 0 18px 0;">
+								<p style="margin:0 0 16px 0;color:#374151;">
 									Der Betrag sollte in den nächsten 1–3 Werktagen auf deinem Konto landen.
 								</p>
-								<p style="margin:0 0 24px 0;">
-									Tausend Dank für deinen Einsatz für unsere Wolke. Ohne Menschen wie dich gäb's
-									weniger Glitzer, Spaß und Magie. ✨
+								<p style="margin:0 0 24px 0;color:#374151;">
+									Tausend Dank für deinen Einsatz für unsere Wolke.
 								</p>
-								<p style="margin:0;font-size:15px;color:#be185d;">
-									Mit besten Grüßen 💋<br /><strong
+
+								<!-- Divider -->
+								<div
+									style="border-top:1px solid #f1e6ec;margin:8px 0 22px 0;font-size:1px;line-height:1px;"
+								>
+									&nbsp;
+								</div>
+
+								<p style="margin:0;font-size:13px;color:#6b7280;line-height:1.5;">
+									Mit besten Grüßen,<br /><strong style="color:#374151;"
 										>deine Folge der Wolke Finanz-Geschäftler:innen</strong
 									>
 								</p>
@@ -153,12 +162,11 @@
 						<!-- Footer -->
 						<tr>
 							<td
-								style="background:#FBCFE8;padding:18px 40px;text-align:center;font-size:11px;color:#831843;"
+								style="padding:24px 32px 28px 32px;text-align:center;font-size:11px;color:#9ca3af;line-height:1.6;border-top:1px solid #f1e6ec;"
 							>
-								Folge der Wolke e.V. · Westermühlstraße 6, 80469 München<br />
-								VR 211227 · Steuernummer 143/215/10028<br />
-								<br />
-								Du erhältst diese Mail als Mitglied oder Einreichende:r bei Folge der Wolke e.V.
+								<strong style="color:#6b7280;">Folge der Wolke e.V.</strong> · Westermühlstraße 6,
+								80469 München<br />
+								VR 211227 · Steuernummer 143/215/10028
 							</td>
 						</tr>
 					</tbody>

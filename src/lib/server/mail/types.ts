@@ -143,6 +143,16 @@ export interface InvoiceVersendetMailProps {
   faelligkeitsDatum: string | null;
   /** Absolute URL to download the PDF from the app (optional). */
   downloadUrl: string | null;
+  /**
+   * Verein IBAN — enables the EPC 069 Giro-QR payload block (PM-024).
+   * Optional so existing callers stay backwards-compatible; the QR block
+   * is only rendered when `iban` and `empfaenger` are both present.
+   */
+  iban?: string;
+  /** Verein BIC — optional (EPC 069 allows empty BIC). */
+  bic?: string;
+  /** Recipient name for the Giro-QR — typically "Folge der Wolke e.V.". */
+  empfaenger?: string;
 }
 
 export interface TemplateProps {
