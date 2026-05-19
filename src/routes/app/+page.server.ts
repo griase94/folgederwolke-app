@@ -29,5 +29,7 @@ export const load: PageServerLoad = async () => {
     approvedNotErstattetSumCents: Number(kpis.approvedNotErstattetSumCents),
     spendenYtdCents: Number(kpis.spendenYtdCents),
     recentActivity,
+    // wgb is already number-safe (no BigInt fields).
+    wgb: kpis.wgb,
   };
 };

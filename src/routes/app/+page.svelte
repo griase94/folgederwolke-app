@@ -48,8 +48,15 @@
 		openBeitragsMembers={data.openBeitragsMembers}
 	/>
 
-	<!-- WGB Freigrenze widget (stub until crons-and-wgb agent delivers) -->
-	<WGBWidget />
+	<!-- WGB Freigrenze widget — §19 UStG Kleinunternehmer tracker -->
+	<div class="mt-6">
+		<WGBWidget
+			einnahmenCents={data.wgb.einnahmenCents}
+			freigrenzeCents={data.wgb.freigrenzeCents}
+			status={data.wgb.status}
+			year={data.wgb.year}
+		/>
+	</div>
 
 	<!-- Recent activity feed -->
 	<RecentActivity entries={data.recentActivity} />

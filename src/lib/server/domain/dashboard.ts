@@ -22,11 +22,19 @@ import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
 import { donations } from "$lib/server/db/schema/donations.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
+import { income } from "$lib/server/db/schema/income.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+export interface WgbStatus {
+  einnahmenCents: number;
+  freigrenzeCents: number;
+  status: "ok" | "erhoeht" | "kritisch" | "ueberschritten";
+  year: number;
+}
 
 export interface DashboardKpis {
   /** Auslagen submissions with no decision yet (inbox). */
@@ -41,6 +49,8 @@ export interface DashboardKpis {
   spendenYtdCents: bigint;
   /** Active members (no austrittsDatum). */
   activeMemberCount: number;
+  /** WGB Freigrenze status for the WGBWidget. */
+  wgb: WgbStatus;
 }
 
 export interface RecentActivityEntry {
@@ -86,6 +96,7 @@ export async function loadDashboardKpis(): Promise<DashboardKpis> {
     openBeitragsAgg,
     spendenYtd,
     activeMembers,
+    wgbEinnahmen,
   ] = await Promise.all([
     // 1. Open auslagen submissions (no decision yet)
     db
@@ -133,7 +144,31 @@ export async function loadDashboardKpis(): Promise<DashboardKpis> {
       .select({ value: count() })
       .from(members)
       .where(isNull(members.austrittsDatum)),
+
+    // 6. WGB Einnahmen YTD (wirtschaftlich sphere, current Berlin year)
+    db
+      .select({ sumCents: sum(income.betragCents) })
+      .from(income)
+      .where(
+        and(
+          eq(income.sphereSnapshot, "wirtschaftlich"),
+          eq(income.yearOfBuchung, currentYear),
+          isNull(income.supersedesId),
+        ),
+      ),
   ]);
+
+  const FREIGRENZE_CENTS = 4_500_000; // §19 UStG: 45.000 € gross
+  const wgbCents = Number(wgbEinnahmen[0]?.sumCents ?? 0);
+  const wgbPct = wgbCents / FREIGRENZE_CENTS;
+  const wgbStatus: WgbStatus["status"] =
+    wgbCents >= FREIGRENZE_CENTS
+      ? "ueberschritten"
+      : wgbPct >= 0.8
+        ? "kritisch"
+        : wgbPct >= 0.5
+          ? "erhoeht"
+          : "ok";
 
   return {
     openAuslagenCount: openAuslagen[0]?.value ?? 0,
@@ -145,6 +180,12 @@ export async function loadDashboardKpis(): Promise<DashboardKpis> {
     openBeitragsMembers: Number(openBeitragsAgg[0]?.memberCount ?? 0),
     spendenYtdCents: BigInt(spendenYtd[0]?.sumCents ?? 0),
     activeMemberCount: activeMembers[0]?.value ?? 0,
+    wgb: {
+      einnahmenCents: wgbCents,
+      freigrenzeCents: FREIGRENZE_CENTS,
+      status: wgbStatus,
+      year: currentYear,
+    },
   };
 }
 

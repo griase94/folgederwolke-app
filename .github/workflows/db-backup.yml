@@ -1,0 +1,65 @@
+# DB Backup — nightly pg_dump to off-Postgres storage.
+#
+# §7.7 backup strategy:
+#   - pg_dump (custom format, -Fc) to a private GitHub repo append
+#   - Optional: Drive backup folder (future Phase 7 polish)
+#
+# STUB: secrets DATABASE_URL_BACKUP, BACKUP_REPO, BACKUP_TOKEN are TBD.
+# Wire them in GitHub repo secrets before enabling this workflow.
+#
+# Schedule: 02:30 UTC daily (before Vercel daily-dispatcher at 03:00 UTC).
+
+name: DB Backup
+
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    name: pg_dump to private repo
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Dump database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_BACKUP }}
+        run: |
+          TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
+          FILENAME="backup-${TIMESTAMP}.dump"
+          pg_dump \
+            --format=custom \
+            --no-owner \
+            --no-acl \
+            "${DATABASE_URL}" \
+            --file="${FILENAME}"
+          echo "BACKUP_FILE=${FILENAME}" >> "$GITHUB_ENV"
+
+      - name: Push backup to private repository
+        env:
+          BACKUP_REPO: ${{ secrets.BACKUP_REPO }}
+          BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
+        run: |
+          # STUB: clone private backup repo, commit the dump, push.
+          # Env vars BACKUP_REPO (owner/repo) and BACKUP_TOKEN must be set.
+          if [ -z "${BACKUP_REPO}" ] || [ -z "${BACKUP_TOKEN}" ]; then
+            echo "BACKUP_REPO or BACKUP_TOKEN not set — skipping push (stub mode)"
+            exit 0
+          fi
+          git clone \
+            "https://x-access-token:${BACKUP_TOKEN}@github.com/${BACKUP_REPO}.git" \
+            backup-repo
+          cp "${BACKUP_FILE}" backup-repo/
+          cd backup-repo
+          git config user.email "ci-backup@folgederwolke.de"
+          git config user.name "CI Backup Bot"
+          git add "${BACKUP_FILE}"
+          git commit -m "backup: ${BACKUP_FILE}"
+          git push

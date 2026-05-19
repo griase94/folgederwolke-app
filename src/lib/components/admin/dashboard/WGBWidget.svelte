@@ -1,75 +1,108 @@
 <script lang="ts">
 	/**
-	 * WGB Einnahmen YTD widget — Kleinunternehmer §19 UStG Freigrenze tracker.
+	 * WGBWidget — Wirtschaftlicher Geschäftsbetrieb Freigrenze tracker.
 	 *
-	 * The crons-and-wgb agent owns the real implementation. This is the stub
-	 * that renders until their WGBWidget is exposed and importable.
+	 * Shows YTD gross Einnahmen (wirtschaftlich sphere) versus the §19 UStG
+	 * Kleinunternehmer-Regelung limit of 45.000 € gross.
 	 *
-	 * Props are intentionally typed loosely so wiring is painless once the
-	 * real component is ready.
+	 * Data comes from the dashboard +page.server.ts which queries
+	 * v_wgb_freigrenze_status.
 	 */
 
 	interface Props {
-		/** WGB gross income YTD in cents. Pass 0 until crons-and-wgb agent delivers. */
-		wgbYtdCents?: number;
-		/** Kleinunternehmer-Freigrenze in cents. Default: 45_000_00 (§19 UStG 2024+). */
-		freigrenzeCents?: number;
+		/** YTD gross Einnahmen in cents (wirtschaftlich sphere, current year). */
+		einnahmenCents: number;
+		/** Statutory Freigrenze in cents (45.000 € = 4_500_000). */
+		freigrenzeCents: number;
+		/** Pre-computed status from v_wgb_freigrenze_status view. */
+		status: 'ok' | 'erhoeht' | 'kritisch' | 'ueberschritten';
+		/** Current fiscal year (Berlin timezone). */
+		year: number;
 	}
 
-	let { wgbYtdCents = 0, freigrenzeCents = 4_500_000 }: Props = $props();
+	let { einnahmenCents, freigrenzeCents, status, year }: Props = $props();
 
-	const pct = $derived(
-		freigrenzeCents > 0 ? Math.min(100, Math.round((wgbYtdCents / freigrenzeCents) * 100)) : 0
+	const formatEur = (cents: number) =>
+		(cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+
+	const pct = $derived(Math.min(100, Math.round((einnahmenCents / freigrenzeCents) * 100)));
+	const restCents = $derived(Math.max(0, freigrenzeCents - einnahmenCents));
+
+	const barColor = $derived(
+		status === 'ueberschritten'
+			? 'bg-red-500'
+			: status === 'kritisch'
+				? 'bg-orange-500'
+				: status === 'erhoeht'
+					? 'bg-yellow-400'
+					: 'bg-emerald-500'
 	);
 
-	function formatEur(cents: number): string {
-		return (cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
-	}
+	const statusLabel = $derived(
+		status === 'ueberschritten'
+			? 'Freigrenze überschritten'
+			: status === 'kritisch'
+				? 'Kritisch (>80 %)'
+				: status === 'erhoeht'
+					? 'Erhöht (>50 %)'
+					: 'Im grünen Bereich'
+	);
 
-	const isStub = $derived(wgbYtdCents === 0);
+	const badgeClasses = $derived(
+		status === 'ueberschritten'
+			? 'bg-red-100 text-red-800'
+			: status === 'kritisch'
+				? 'bg-orange-100 text-orange-800'
+				: status === 'erhoeht'
+					? 'bg-yellow-100 text-yellow-800'
+					: 'bg-emerald-100 text-emerald-800'
+	);
 </script>
 
 <section
 	aria-labelledby="wgb-heading"
-	class="mt-6 rounded-xl border border-border bg-card p-5 shadow-sm"
+	class="rounded-xl border border-border bg-card p-5 shadow-sm"
 >
-	<h2 id="wgb-heading" class="mb-1 text-sm font-semibold text-foreground">
-		WGB Einnahmen YTD
-	</h2>
-	<p class="mb-3 text-xs text-muted-foreground">
-		Kleinunternehmer-Freigrenze §19 UStG · Limit: {formatEur(freigrenzeCents)}
-	</p>
-
-	{#if isStub}
-		<p class="text-xs text-muted-foreground italic">
-			WGB-Daten werden vom crons-and-wgb Agenten bereitgestellt — noch nicht verfügbar.
-		</p>
-	{:else}
-		<div class="mb-2 flex items-end justify-between">
-			<span class="text-2xl font-bold text-foreground">{formatEur(wgbYtdCents)}</span>
-			<span class="text-sm font-medium text-muted-foreground">{pct}%</span>
+	<!-- Header row -->
+	<div class="flex items-start justify-between gap-2">
+		<div>
+			<h2 id="wgb-heading" class="text-sm font-medium text-muted-foreground">
+				WGB-Freigrenze {year}
+				<span class="font-normal">(§19 UStG)</span>
+			</h2>
+			<p class="mt-1 text-2xl font-bold tracking-tight text-foreground">
+				{formatEur(einnahmenCents)}
+			</p>
 		</div>
+		<span class="mt-1 rounded-full px-2 py-0.5 text-xs font-semibold {badgeClasses}">
+			{statusLabel}
+		</span>
+	</div>
 
-		<div class="h-2 w-full overflow-hidden rounded-full bg-muted">
+	<!-- Progress bar -->
+	<div class="mt-4">
+		<div class="mb-1 flex justify-between text-xs text-muted-foreground">
+			<span>{pct} % von {formatEur(freigrenzeCents)}</span>
+			{#if status !== 'ueberschritten'}
+				<span>Noch {formatEur(restCents)}</span>
+			{/if}
+		</div>
+		<div class="h-2.5 w-full overflow-hidden rounded-full bg-muted">
 			<div
-				class="h-full rounded-full transition-all {pct >= 80
-					? 'bg-destructive'
-					: pct >= 60
-						? 'bg-yellow-500'
-						: 'bg-primary'}"
+				class="h-full rounded-full transition-all {barColor}"
 				style="width: {pct}%"
 				role="progressbar"
 				aria-valuenow={pct}
 				aria-valuemin={0}
 				aria-valuemax={100}
-				aria-label="Anteil der Freigrenze"
+				aria-label="WGB-Freigrenze {pct} % ausgeschöpft"
 			></div>
 		</div>
+	</div>
 
-		{#if pct >= 80}
-			<p class="mt-2 text-xs font-medium text-destructive">
-				Achtung: Freigrenze zu {pct}% ausgeschöpft!
-			</p>
-		{/if}
-	{/if}
+	<!-- Statutory note -->
+	<p class="mt-3 text-xs text-muted-foreground">
+		Brutto-Einnahmen des wirtschaftlichen Geschäftsbetriebs. Kleinunternehmer-Status
+		(§19 UStG) entfällt ab 45.000 € brutto/Jahr.
+	</p>
 </section>
