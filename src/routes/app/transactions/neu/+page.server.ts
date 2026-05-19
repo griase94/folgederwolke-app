@@ -1,11 +1,19 @@
 /**
  * /app/transactions/neu — Direct entry for Ausgabe / Einnahme / Spende.
  *
- * load(): zahlungsarten + members list for dropdowns.
+ * load(): zahlungsarten + members list + Kategorie options (expense/income)
+ *         + smart-default Kategorie names per kind. The Kategorie picker
+ *         drives sphereSnapshot — fixes VB-004 (vereinsbuchhalter) +
+ *         JB-014 (julia-buchhaltung) tax-correctness bug where the form
+ *         hardcoded sphereSnapshot="ideeller" and kategorieNameSnapshot=
+ *         "(Unkategorisiert)" for every booking.
  *
  * actions:
  *   ?/create — create expense | income | donation based on type picker.
- *              Redirects to /app/transactions/[id]?kind=<kind> on success.
+ *              Sphere is re-resolved server-side from the picked Kategorie
+ *              (resolveSphereForKategorie) so a tampered body cannot
+ *              mis-classify the booking. Redirects to
+ *              /app/transactions/[id]?kind=<kind> on success.
  */
 
 import { fail, redirect } from "@sveltejs/kit";
@@ -18,6 +26,12 @@ import {
   checkFestschreibungGate,
   listZahlungsarten,
 } from "$lib/server/domain/transactions.js";
+import {
+  listKategorieOptions,
+  loadRecentKategorieUsage,
+  pickDefaultKategorieName,
+  resolveSphereForKategorie,
+} from "$lib/server/domain/transaction-pickers.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members } from "$lib/server/db/schema/members.js";
@@ -37,39 +51,81 @@ function berlinYear(): number {
 // load
 // ---------------------------------------------------------------------------
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ locals }) => {
   const db = getDb();
+  const userId = locals.session?.user?.id ?? null;
 
-  const [zahlungsarten, allMembers] = await Promise.all([
-    listZahlungsarten(),
-    db
-      .select({
-        id: members.id,
-        vorname: members.vorname,
-        nachname: members.nachname,
-        email: members.email,
-        iban: members.iban,
-      })
-      .from(members)
-      .orderBy(asc(members.nachname)),
-  ]);
+  const [zahlungsarten, allMembers, expenseKategorien, incomeKategorien, recent] =
+    await Promise.all([
+      listZahlungsarten(),
+      db
+        .select({
+          id: members.id,
+          vorname: members.vorname,
+          nachname: members.nachname,
+          email: members.email,
+          iban: members.iban,
+        })
+        .from(members)
+        .orderBy(asc(members.nachname)),
+      listKategorieOptions("expense"),
+      listKategorieOptions("income"),
+      userId ? loadRecentKategorieUsage(userId) : Promise.resolve([]),
+    ]);
 
-  return { zahlungsarten, members: allMembers };
+  // Pre-compute the no-project default for each kind so the form lands on a
+  // sensible pick without an extra round-trip (last-used > sortOrder fallback).
+  const defaultExpenseKategorie = pickDefaultKategorieName({
+    kategorien: expenseKategorien,
+    recent,
+    projectId: null,
+    kind: "expense",
+  });
+  const defaultIncomeKategorie = pickDefaultKategorieName({
+    kategorien: incomeKategorien,
+    recent,
+    projectId: null,
+    kind: "income",
+  });
+
+  return {
+    zahlungsarten,
+    members: allMembers,
+    expenseKategorien,
+    incomeKategorien,
+    defaultExpenseKategorie,
+    defaultIncomeKategorie,
+  };
 };
 
 // ---------------------------------------------------------------------------
 // Schemas
 // ---------------------------------------------------------------------------
 
+const sphereValues = [
+  "ideeller",
+  "vermoegen",
+  "zweckbetrieb",
+  "wirtschaftlich",
+] as const;
+
 const baseSchema = z.object({
   type: z.enum(["expense", "income", "donation"]),
   bezeichnung: z.string().min(1).max(500),
   betragCents: z.coerce.number().int().positive(),
   currency: z.string().default("EUR"),
-  kategorieNameSnapshot: z.string().max(200).default("(Unkategorisiert)"),
-  sphereSnapshot: z
-    .enum(["ideeller", "vermoegen", "zweckbetrieb", "wirtschaftlich"])
-    .default("ideeller"),
+  // Required for expense + income — the picker now drives this.
+  // Donations override with the donation-specific schema below (kept as
+  // "Spende" snapshot for legacy parity).
+  kategorieNameSnapshot: z
+    .string()
+    .min(1)
+    .max(200)
+    .refine((v) => v !== "(Unkategorisiert)", {
+      message:
+        "Kategorie muss ausgewählt werden (VB-004/JB-014 tax-correctness gate)",
+    }),
+  sphereSnapshot: z.enum(sphereValues),
   kommentar: z.string().max(2000).nullable().optional(),
   projectId: z.string().uuid().nullable().optional(),
 });
@@ -101,7 +157,11 @@ const incomeSchema = baseSchema.extend({
     .optional(),
 });
 
+// Donations carry their own snapshot ("Spende") and sphere; the picker is not
+// applied to them in this cluster (donation categorization is its own UX track).
 const donationSchema = baseSchema.extend({
+  kategorieNameSnapshot: z.string().min(1).max(200).default("Spende"),
+  sphereSnapshot: z.enum(sphereValues).default("ideeller"),
   zugewendetAm: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -149,12 +209,22 @@ export const actions = {
           });
         }
 
+        // Sphere is server-truth: re-derive from the picked kategorie so a
+        // tampered form body cannot mis-classify the booking.
+        const expenseKategorien = await listKategorieOptions("expense");
+        const sphereSnapshot = resolveSphereForKategorie({
+          kategorien: expenseKategorien,
+          kategorieName: parsed.data.kategorieNameSnapshot,
+          projectSphereOverride: null,
+        });
+
         const gate = await checkFestschreibungGate(year);
         if (!gate.ok) return fail(gate.status, { error: gate.error });
 
         const businessId = await allocateBusinessId("AUS", year);
         const result = await createExpense({
           ...parsed.data,
+          sphereSnapshot,
           businessId,
           actorUserId: user.id,
           bezahltVonDisplay:
@@ -177,12 +247,20 @@ export const actions = {
           });
         }
 
+        const incomeKategorien = await listKategorieOptions("income");
+        const sphereSnapshot = resolveSphereForKategorie({
+          kategorien: incomeKategorien,
+          kategorieName: parsed.data.kategorieNameSnapshot,
+          projectSphereOverride: null,
+        });
+
         const gate = await checkFestschreibungGate(year);
         if (!gate.ok) return fail(gate.status, { error: gate.error });
 
         const businessId = await allocateBusinessId("E", year);
         const result = await createIncome({
           ...parsed.data,
+          sphereSnapshot,
           businessId,
           actorUserId: user.id,
         });

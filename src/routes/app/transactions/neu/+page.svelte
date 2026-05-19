@@ -16,6 +16,14 @@
 		donation: 'Spende',
 	};
 
+	// Kategorie picker (VB-004 + JB-014 fix — no more hidden "(Unkategorisiert)").
+	// The form starts on the smart-default kategorie name. Sphere is derived
+	// from the picked kategorie via a server-side re-resolution in +page.server.ts.
+	// svelte-ignore state_referenced_locally
+	let expenseKategorieName = $state<string>(data.defaultExpenseKategorie ?? '');
+	// svelte-ignore state_referenced_locally
+	let incomeKategorieName = $state<string>(data.defaultIncomeKategorie ?? '');
+
 	// BezahltVon state (expense only)
 	let bezahltVonKind = $state<'verein' | 'member' | 'extern'>('member');
 	let selectedMemberId = $state('');
@@ -31,6 +39,27 @@
 		}
 		return '';
 	});
+
+	const activeKategorieName = $derived(
+		selectedType === 'income' ? incomeKategorieName : expenseKategorieName,
+	);
+
+	// Sphere preview from the kategorie list — purely informational, server is
+	// the truth source (re-resolves on POST in case of tampered body).
+	const activeSphere = $derived.by(() => {
+		if (selectedType === 'donation') return 'ideeller';
+		const list =
+			selectedType === 'income' ? data.incomeKategorien : data.expenseKategorien;
+		const match = list.find((k) => k.name === activeKategorieName);
+		return match?.sphere ?? 'ideeller';
+	});
+
+	const sphereLabels: Record<string, string> = {
+		ideeller: 'Ideeller Bereich',
+		vermoegen: 'Vermögensverwaltung',
+		zweckbetrieb: 'Zweckbetrieb',
+		wirtschaftlich: 'Wirtschaftlicher GB',
+	};
 </script>
 
 <svelte:head>
@@ -217,6 +246,56 @@
 				</div>
 			{/if}
 
+			<!-- Kategorie picker (VB-004 + JB-014: tax-correctness gate) -->
+			{#if selectedType !== 'donation'}
+				<div>
+					<label
+						for="kategorieNameSnapshot"
+						class="mb-1 block text-sm font-medium text-foreground"
+					>
+						Kategorie <span class="text-red-500" aria-hidden="true">*</span>
+					</label>
+					{#if selectedType === 'expense'}
+						<select
+							id="kategorieNameSnapshot"
+							name="kategorieNameSnapshot"
+							required
+							bind:value={expenseKategorieName}
+							class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+							data-testid="kategorie-picker-expense"
+						>
+							{#if data.expenseKategorien.length === 0}
+								<option value="" disabled>(Keine Kategorien — bitte zuerst seeden)</option>
+							{/if}
+							{#each data.expenseKategorien as k (k.id)}
+								<option value={k.name}>{k.name}</option>
+							{/each}
+						</select>
+					{:else}
+						<select
+							id="kategorieNameSnapshot"
+							name="kategorieNameSnapshot"
+							required
+							bind:value={incomeKategorieName}
+							class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+							data-testid="kategorie-picker-income"
+						>
+							{#if data.incomeKategorien.length === 0}
+								<option value="" disabled>(Keine Kategorien — bitte zuerst seeden)</option>
+							{/if}
+							{#each data.incomeKategorien as k (k.id)}
+								<option value={k.name}>{k.name}</option>
+							{/each}
+						</select>
+					{/if}
+					<p class="mt-1 text-xs text-muted-foreground" data-testid="sphere-preview">
+						Sphäre: <span class="font-medium text-foreground">{sphereLabels[activeSphere]}</span>
+						<span class="ml-1">(automatisch aus Kategorie)</span>
+					</p>
+					<input type="hidden" name="sphereSnapshot" value={activeSphere} />
+				</div>
+			{/if}
+
 			<!-- Donation-specific -->
 			{#if selectedType === 'donation'}
 				<div>
@@ -257,9 +336,12 @@
 				></textarea>
 			</div>
 
-			<!-- Hidden defaults -->
-			<input type="hidden" name="kategorieNameSnapshot" value="(Unkategorisiert)" />
-			<input type="hidden" name="sphereSnapshot" value="ideeller" />
+			<!-- Donation-only fallback snapshot — kept separate from the
+			     expense/income Kategorie picker above (which now drives
+			     sphereSnapshot via the picker). -->
+			{#if selectedType === 'donation'}
+				<input type="hidden" name="sphereSnapshot" value="ideeller" />
+			{/if}
 
 			<!-- Actions -->
 			<div class="flex gap-3 pt-2">
