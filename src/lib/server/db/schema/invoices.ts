@@ -16,6 +16,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   char,
+  customType,
   date,
   index,
   integer,
@@ -27,6 +28,13 @@ import {
   uuid,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
+
+/** Postgres bytea column ↔ Node Buffer mapping (drizzle has no native bytea). */
+const bytea = customType<{ data: Buffer; default: false }>({
+  dataType() {
+    return "bytea";
+  },
+});
 import { customers } from "./customers.js";
 import { pdfStatusEnum, sourceKindEnum, sphereEnum } from "./enums.js";
 import { kategorien } from "./kategorien.js";
@@ -102,6 +110,14 @@ export const invoices = pgTable(
     pdfStatus: pdfStatusEnum("pdf_status").notNull().default("not_generated"),
     pdfStatusError: text("pdf_status_error"),
 
+    // --- Drive-failure resilience (Phase 5) ---
+    /** Raw PDF bytes — populated when pdf-lib renders. Persists even if
+     *  Drive upload fails so admins can still download from the app. */
+    pdfBytes: bytea("pdf_bytes"),
+    /** Drive sync state: 'pending' | 'uploaded' | 'failed' | 'skipped' — null
+     *  while no PDF has been generated. */
+    driveStatus: text("drive_status"),
+
     // --- Payment reconciliation ---
     paidByIncomeId: uuid("paid_by_income_id"),
     bezahltAm: date("bezahlt_am"),
@@ -137,6 +153,7 @@ export const invoices = pgTable(
     customerIdIdx: index("invoices_customer_id_idx").on(t.customerId),
     projectIdIdx: index("invoices_project_id_idx").on(t.projectId),
     pdfStatusIdx: index("invoices_pdf_status_idx").on(t.pdfStatus),
+    driveStatusIdx: index("invoices_drive_status_idx").on(t.driveStatus),
     rechnungsdatumIdx: index("invoices_rechnungsdatum_idx").on(
       t.rechnungsdatum,
     ),

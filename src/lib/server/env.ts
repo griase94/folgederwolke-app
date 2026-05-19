@@ -44,6 +44,25 @@ const schema = z.object({
   VEREIN_VR: z.string().default(""),
   VEREIN_ADRESSE: z.string().default(""),
 
+  // Spenden — Zuwendungsbestätigung (Bescheinigung) Pflichtfelder.
+  // ZUWENDUNGSBESTAETIGUNG_ENABLED is derived 'auto' from BESCHEID_TYP +
+  // VEREIN_FREISTELLUNGSBESCHEID_VZ (per masterplan §2.2 + §9). The presence
+  // of a valid Bescheid is what gates Bescheinigungs-Generierung in the UI.
+  /** "feststellung_60a" | "freistellungsbescheid" | "" (disabled). */
+  VEREIN_BESCHEID_TYP: z.string().default(""),
+  /** Date the Freistellungsbescheid / §60a-Feststellung was issued (YYYY-MM-DD). */
+  VEREIN_BESCHEID_DATUM: z.string().default(""),
+  /** Date of the Satzungsfassung (Pflichtfeld in §60a Wording). */
+  VEREIN_SATZUNG_FASSUNG: z.string().default(""),
+  /** Veranlagungszeitraum (YYYY) — only meaningful with TYP=freistellungsbescheid. */
+  VEREIN_FREISTELLUNGSBESCHEID_VZ: z.string().default(""),
+  /** "Steuerbegünstigte Zwecke" listed on the Bescheid (free text). */
+  VEREIN_STEUERBEGUENSTIGTE_ZWECKE: z
+    .string()
+    .default(
+      "Förderung der Kunst und Kultur sowie der Heimatpflege und Heimatkunde",
+    ),
+
   // Deployment metadata
   COMMIT_SHA: z.string().default("dev"),
   DEPLOYED_AT: z.string().default(""),
