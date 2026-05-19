@@ -43,6 +43,13 @@
       "when": 1747699200000,
       "tag": "0005_invoices_pdf_bytes",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1747785600000,
+      "tag": "0006_phase5_projects_customers_soft_delete",
+      "breakpoints": true
     }
   ]
 }
