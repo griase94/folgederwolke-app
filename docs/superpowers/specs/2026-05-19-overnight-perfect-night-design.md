@@ -199,25 +199,288 @@ project dropdown isn't permanently empty.
 
 ## Roles
 
-| Role                            | Count per cluster         | Responsibility                                                                                                                                                                                                                                                                                                                                  |
-| ------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Orchestrator                    | 1 total                   | Loads spec, dispatches builds, watches PRs, dispatches reviewers, tracks iteration cycles, merges sub-PRs, logs everything                                                                                                                                                                                                                      |
-| Build agent                     | 1                         | TDD-first implementation; opens sub-PR against `overnight-2026-05-20`                                                                                                                                                                                                                                                                           |
-| Generic code reviewer           | 1 per cycle               | Correctness, patterns, security, TDD discipline (verifies via `git log -p` that tests came before impl)                                                                                                                                                                                                                                         |
-| Originating-expert reviewers    | 1-4 (cluster-dependent)   | Re-spawned with the same persona prompt used in the 2026-05-19 deep-dive. **Reviews the code AND interactively drives the live app via Playwright (clicks, types, scrolls, screenshots) to verify the original finding is resolved.** Not optional — every originating-expert review includes a live-app walkthrough, not just a code read.     |
-| **UX-flow reviewer**            | 1 per UI-touching PR      | A new role distinct from the visual-diff reviewer. Walks the cluster's user-facing flows END-TO-END in a real browser (Playwright headed mode where possible, with traces saved). Specifically asks: would Julia actually do this? Where would she get stuck? Reports friction, surprise, broken affordances. Writes the report as Julia would. |
-| Visual diff reviewer            | 1 per UI-touching PR      | Playwright screenshot diff against pre-change baseline at desktop + mobile + tablet viewports. Specifically asserts on layout shift, color/spacing/type regressions, and brand-consistency.                                                                                                                                                     |
-| Test-quality reviewer           | 1 per PR                  | Reads tests; refuses ones that mock the thing under test, assert only HTTP status, or duplicate the production logic in test code. **Also asserts that critical-path tests (§Critical-path test matrix) are present where applicable.**                                                                                                         |
-| Critical-path coverage reviewer | 1 per cluster             | New role. Reads the §Critical-path test matrix and verifies the cluster covers every critical path it touches. Refuses PRs that touch a critical path without an integration- or e2e-test for it.                                                                                                                                               |
-| Final integration reviewer      | 1 per cluster (last gate) | Verifies full CI green, every reviewer thread resolved, no MUST-FIX open, originating expert signed off in writing, every critical path the cluster touches is tested.                                                                                                                                                                          |
+| Role                                 | Count per cluster                          | Responsibility                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- | --------------------- |
+| Orchestrator (tick model)            | 1 total, stateless per tick                | See §Orchestrator architecture below. Reads checkpoint, advances one step, writes checkpoint, schedules next tick via `ScheduleWakeup`. Survives crashes / context resets via the checkpoint file. Never holds in-memory state across ticks.                                                                       |
+| Build agent                          | 1 per cluster                              | TDD-first implementation; opens sub-PR against `overnight-2026-05-20`. **Does NOT have `gh pr merge` permission** — that's the orchestrator's job exclusively.                                                                                                                                                     |
+| Generic code reviewer                | 1 per cycle                                | Correctness, patterns, security, TDD discipline (verifies via `git log -p` that tests came first AND that red-commit test bodies are a superset of green-commit's).                                                                                                                                                |
+| Originating-expert reviewers         | 1-4 (cluster-dependent)                    | Re-spawned with the same persona prompt used in the 2026-05-19 deep-dive **plus an anchor**: the original finding narrative + findings JSON. **Drives the live app via Playwright using the 5-path walkthrough protocol** (§Walkthrough protocol below). Posts structured sign-off comment with `VERDICT: RESOLVED | PARTIALLY | NOT RESOLVED` header. |
+| UX-flow reviewer                     | 1 per UI-touching PR                       | Distinct from visual-diff. Walks the cluster's user-facing flows END-TO-END in headed Playwright with traces saved. Writes the report in Julia-voice (German plain-language friction log). Produces `docs/reviews/overnight-walkthroughs/c<N>-<reviewer>-<cycle>.md`.                                              |
+| Visual diff reviewer                 | 1 per UI-touching PR                       | Playwright screenshot diff against pre-change baseline at the device matrix (§Device matrix). Visual-diff threshold + baseline-OS pinned in the spec.                                                                                                                                                              |
+| Vereinsmitglied-Native (DE) reviewer | 1 for C8 + C9, optional otherwise          | Native-German microcopy + tone reviewer. Required sign-off for clusters touching user-facing German strings. Refuses cold-but-correct strings; flags Anglicism, awkward phrasing, missing warmth.                                                                                                                  |
+| Delight reviewer                     | 1 blocking for C5 + C9, advisory otherwise | Asks the question no other reviewer asks: "would this make a user smile?". Required sign-off for the PWA installation experience + microcopy clusters. Non-blocking elsewhere.                                                                                                                                     |
+| Test-quality reviewer                | 1 per PR                                   | Refuses tests that mock the thing under test, assert only HTTP status, or duplicate production logic. Enforces the 3 refusal patterns in §Test-quality refusal patterns. **Also asserts critical-path tests are present.**                                                                                         |
+| Critical-path coverage reviewer      | 1 per cluster                              | Reads the §Critical-path test matrix and verifies the cluster covers every critical path it touches. Refuses PRs that touch a critical path without an integration- or e2e-test for it.                                                                                                                            |
+| Second-opinion reviewer (challenge)  | 1 every 3rd cycle (cluster-wide)           | Fresh persona spawn with NO memory of prior cycles. Mitigates reviewer-fatigue + echo-chamber. If the second-opinion reviewer raises a finding that prior cycles cleared, that's a flag — re-open prior reviews.                                                                                                   |
+| Final integration reviewer           | 1 per cluster (last gate)                  | Verifies CI green, every reviewer thread resolved with a parseable `VERDICT: RESOLVED` line, no MUST-FIX open, every critical path tested, finding-traceability matrix present in PR body.                                                                                                                         |
 
 **Hard rules**:
 
-1. No agent merges their own work.
-2. No reviewer reviews a cluster they were build agent for.
-3. Originating-expert sign-off is mandatory and captured in writing in the PR.
-4. CI must be 100% green before final integration review opens.
-5. TDD git-history check: code reviewer rejects PRs that committed tests + implementation together.
+1. **Only the orchestrator merges sub-PRs.** Build agents do NOT have merge permission (settings + wrapper script enforced).
+2. **No reviewer reviews a cluster they were build agent for.**
+3. **Sign-off is a structured PR comment**, not `gh pr review --approve` (classifier-blocked). Format: `[REVIEWER: <name>] [VERDICT: RESOLVED|PARTIALLY|NOT RESOLVED] <body>`. Orchestrator parses these.
+4. **CI must be 100% green** before final integration review opens.
+5. **TDD git-history is machine-verified**: red-commit's test bodies are a strict superset of green-commit's; `.tdd-red/c<N>.txt` is committed at red time, contents must match the test contents in the next green commit.
+6. **Every PR body includes a finding-traceability matrix**: each finding ID → exact test file + assertion line that proves it's resolved. Originating expert verifies one entry by reverting the impl and watching the named test go red.
+7. **Reviewer fatigue mitigation**: every 3rd cycle on a cluster spawns a "second-opinion" reviewer with no prior-cycle context.
+
+## Orchestrator architecture — stateless tick model
+
+A single Claude session running for 8-12 hours holding cluster state in
+its conversation context **does not work** — autonomy + risk red-teams
+agreed: context will fill, state will be lossily summarized, and by 4am
+the orchestrator forgets which reviewers signed off. Instead:
+
+### Persistent state file
+
+Path: `~/.folgederwolke-build/state/overnight-2026-05-20.json`
+
+Schema (sketch — final shape determined by writing-plans):
+
+```jsonc
+{
+  "version": 1,
+  "started_at": "2026-05-20T22:00:00Z",
+  "preflight": { "passed": true, "checks": [...] },
+  "wave": 1,
+  "clusters": {
+    "c1": { "state": "WAITING_WAVE_3", "branch": "...", "sub_pr": null, "cycles": [] },
+    "c4": { "state": "REVIEWING", "branch": "overnight-2026-05-20/c4-sphere-bug", "sub_pr": 42, "cycles": [
+      { "n": 1, "build_agent": "abc...", "reviewers": [...], "verdicts": {"vereinsbuchhalter": "PARTIALLY", "julia-buchhaltung": "RESOLVED"}, "must_fix_remaining": 2 }
+    ]},
+    ...
+  },
+  "infra_health": { "docker_ok": true, "ci_workflow_patched": true, "last_postgres_ping": "..." },
+  "log_tail": [ /* last 50 status lines for fast wake-grep */ ]
+}
+```
+
+### The tick
+
+Every tick the orchestrator agent:
+
+1. Loads state file (single source of truth)
+2. **Runs infra health check**: `docker ps` for the dev Postgres, ping
+   localhost:5432+offset for each active cluster, check
+   `gh auth status`. If unhealthy → log + pause new dispatches + schedule
+   the next tick to retry health (does NOT increment cluster defer
+   counters; infra failures are categorically separate from cluster
+   failures).
+3. For each cluster in `WAITING_DISPATCH`: spawn its build agent via
+   in-process `Agent` tool (NOT `Bash(claude -p)` — that's blocked).
+4. For each cluster in `REVIEWING`: check GitHub for completed reviewer
+   PR comments. Parse `[VERDICT: ...]` headers. Update state.
+5. If a cluster has all required `VERDICT: RESOLVED` votes + CI green +
+   finding-traceability complete → orchestrator merges sub-PR into night
+   branch + auto-rebases other open sub-PRs.
+6. If a cluster has any `VERDICT: NOT RESOLVED` → spawn build agent for
+   another iteration cycle (with all reviewer feedback as input).
+7. If second-opinion needed (every 3rd cycle) → spawn fresh reviewer
+   with no prior-cycle context.
+8. Check wave-gating: if Wave 2 deps merged + Wave 1 fixtures pass,
+   transition wave + dispatch Wave 2 clusters.
+9. Write state file (atomic — `write tmp + rename`).
+10. Append a one-line status to
+    `~/.folgederwolke-build/state/overnight-progress.log` (for
+    `tail -f` insight at 3am).
+11. Call `ScheduleWakeup` with delay 120-180s + same prompt as this
+    tick. The orchestrator does NOT loop in-memory; each tick is a
+    fresh agent invocation that reads state from disk.
+
+The tick is **idempotent** — running it twice in a row from the same
+state produces the same advance + the same next-state. If a tick
+crashes mid-write, the prior state is intact (atomic rename) and the
+next tick simply retries.
+
+### Resume
+
+If the orchestrator session dies (context reset, network drop, manual
+interrupt), Andy can resume by re-invoking the orchestrator prompt — it
+reads state from disk and advances. The morning-consolidation step is
+only triggered when all clusters are in a terminal state, regardless of
+how many tick-sessions executed.
+
+### What the orchestrator NEVER does in-memory
+
+- Hold reviewer feedback across ticks (re-parse from PR comments)
+- Hold cycle counts in memory (read from state)
+- Loop in a single Claude session waiting for sub-agents to complete
+  (each tick checks status + reschedules)
+- Spawn sub-agents in fire-and-forget mode without a state hook
+
+### Sign-off protocol (the structured PR-comment pattern)
+
+Every reviewer agent posts a SINGLE PR comment in this exact format:
+
+```
+[REVIEWER: <persona-name>] [CYCLE: <n>] [VERDICT: RESOLVED|PARTIALLY|NOT RESOLVED]
+
+## Findings addressed
+- <FINDING-ID>: ✅ resolved at <test-file>:<assertion-line> | ❌ still broken
+- ...
+
+## What I tried in the live app
+<walkthrough log — see §Walkthrough protocol>
+
+## Free-text feedback
+<the human-voice review>
+```
+
+The orchestrator parses the first line via regex. Required for ALL
+reviewer types. `gh pr review --approve` (classifier-blocked) is never
+used. Verdict values:
+
+- **RESOLVED** — every claimed finding is genuinely fixed AND tested
+- **PARTIALLY** — some findings fixed, others still broken (named in
+  body); cluster goes to another iteration
+- **NOT RESOLVED** — no progress / regression / something worse
+
+A PR has the "all reviewers approved" state only when every required
+reviewer (per the §Per-cluster originating-expert mapping) has posted
+a comment with `VERDICT: RESOLVED`.
+
+## Walkthrough protocol (originating-expert + UX-flow reviewer)
+
+Every originating-expert + UX-flow reviewer **drives the live app**.
+Headless Playwright is the default; headed Playwright with trace
+captures saved for the morning report when feasible.
+
+A reviewer's walkthrough writes a markdown artifact to
+`docs/reviews/overnight-walkthroughs/c<N>-<reviewer>-<cycle>.md`. The
+file's structure:
+
+```markdown
+# Walkthrough — C<N> <cluster> — <reviewer> — cycle <n>
+
+## Setup
+
+- branch: <sha>
+- viewport: <desktop | iphone-12 | pixel-5 | ipad-mini>
+- preconditions: <db state, login session>
+
+## 5-path walkthrough
+
+### Path 1 — Happy path
+
+1. step
+2. step
+   …
+   Result: ✅ / ❌
+   Screenshot: <relative path>
+
+### Path 2 — Wrong-button (clicked the obvious-but-wrong affordance)
+
+…
+
+### Path 3 — Mistyped input (e.g. invalid IBAN, amount with comma vs dot)
+
+…
+
+### Path 4 — Interrupted flow (navigated away mid-form, came back)
+
+…
+
+### Path 5 — Mobile thumb-zone (one-thumb operation on 390x844)
+
+…
+
+## Comparison to original finding
+
+The 2026-05-19 deep-dive raised finding <ID>: "<quoted>".
+
+- Is it resolved? <yes/no/partially>
+- Specific evidence: <test file:line, screenshot, video>
+
+## Friction log
+
+- micro-friction: <thing that wasn't broken but didn't feel right>
+- delight moment: <thing that felt nice>
+
+## Verdict
+
+[VERDICT: RESOLVED | PARTIALLY | NOT RESOLVED]
+```
+
+The 5-path requirement is **mandatory** for every UI-touching cluster
+review. Reviewers that produce only a happy-path walkthrough are
+rejected by the orchestrator (regex check for all 5 path-N headings).
+
+## Worktree resource allocation
+
+Five parallel build agents each running their own docker-compose
+Postgres, Vite dev server, and Playwright browsers would collide on
+default ports + DB names. Allocation:
+
+| Cluster | Worktree path                                   | Postgres port | Vite port | DB name            | docker-compose project |
+| ------- | ----------------------------------------------- | ------------- | --------- | ------------------ | ---------------------- |
+| C1      | `.claude/worktrees/overnight-c1-eur-redesign`   | 5441          | 5181      | `folgederwolke_c1` | `fdw-overnight-c1`     |
+| C2      | `.claude/worktrees/overnight-c2-year-switcher`  | 5442          | 5182      | `folgederwolke_c2` | `fdw-overnight-c2`     |
+| C3      | `.claude/worktrees/overnight-c3-dashboard`      | 5443          | 5183      | `folgederwolke_c3` | `fdw-overnight-c3`     |
+| C4      | `.claude/worktrees/overnight-c4-sphere-bug`     | 5444          | 5184      | `folgederwolke_c4` | `fdw-overnight-c4`     |
+| C5      | `.claude/worktrees/overnight-c5-pwa-icons`      | 5445          | 5185      | `folgederwolke_c5` | `fdw-overnight-c5`     |
+| C6      | `.claude/worktrees/overnight-c6-primitives`     | 5446          | 5186      | `folgederwolke_c6` | `fdw-overnight-c6`     |
+| C7      | `.claude/worktrees/overnight-c7-mobile-polish`  | 5447          | 5187      | `folgederwolke_c7` | `fdw-overnight-c7`     |
+| C8      | `.claude/worktrees/overnight-c8-mail-templates` | 5448          | 5188      | `folgederwolke_c8` | `fdw-overnight-c8`     |
+| C9      | `.claude/worktrees/overnight-c9-microcopy-ia`   | 5449          | 5189      | `folgederwolke_c9` | `fdw-overnight-c9`     |
+
+Each cluster's build agent receives its allocation in the dispatch
+prompt. The `dev-up.sh` invocation is parameterized to honor these.
+Build agents are explicitly told NEVER to bind to default ports.
+
+Playwright browsers per cluster don't collide (separate processes,
+random ephemeral debugging ports). But test-timeout budgets are
+generous because Playwright cold-start on a CI box is ~10s.
+
+## CI workflow patch (preflight required)
+
+The current `.github/workflows/ci.yml` triggers on
+`branches: [main, "phase-*"]` for push and only `main` for pull_request.
+**Sub-PRs against `overnight-2026-05-20` would not trigger CI** — quality
+gates would collapse.
+
+Preflight applies a patch that adds the night branch to both triggers
+**before any sub-PR opens**:
+
+```yaml
+on:
+  push:
+    branches: [main, "phase-*", "overnight-*"]
+  pull_request:
+    branches: [main, "overnight-*"]
+```
+
+The patch is committed to `main` as part of preflight, NOT as part of
+any cluster. Preflight refuses to start if the commit can't be made
+(e.g. `main` is protected and refuses direct push — in which case
+preflight surfaces the error so Andy can pre-stage the workflow patch
+manually before kickoff).
+
+## Cross-wave regression fixtures (canary suite)
+
+Before Wave 1 dispatches, the orchestrator commits a hand-curated set
+of regression fixtures to the overnight branch. These act as the canary
+for every cluster: if they go red, infra (not code) is broken. Each
+fixture exercises a single critical invariant:
+
+| Fixture                                         | What it asserts                                                                                                                                                                           |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/canary/year-boundary.test.ts`            | Inserting a transaction at `2026-12-31T23:59:59+01:00` (Berlin) → `year_of_buchung = 2026`. Inserting at `2027-01-01T00:00:01+01:00` → 2027. Adjusts for DST.                             |
+| `tests/canary/dst-spring-fall.test.ts`          | Buchungen on 2026-03-29T02:30+02:00 (spring-forward gap) and 2026-10-25T02:30+02:00 (fall-back ambiguity) both resolve to 2026.                                                           |
+| `tests/canary/leap-year.test.ts`                | Bescheinigung on 2028-02-29 produces a Bescheinigungs-Nr `B-2028-NNN` and the PDF renders the date.                                                                                       |
+| `tests/canary/festschreibung-trigger.test.ts`   | After setting `settings.festgeschrieben_bis = 2025` and inserting a 2025 row, an UPDATE attempt raises SQLSTATE 23514 (check_violation) AT THE DATABASE LEVEL via direct psql connection. |
+| `tests/canary/audit-log-revoke.test.ts`         | A connection logged in as `app_runtime` attempting `UPDATE audit_log SET payload = '{}'::jsonb WHERE chain_seq = 1` raises 42501 (insufficient privilege).                                |
+| `tests/canary/sphere-required.test.ts`          | Calling `createIncome` / `createExpense` with no sphere argument throws a typed error BEFORE the DB INSERT. (Defends C4's bug from regressing.)                                           |
+| `tests/canary/audit-chain-integrity.test.ts`    | After inserting 100 audit_log rows in a transaction, `verifyAuditChain()` returns ok=true and head=100, persisted_head=100.                                                               |
+| `tests/canary/id-allocator-concurrency.test.ts` | 20 concurrent calls to allocate an AUS-ID produce 20 unique, gapless IDs.                                                                                                                 |
+| `tests/canary/dev-eml-isolation.test.ts`        | Two parallel test files writing mail via `MAIL_PROVIDER=dev-eml` to per-test directories don't collide on filenames; cleanup removes the dirs.                                            |
+| `tests/canary/dashboard-1000-rows-perf.test.ts` | Dashboard server-side load with 1000 income + 1000 expense rows in DB completes in < 200ms (median over 5 runs).                                                                          |
+
+The canary suite **must be green** before any cluster dispatches.
+Once it's green, infra is verified. During the night, if a cluster's CI
+fails AND the canary suite also went red on the same commit, the
+failure is categorized as infra (not cluster) and the cluster's
+defer-counter does NOT increment — the orchestrator instead pauses,
+resets the dev stack, and re-runs the canary before resuming.
 
 ## Per-cluster originating-expert mapping
 
@@ -329,10 +592,13 @@ review).
 ## TDD protocol
 
 Each build agent runs the same 4-step rhythm. Orchestrator verifies
-each step via `git log` before allowing the next.
+each step via `git log` AND content checks before allowing the next.
 
 1. **Spec → tests (failing).** Tests reflect the spec + originating
    findings. Run. They MUST fail. Commit: `test(c<N>): tests for <issue> [TDD-red]`.
+   **At red-commit time, the build agent also writes the exact test
+   bodies into `tests/.tdd-red/c<N>-cycle<k>.txt`.** This is a
+   tamper-evidence anchor.
 2. **Minimal implementation.** Smallest change that makes tests pass.
    Commit: `feat(c<N>): <change> [TDD-green]`.
 3. **Refactor.** Improve impl without breaking tests. Optional.
@@ -340,18 +606,70 @@ each step via `git log` before allowing the next.
 4. **Coverage check.** Run test-quality reviewer locally; address
    "passes for wrong reason" findings before opening the PR.
 
+**Machine-verified TDD discipline** (the code reviewer enforces):
+
+- Red commit `[TDD-red]` exists; running its tests at that commit
+  produces a non-zero exit code (test failures).
+- Green commit `[TDD-green]` exists later in history; the test bodies
+  in the green commit are a SUPERSET of the bodies in the
+  `tests/.tdd-red/c<N>-cycle<k>.txt` anchor file (no tests removed,
+  no assertions weakened).
+- Placebo-TDD ("`expect(true).toBe(false)`" in red, real assertions
+  only in green) is rejected: the red-commit's test bodies must
+  contain at least one assertion that references a symbol from the
+  production change being made.
+
+## Test-quality refusal patterns (the test-quality reviewer enforces)
+
+The test-quality reviewer rejects any sub-PR whose tests contain these
+patterns:
+
+- **Pattern A — mocking the thing under test.** Any `tests/integration/**`
+  or `tests/e2e/**` file that calls `vi.mock(/.+(db|storage|mail)/)` or
+  the equivalent. Integration tests by definition exercise the real
+  boundary; mocking the boundary turns them into unit tests in disguise.
+- **Pattern B — re-implementing production logic in the test.** Test
+  files that contain the same algorithm as the production module
+  (e.g. `dashboard.test.ts` re-deriving `buildActivityLabel` from
+  `src/lib/server/domain/dashboard.ts`). The fix is to import the real
+  function and assert on its output, OR to assert on observable side
+  effects (the rendered HTML, the persisted row).
+- **Pattern C — placebo TDD.** Red-commit test bodies don't match
+  green-commit test bodies. Or red-commit test bodies are obviously
+  unable to fail (e.g. `expect(true).toBe(false)` placeholder).
+
+## Definition of "integration test" (binding for this overnight)
+
+When the spec says "integration test", it means: a Vitest test that:
+
+- Connects to a REAL Postgres (the docker-compose dev DB started by
+  `pnpm dev-up`, on the cluster's allocated port from §Worktree
+  resource allocation)
+- Runs against the REAL Drizzle ORM (no mocks of `getDb`)
+- Uses the REAL `MAIL_PROVIDER=dev-eml` (no mocks of `sendMail`)
+- Uses the REAL `FILE_STORAGE=local-fs` (no mocks of file storage)
+- Asserts on observable side effects (DB row state, file contents,
+  HTTP response shape) — not on whether a mocked function was called
+
+Anything that mocks one of `getDb` / `sendMail` / file-storage is a
+unit test, not an integration test. The critical-path-coverage
+reviewer rejects mis-categorized tests.
+
 ## Required test categories per cluster
 
-| Kind                                                   | Required for                                  | Asserts                                                                          |
-| ------------------------------------------------------ | --------------------------------------------- | -------------------------------------------------------------------------------- |
-| Unit (Vitest)                                          | every cluster                                 | Pure logic — year math, sphere derivation, EÜR aggregation, QR encoding          |
-| Component (Svelte testing-library)                     | every UI cluster                              | Component renders right thing for given props; emits right events                |
-| Integration (Vitest + local Postgres via dev-up)       | C1, C2, C3, C4                                | End-to-end domain — insert transaction → assert dashboard/EÜR/filter reflects it |
-| E2E (Playwright via new global setup)                  | every cluster                                 | Full browser flow through the actual UI                                          |
-| Mail content (`MAIL_PROVIDER=dev-eml` assertions)      | C8                                            | `.eml` file subject + body + QR payload bytes                                    |
-| Visual snapshot (Playwright + diff)                    | every UI cluster                              | Diff against pre-change baseline; fails on layout shift                          |
-| Mobile + tablet variants (Playwright device emulation) | C5, C7 + clusters with mobile-visible changes | Same behavior repeated at iPhone 12 + Pixel 5 + iPad Mini viewports              |
-| Accessibility (axe-core via Playwright)                | every UI cluster                              | Zero serious/critical findings on touched routes                                 |
+| Kind                                                   | Required for                                  | Asserts                                                                                                                                                      |
+| ------------------------------------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Unit (Vitest)                                          | every cluster                                 | Pure logic — year math, sphere derivation, EÜR aggregation, QR encoding                                                                                      |
+| Component (Svelte testing-library)                     | every UI cluster                              | Component renders right thing for given props; emits right events                                                                                            |
+| Integration (see §Definition above)                    | C1, C2, C3, C4, C8                            | End-to-end domain — insert transaction → assert dashboard/EÜR/filter reflects it                                                                             |
+| E2E (Playwright via new global setup)                  | every cluster                                 | Full browser flow through the actual UI                                                                                                                      |
+| Mail content (`MAIL_PROVIDER=dev-eml` assertions)      | C8                                            | `.eml` file subject + body + QR payload bytes                                                                                                                |
+| Mail-client render (HTML preview screenshots)          | C8                                            | All 6 templates rendered as PNG in 6 mock clients (Gmail web light/dark, Apple Mail macOS/iOS, Outlook web/desktop) and diffed against a checked-in baseline |
+| Visual snapshot (Playwright + diff)                    | every UI cluster                              | Diff against pre-change baseline; threshold ≤ 0.1% pixel-difference; baseline OS = ubuntu-24.04 (CI runner image)                                            |
+| Mobile + tablet variants (Playwright device emulation) | C5, C7 + clusters with mobile-visible changes | iPhone 12 + iPhone SE + Pixel 5 + Galaxy Fold + iPad Mini                                                                                                    |
+| Accessibility (axe-core + keyboard-only e2e)           | every UI cluster                              | Zero serious/critical axe findings + keyboard-only navigation succeeds + focus ring visible on every interactive element + modal focus-return works          |
+| Performance (server-side load time)                    | C1, C3                                        | Page server-load + first render with 1000 fixture rows < 200ms (median over 5 runs)                                                                          |
+| Physical-device PWA install                            | C5 (blocking)                                 | pwa-mobile reviewer installs PWA on physical iPhone + Android + macOS; home-screen screenshot captured + attached to PR. Absence = cluster defers.           |
 
 ## Critical-path test matrix
 
@@ -375,17 +693,95 @@ test. The critical-path-coverage reviewer enforces.
 | Mobile FAB → bottom-sheet → first action reaches its destination         | `src/lib/components/admin/MobileTabBar.svelte`, FabBottomSheet (new)                                              | E2E on Playwright iPhone-12 emulation                         | C7                              |
 | Drive-tolerant Auslagen submit (Drive uploads succeeds, fails, retries)  | `src/lib/server/files/**`, public form action                                                                     | Integration with local-FS storage + simulated Drive failure   | (no-touch — regression only)    |
 
+**Note**: invariants like `audit_log` REVOKE policy, ID-allocator
+concurrency, `year_for_booking` DST edges, and `dev-eml` per-test
+isolation are covered by the canary suite (§Cross-wave regression
+fixtures) which runs as a regression net before every wave and on every
+sub-PR. Individual clusters don't re-test these; they inherit the
+canary's coverage and any cluster whose changes break a canary is
+auto-failed.
+
+## Finding-traceability matrix (required in every sub-PR body)
+
+Each sub-PR body MUST contain a table mapping every finding from the
+2026-05-19 deep-dive that the cluster claims to resolve, to the exact
+test file + assertion line that proves it. Without this table the
+final integration reviewer rejects the PR.
+
+```markdown
+## Finding-traceability matrix
+
+| Finding ID | Title (one-line)            | Proven resolved at                                   | Reverse-revert verified by  |
+| ---------- | --------------------------- | ---------------------------------------------------- | --------------------------- |
+| VB-001     | EÜR page is a 4-row summary | `tests/e2e/eur-workspace.spec.ts:42` (tab-rendering) | vereinsbuchhalter (cycle 3) |
+| VB-001     | EÜR YoY column missing      | `tests/integration/eur-yoy.test.ts:18`               | vereinsbuchhalter (cycle 3) |
+| UX-100     | EÜR no project filter       | `tests/e2e/eur-workspace.spec.ts:71`                 | ux-expert (cycle 2)         |
+| ...        | ...                         | ...                                                  | ...                         |
+```
+
+The "Reverse-revert verified by" column means: that originating expert
+checked out the PR locally, ran `git revert <impl-commit>`, re-ran the
+named test, and confirmed it goes red. This catches the "tests passed
+for the wrong reason" failure mode that the autonomy + risk red-teams
+both flagged.
+
+## Secret + production guard (prevents 3am phantom Drive uploads)
+
+Every build agent + reviewer agent subprocess runs with these guards:
+
+1. **`env -i`-style env scrubbing**: subprocesses receive only a
+   whitelisted env subset (`PATH`, `HOME`, `NODE_ENV=development`,
+   `DATABASE_URL=<cluster-local>`, `DIRECT_DATABASE_URL=<cluster-local>`,
+   `MAIL_PROVIDER=dev-eml`, `FILE_STORAGE=local-fs`, the cluster's port
+   offset). Production envs (Neon production URL, Drive OAuth token,
+   real SMTP creds) are NEVER reachable.
+2. **Trip-wire env values**: any subprocess that sees
+   `STORAGE_BACKEND=drive`, `MAIL_PROVIDER=smtp`, or a
+   `DATABASE_URL=...neon.tech...` in its env aborts immediately with a
+   loud error. This is the last-resort defense against env leakage.
+3. **Logging redaction layer**: before any log line is written to
+   `~/.folgederwolke-build/state/overnight-progress.log` or any PR
+   comment, it's passed through a regex redactor that masks values
+   matching common secret shapes (`Bearer [A-Za-z0-9_\-]+`,
+   `DE\d{20}` IBANs from real members, age-recipient strings,
+   `ya29\.` Google OAuth tokens).
+4. **No real-mail flag**: every test command sets `MAIL_PROVIDER=dev-eml`
+   explicitly via env, not via `.env` fallback. A typo in `.env`
+   shouldn't be the only thing between us and 22 production emails sent
+   to real recipients at 3am.
+
+## Device matrix (one place for all reviewers)
+
+| Device      | Viewport | Used by                                        |
+| ----------- | -------- | ---------------------------------------------- |
+| iPhone 12   | 390×844  | every UI cluster mobile e2e                    |
+| iPhone SE   | 375×667  | C7 mobile-polish + C9 microcopy (small-screen) |
+| Pixel 5     | 393×851  | every UI cluster mobile e2e                    |
+| Galaxy Fold | 280×653  | C7 mobile-polish (worst-case responsive)       |
+| iPad Mini   | 768×1024 | C1 EÜR + C3 dashboard (tablet)                 |
+| Desktop     | 1440×900 | every UI cluster default                       |
+
+Visual-snapshot baselines are pinned to ubuntu-24.04 + Chromium
+v140-stable (matching the CI runner image). Diff threshold ≤ 0.1%
+pixel-difference; subpixel antialiasing tolerated via `maxDiffPixelRatio`.
+
 ## Quality gates
 
 A sub-PR cannot merge to the overnight branch unless ALL of these hold:
 
 - ✅ All required tests for cluster's kind exist + pass locally
-- ✅ Full CI suite green (unit + e2e + lint + typecheck + schema-drift + axe-core + mail-content + visual snapshots)
-- ✅ Generic code reviewer signed off
-- ✅ Test-quality reviewer signed off (no "passes for wrong reason" findings)
-- ✅ All originating-expert reviewers explicitly signed off in writing
+- ✅ Full CI suite green (unit + e2e + lint + typecheck + schema-drift + axe-core + mail-content + visual snapshots + canary suite)
+- ✅ Generic code reviewer signed off (`VERDICT: RESOLVED`)
+- ✅ Test-quality reviewer signed off (no Pattern-A/B/C violations)
+- ✅ Critical-path-coverage reviewer signed off
+- ✅ All originating-expert reviewers posted `VERDICT: RESOLVED` PR comments
 - ✅ Visual diff reviewer signed off (if UI changes)
-- ✅ At least 2 full review cycles completed (more if findings remained)
+- ✅ UX-flow reviewer signed off with 5-path walkthrough markdown attached (if UI changes)
+- ✅ Vereinsmitglied-Native reviewer signed off (if German microcopy touched)
+- ✅ Delight reviewer signed off (if C5 or C9; advisory otherwise)
+- ✅ Finding-traceability matrix in PR body, every row reverse-revert verified by its named expert
+- ✅ At least 2 full review cycles completed (more if findings remained, no max)
+- ✅ Every 3rd cycle has had a second-opinion review (anti-fatigue)
 - ✅ Final integration reviewer signed off
 - ✅ Changelog entry written in the PR body for the morning consolidation
 
@@ -474,38 +870,39 @@ classifier-blocked, defeating autonomy):
   against the night branch
 - ✅ Use `gh issue create / gh issue comment / gh issue close`
 
-**Settings required to be in place before kickoff**:
+**Preflight checklist** (orchestrator's very first action — fails fast):
 
-- `.claude/settings-autonomous.json` allows the operations above with
-  no prompts (Andy reuses the same settings file that ran the original
-  autonomous build; if any of the new operations are not yet allowed,
-  the orchestrator surfaces this BEFORE the night begins as a single
-  preflight error, NOT mid-night).
-- Branch protection on `main` does NOT apply to the night branch
-  (`overnight-2026-05-20`) — the orchestrator verifies this in preflight
-  by attempting a no-op push.
-- Docker is running locally (the orchestrator runs `docker ps` in
-  preflight; if it fails, surface immediately, not mid-cluster).
-- The `griase94/folgederwolke-app` repo is reachable and the gh CLI is
-  authenticated (preflight `gh auth status`).
-- Neon production DB credentials are NOT loaded into the orchestrator's
-  environment — only the local docker-compose `DATABASE_URL` and the
-  Neon `DIRECT_DATABASE_URL` that's required by phase-8's `dev-up.sh`
-  for schema reconciliation should be reachable.
+1. **phase-8 reachable from main**: `git fetch origin && git merge-base --is-ancestor <phase-8-tip-sha> origin/main`. Refuse to start if false (writes a clear MORNING.md note).
+2. **`.claude/settings-autonomous.json` permits required operations**: probe-call each operation type (gh issue create, gh pr create, gh pr merge on a scratch branch, gh api .../statuses on a scratch sha). Any classifier-block surfaces immediately.
+3. **`Bash(claude -p*)` denial confirmed** (the previously-known restriction). Orchestrator MUST use the in-process `Agent` tool exclusively for sub-agent dispatch, never `claude -p`. Preflight asserts the orchestrator's dispatch helper uses `Agent` and not subprocess spawning.
+4. **CI workflow patch applied**: ensure `.github/workflows/ci.yml` triggers on `overnight-*` branches for both push and pull_request. If not yet patched, commit the patch to `main` as the first orchestrator action.
+5. **Docker compose Postgres healthy**: `docker ps` shows the postgres container running, `pg_isready` succeeds. If not, run `pnpm dev-up` and re-check.
+6. **gh CLI authenticated**: `gh auth status` succeeds.
+7. **Branch protection on main DOES apply** (we want it): orchestrator confirms by checking the API. The night branch is verified to NOT inherit this protection.
+8. **Production envs are NOT loaded**: orchestrator's process env must NOT contain `*.neon.tech` in `DATABASE_URL`, must NOT contain a real Drive token, must NOT contain SMTP creds. The trip-wire check rejects the night.
+9. **Canary suite committed to overnight branch**: orchestrator's first commit after creating `overnight-2026-05-20` is the cross-wave regression fixtures. Canary tests RUN and PASS before any cluster dispatches.
+10. **9 worktrees pre-created**: orchestrator creates `.claude/worktrees/overnight-c<N>-<name>` for each cluster, allocates the port set, writes the per-cluster env files.
+11. **Port collision sanity**: `lsof -i :5441-5449` shows nothing else listening. `lsof -i :5181-5189` shows nothing else listening.
+12. **Rate-limit headroom check**: `gh api rate_limit` shows ≥ 4000 calls remaining for the next 60 minutes. If lower, orchestrator pauses with a clear MORNING.md note.
 
-**Preflight**: the orchestrator's first action is a 60-second preflight
-check that verifies every item above. If anything fails, the orchestrator
-refuses to start, writes the failures to MORNING.md, and exits. No
-half-started night.
+If ANY preflight item fails, the orchestrator refuses to start, writes
+the full preflight log to `~/.folgederwolke-build/state/preflight-FAILED.json`
+and to MORNING.md, and exits cleanly. No half-started night.
 
 **Heartbeat + visibility**: the orchestrator writes a one-line status
 update every 5 minutes to `~/.folgederwolke-build/state/overnight-progress.log`
-so Andy can wake up at 3am and grep what's happening if curious.
+so Andy can wake up at 3am and grep what's happening if curious. The
+log is regex-redacted (see §Secret + production guard).
 
 **Failure-mode bias**: when in doubt, the orchestrator chooses the
 quality-preserving path over the speed-preserving path. If a cluster
 can't converge, it defers (cleanly reverted, filed as issue). It does
 NOT half-ship.
+
+**Self-checkpoint**: the state file (§Orchestrator architecture) is the
+canonical orchestrator memory. If the orchestrator's own Claude session
+ever dies or hits a context limit, Andy (or the next tick triggered by
+ScheduleWakeup) re-invokes from disk. Recovery is automatic.
 
 ## Out-of-scope (this overnight)
 
@@ -533,12 +930,23 @@ NOT half-ship.
   ≥ 3 originating experts who all interacted with the live app.
 - The favicon is rendered correctly across iOS home screen, Android home
   screen, macOS Safari tab, and Chrome desktop tab — Andy sees the pink
-  sticker on his phone after install. Documented with screenshots in the
-  morning PR.
-- The 13 critical paths in the §Critical-path test matrix all have
-  passing integration- or e2e-tests on the morning branch.
-- Test count grows by ≥ 80 (we're testing more aggressively than the
-  baseline-balanced scope would normally produce).
+  sticker on his phone after install. Documented with **physical-device
+  screenshots** in the morning PR (the C5 pwa-mobile reviewer's required
+  artifacts).
+- Every entry in §Critical-path test matrix has a passing integration-
+  or e2e-test on the morning branch.
+- Every entry in §Cross-wave regression fixtures (canary suite) is
+  passing on the morning branch.
+- Test count grows by ≥ 100 (the broader test matrix — canary + critical-
+  path + per-cluster integration + mail-client renders + a11y + perf —
+  produces meaningful coverage growth).
+- Every UI-touching sub-PR has at least one Julia-voice walkthrough
+  markdown attached (the §Walkthrough protocol artifacts).
+- Every cluster sub-PR body has a finding-traceability matrix with
+  every row reverse-revert verified by its originating expert.
+- Zero secrets / production-data leakage in any log or PR comment
+  (the regex redactor's effectiveness is verified by a sample audit
+  in the morning report).
 - Andy wakes up to: one PR to read, a short morning report, and zero
   permission prompts in his terminal history.
 
