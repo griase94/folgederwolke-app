@@ -20,11 +20,11 @@ test.describe("@phase-2 public auslage form", () => {
     page,
   }) => {
     const res = await page.goto("/auslage-einreichen");
-    // Hard fail on 404: PUBLIC_FORM_ENABLED + DPA_GATE_PASSED must both be
-    // true in .env.test. Silent skip previously masked misconfig in CI.
+    // Hard fail on 404: PUBLIC_FORM_ENABLED must be true in .env.test.
+    // Silent skip previously masked misconfig in CI.
     expect(
       res?.status(),
-      "GET /auslage-einreichen returned 404 — PUBLIC_FORM_ENABLED or DPA_GATE_PASSED is off. Fix .env.test (both must be 'true').",
+      "GET /auslage-einreichen returned 404 — PUBLIC_FORM_ENABLED is off. Fix .env.test (PUBLIC_FORM_ENABLED=true).",
     ).toBe(200);
     await expect(page.locator("body")).toBeVisible();
   });
@@ -35,7 +35,7 @@ test.describe("@phase-2 public auslage form", () => {
     const res = await page.goto("/auslage-einreichen");
     expect(
       res?.status(),
-      "GET /auslage-einreichen returned 404 — PUBLIC_FORM_ENABLED or DPA_GATE_PASSED is off. Fix .env.test (both must be 'true').",
+      "GET /auslage-einreichen returned 404 — PUBLIC_FORM_ENABLED is off. Fix .env.test (PUBLIC_FORM_ENABLED=true).",
     ).toBe(200);
     // The form-ui agent owns the exact markup; we just assert a form is present.
     const form = page.locator("form");

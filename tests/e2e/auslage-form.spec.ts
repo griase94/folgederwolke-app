@@ -8,7 +8,7 @@
  * - Submitting an empty form shows validation errors (inline).
  * - The happy path (fill + submit) reaches the confirmation page.
  *
- * Fails loudly if PUBLIC_FORM_ENABLED or DPA_GATE_PASSED are off — silent
+ * Fails loudly if PUBLIC_FORM_ENABLED is off — silent
  * test.skip() previously masked the route 404 and made the entire form-UI
  * suite a no-op in CI.
  */
@@ -23,7 +23,7 @@ test.describe("@phase-2 auslage form UI", () => {
     const res = await page.goto("/auslage-einreichen");
     if (res?.status() === 404) {
       throw new Error(
-        "GET /auslage-einreichen returned 404 — PUBLIC_FORM_ENABLED or DPA_GATE_PASSED is off. Fix .env.test (both must be 'true') instead of silently skipping the entire form UI suite.",
+        "GET /auslage-einreichen returned 404 — PUBLIC_FORM_ENABLED is off. Fix .env.test (PUBLIC_FORM_ENABLED=true) instead of silently skipping the entire form UI suite.",
       );
     }
     expect(res?.status()).toBe(200);

@@ -146,6 +146,7 @@ jobs:
     runs-on: ubuntu-latest
     # Phase 7.5: smoke-test the restore pipeline on every push.
     # Uses a self-contained fixture dump — no live Neon connection required.
+    # Bumped to postgres:17 in phase-8 to match Neon's 17.8 (was 16).
 
     services:
       postgres:

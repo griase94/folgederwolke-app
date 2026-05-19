@@ -78,21 +78,9 @@ vercel redeploy --prod
 # 3. Revoke old key in Resend dashboard
 ```
 
-### 1.5 BACKUP_AGE_RECIPIENT / Private Key
-
-```bash
-# Generate new age keypair
-age-keygen -o /tmp/new-backup-key.txt
-# Output contains: # public key: age1...
-#                  AGE-SECRET-KEY-1...
-
-# 1. Store private key in 1Password (replace existing "folgederwolke-app / age backup key")
-# 2. Update BACKUP_AGE_RECIPIENT in GitHub repo secrets (Settings → Secrets → Actions)
-#    with the new public key (age1...)
-# 3. From this point forward, new backups use the new key.
-# 4. OLD backups can only be decrypted with the OLD private key — keep it in 1Password
-#    under "folgederwolke-app / age backup key (retired YYYY-MM)"
-```
+<!-- §1.5 (BACKUP_AGE_RECIPIENT rotation) intentionally removed —
+  age-key encryption is deferred (issue #30). When we re-enable encryption,
+  restore the rotation procedure with a link from there. -->
 
 ---
 
@@ -108,65 +96,45 @@ Select timestamp → Create restore branch
 # This creates a new branch; swap DATABASE_URL to point at it
 ```
 
-**Option B — pg_dump restore from GitHub backup repo**
+**Option B — pg_dump restore from Drive backup (Issue #31)**
+
+Once the nightly backup workflow is configured (see Issue #31 — needs
+`DATABASE_URL_BACKUP` and `DRIVE_BACKUP_FOLDER_ID` secrets), restore looks like:
 
 ```bash
-# 1. Clone backup repo
-git clone https://github.com/griase94/fdw-backups.git
-cd fdw-backups
+# 1. From Drive, download the .dump file you want
+#    (e.g. `fdw-2026-04-15.dump`).
 
-# 2. Identify the dump to restore
-ls -la *.dump.age | tail -10
+# 2. Create a new Neon branch for restore — never restore to production directly.
+#    Neon Console → Branches → New Branch → "restore-YYYY-MM-DD"
+#    Copy the new branch's DIRECT DATABASE_URL into RESTORE_URL.
 
-# 3. Decrypt (private key from 1Password: "folgederwolke-app / age backup key")
-age --decrypt \
-    --identity /path/to/private-key.txt \
-    --output backup-TARGET.dump \
-    backup-TARGET.dump.age
-
-# 4. Create a new Neon branch for restore (never restore to production directly)
-# Neon Console → Branches → New Branch → "restore-YYYY-MM-DD"
-# Copy new branch DATABASE_URL (direct, not pooled) → RESTORE_URL
-
-# 5. Restore
-pg_restore \
-  --no-owner \
-  --no-acl \
-  --exit-on-error \
+# 3. Restore
+pg_restore --no-owner --no-acl --exit-on-error \
   -d "${RESTORE_URL}" \
-  backup-TARGET.dump
+  fdw-2026-04-15.dump
 
-# 6. Verify row counts
+# 4. Quick verification
 psql "${RESTORE_URL}" -c "SELECT COUNT(*) FROM expenses;"
-psql "${RESTORE_URL}" -c "SELECT COUNT(*) FROM audit_log;"
 psql "${RESTORE_URL}" -c "SELECT MAX(chain_seq) FROM audit_log;"
 
-# 7. Verify audit chain integrity (see §4 below)
-
-# 8. Swap production to restored branch
-# Vercel env: update DATABASE_URL to restored branch URL
-vercel env add DATABASE_URL production
-vercel redeploy --prod
-
-# 9. Verify healthcheck
+# 5. Swap production to the restored branch (only when verified):
+#    Vercel env → update DATABASE_URL to restored branch URL → Redeploy.
 curl https://folgederwolke-app.vercel.app/healthz
 ```
 
-**Option C — Restore from Google Drive**
-
-```
-Drive → folgederwolke-app/Backup/ → download .dump.age file
-Then follow Option B from step 3.
-```
+<!-- Encrypted-backup-restore + dual-witness restore deferred (issue #30 / #31).
+  Pre-pragmatic-rebalance RUNBOOK had multi-step decrypt + GitHub backup repo
+  + Drive variants here; removed because they pointed at infrastructure that
+  does not exist yet at this Verein's scale. -->
 
 ### 2.2 Post-restore checklist
 
-- [ ] Healthcheck returns `{"status":"ok","db":"connected"}`
+- [ ] Healthcheck returns 200 with a non-null `db` field
 - [ ] Admin login works via magic link
-- [ ] Spot-check: most recent 5 expenses visible in `/app/ausgaben`
+- [ ] Spot-check: most recent 5 expenses visible in `/app/transactions`
 - [ ] Audit chain integrity verified (§4)
-- [ ] If data loss detected: notify Kassenwart and Vorstand
-- [ ] Document incident in `docs/verfahrensdokumentation/10-risikomanagement.md`
+- [ ] If data loss detected: notify Vorstand
 
 ---
 
@@ -237,45 +205,30 @@ Use when: hash mismatch alert, GoBD audit by Finanzamt, tamper suspicion.
 
 ### 4.1 Detect tampered rows
 
-```sql
--- Run in psql against the production (or restored) database as app_export role.
--- Recompute row_hash for every audit_log row and compare.
--- This query flags rows where the stored hash does not match the recomputed hash.
+Use the TS verifier — it shares the exact recipe with the SQL trigger
+(`src/lib/server/audit-log/chain.ts` + `verifier.ts`). Inline SQL
+verification is brittle (the recipe spans 13 columns including ms-precision
+timestamps; a hand-typed SQL query that drifts will false-flag every row).
 
-WITH recomputed AS (
-  SELECT
-    id,
-    chain_seq,
-    row_hash AS stored_hash,
-    -- NOTE: canonical_json() is defined in drizzle/sql/functions/canonical_json.sql
-    encode(
-      digest(
-        coalesce(prev_hash, '') || canonical_json(
-          jsonb_build_object(
-            'id', id,
-            'occurred_at', occurred_at,
-            'actor_user_id', actor_user_id,
-            'actor_kind', actor_kind,
-            'action', action,
-            'entity_kind', entity_kind,
-            'entity_id', entity_id,
-            'payload', payload,
-            'chain_seq', chain_seq,
-            'prev_hash', prev_hash
-          )
-        ),
-        'sha256'
-      ),
-      'hex'
-    ) AS recomputed_hash
-  FROM audit_log
-  ORDER BY chain_seq
-)
-SELECT chain_seq, id, stored_hash, recomputed_hash
-FROM recomputed
-WHERE stored_hash IS DISTINCT FROM recomputed_hash
-ORDER BY chain_seq;
--- Empty result = chain intact. Any rows = tamper detected.
+```bash
+# Run the nightly verifier ad-hoc:
+DIRECT_DATABASE_URL=$(...your direct Neon URL...) \
+pnpm tsx -e 'import { verifyAuditChain } from "$lib/server/audit-log/verifier.js"; verifyAuditChain().then(r => console.log(JSON.stringify(r, null, 2)));'
+
+# A clean chain returns { ok: true, breaks: [], head: <N>, persistedHead: <N> }.
+# Any non-empty breaks array names the offending row id + chain_seq.
+```
+
+Quick row-count sanity check (no recipe involved):
+
+```sql
+SELECT
+  COUNT(*)              AS rows_total,
+  COUNT(chain_seq)      AS rows_chained,
+  MAX(chain_seq)        AS max_seq,
+  (SELECT (value->>'chain_seq')::int FROM settings WHERE key='audit_chain_last_head') AS persisted_head
+FROM audit_log;
+-- max_seq < persisted_head → suffix truncation (the verifier catches this).
 ```
 
 ### 4.2 Identify break point
@@ -320,8 +273,6 @@ Under GoBD Tz. 64–68 and § 146a AO, if tampered bookings are discovered:
 - All original tampered rows must be preserved (never deleted — they are evidence)
 - Engage a tax advisor (Steuerberater) immediately
 
-Contact: <!-- FILL: Steuerberater Kontakt -->
-
 ---
 
 ## 5. Common Operational Tasks
@@ -341,14 +292,12 @@ gh workflow run db-backup.yml --repo griase94/folgederwolke-app
 gh run list --workflow=db-backup.yml --repo griase94/folgederwolke-app --limit 5
 ```
 
-### 5.3 Run restore smoke test locally
+<!-- §5.3 restore-smoke-test removed — the existing scripts/restore-smoke.sh
+  exercises a 4-column fixture, not the real schema (ops review CRIT-1).
+  A real annual restore drill against a Neon scratch branch (RUNBOOK §2.1 B)
+  is the correct test; quarterly cadence is theatre at this scale. -->
 
-```bash
-# Requires local PostgreSQL running on default port
-PGUSER=postgres ./scripts/restore-smoke.sh
-```
-
-### 5.4 Check audit chain length
+### 5.3 Check audit chain length
 
 ```sql
 SELECT MAX(chain_seq) AS chain_length, COUNT(*) AS total_rows FROM audit_log;
@@ -363,9 +312,6 @@ SELECT MAX(chain_seq) AS chain_length, COUNT(*) AS total_rows FROM audit_log;
 5. System sets `festgeschrieben_at` on all rows for that year
 6. Export audit log for the year as evidence
 7. Archive EÜR-CSV in Google Drive: `Vereinsverwaltung/Jahresabschlüsse/YYYY/`
-
----
-
 ## 6. Migration runbook
 
 ### 6.1 One-time reconciliation before phase-8 merge
