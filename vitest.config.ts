@@ -12,6 +12,7 @@ export default defineConfig({
     ],
     pool: "forks",
     poolOptions: { forks: { singleFork: true } },
+    globalSetup: "./tests/vitest-global-setup.ts",
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
