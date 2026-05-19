@@ -261,7 +261,7 @@
 				disabled={submitting || !customerId || nettoCents <= 0}
 				class="bg-primary text-primary-foreground hover:bg-primary/90"
 			>
-				{submitting ? 'Wird erstellt …' : 'PDF generieren'}
+				{submitting ? 'Wird erstellt …' : 'Rechnung erstellen & PDF'}
 			</Button>
 		</div>
 	</form>

@@ -2,18 +2,22 @@
 	import MemberRow from './MemberRow.svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import NoEntries from '$lib/components/empty/NoEntries.svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
 	import type { MemberView } from '$lib/domain/members.js';
 
 	let {
 		members,
 		years,
 		loading = false,
-		onEdit
+		onEdit,
+		onAdd
 	}: {
 		members: MemberView[];
 		years: number[];
 		loading?: boolean;
 		onEdit: (m: MemberView) => void;
+		/** Optional CTA — when provided the empty state renders an "anlegen" button. */
+		onAdd?: () => void;
 	} = $props();
 </script>
 
@@ -35,7 +39,13 @@
 		{/each}
 	</div>
 {:else if members.length === 0}
-	<NoEntries entity="Mitglieder" hint="Füge das erste Mitglied mit dem Button oben hinzu." />
+	<NoEntries entity="Mitglieder" hint="Lege das erste Mitglied an, um loszulegen.">
+		{#snippet action()}
+			{#if onAdd}
+				<Button onclick={onAdd}>Mitglied anlegen</Button>
+			{/if}
+		{/snippet}
+	</NoEntries>
 {:else}
 	<div class="space-y-2" role="list" aria-label="Mitgliederliste">
 		{#each members as member (member.id)}

@@ -71,10 +71,26 @@
 				use:enhance={() => {
 					deleteLoading = true;
 					deleteError = null;
+					const projectId = project?.id ?? '';
 					return async ({ result }) => {
 						deleteLoading = false;
 						if (result.type === 'success') {
-							toast.success('Projekt archiviert');
+							// Soft-undo toast (UX-050): the destructive op is reversible
+							// for ~8s via the project's restore action.
+							const toastId = toast.success('Projekt archiviert', {
+								action: {
+									label: 'Rückgängig',
+									onClick: async () => {
+										const fd = new FormData();
+										fd.set('id', projectId);
+										await fetch('?/restore', { method: 'POST', body: fd });
+										await invalidateAll();
+										toast.dismiss(toastId);
+										toast.info('Wiederhergestellt');
+									},
+								},
+								duration: 8000,
+							});
 							open = false;
 							reset();
 							onSuccess?.();

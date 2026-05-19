@@ -71,10 +71,26 @@
 				use:enhance={() => {
 					deleteLoading = true;
 					deleteError = null;
+					const memberId = member?.id ?? '';
 					return async ({ result }) => {
 						deleteLoading = false;
 						if (result.type === 'success') {
-							toast.success('Mitglied gelöscht');
+							// Soft-undo toast (UX-050): the soft-delete sets austrittsDatum;
+							// the undo clears it via the page action ?/restore.
+							const toastId = toast.success('Mitglied archiviert', {
+								action: {
+									label: 'Rückgängig',
+									onClick: async () => {
+										const fd = new FormData();
+										fd.set('id', memberId);
+										await fetch('?/restore', { method: 'POST', body: fd });
+										await invalidateAll();
+										toast.dismiss(toastId);
+										toast.info('Wiederhergestellt');
+									},
+								},
+								duration: 8000,
+							});
 							open = false;
 							reset();
 							onSuccess?.();

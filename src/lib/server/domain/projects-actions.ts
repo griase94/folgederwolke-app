@@ -32,6 +32,7 @@ export type ActionFailure = {
 export type AddProjectResult = { ok: true; projectId: string } | ActionFailure;
 export type EditProjectResult = { ok: true } | ActionFailure;
 export type DeleteProjectResult = { ok: true } | ActionFailure;
+export type RestoreProjectResult = { ok: true } | ActionFailure;
 
 // ---------------------------------------------------------------------------
 // Business-ID helper (projects use P-YYYY-NNN pattern)
@@ -163,6 +164,34 @@ export async function softDeleteProject(
   await bus.emit("project.deleted", {
     projectId,
     actorUserId,
+  });
+
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// restoreProject — soft-undelete (clears deletedAt). Used by the undo toast
+// surfaced after softDeleteProject. C9/UX-050.
+// ---------------------------------------------------------------------------
+
+export async function restoreProject(
+  projectId: string,
+  actorUserId: string | null,
+): Promise<RestoreProjectResult> {
+  if (!projectId) {
+    return { ok: false, status: 400, error: "Fehlende Projekt-ID" };
+  }
+
+  const db = getDb();
+  await db
+    .update(projects)
+    .set({ deletedAt: null, updatedAt: new Date() })
+    .where(eq(projects.id, projectId));
+
+  await bus.emit("project.updated", {
+    projectId,
+    actorUserId,
+    payload: { restored: true },
   });
 
   return { ok: true };

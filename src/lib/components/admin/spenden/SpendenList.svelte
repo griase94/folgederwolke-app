@@ -1,5 +1,6 @@
 <script lang="ts">
 	import SpendeRow from './SpendeRow.svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
 
 	type Spende = {
 		id: string;
@@ -29,11 +30,14 @@
 	let {
 		spenden,
 		bescheinigungEnabled,
-		onEdit
+		onEdit,
+		onAdd
 	}: {
 		spenden: Spende[];
 		bescheinigungEnabled: boolean;
 		onEdit: (s: Spende) => void;
+		/** Optional CTA — when provided the empty state renders an "erfassen" button. */
+		onAdd?: () => void;
 	} = $props();
 </script>
 
@@ -59,9 +63,12 @@
 		<div>
 			<p class="font-medium text-foreground">Noch keine Spenden erfasst</p>
 			<p class="mt-1 text-sm text-muted-foreground">
-				Lege die erste Spende mit dem Button oben an.
+				Erfasse die erste Spende, um loszulegen.
 			</p>
 		</div>
+		{#if onAdd}
+			<Button onclick={onAdd}>Spende erfassen</Button>
+		{/if}
 	</div>
 {:else}
 	<div class="space-y-2" role="list" aria-label="Spendenliste" data-testid="spenden-list">

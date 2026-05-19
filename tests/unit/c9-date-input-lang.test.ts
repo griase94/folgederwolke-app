@@ -25,7 +25,7 @@ const FILES = [
   "src/routes/app/transactions/neu/+page.svelte",
 ];
 
-describe("C9 UX-030 — every type=\"date\" input has lang=\"de\"", () => {
+describe('C9 UX-030 — every type="date" input has lang="de"', () => {
   for (const path of FILES) {
     it(`${path}: every date input is lang="de"`, () => {
       const src = readFileSync(`${process.cwd()}/${path}`, "utf-8");

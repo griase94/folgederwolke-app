@@ -82,7 +82,7 @@
 	</div>
 
 	<!-- List -->
-	<ProjectList projects={filteredProjects} onEdit={openEdit} />
+	<ProjectList projects={filteredProjects} onEdit={openEdit} onAdd={() => (addOpen = true)} />
 </div>
 
 <AddProjectDialog bind:open={addOpen} />

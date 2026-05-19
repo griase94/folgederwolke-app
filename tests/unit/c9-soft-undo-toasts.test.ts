@@ -39,7 +39,10 @@ describe("C9 UX-050 — destructive actions emit soft-undo toasts", () => {
         "m",
       );
       const match = src.match(re);
-      expect(match, `no toast.success("${successToast}") found in ${path}`).not.toBeNull();
+      expect(
+        match,
+        `no toast.success("${successToast}") found in ${path}`,
+      ).not.toBeNull();
       const block = match?.[0] ?? "";
       // The undo action: a `action: {` object or `Rückgängig` label
       expect(

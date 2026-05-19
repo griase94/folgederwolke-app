@@ -164,7 +164,12 @@
 	{#if data.view === 'matrix'}
 		<MemberMatrix members={filteredMembers} years={data.years} />
 	{:else}
-		<MemberList members={filteredMembers} years={data.years} onEdit={openEdit} />
+		<MemberList
+			members={filteredMembers}
+			years={data.years}
+			onEdit={openEdit}
+			onAdd={() => (addOpen = true)}
+		/>
 	{/if}
 </div>
 

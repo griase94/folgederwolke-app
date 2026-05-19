@@ -5,11 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import {
-  mainNavItems,
-  navItems,
-  type NavItem,
-} from "./nav-registry.js";
+import { mainNavItems, navItems, type NavItem } from "./nav-registry.js";
 
 describe("C9 — sidebar diet (UX-001)", () => {
   it("mainNavItems has exactly 5 entries (down from 9)", () => {

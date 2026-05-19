@@ -63,10 +63,25 @@
 				use:enhance={() => {
 					deleteLoading = true;
 					deleteError = null;
+					const customerId = customer?.id ?? '';
 					return async ({ result }) => {
 						deleteLoading = false;
 						if (result.type === 'success') {
-							toast.success('Kunde archiviert');
+							// Soft-undo toast (UX-050): undo within ~8s via ?/restore.
+							const toastId = toast.success('Kunde archiviert', {
+								action: {
+									label: 'Rückgängig',
+									onClick: async () => {
+										const fd = new FormData();
+										fd.set('id', customerId);
+										await fetch('?/restore', { method: 'POST', body: fd });
+										await invalidateAll();
+										toast.dismiss(toastId);
+										toast.info('Wiederhergestellt');
+									},
+								},
+								duration: 8000,
+							});
 							open = false;
 							reset();
 							onSuccess?.();

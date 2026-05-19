@@ -82,7 +82,7 @@
 	</div>
 
 	<!-- List -->
-	<CustomerList customers={filteredCustomers} onEdit={openEdit} />
+	<CustomerList customers={filteredCustomers} onEdit={openEdit} onAdd={() => (addOpen = true)} />
 </div>
 
 <AddCustomerDialog bind:open={addOpen} />

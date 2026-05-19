@@ -144,7 +144,7 @@
 							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
 						</svg>
 					{/if}
-					Hinzufügen
+					Projekt anlegen
 				</Button>
 			</Dialog.Footer>
 		</form>

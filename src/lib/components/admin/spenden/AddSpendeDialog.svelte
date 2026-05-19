@@ -341,7 +341,7 @@
 					{/snippet}
 				</Dialog.Close>
 				<Button type="submit" disabled={loading} data-testid="submit-spende">
-					{loading ? 'Speichern…' : 'Spende anlegen'}
+					{loading ? 'Speichern…' : 'Spende erfassen'}
 				</Button>
 			</Dialog.Footer>
 		</form>
