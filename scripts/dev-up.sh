@@ -8,29 +8,22 @@
 
 set -euo pipefail
 
-# --- Load env ---------------------------------------------------------------
-# Parse .env files line-by-line to tolerate unquoted values with special chars
-# (parens, commas, etc.) that would otherwise trip up `source`.
-load_env_file() {
-  local file="$1"
-  [[ -f "$file" ]] || return 0
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-    [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
-    local key="${BASH_REMATCH[1]}"
-    local val="${BASH_REMATCH[2]}"
-    # Strip surrounding single or double quotes if present
-    if [[ "$val" =~ ^\"(.*)\"$ ]] || [[ "$val" =~ ^\'(.*)\'$ ]]; then
-      val="${BASH_REMATCH[1]}"
-    fi
-    export "$key=$val"
-  done < "$file"
-}
-
-load_env_file .env.development
-load_env_file .env.development.local
+# Load env (.env.development uses quoted values so plain `source` works)
+set -a
+source .env.development
+[[ -f .env.development.local ]] && source .env.development.local
+set +a
 
 : "${DIRECT_DATABASE_URL:?DIRECT_DATABASE_URL missing from .env.development}"
+
+# Safety: refuse if not localhost — prevents ALTER ROLE from hitting Neon
+case "$DIRECT_DATABASE_URL" in
+  *localhost*|*127.0.0.1*) ;;
+  *)
+    echo "dev-up: refusing — DIRECT_DATABASE_URL is not localhost: $DIRECT_DATABASE_URL" >&2
+    exit 1
+    ;;
+esac
 
 # --- Compose up + wait ------------------------------------------------------
 docker compose up -d postgres
@@ -41,12 +34,7 @@ echo "[dev-up] applying migrations..."
 pnpm tsx scripts/migrate.ts
 
 # --- Grant app_runtime / app_export LOGIN + password (LOCAL ONLY) -----------
-# drizzle/0002_roles.sql creates these roles as NOLOGIN. Neon manages role
-# auth itself — don't put this in a migration. Local dev needs LOGIN +
-# password to match .env.development's DATABASE_URL connection string.
-ADMIN_URL="${DIRECT_DATABASE_URL%/*}/postgres"
-psql "$ADMIN_URL" -c "ALTER ROLE app_runtime WITH LOGIN PASSWORD 'app_runtime';" >/dev/null
-psql "$ADMIN_URL" -c "ALTER ROLE app_export  WITH LOGIN PASSWORD 'app_export';"  >/dev/null
+bash scripts/db/grant-local-login.sh
 
 # --- Seed if dev DB is empty ------------------------------------------------
 KAT_COUNT=$(psql "$DIRECT_DATABASE_URL" -t -A -c 'select count(*) from kategorien;')

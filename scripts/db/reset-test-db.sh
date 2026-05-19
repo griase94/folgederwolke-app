@@ -32,10 +32,9 @@ psql "$ADMIN_URL" -c "CREATE DATABASE folgederwolke_test;"
 pnpm tsx scripts/migrate.ts
 pnpm tsx scripts/seed.ts
 
-# Ensure app_runtime LOGIN — same one-shot we do in dev-up.sh, since 0002_roles
-# creates NOLOGIN roles
-psql "$ADMIN_URL" -c "ALTER ROLE app_runtime WITH LOGIN PASSWORD 'app_runtime';" >/dev/null
-psql "$ADMIN_URL" -c "ALTER ROLE app_export  WITH LOGIN PASSWORD 'app_export';"  >/dev/null
+# Ensure app_runtime / app_export LOGIN — shared with dev-up.sh, since
+# 0002_roles creates NOLOGIN roles
+bash scripts/db/grant-local-login.sh
 
 # Wipe the test file-storage tree so tests start with no leftover files
 rm -rf ./.dev-data/drive-test

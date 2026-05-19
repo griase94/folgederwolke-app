@@ -11,7 +11,6 @@ Keep this in sync when ADRs or masterplan sections are updated.
 - **Phase 2 backlog**: `docs/phase2-backlog.md`
 - **ADRs**: `docs/adr/` — binding decisions; do not contradict without a new ADR
 - **Protected branch**: `main` — PRs only, no direct push. Feature work on `phase-N-*` branches.
-- **Current phase branch**: `phase-7.5-compliance-hardening` (Phase 8 work proceeds on `phase-8-local-dev-environment`).
 
 ---
 
