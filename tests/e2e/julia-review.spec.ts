@@ -297,7 +297,8 @@ test.describe("@julia Sign-in flow", () => {
   });
 
   test("verify with bogus token shows error", async ({ page }) => {
-    await page.goto("/sign-in/verify?token=garbage123456789");
+    // gitleaks:allow — intentionally short, obviously-fake token for a 404 path
+    await page.goto("/sign-in/verify?token=not-a-real-token");
     await page.waitForLoadState("networkidle");
     await shot(page, "12-verify-bogus");
     const text = await page.locator("body").textContent();
