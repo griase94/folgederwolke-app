@@ -15,7 +15,10 @@
     "format": "prettier --write .",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "dev:up": "bash scripts/dev-up.sh",
+    "dev:reset": "docker compose down -v && bash scripts/dev-up.sh",
+    "db:console": "psql $DIRECT_DATABASE_URL"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
