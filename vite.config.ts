@@ -16,8 +16,8 @@ export default defineConfig({
         // Precache app-shell JS/CSS/HTML
         globPatterns: ["client/**/*.{js,css,html,svg,png,ico,webmanifest}"],
         maximumFileSizeToCacheInBytes: 3_000_000,
-        // Runtime cache for GET API calls: stale-while-revalidate, 60 s TTL
         runtimeCaching: [
+          // Runtime cache for GET API calls: stale-while-revalidate, 60 s TTL.
           {
             urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
             handler: "StaleWhileRevalidate",
@@ -26,6 +26,26 @@ export default defineConfig({
               expiration: {
                 maxAgeSeconds: 60,
                 maxEntries: 100,
+              },
+            },
+          },
+          // PM-006: background-sync queue for the public Auslagen form POST.
+          // Workbox installs a BackgroundSyncPlugin under the hood from this
+          // shape; failed POSTs to /auslage-einreichen are queued in IndexedDB
+          // and replayed automatically when the browser fires the 'sync' event.
+          // maxRetentionTime is in minutes (24 h).
+          {
+            urlPattern: ({ url, request }) =>
+              request.method === "POST" &&
+              url.pathname.startsWith("/auslage-einreichen"),
+            handler: "NetworkOnly",
+            method: "POST",
+            options: {
+              backgroundSync: {
+                name: "fdw-auslage-queue",
+                options: {
+                  maxRetentionTime: 24 * 60,
+                },
               },
             },
           },
