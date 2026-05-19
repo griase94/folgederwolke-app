@@ -36,20 +36,46 @@ PR history.
 
 ## Baseline
 
-This spec assumes `phase-8-local-dev-environment` is merged to `main`
-before the orchestrator kicks off. Phase 8 brings:
+`phase-8-local-dev-environment` is merged to `main` as of `3153a3c`
+(PR #40). The orchestrator runs against this baseline. Phase 8 brings:
 
-- `scripts/dev-up.sh` (docker-compose Postgres + migrations + seed in one command)
-- Local-FS file storage (`FILE_STORAGE=local-fs`) — no Drive needed in tests
-- `MAIL_PROVIDER=dev-eml` — outbound mail written to `.eml` files we can
-  grep for content assertions
-- `MAIL_PROVIDER=no-op` for tests indifferent to mail
-- New Playwright global setup (`tests/playwright-global-setup.ts`) that
-  resets the test DB per run
-- New Vitest global setup (`tests/vitest-global-setup.ts`)
+- **`scripts/dev-up.sh`** — docker-compose Postgres 17.8 + migrations + seed.
+- **`scripts/db/reset-test-db.sh`** — drops + recreates `folgederwolke_test`,
+  applies all 12 migrations, runs seed (reference data + fixtures), sets
+  up `app_runtime` LOGIN with password. ~3-6s.
+- **Vitest globalSetup** (`tests/vitest-global-setup.ts`) + **Playwright
+  globalSetup** (`tests/playwright-global-setup.ts`) call the reset script
+  before any test run. Tests get a known-clean DB.
+- **`.env.test`** (committed, no secrets) is the canonical test env:
+  - `DATABASE_URL=postgres://app_runtime:app_runtime@localhost:15432/folgederwolke_test`
+    — tests connect as **`app_runtime`** (CRUD + INSERT-only on audit_log),
+    so missing grants on new tables fail immediately rather than in prod.
+  - `STORAGE_BACKEND=local-fs` + `FILE_STORAGE_ROOT=./.dev-data/drive-test`
+    — file storage writes land in a wiped directory.
+  - `MAIL_PROVIDER=no-op` — outbound mail goes into `sent_mails` table only
+    (ADR-0005 idempotency); tests read from there directly. No SMTP, no
+    file I/O.
+  - Note: `.env.development` uses `MAIL_PROVIDER=dev-eml` for human
+    inspection — but tests use `no-op`, not `dev-eml`.
+- **Migration 0012** (`0012_default_privileges.sql`) — `ALTER DEFAULT
+PRIVILEGES` so future tables auto-get grants for `app_runtime` + `app_export`.
+- **`.github/workflows/migrate.yml`** — on push to `main`, runs
+  `pnpm tsx scripts/migrate.ts` against Neon production (gated on
+  `NEON_MIGRATE_DATABASE_URL` secret). This means the morning consolidation
+  PR's merge to `main` will trigger Neon-side migrations automatically.
+- **`.github/workflows/ci.yml`** uses `services: postgres:17` for unit + e2e.
+  Note: currently triggers on `branches: [main, "phase-*"]` for push, ONLY
+  `main` for pull_request — **night-branch sub-PRs need a workflow patch
+  before any CI runs** (see §CI workflow patch).
+- **`STORAGE_BACKEND` env var** (NOT `FILE_STORAGE`) — `drive` for prod,
+  `local-fs` for dev + test.
+- **Playwright `fullyParallel: false`** — tests share the seeded state
+  within a run. Tests that mutate global state should be wrapped in
+  `test.describe.serial()`.
+- **`pnpm dev:up`, `pnpm dev:reset`** — package.json shortcuts.
 
-The orchestrator refuses to start if `phase-8-local-dev-environment`
-isn't reachable from `main`.
+The orchestrator's preflight verifies phase-8 is on `origin/main` via
+`git merge-base --is-ancestor 3153a3c origin/main`.
 
 ## Scope — 9 clusters, 22 items
 
@@ -178,8 +204,13 @@ SEPA-Lastschrift. Server-side QR-encoding library (qrcode or similar);
 the mail body embeds the QR as a `data:image/png` so no external
 resources are required.
 
-Mail content tests use the new `MAIL_PROVIDER=dev-eml` so assertions
-read the actual `.eml` file rather than mocking `sendMail`.
+Mail content tests for C8 take two layers: (a) Svelte component-level
+tests render each template directly via `renderMailTemplate("Foo", props)`
+and assert on the rendered HTML — fast, deterministic; (b) integration
+tests run with `MAIL_PROVIDER=no-op` and assert on `sent_mails` table
+rows (subject, template, provider_response). Per phase-8's `.env.test`,
+the test mail provider writes to DB only — no SMTP, no `.eml` files.
+The `dev-eml` provider exists only for human inspection during dev.
 
 ### C9 — Microcopy + IA polish (Wave 1)
 
@@ -462,18 +493,18 @@ of regression fixtures to the overnight branch. These act as the canary
 for every cluster: if they go red, infra (not code) is broken. Each
 fixture exercises a single critical invariant:
 
-| Fixture                                         | What it asserts                                                                                                                                                                           |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/canary/year-boundary.test.ts`            | Inserting a transaction at `2026-12-31T23:59:59+01:00` (Berlin) → `year_of_buchung = 2026`. Inserting at `2027-01-01T00:00:01+01:00` → 2027. Adjusts for DST.                             |
-| `tests/canary/dst-spring-fall.test.ts`          | Buchungen on 2026-03-29T02:30+02:00 (spring-forward gap) and 2026-10-25T02:30+02:00 (fall-back ambiguity) both resolve to 2026.                                                           |
-| `tests/canary/leap-year.test.ts`                | Bescheinigung on 2028-02-29 produces a Bescheinigungs-Nr `B-2028-NNN` and the PDF renders the date.                                                                                       |
-| `tests/canary/festschreibung-trigger.test.ts`   | After setting `settings.festgeschrieben_bis = 2025` and inserting a 2025 row, an UPDATE attempt raises SQLSTATE 23514 (check_violation) AT THE DATABASE LEVEL via direct psql connection. |
-| `tests/canary/audit-log-revoke.test.ts`         | A connection logged in as `app_runtime` attempting `UPDATE audit_log SET payload = '{}'::jsonb WHERE chain_seq = 1` raises 42501 (insufficient privilege).                                |
-| `tests/canary/sphere-required.test.ts`          | Calling `createIncome` / `createExpense` with no sphere argument throws a typed error BEFORE the DB INSERT. (Defends C4's bug from regressing.)                                           |
-| `tests/canary/audit-chain-integrity.test.ts`    | After inserting 100 audit_log rows in a transaction, `verifyAuditChain()` returns ok=true and head=100, persisted_head=100.                                                               |
-| `tests/canary/id-allocator-concurrency.test.ts` | 20 concurrent calls to allocate an AUS-ID produce 20 unique, gapless IDs.                                                                                                                 |
-| `tests/canary/dev-eml-isolation.test.ts`        | Two parallel test files writing mail via `MAIL_PROVIDER=dev-eml` to per-test directories don't collide on filenames; cleanup removes the dirs.                                            |
-| `tests/canary/dashboard-1000-rows-perf.test.ts` | Dashboard server-side load with 1000 income + 1000 expense rows in DB completes in < 200ms (median over 5 runs).                                                                          |
+| Fixture                                         | What it asserts                                                                                                                                                                                                                               |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/canary/year-boundary.test.ts`            | Inserting a transaction at `2026-12-31T23:59:59+01:00` (Berlin) → `year_of_buchung = 2026`. Inserting at `2027-01-01T00:00:01+01:00` → 2027. Adjusts for DST.                                                                                 |
+| `tests/canary/dst-spring-fall.test.ts`          | Buchungen on 2026-03-29T02:30+02:00 (spring-forward gap) and 2026-10-25T02:30+02:00 (fall-back ambiguity) both resolve to 2026.                                                                                                               |
+| `tests/canary/leap-year.test.ts`                | Bescheinigung on 2028-02-29 produces a Bescheinigungs-Nr `B-2028-NNN` and the PDF renders the date.                                                                                                                                           |
+| `tests/canary/festschreibung-trigger.test.ts`   | After setting `settings.festgeschrieben_bis = 2025` and inserting a 2025 row, an UPDATE attempt raises SQLSTATE 23514 (check_violation) AT THE DATABASE LEVEL via direct psql connection.                                                     |
+| `tests/canary/audit-log-revoke.test.ts`         | A connection logged in as `app_runtime` attempting `UPDATE audit_log SET payload = '{}'::jsonb WHERE chain_seq = 1` raises 42501 (insufficient privilege).                                                                                    |
+| `tests/canary/sphere-required.test.ts`          | Calling `createIncome` / `createExpense` with no sphere argument throws a typed error BEFORE the DB INSERT. (Defends C4's bug from regressing.)                                                                                               |
+| `tests/canary/audit-chain-integrity.test.ts`    | After inserting 100 audit_log rows in a transaction, `verifyAuditChain()` returns ok=true and head=100, persisted_head=100.                                                                                                                   |
+| `tests/canary/id-allocator-concurrency.test.ts` | 20 concurrent calls to allocate an AUS-ID produce 20 unique, gapless IDs.                                                                                                                                                                     |
+| `tests/canary/mail-provider-no-op.test.ts`      | With `MAIL_PROVIDER=no-op`, calling `sendMail` writes a row to `sent_mails` with `status='sent'` and no I/O. Two concurrent sends produce two distinct rows. (Replaces the earlier dev-eml-isolation canary now that .env.test uses `no-op`.) |
+| `tests/canary/dashboard-1000-rows-perf.test.ts` | Dashboard server-side load with 1000 income + 1000 expense rows in DB completes in < 200ms (median over 5 runs).                                                                                                                              |
 
 The canary suite **must be green** before any cluster dispatches.
 Once it's green, infra is verified. During the night, if a cluster's CI
@@ -646,10 +677,12 @@ When the spec says "integration test", it means: a Vitest test that:
   `pnpm dev-up`, on the cluster's allocated port from §Worktree
   resource allocation)
 - Runs against the REAL Drizzle ORM (no mocks of `getDb`)
-- Uses the REAL `MAIL_PROVIDER=dev-eml` (no mocks of `sendMail`)
-- Uses the REAL `FILE_STORAGE=local-fs` (no mocks of file storage)
-- Asserts on observable side effects (DB row state, file contents,
-  HTTP response shape) — not on whether a mocked function was called
+- Uses the REAL `MAIL_PROVIDER=no-op` (the canonical `.env.test`
+  provider — writes `sent_mails` row, no I/O). NO mocks of `sendMail`.
+- Uses the REAL `STORAGE_BACKEND=local-fs` (no mocks of file storage)
+- Asserts on observable side effects (DB row state including
+  `sent_mails` rows, file contents in `FILE_STORAGE_ROOT`, HTTP response
+  shape) — not on whether a mocked function was called
 
 Anything that mocks one of `getDb` / `sendMail` / file-storage is a
 unit test, not an integration test. The critical-path-coverage
@@ -657,19 +690,19 @@ reviewer rejects mis-categorized tests.
 
 ## Required test categories per cluster
 
-| Kind                                                   | Required for                                  | Asserts                                                                                                                                                      |
-| ------------------------------------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Unit (Vitest)                                          | every cluster                                 | Pure logic — year math, sphere derivation, EÜR aggregation, QR encoding                                                                                      |
-| Component (Svelte testing-library)                     | every UI cluster                              | Component renders right thing for given props; emits right events                                                                                            |
-| Integration (see §Definition above)                    | C1, C2, C3, C4, C8                            | End-to-end domain — insert transaction → assert dashboard/EÜR/filter reflects it                                                                             |
-| E2E (Playwright via new global setup)                  | every cluster                                 | Full browser flow through the actual UI                                                                                                                      |
-| Mail content (`MAIL_PROVIDER=dev-eml` assertions)      | C8                                            | `.eml` file subject + body + QR payload bytes                                                                                                                |
-| Mail-client render (HTML preview screenshots)          | C8                                            | All 6 templates rendered as PNG in 6 mock clients (Gmail web light/dark, Apple Mail macOS/iOS, Outlook web/desktop) and diffed against a checked-in baseline |
-| Visual snapshot (Playwright + diff)                    | every UI cluster                              | Diff against pre-change baseline; threshold ≤ 0.1% pixel-difference; baseline OS = ubuntu-24.04 (CI runner image)                                            |
-| Mobile + tablet variants (Playwright device emulation) | C5, C7 + clusters with mobile-visible changes | iPhone 12 + iPhone SE + Pixel 5 + Galaxy Fold + iPad Mini                                                                                                    |
-| Accessibility (axe-core + keyboard-only e2e)           | every UI cluster                              | Zero serious/critical axe findings + keyboard-only navigation succeeds + focus ring visible on every interactive element + modal focus-return works          |
-| Performance (server-side load time)                    | C1, C3                                        | Page server-load + first render with 1000 fixture rows < 200ms (median over 5 runs)                                                                          |
-| Physical-device PWA install                            | C5 (blocking)                                 | pwa-mobile reviewer installs PWA on physical iPhone + Android + macOS; home-screen screenshot captured + attached to PR. Absence = cluster defers.           |
+| Kind                                                   | Required for                                  | Asserts                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit (Vitest)                                          | every cluster                                 | Pure logic — year math, sphere derivation, EÜR aggregation, QR encoding                                                                                                                                                                                                   |
+| Component (Svelte testing-library)                     | every UI cluster                              | Component renders right thing for given props; emits right events                                                                                                                                                                                                         |
+| Integration (see §Definition above)                    | C1, C2, C3, C4, C8                            | End-to-end domain — insert transaction → assert dashboard/EÜR/filter reflects it                                                                                                                                                                                          |
+| E2E (Playwright via new global setup)                  | every cluster                                 | Full browser flow through the actual UI                                                                                                                                                                                                                                   |
+| Mail content (`renderMailTemplate` + `sent_mails` row) | C8                                            | (a) Component-level: render template directly, assert on HTML (incl. QR-payload `data:image/png` bytes for Beitragsreminder + Rechnungen). (b) Integration: `MAIL_PROVIDER=no-op`, assert on `sent_mails.subject`, `sent_mails.template`, `sent_mails.provider_response`. |
+| Mail-client render (HTML preview screenshots)          | C8                                            | All 6 templates rendered as PNG in 6 mock clients (Gmail web light/dark, Apple Mail macOS/iOS, Outlook web/desktop) and diffed against a checked-in baseline                                                                                                              |
+| Visual snapshot (Playwright + diff)                    | every UI cluster                              | Diff against pre-change baseline; threshold ≤ 0.1% pixel-difference; baseline OS = ubuntu-24.04 (CI runner image)                                                                                                                                                         |
+| Mobile + tablet variants (Playwright device emulation) | C5, C7 + clusters with mobile-visible changes | iPhone 12 + iPhone SE + Pixel 5 + Galaxy Fold + iPad Mini                                                                                                                                                                                                                 |
+| Accessibility (axe-core + keyboard-only e2e)           | every UI cluster                              | Zero serious/critical axe findings + keyboard-only navigation succeeds + focus ring visible on every interactive element + modal focus-return works                                                                                                                       |
+| Performance (server-side load time)                    | C1, C3                                        | Page server-load + first render with 1000 fixture rows < 200ms (median over 5 runs)                                                                                                                                                                                       |
+| Physical-device PWA install                            | C5 (blocking)                                 | pwa-mobile reviewer installs PWA on physical iPhone + Android + macOS; home-screen screenshot captured + attached to PR. Absence = cluster defers.                                                                                                                        |
 
 ## Critical-path test matrix
 
@@ -677,25 +710,25 @@ These are the paths whose breakage is most painful to a real user. Every
 cluster that touches one of these MUST add or extend the corresponding
 test. The critical-path-coverage reviewer enforces.
 
-| Critical path                                                            | Where it lives                                                                                                    | Test kind required                                            | Touched by clusters             |
-| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------- |
-| Magic-link sign-in (issue → consume → session → admin shell)             | `src/lib/server/auth/**`, `src/routes/sign-in/**`                                                                 | E2E + integration                                             | (no-touch — regression only)    |
-| Public Auslagen form submit (happy path + invalid IBAN + missing fields) | `src/routes/auslage-einreichen/**`, `src/lib/components/forms/AuslagenForm.svelte`                                | E2E covering both successful + each fail-mode                 | C9 (AT-002 fix)                 |
-| Audit-Inbox approve → create expense                                     | `src/routes/app/inbox/**`, `src/lib/server/domain/auslagen.ts`                                                    | Integration + e2e                                             | C4 (sphere fix indirectly)      |
-| Audit-Inbox reject → rejection mail                                      | `src/routes/app/inbox/[ausId]/+page.server.ts`, `src/lib/server/mail/templates/RejectionMail.svelte`              | Integration + `.eml` content                                  | C8                              |
-| Add transaction → sphere/kategorie picker → EÜR aggregation              | `src/routes/app/transactions/neu/**`, `src/lib/server/eur/**`                                                     | Integration + e2e — assert EÜR shows the new tx               | C4, C1                          |
-| Year switch persists across reload + URL                                 | `src/routes/app/+layout.{server.ts,svelte}`, year-switcher component                                              | E2E with hard reload                                          | C2                              |
-| Festschreibung lock + DB trigger refuses mutation                        | `drizzle/0010_post_review_hardening.sql` (trigger), `src/routes/app/jahresabschluss/[year]/close/+page.server.ts` | Integration with raw SQL UPDATE attempt asserting 23514 raise | C1, C2                          |
-| Bescheinigung PDF generation + §50 EStDV hint + signature line           | `src/lib/server/pdf/templates/bescheinigung-template.ts`                                                          | Unit (golden PDF byte-comparison or text-extract assertion)   | C1                              |
-| SEPA pain.001 XML for approved-not-erstattet Auslagen                    | `src/lib/server/sepa/**`                                                                                          | Unit (XML schema-validate generated file)                     | (no-touch — regression only)    |
-| Beitragsreminder mail with Giro-QR                                       | `src/lib/server/mail/templates/BeitragsReminder.svelte`, `src/lib/server/giro-qr.ts`                              | `.eml` content + QR-payload decode                            | C8                              |
-| Audit-log hash chain stays valid after each new write                    | `drizzle/0010_post_review_hardening.sql` (chain trigger), `src/lib/server/audit-log/verifier.ts`                  | Integration: insert N rows, verifier returns ok               | every cluster that inserts rows |
-| Mobile FAB → bottom-sheet → first action reaches its destination         | `src/lib/components/admin/MobileTabBar.svelte`, FabBottomSheet (new)                                              | E2E on Playwright iPhone-12 emulation                         | C7                              |
-| Drive-tolerant Auslagen submit (Drive uploads succeeds, fails, retries)  | `src/lib/server/files/**`, public form action                                                                     | Integration with local-FS storage + simulated Drive failure   | (no-touch — regression only)    |
+| Critical path                                                            | Where it lives                                                                                                    | Test kind required                                                                                          | Touched by clusters             |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Magic-link sign-in (issue → consume → session → admin shell)             | `src/lib/server/auth/**`, `src/routes/sign-in/**`                                                                 | E2E + integration                                                                                           | (no-touch — regression only)    |
+| Public Auslagen form submit (happy path + invalid IBAN + missing fields) | `src/routes/auslage-einreichen/**`, `src/lib/components/forms/AuslagenForm.svelte`                                | E2E covering both successful + each fail-mode                                                               | C9 (AT-002 fix)                 |
+| Audit-Inbox approve → create expense                                     | `src/routes/app/inbox/**`, `src/lib/server/domain/auslagen.ts`                                                    | Integration + e2e                                                                                           | C4 (sphere fix indirectly)      |
+| Audit-Inbox reject → rejection mail                                      | `src/routes/app/inbox/[ausId]/+page.server.ts`, `src/lib/server/mail/templates/RejectionMail.svelte`              | Integration + `.eml` content                                                                                | C8                              |
+| Add transaction → sphere/kategorie picker → EÜR aggregation              | `src/routes/app/transactions/neu/**`, `src/lib/server/eur/**`                                                     | Integration + e2e — assert EÜR shows the new tx                                                             | C4, C1                          |
+| Year switch persists across reload + URL                                 | `src/routes/app/+layout.{server.ts,svelte}`, year-switcher component                                              | E2E with hard reload                                                                                        | C2                              |
+| Festschreibung lock + DB trigger refuses mutation                        | `drizzle/0010_post_review_hardening.sql` (trigger), `src/routes/app/jahresabschluss/[year]/close/+page.server.ts` | Integration with raw SQL UPDATE attempt asserting 23514 raise                                               | C1, C2                          |
+| Bescheinigung PDF generation + §50 EStDV hint + signature line           | `src/lib/server/pdf/templates/bescheinigung-template.ts`                                                          | Unit (golden PDF byte-comparison or text-extract assertion)                                                 | C1                              |
+| SEPA pain.001 XML for approved-not-erstattet Auslagen                    | `src/lib/server/sepa/**`                                                                                          | Unit (XML schema-validate generated file)                                                                   | (no-touch — regression only)    |
+| Beitragsreminder mail with Giro-QR                                       | `src/lib/server/mail/templates/BeitragsReminder.svelte`, `src/lib/server/giro-qr.ts`                              | Component-render assertion on QR-payload `data:image/png` bytes + integration assertion on `sent_mails` row | C8                              |
+| Audit-log hash chain stays valid after each new write                    | `drizzle/0010_post_review_hardening.sql` (chain trigger), `src/lib/server/audit-log/verifier.ts`                  | Integration: insert N rows, verifier returns ok                                                             | every cluster that inserts rows |
+| Mobile FAB → bottom-sheet → first action reaches its destination         | `src/lib/components/admin/MobileTabBar.svelte`, FabBottomSheet (new)                                              | E2E on Playwright iPhone-12 emulation                                                                       | C7                              |
+| Drive-tolerant Auslagen submit (Drive uploads succeeds, fails, retries)  | `src/lib/server/files/**`, public form action                                                                     | Integration with local-FS storage + simulated Drive failure                                                 | (no-touch — regression only)    |
 
 **Note**: invariants like `audit_log` REVOKE policy, ID-allocator
-concurrency, `year_for_booking` DST edges, and `dev-eml` per-test
-isolation are covered by the canary suite (§Cross-wave regression
+concurrency, `year_for_booking` DST edges, and `MAIL_PROVIDER=no-op`
+correctness are covered by the canary suite (§Cross-wave regression
 fixtures) which runs as a regression net before every wave and on every
 sub-PR. Individual clusters don't re-test these; they inherit the
 canary's coverage and any cluster whose changes break a canary is
@@ -730,22 +763,24 @@ both flagged.
 Every build agent + reviewer agent subprocess runs with these guards:
 
 1. **`env -i`-style env scrubbing**: subprocesses receive only a
-   whitelisted env subset (`PATH`, `HOME`, `NODE_ENV=development`,
-   `DATABASE_URL=<cluster-local>`, `DIRECT_DATABASE_URL=<cluster-local>`,
-   `MAIL_PROVIDER=dev-eml`, `FILE_STORAGE=local-fs`, the cluster's port
-   offset). Production envs (Neon production URL, Drive OAuth token,
-   real SMTP creds) are NEVER reachable.
+   whitelisted env subset (`PATH`, `HOME`, `NODE_ENV=test` or
+   `=development`, `DATABASE_URL=<cluster-local>`,
+   `DIRECT_DATABASE_URL=<cluster-local>`, `MAIL_PROVIDER=no-op`,
+   `STORAGE_BACKEND=local-fs`, `FILE_STORAGE_ROOT=<per-cluster>`,
+   the cluster's port offset). Production envs (Neon production URL,
+   Drive OAuth token, real SMTP creds) are NEVER reachable.
 2. **Trip-wire env values**: any subprocess that sees
-   `STORAGE_BACKEND=drive`, `MAIL_PROVIDER=smtp`, or a
-   `DATABASE_URL=...neon.tech...` in its env aborts immediately with a
-   loud error. This is the last-resort defense against env leakage.
+   `STORAGE_BACKEND=drive`, `MAIL_PROVIDER=smtp`, `MAIL_PROVIDER=resend`,
+   or a `DATABASE_URL=...neon.tech...` in its env aborts immediately
+   with a loud error. This is the last-resort defense against env
+   leakage.
 3. **Logging redaction layer**: before any log line is written to
    `~/.folgederwolke-build/state/overnight-progress.log` or any PR
    comment, it's passed through a regex redactor that masks values
    matching common secret shapes (`Bearer [A-Za-z0-9_\-]+`,
    `DE\d{20}` IBANs from real members, age-recipient strings,
-   `ya29\.` Google OAuth tokens).
-4. **No real-mail flag**: every test command sets `MAIL_PROVIDER=dev-eml`
+   `ya29\.` Google OAuth tokens, `glpat-`, `github_pat_`).
+4. **No real-mail flag**: every test command sets `MAIL_PROVIDER=no-op`
    explicitly via env, not via `.env` fallback. A typo in `.env`
    shouldn't be the only thing between us and 22 production emails sent
    to real recipients at 3am.
@@ -848,10 +883,11 @@ classifier-blocked, defeating autonomy):
 - ❌ Read `~/.env.folgederwolke-app-bootstrap` via `source` (use the
   documented grep pattern instead)
 - ❌ Trigger production-affecting workflows
-- ❌ Send mail to real addresses (test runs use `MAIL_PROVIDER=dev-eml`
-  for the .eml-on-disk path; never SMTP)
+- ❌ Send mail to real addresses (test runs use `MAIL_PROVIDER=no-op`
+  per `.env.test` — writes `sent_mails` row only, no I/O; never SMTP)
 - ❌ Upload files to the production Drive folder (use
-  `FILE_STORAGE=local-fs` for tests)
+  `STORAGE_BACKEND=local-fs` with per-cluster `FILE_STORAGE_ROOT` for
+  tests)
 
 **What the orchestrator IS allowed to do without prompting**:
 
