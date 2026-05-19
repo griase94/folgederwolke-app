@@ -199,15 +199,17 @@ project dropdown isn't permanently empty.
 
 ## Roles
 
-| Role                         | Count per cluster         | Responsibility                                                                                                                                          |
-| ---------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Orchestrator                 | 1 total                   | Loads spec, dispatches builds, watches PRs, dispatches reviewers, tracks iteration cycles, merges sub-PRs, logs everything                              |
-| Build agent                  | 1                         | TDD-first implementation; opens sub-PR against `overnight-2026-05-20`                                                                                   |
-| Generic code reviewer        | 1 per cycle               | Correctness, patterns, security, TDD discipline (verifies via `git log -p` that tests came before impl)                                                 |
-| Originating-expert reviewers | 1-4 (cluster-dependent)   | Re-spawned with the same persona prompt used in the 2026-05-19 deep-dive; reviews code AND runs the live app to verify the original finding is resolved |
-| Visual diff reviewer         | 1 per UI-touching PR      | Playwright screenshot diff against pre-change baseline at desktop + mobile + tablet viewports                                                           |
-| Test-quality reviewer        | 1 per PR                  | Reads tests; refuses ones that mock the thing under test or assert only HTTP status                                                                     |
-| Final integration reviewer   | 1 per cluster (last gate) | Verifies full CI green, every reviewer thread resolved, no MUST-FIX open, originating expert signed off in writing                                      |
+| Role                            | Count per cluster         | Responsibility                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Orchestrator                    | 1 total                   | Loads spec, dispatches builds, watches PRs, dispatches reviewers, tracks iteration cycles, merges sub-PRs, logs everything                                                                                                                                                                                                                      |
+| Build agent                     | 1                         | TDD-first implementation; opens sub-PR against `overnight-2026-05-20`                                                                                                                                                                                                                                                                           |
+| Generic code reviewer           | 1 per cycle               | Correctness, patterns, security, TDD discipline (verifies via `git log -p` that tests came before impl)                                                                                                                                                                                                                                         |
+| Originating-expert reviewers    | 1-4 (cluster-dependent)   | Re-spawned with the same persona prompt used in the 2026-05-19 deep-dive. **Reviews the code AND interactively drives the live app via Playwright (clicks, types, scrolls, screenshots) to verify the original finding is resolved.** Not optional — every originating-expert review includes a live-app walkthrough, not just a code read.     |
+| **UX-flow reviewer**            | 1 per UI-touching PR      | A new role distinct from the visual-diff reviewer. Walks the cluster's user-facing flows END-TO-END in a real browser (Playwright headed mode where possible, with traces saved). Specifically asks: would Julia actually do this? Where would she get stuck? Reports friction, surprise, broken affordances. Writes the report as Julia would. |
+| Visual diff reviewer            | 1 per UI-touching PR      | Playwright screenshot diff against pre-change baseline at desktop + mobile + tablet viewports. Specifically asserts on layout shift, color/spacing/type regressions, and brand-consistency.                                                                                                                                                     |
+| Test-quality reviewer           | 1 per PR                  | Reads tests; refuses ones that mock the thing under test, assert only HTTP status, or duplicate the production logic in test code. **Also asserts that critical-path tests (§Critical-path test matrix) are present where applicable.**                                                                                                         |
+| Critical-path coverage reviewer | 1 per cluster             | New role. Reads the §Critical-path test matrix and verifies the cluster covers every critical path it touches. Refuses PRs that touch a critical path without an integration- or e2e-test for it.                                                                                                                                               |
+| Final integration reviewer      | 1 per cluster (last gate) | Verifies full CI green, every reviewer thread resolved, no MUST-FIX open, originating expert signed off in writing, every critical path the cluster touches is tested.                                                                                                                                                                          |
 
 **Hard rules**:
 
@@ -288,8 +290,11 @@ Each build agent works in an **isolated git worktree** at
 - Wave 2 starts when C6 merges.
 - Wave 3 starts when C2 + C3 merge.
 
-Orchestrator polls every 60s for wave-completion. Time-box: 3h per wave,
-hard cap 10h total.
+Orchestrator polls every 60s for wave-completion. **No time caps.** A
+cluster runs until it converges (all reviewers approved with no MUST-FIX
+findings) or until convergence becomes impossible per the escalation
+playbook (see §"Convergence gates" below). Striving for greatness > saving
+hours.
 
 **Sub-PR cadence**:
 
@@ -348,6 +353,28 @@ each step via `git log` before allowing the next.
 | Mobile + tablet variants (Playwright device emulation) | C5, C7 + clusters with mobile-visible changes | Same behavior repeated at iPhone 12 + Pixel 5 + iPad Mini viewports              |
 | Accessibility (axe-core via Playwright)                | every UI cluster                              | Zero serious/critical findings on touched routes                                 |
 
+## Critical-path test matrix
+
+These are the paths whose breakage is most painful to a real user. Every
+cluster that touches one of these MUST add or extend the corresponding
+test. The critical-path-coverage reviewer enforces.
+
+| Critical path                                                            | Where it lives                                                                                                    | Test kind required                                            | Touched by clusters             |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------- |
+| Magic-link sign-in (issue → consume → session → admin shell)             | `src/lib/server/auth/**`, `src/routes/sign-in/**`                                                                 | E2E + integration                                             | (no-touch — regression only)    |
+| Public Auslagen form submit (happy path + invalid IBAN + missing fields) | `src/routes/auslage-einreichen/**`, `src/lib/components/forms/AuslagenForm.svelte`                                | E2E covering both successful + each fail-mode                 | C9 (AT-002 fix)                 |
+| Audit-Inbox approve → create expense                                     | `src/routes/app/inbox/**`, `src/lib/server/domain/auslagen.ts`                                                    | Integration + e2e                                             | C4 (sphere fix indirectly)      |
+| Audit-Inbox reject → rejection mail                                      | `src/routes/app/inbox/[ausId]/+page.server.ts`, `src/lib/server/mail/templates/RejectionMail.svelte`              | Integration + `.eml` content                                  | C8                              |
+| Add transaction → sphere/kategorie picker → EÜR aggregation              | `src/routes/app/transactions/neu/**`, `src/lib/server/eur/**`                                                     | Integration + e2e — assert EÜR shows the new tx               | C4, C1                          |
+| Year switch persists across reload + URL                                 | `src/routes/app/+layout.{server.ts,svelte}`, year-switcher component                                              | E2E with hard reload                                          | C2                              |
+| Festschreibung lock + DB trigger refuses mutation                        | `drizzle/0010_post_review_hardening.sql` (trigger), `src/routes/app/jahresabschluss/[year]/close/+page.server.ts` | Integration with raw SQL UPDATE attempt asserting 23514 raise | C1, C2                          |
+| Bescheinigung PDF generation + §50 EStDV hint + signature line           | `src/lib/server/pdf/templates/bescheinigung-template.ts`                                                          | Unit (golden PDF byte-comparison or text-extract assertion)   | C1                              |
+| SEPA pain.001 XML for approved-not-erstattet Auslagen                    | `src/lib/server/sepa/**`                                                                                          | Unit (XML schema-validate generated file)                     | (no-touch — regression only)    |
+| Beitragsreminder mail with Giro-QR                                       | `src/lib/server/mail/templates/BeitragsReminder.svelte`, `src/lib/server/giro-qr.ts`                              | `.eml` content + QR-payload decode                            | C8                              |
+| Audit-log hash chain stays valid after each new write                    | `drizzle/0010_post_review_hardening.sql` (chain trigger), `src/lib/server/audit-log/verifier.ts`                  | Integration: insert N rows, verifier returns ok               | every cluster that inserts rows |
+| Mobile FAB → bottom-sheet → first action reaches its destination         | `src/lib/components/admin/MobileTabBar.svelte`, FabBottomSheet (new)                                              | E2E on Playwright iPhone-12 emulation                         | C7                              |
+| Drive-tolerant Auslagen submit (Drive uploads succeeds, fails, retries)  | `src/lib/server/files/**`, public form action                                                                     | Integration with local-FS storage + simulated Drive failure   | (no-touch — regression only)    |
+
 ## Quality gates
 
 A sub-PR cannot merge to the overnight branch unless ALL of these hold:
@@ -362,20 +389,28 @@ A sub-PR cannot merge to the overnight branch unless ALL of these hold:
 - ✅ Final integration reviewer signed off
 - ✅ Changelog entry written in the PR body for the morning consolidation
 
-## Escalation playbook
+## Convergence gates & escalation playbook
 
-| Trigger                                                  | Orchestrator action                                                                                                        |
-| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Build agent fails to produce green CI after 3 attempts   | Restart with fresh build agent + prior diff + reviewer feedback. 2 restarts → defer cluster, log to morning report.        |
-| Reviewers keep finding MUST-FIX items past cycle 4       | Spawn scope-reviewer agent to judge if PR is too big. If yes, split into smaller sub-PRs.                                  |
-| Sub-PR can't rebase cleanly after another cluster merges | Build agent attempts. If file-ownership violated, orchestrator picks one cluster to wait, the other proceeds.              |
-| Overnight-branch CI red after a merge                    | Pause all sub-PRs. Open emergency repair PR with reduced quorum (2 reviewers, 1 cycle). Resume sub-PRs once green.         |
-| Wave time-box exceeded (3h/wave, hard cap 10h)           | Cluster deferred — reverted from overnight branch, filed as issue with `state:overnight-deferred`. Others ship.            |
-| Build agent hits a P0 bug outside cluster scope          | File separate emergency-fix issue. Orchestrator may dispatch side-channel agent. Original cluster pauses if blocked by it. |
+Time is NOT a gate. Convergence is. A cluster is "done" when all
+reviewers (including the originating-expert + final-integration) sign
+off on the same PR head with zero MUST-FIX findings. A cluster only
+defers when convergence is genuinely impossible per these gates:
+
+| Trigger                                                                                            | Orchestrator action                                                                                                                                                                  |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Build agent fails to produce green CI 5 times in a row with no net new fixes between attempts      | Restart with a fresh build agent receiving the full reviewer feedback + previous diff. If 3 restarts in a row make zero net progress, defer cluster.                                 |
+| Same MUST-FIX finding raised by the same reviewer twice in a row, build agent unable to address it | Spawn a "second-opinion" reviewer (different persona) to confirm the finding is real. If confirmed real and still unaddressable after a fresh build-agent restart, defer cluster.    |
+| Reviewers keep finding NEW MUST-FIX items past cycle 5                                             | Spawn scope-reviewer agent to judge if the PR is too big. If yes, split into smaller sub-PRs. If no, just keep iterating — there's just a lot to get right and quality > token cost. |
+| Sub-PR can't rebase cleanly after another cluster merges                                           | Build agent attempts. If file-ownership violated, orchestrator picks one cluster to wait, the other proceeds.                                                                        |
+| Overnight-branch CI red after a merge                                                              | Pause all sub-PRs. Open emergency repair PR. **Same review cascade — quality stays high even under pressure** (no reduced-quorum shortcuts). Resume sub-PRs once green.              |
+| Build agent hits a P0 bug outside cluster scope                                                    | File separate emergency-fix issue. Orchestrator may dispatch side-channel agent. Original cluster pauses if blocked by it.                                                           |
+| Cluster legitimately deferred                                                                      | Reverted from overnight branch, filed as labelled GitHub issue with full review history attached as comments. The other 8 clusters still ship.                                       |
+
+**No time caps anywhere.** A cluster runs until convergence. A wave starts when its dependencies merge. The morning consolidation opens when all clusters reach a terminal state (merged or deferred), regardless of wall-clock time.
 
 ## Morning consolidation
 
-When all waves complete (or hard cap hit):
+When all clusters have reached a terminal state (merged or deferred):
 
 1. Orchestrator runs final full-suite CI against `overnight-2026-05-20`
 2. Opens **ONE PR** from `overnight-2026-05-20` → `main`, titled
@@ -396,6 +431,82 @@ tags `overnight-2026-05-20-green`.
 Spend whatever it takes per reviewer/cycle. Token spend is logged for
 transparency but is never a gate. Quality wins over cost.
 
+## Autonomous-overnight runtime requirements
+
+The orchestrator runs unattended for 8+ hours. Andy is asleep. Nothing
+the orchestrator does may prompt for human permission — every operation
+must either be pre-authorized or follow an alternative path that doesn't
+prompt.
+
+**Hard boundaries the orchestrator may NEVER cross** (would prompt or get
+classifier-blocked, defeating autonomy):
+
+- ❌ Push to `main` (only the morning consolidation PR touches main, and
+  it requires Andy's stamp + merge — done after wake-up)
+- ❌ Stamp `reviewed-by-opus` on any branch (classifier-blocked; Andy
+  does this in the morning)
+- ❌ Use `--admin` flags to bypass branch protection
+- ❌ Use `--no-verify` to skip hooks
+- ❌ Force-push to any branch other than the cluster's own working branch
+- ❌ Touch Vercel production envs / GitHub repo settings / Neon production DB
+- ❌ Read `~/.env.folgederwolke-app-bootstrap` via `source` (use the
+  documented grep pattern instead)
+- ❌ Trigger production-affecting workflows
+- ❌ Send mail to real addresses (test runs use `MAIL_PROVIDER=dev-eml`
+  for the .eml-on-disk path; never SMTP)
+- ❌ Upload files to the production Drive folder (use
+  `FILE_STORAGE=local-fs` for tests)
+
+**What the orchestrator IS allowed to do without prompting**:
+
+- ✅ Merge sub-PRs into `overnight-2026-05-20` (the night branch, NOT
+  main; no `reviewed-by-opus` requirement)
+- ✅ Create + push branches under `overnight-2026-05-20/*`
+- ✅ Create + comment on + close GitHub issues
+- ✅ Run `pnpm install`, `pnpm test`, `pnpm exec playwright test`,
+  `pnpm dev-up`, `pnpm tsx scripts/migrate.ts` (against the local test
+  DB, not production)
+- ✅ Spawn sub-agents (`Agent` tool) for every reviewer cycle
+- ✅ Apply migrations to the docker-compose dev/test Postgres
+- ✅ Read `~/.env.folgederwolke-app-bootstrap` via the documented `grep`
+  pattern when individual env values are needed
+- ✅ Use `gh pr create / gh pr merge --squash --delete-branch / gh pr review`
+  against the night branch
+- ✅ Use `gh issue create / gh issue comment / gh issue close`
+
+**Settings required to be in place before kickoff**:
+
+- `.claude/settings-autonomous.json` allows the operations above with
+  no prompts (Andy reuses the same settings file that ran the original
+  autonomous build; if any of the new operations are not yet allowed,
+  the orchestrator surfaces this BEFORE the night begins as a single
+  preflight error, NOT mid-night).
+- Branch protection on `main` does NOT apply to the night branch
+  (`overnight-2026-05-20`) — the orchestrator verifies this in preflight
+  by attempting a no-op push.
+- Docker is running locally (the orchestrator runs `docker ps` in
+  preflight; if it fails, surface immediately, not mid-cluster).
+- The `griase94/folgederwolke-app` repo is reachable and the gh CLI is
+  authenticated (preflight `gh auth status`).
+- Neon production DB credentials are NOT loaded into the orchestrator's
+  environment — only the local docker-compose `DATABASE_URL` and the
+  Neon `DIRECT_DATABASE_URL` that's required by phase-8's `dev-up.sh`
+  for schema reconciliation should be reachable.
+
+**Preflight**: the orchestrator's first action is a 60-second preflight
+check that verifies every item above. If anything fails, the orchestrator
+refuses to start, writes the failures to MORNING.md, and exits. No
+half-started night.
+
+**Heartbeat + visibility**: the orchestrator writes a one-line status
+update every 5 minutes to `~/.folgederwolke-build/state/overnight-progress.log`
+so Andy can wake up at 3am and grep what's happening if curious.
+
+**Failure-mode bias**: when in doubt, the orchestrator chooses the
+quality-preserving path over the speed-preserving path. If a cluster
+can't converge, it defers (cleanly reverted, filed as issue). It does
+NOT half-ship.
+
 ## Out-of-scope (this overnight)
 
 - All findings labeled P2 or P3 in the deep-dive
@@ -410,18 +521,26 @@ transparency but is never a gate. Quality wins over cost.
 
 ## Success criteria
 
-- 8 of 9 clusters merge to `main` in the morning PR (1 deferred max,
-  filed as issue)
+- Every cluster that converges is in the morning PR. Up to 2 clusters
+  may legitimately defer (with full review-history written to a labelled
+  issue) without compromising "the night was a success" — the other 7+
+  ship at world-class craft.
 - Zero P0/P1 originating findings remain open in the deep-dive review
-  scope
-- Andy's three explicit gaps (EÜR, year switcher, dashboard cashflow)
-  are visibly resolved and reviewed by their originating experts
+  scope (the deferred ones move to issues but are no longer in the
+  "Andy must triage" view).
+- Andy's three explicit gaps (EÜR workspace, global year switcher,
+  dashboard cashflow overview) are visibly resolved, each reviewed by
+  ≥ 3 originating experts who all interacted with the live app.
 - The favicon is rendered correctly across iOS home screen, Android home
   screen, macOS Safari tab, and Chrome desktop tab — Andy sees the pink
-  sticker on his phone after install
-- Test count grows by ≥ 60 (each cluster adds at least 5 new tests on
-  average)
-- CI total runtime ≤ 5 minutes per sub-PR (no test bloat regressions)
+  sticker on his phone after install. Documented with screenshots in the
+  morning PR.
+- The 13 critical paths in the §Critical-path test matrix all have
+  passing integration- or e2e-tests on the morning branch.
+- Test count grows by ≥ 80 (we're testing more aggressively than the
+  baseline-balanced scope would normally produce).
+- Andy wakes up to: one PR to read, a short morning report, and zero
+  permission prompts in his terminal history.
 
 ## Next step
 
