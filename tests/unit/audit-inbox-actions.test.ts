@@ -83,6 +83,11 @@ let festBisOverride: number | null = null;
 
 let nextExpenseId = 1;
 
+// Toggled by the A1 concurrent-race test to force the next expenses.insert
+// to throw a SQLSTATE 23505 even when no row currently exists — simulates
+// the "winner already committed in another connection" case.
+let uniqueViolationOnNextInsert = false;
+
 function makeSubmission(overrides: Partial<SubmissionRow> = {}): SubmissionRow {
   const id = overrides.id ?? `sub-${Math.random().toString(36).slice(2, 10)}`;
   const row: SubmissionRow = {
@@ -204,11 +209,34 @@ function makeDbFake() {
         return chain;
       },
       returning() {
-        const id = `${tableKind === "expenses" ? "exp" : "sub"}-${nextExpenseId++}`;
         if (tableKind === "expenses") {
+          // Simulate Postgres UNIQUE(business_id) — if a row exists with the
+          // same businessId, throw a unique-violation error matching how
+          // postgres-js / node-postgres surface SQLSTATE 23505.
+          const candidateBusinessId =
+            (ctx.values.businessId as string) ?? `AUS-NEW-${nextExpenseId}`;
+          if (uniqueViolationOnNextInsert) {
+            uniqueViolationOnNextInsert = false;
+            const err = new Error(
+              `duplicate key value violates unique constraint "expenses_business_id_uq"`,
+            ) as Error & { code?: string };
+            err.code = "23505";
+            return Promise.reject(err);
+          }
+          const existing = [...expensesStore.values()].find(
+            (r) => r.businessId === candidateBusinessId,
+          );
+          if (existing) {
+            const err = new Error(
+              `duplicate key value violates unique constraint "expenses_business_id_uq"`,
+            ) as Error & { code?: string };
+            err.code = "23505";
+            return Promise.reject(err);
+          }
+          const id = `exp-${nextExpenseId++}`;
           const row = makeExpense({
             id,
-            businessId: (ctx.values.businessId as string) ?? `AUS-NEW-${id}`,
+            businessId: candidateBusinessId,
             bezeichnung: (ctx.values.bezeichnung as string) ?? "Druckerpapier",
             betragCents: (ctx.values.betragCents as bigint) ?? 0n,
             approvedAt: (ctx.values.approvedAt as Date) ?? new Date(),
@@ -222,6 +250,7 @@ function makeDbFake() {
           });
           return Promise.resolve([{ id: row.id, businessId: row.businessId }]);
         }
+        const id = `sub-${nextExpenseId++}`;
         return Promise.resolve([{ id }]);
       },
       onConflictDoNothing() {
@@ -236,44 +265,79 @@ function makeDbFake() {
       (table._kind as "submissions" | "expenses") ?? "submissions";
     const ctx: {
       values: Record<string, unknown>;
+      // The schema fake represents `and(eq(id, x), isNull(reviewedAt))` as a
+      // raw object — we can't dig into it generically, so we coerce: when the
+      // condition has `value === null` we treat it as a null-gate on the
+      // companion field.
       whereField?: string;
       whereValue?: unknown;
+      nullGateField?: string;
     } = { values: {} };
     const chain = {
       set(v: Record<string, unknown>) {
         ctx.values = v;
         return chain;
       },
-      where(cond: { field: string; value: unknown }) {
-        ctx.whereField = cond.field;
-        ctx.whereValue = cond.value;
+      where(cond: unknown) {
+        // The `and(...)` mock returns its first arg only; `isNull` returns
+        // `{ field, value: null }`. Most real callers pass an object; we
+        // try to recover both shapes.
+        const c = cond as { field?: string; value?: unknown };
+        if (c?.field) {
+          ctx.whereField = c.field;
+          ctx.whereValue = c.value;
+        }
         return chain;
       },
+      returning() {
+        return Promise.resolve(applyUpdate());
+      },
       then(resolve: (n: number) => unknown) {
-        if (tableKind === "submissions") {
-          for (const row of submissionsStore.values()) {
-            if (
-              !ctx.whereField ||
-              (row as unknown as Record<string, unknown>)[ctx.whereField] ===
-                ctx.whereValue
-            ) {
-              Object.assign(row, ctx.values);
-            }
-          }
-        } else {
-          for (const row of expensesStore.values()) {
-            if (
-              !ctx.whereField ||
-              (row as unknown as Record<string, unknown>)[ctx.whereField] ===
-                ctx.whereValue
-            ) {
-              Object.assign(row, ctx.values);
-            }
-          }
-        }
-        return Promise.resolve(1).then(resolve);
+        const rows = applyUpdate();
+        return Promise.resolve(rows.length).then(resolve);
       },
     };
+
+    function applyUpdate(): Array<{ id: string }> {
+      const changed: Array<{ id: string }> = [];
+      const store =
+        tableKind === "submissions" ? submissionsStore : expensesStore;
+      for (const row of store.values()) {
+        const r = row as unknown as Record<string, unknown>;
+        if (ctx.whereField && r[ctx.whereField] !== ctx.whereValue) continue;
+        // RETURNING-gated callers also pass an isNull guard which our mock
+        // collapses to the same `where` field. Detect via the values: when
+        // the caller is gating on `decided_at IS NULL`, ctx.values will
+        // contain `decidedAt` and we must check the row hadn't been set yet.
+        if (
+          "decidedAt" in ctx.values &&
+          tableKind === "submissions" &&
+          (r as { decidedAt: Date | null }).decidedAt !== null
+        ) {
+          continue;
+        }
+        if (
+          "erstattetAm" in ctx.values &&
+          tableKind === "expenses" &&
+          (r as { erstattetAm: string | null }).erstattetAm !== null
+        ) {
+          continue;
+        }
+        if (
+          "reviewedAt" in ctx.values &&
+          tableKind === "submissions" &&
+          !("decidedAt" in ctx.values) &&
+          (r as { reviewedAt: Date | null }).reviewedAt !== null
+        ) {
+          // auslage.reviewed handler-only path.
+          continue;
+        }
+        Object.assign(row, ctx.values);
+        changed.push({ id: (r.id as string) ?? "" });
+      }
+      return changed;
+    }
+
     return chain;
   }
 
@@ -377,6 +441,7 @@ beforeEach(() => {
   emitMock.mockClear();
   festBisOverride = null;
   nextExpenseId = 1;
+  uniqueViolationOnNextInsert = false;
 });
 
 afterEach(() => {
@@ -670,5 +735,136 @@ describe("markExpenseErstattet — idempotency", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.status).toBe(409);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Concurrent-race tests (ADR-0005 correctness — A1/A2/A3)
+//
+// Each test simulates two concurrent calls to the same domain helper with
+// Promise.all and asserts: ONE side-effect fired, the DB ended up in a sane
+// state, and no row was written twice.
+// ---------------------------------------------------------------------------
+
+describe("approveSubmission — concurrent race (A1)", () => {
+  it("two simultaneous approves create ONE expense and emit ONE event", async () => {
+    const sub = makeSubmission({ businessId: "AUS-2026-100" });
+
+    // Both calls read approvedExpenseId=NULL → both reach INSERT. The fake
+    // throws SQLSTATE 23505 on the second insert (same businessId), and the
+    // domain helper catches it, re-reads, and returns the winner's expense.
+    const [a, b] = await Promise.all([
+      approveSubmission({ submissionId: sub.id, actorUserId: "admin-1" }),
+      approveSubmission({ submissionId: sub.id, actorUserId: "admin-2" }),
+    ]);
+
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+
+    // Exactly one expense row in the store.
+    expect(expensesStore.size).toBe(1);
+
+    // Exactly one of the two calls reports created=true.
+    const createdCount = [a, b].filter((r) => r.created).length;
+    expect(createdCount).toBe(1);
+
+    // Both callers see the SAME expense id.
+    expect(a.expenseId).toBe(b.expenseId);
+
+    // Exactly one expense.approved event fired (the loser's side-effect
+    // branch is gated on `result.kind === "created"`).
+    const approveEmits = emitMock.mock.calls.filter(
+      (c) => c[0] === "expense.approved",
+    );
+    expect(approveEmits).toHaveLength(1);
+
+    // Submission ended up decided and linked to the surviving expense.
+    const updated = submissionsStore.get(sub.id)!;
+    expect(updated.decision).toBe("approved");
+    expect(updated.approvedExpenseId).toBe(a.expenseId);
+  });
+});
+
+describe("rejectSubmission — concurrent race (A3)", () => {
+  it("two simultaneous rejects flip the row once and emit ONE event", async () => {
+    const sub = makeSubmission({ businessId: "AUS-2026-101" });
+
+    // Both calls read decidedAt=null. The UPDATE has `WHERE decidedAt IS NULL`
+    // + RETURNING; the fake's `applyUpdate` skips rows whose decidedAt is
+    // already non-null when the values being set include a new decidedAt.
+    // So only the first call gets a returning row; the second sees an empty
+    // RETURNING and returns alreadyDecided=true without emitting.
+    const [a, b] = await Promise.all([
+      rejectSubmission({
+        submissionId: sub.id,
+        actorUserId: "admin-1",
+        grund: "Beleg fehlt",
+      }),
+      rejectSubmission({
+        submissionId: sub.id,
+        actorUserId: "admin-2",
+        grund: "Beleg fehlt",
+      }),
+    ]);
+
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+
+    // Exactly one call won (alreadyDecided=false), the other lost.
+    const wins = [a, b].filter((r) => r.alreadyDecided === false).length;
+    expect(wins).toBe(1);
+
+    // Exactly one auslage.rejected emit.
+    const emits = emitMock.mock.calls.filter(
+      (c) => c[0] === "auslage.rejected",
+    );
+    expect(emits).toHaveLength(1);
+
+    // Row landed decided exactly once.
+    const updated = submissionsStore.get(sub.id)!;
+    expect(updated.decision).toBe("rejected");
+    expect(updated.decisionReason).toBe("Beleg fehlt");
+  });
+});
+
+describe("markExpenseErstattet — concurrent race (A2)", () => {
+  it("two simultaneous mark-erstattets flip the row once and emit ONE event", async () => {
+    const exp = makeExpense({ businessId: "AUS-2026-102" });
+
+    // Both calls read erstattetAm=null; only one UPDATE actually mutates a
+    // row (RETURNING-gated). The other sees empty RETURNING and short-
+    // circuits to alreadyErstattet=true with NO emit.
+    const [a, b] = await Promise.all([
+      markExpenseErstattet({
+        expenseId: exp.id,
+        chosenDate: "2026-05-15",
+        zahlungsartId: "zart-1",
+        actorUserId: "admin-1",
+      }),
+      markExpenseErstattet({
+        expenseId: exp.id,
+        chosenDate: "2026-05-15",
+        zahlungsartId: "zart-1",
+        actorUserId: "admin-2",
+      }),
+    ]);
+
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+
+    const wins = [a, b].filter((r) => r.alreadyErstattet === false).length;
+    expect(wins).toBe(1);
+
+    const emits = emitMock.mock.calls.filter(
+      (c) => c[0] === "expense.erstattet",
+    );
+    expect(emits).toHaveLength(1);
+
+    const updated = expensesStore.get(exp.id)!;
+    expect(updated.erstattetAm).toBe("2026-05-15");
+    expect(updated.status).toBe("erstattet");
   });
 });

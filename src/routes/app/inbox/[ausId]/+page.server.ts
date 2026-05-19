@@ -92,10 +92,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     .where(eq(zahlungsarten.deactivated, false))
     .orderBy(zahlungsarten.label);
 
-  // ── Emit auslage.reviewed when an admin opens an undecided card for the
-  //    first time. Handler sets reviewed_at + writes audit_log. Idempotent at
-  //    the DB layer; we also gate here so the audit row is only ever written
-  //    on the *first* open (avoids spurious update rows on refresh).
+  // ── Emit auslage.reviewed when an admin opens an undecided card. The
+  //    handler in handlers.ts is the authoritative guard: it issues an
+  //    UPDATE ... WHERE reviewed_at IS NULL RETURNING id, and only writes
+  //    the audit row when one row was actually changed. This route-level
+  //    `wasUnreviewed` is only an optimisation to avoid a no-op round-trip
+  //    on every refresh — concurrency safety is enforced inside the handler
+  //    (A5: two simultaneous opens → exactly one audit row, exactly one
+  //    UPDATE that lands).
   const wasUnreviewed = s.reviewedAt === null;
   if (wasUnreviewed && s.decidedAt === null) {
     try {

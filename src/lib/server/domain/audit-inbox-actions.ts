@@ -20,7 +20,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
@@ -319,64 +319,130 @@ export async function approveSubmission(
   }
 
   // ── 3. Atomic transaction: INSERT expense + UPDATE submission ──────────
+  // A1 (TOCTOU): two concurrent calls both read approvedExpenseId=NULL above
+  // and both reach the INSERT. The `expenses.business_id` UNIQUE index makes
+  // the loser fail with Postgres SQLSTATE 23505. We catch that, re-read the
+  // submission inside this same transaction (now the winner's UPDATE is
+  // visible thanks to row-level locking on REPEATABLE READ / read-committed
+  // snapshot of the SELECT) and return the existing expense as the idempotent
+  // result. The audit-emit branch is NOT taken on this path — `created=false`
+  // signals the caller no side-effect fired.
   const expenseBusinessId = submission.businessId;
   const bezahltVonKind = submission.bezahltVonKind;
 
-  const result = await db.transaction(async (tx) => {
-    const [insertedExpense] = await tx
-      .insert(expenses)
-      .values({
-        businessId: expenseBusinessId,
-        source: "form",
-        sourceRef: submission.businessId,
-        // gebuchtAm defaults to now(); the year_for_booking() generated
-        // column derives year_of_buchung from it.
-        rechnungsdatum: submission.rechnungsdatum ?? null,
-        betragCents: submission.betragCents,
-        currency: submission.currency,
-        bezeichnung: submission.bezeichnung,
-        kommentar: submission.kommentar ?? null,
-        // ADR-0002 snapshots — placeholders until the admin assigns
-        // kategorie + sphere on the transaction detail page (Phase 5).
-        kategorieNameSnapshot: "(Unkategorisiert)",
-        sphereSnapshot: "ideeller",
-        // ADR-0007: copy discriminator + extern fields verbatim.
-        bezahltVonKind: bezahltVonKind,
-        bezahltVonMemberId: submission.bezahltVonMemberId,
-        externName: submission.externName,
-        externIban: submission.externIban,
-        externEmail: submission.externEmail,
-        bezahltVonDisplay: submission.bezahltVonDisplay,
-        belegDriveFileId: submission.belegDriveFileId,
-        belegOriginalName: submission.belegOriginalName,
-        status: "geprueft",
-        approvedAt: new Date(),
-        approvedByUserId: actorUserId,
-        createdByUserId: actorUserId,
-      })
-      .returning({ id: expenses.id, businessId: expenses.businessId });
+  type ApproveTxResult =
+    | { kind: "created"; id: string; businessId: string }
+    | { kind: "existed"; id: string; businessId: string };
 
-    if (!insertedExpense) {
-      throw new Error(
-        `[approveSubmission] INSERT expenses returned no row for ${expenseBusinessId}`,
-      );
+  const result = await db.transaction(async (tx): Promise<ApproveTxResult> => {
+    try {
+      const [insertedExpense] = await tx
+        .insert(expenses)
+        .values({
+          businessId: expenseBusinessId,
+          source: "form",
+          sourceRef: submission.businessId,
+          // gebuchtAm defaults to now(); the year_for_booking() generated
+          // column derives year_of_buchung from it.
+          rechnungsdatum: submission.rechnungsdatum ?? null,
+          betragCents: submission.betragCents,
+          currency: submission.currency,
+          bezeichnung: submission.bezeichnung,
+          kommentar: submission.kommentar ?? null,
+          // ADR-0002 snapshots — placeholders until the admin assigns
+          // kategorie + sphere on the transaction detail page (Phase 5).
+          kategorieNameSnapshot: "(Unkategorisiert)",
+          sphereSnapshot: "ideeller",
+          // ADR-0007: copy discriminator + extern fields verbatim.
+          bezahltVonKind: bezahltVonKind,
+          bezahltVonMemberId: submission.bezahltVonMemberId,
+          externName: submission.externName,
+          externIban: submission.externIban,
+          externEmail: submission.externEmail,
+          bezahltVonDisplay: submission.bezahltVonDisplay,
+          belegDriveFileId: submission.belegDriveFileId,
+          belegOriginalName: submission.belegOriginalName,
+          status: "geprueft",
+          approvedAt: new Date(),
+          approvedByUserId: actorUserId,
+          createdByUserId: actorUserId,
+        })
+        .returning({ id: expenses.id, businessId: expenses.businessId });
+
+      if (!insertedExpense) {
+        throw new Error(
+          `[approveSubmission] INSERT expenses returned no row for ${expenseBusinessId}`,
+        );
+      }
+
+      // A4: also bump reviewed_at if not already set, so the audit invariant
+      // "reviewed before decided" never breaks (e.g. when approve happens
+      // without the load() ever firing — direct POST, automated tooling).
+      await tx
+        .update(auslagenSubmissions)
+        .set({
+          decidedAt: new Date(),
+          decision: "approved",
+          decidedByUserId: actorUserId,
+          approvedExpenseId: insertedExpense.id,
+          reviewedAt: sql`COALESCE(${auslagenSubmissions.reviewedAt}, now())`,
+        })
+        .where(eq(auslagenSubmissions.id, submissionId));
+
+      return {
+        kind: "created",
+        id: insertedExpense.id,
+        businessId: insertedExpense.businessId,
+      };
+    } catch (insertErr) {
+      // Postgres unique-violation: another concurrent call won the race.
+      if (isUniqueViolation(insertErr)) {
+        const subRow = await tx
+          .select({ approvedExpenseId: auslagenSubmissions.approvedExpenseId })
+          .from(auslagenSubmissions)
+          .where(eq(auslagenSubmissions.id, submissionId))
+          .limit(1);
+        const approvedExpenseId = subRow[0]?.approvedExpenseId ?? null;
+        if (approvedExpenseId) {
+          const expRow = await tx
+            .select({ id: expenses.id, businessId: expenses.businessId })
+            .from(expenses)
+            .where(eq(expenses.id, approvedExpenseId))
+            .limit(1);
+          const existing = expRow[0];
+          if (existing) {
+            return {
+              kind: "existed",
+              id: existing.id,
+              businessId: existing.businessId,
+            };
+          }
+        }
+        // Fallback: the winner inserted by business_id but submission UPDATE
+        // hasn't landed yet (rare with READ COMMITTED). Look up by businessId.
+        const expByBiz = await tx
+          .select({ id: expenses.id, businessId: expenses.businessId })
+          .from(expenses)
+          .where(eq(expenses.businessId, expenseBusinessId))
+          .limit(1);
+        const winner = expByBiz[0];
+        if (winner) {
+          return {
+            kind: "existed",
+            id: winner.id,
+            businessId: winner.businessId,
+          };
+        }
+      }
+      throw insertErr;
     }
-
-    await tx
-      .update(auslagenSubmissions)
-      .set({
-        decidedAt: new Date(),
-        decision: "approved",
-        decidedByUserId: actorUserId,
-        approvedExpenseId: insertedExpense.id,
-      })
-      .where(eq(auslagenSubmissions.id, submissionId));
-
-    return insertedExpense;
   });
 
   // ── 4. Emit event (audit log written by handler) ───────────────────────
-  try {
+  // A6: do NOT swallow handler errors here. The audit handler MUST surface
+  // failures to the caller (registered as critical in handlers.ts spec) so
+  // operations can recover. AggregateError propagates from bus.emit.
+  if (result.kind === "created") {
     await bus.emit("expense.approved", {
       expenseId: result.id,
       expenseBusinessId: result.businessId,
@@ -386,20 +452,38 @@ export async function approveSubmission(
       betragCents: Number(submission.betragCents),
       bezeichnung: submission.bezeichnung,
     });
-  } catch (busErr) {
-    // Surface to logs; do not roll the commit back. Audit recovery is OK.
-    console.error(
-      `[approveSubmission] bus.emit failed for ${expenseBusinessId}:`,
-      busErr,
-    );
   }
 
   return {
     ok: true,
-    created: true,
+    created: result.kind === "created",
     expenseId: result.id,
     expenseBusinessId: result.businessId,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Postgres error helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * True if `err` is a Postgres unique-violation (SQLSTATE 23505). Different
+ * drivers expose the code at different paths (postgres-js → `err.code`,
+ * pg → `err.code`, drizzle wraps with `cause`). Walk the chain defensively.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  let cur: unknown = err;
+  for (let i = 0; i < 5 && cur != null; i++) {
+    if (typeof cur === "object" && cur !== null && "code" in cur) {
+      const code = (cur as { code?: unknown }).code;
+      if (code === "23505") return true;
+    }
+    cur =
+      typeof cur === "object" && cur !== null && "cause" in cur
+        ? (cur as { cause?: unknown }).cause
+        : null;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -455,15 +539,31 @@ export async function rejectSubmission(
     return { ok: true, alreadyDecided: true };
   }
 
-  await db
+  // A3 (TOCTOU): gate the decision on `decided_at IS NULL` and RETURNING so
+  // only ONE of N concurrent calls actually flips the row — that one owns the
+  // side-effect emit (audit log + RejectionMail). Other callers see zero rows
+  // returned and treat it as alreadyDecided.
+  const updated = await db
     .update(auslagenSubmissions)
     .set({
       decidedAt: new Date(),
       decision: "rejected",
       decidedByUserId: actorUserId,
       decisionReason: grund,
+      reviewedAt: sql`COALESCE(${auslagenSubmissions.reviewedAt}, now())`,
     })
-    .where(eq(auslagenSubmissions.id, submissionId));
+    .where(
+      and(
+        eq(auslagenSubmissions.id, submissionId),
+        isNull(auslagenSubmissions.decidedAt),
+      ),
+    )
+    .returning({ id: auslagenSubmissions.id });
+
+  if (updated.length === 0) {
+    // Lost the race — another concurrent call already decided. No emit.
+    return { ok: true, alreadyDecided: true };
+  }
 
   // Resolve recipient email + vorname for the mail.
   let email: string | null = null;
@@ -489,23 +589,18 @@ export async function rejectSubmission(
     }
   }
 
-  try {
-    await bus.emit("auslage.rejected", {
-      submissionId,
-      submissionBusinessId: submission.businessId,
-      actorUserId,
-      email,
-      vorname,
-      bezeichnung: submission.bezeichnung,
-      betragCents: Number(submission.betragCents),
-      grund,
-    });
-  } catch (busErr) {
-    console.error(
-      `[rejectSubmission] bus.emit failed for ${submission.businessId}:`,
-      busErr,
-    );
-  }
+  // A6: do not swallow audit-handler errors. Mail handler is best-effort
+  // (its own internal try/catch in handlers.ts); audit handler re-throws.
+  await bus.emit("auslage.rejected", {
+    submissionId,
+    submissionBusinessId: submission.businessId,
+    actorUserId,
+    email,
+    vorname,
+    bezeichnung: submission.bezeichnung,
+    betragCents: Number(submission.betragCents),
+    grund,
+  });
 
   return { ok: true, alreadyDecided: false };
 }
@@ -593,7 +688,13 @@ export async function markExpenseErstattet(
     };
   }
 
-  await db
+  // A2 (TOCTOU): the SELECT-then-UPDATE pattern is racey — two callers both
+  // saw `erstattetAm === null` and both reach this UPDATE. The WHERE clause
+  // means only one row is actually changed, but BOTH would emit
+  // `expense.erstattet` → duplicate audit_log rows (the sent_mails UNIQUE
+  // catches the mail dup but not the audit row). Use RETURNING and the
+  // returned row count as the authoritative "I won the race" signal.
+  const updatedRows = await db
     .update(expenses)
     .set({
       erstattetAm: chosenDate,
@@ -602,9 +703,13 @@ export async function markExpenseErstattet(
       abflussDatum: chosenDate,
       updatedAt: new Date(),
     })
-    .where(
-      and(eq(expenses.id, expenseId), sql`${expenses.erstattetAm} IS NULL`),
-    );
+    .where(and(eq(expenses.id, expenseId), isNull(expenses.erstattetAm)))
+    .returning({ id: expenses.id });
+
+  if (updatedRows.length === 0) {
+    // Lost the race — another concurrent call already marked erstattet.
+    return { ok: true, alreadyErstattet: true };
+  }
 
   // Resolve recipient email + vorname for the ErstattungsMail.
   let email: string | null = null;
@@ -628,24 +733,19 @@ export async function markExpenseErstattet(
     }
   }
 
-  try {
-    await bus.emit("expense.erstattet", {
-      expenseId,
-      expenseBusinessId: expense.businessId,
-      actorUserId,
-      email,
-      vorname,
-      bezeichnung: expense.bezeichnung,
-      betragCents: Number(expense.betragCents),
-      verwendungszweck: input.verwendungszweck ?? expense.bezeichnung,
-      erstattungsAm: new Date(`${chosenDate}T00:00:00Z`),
-    });
-  } catch (busErr) {
-    console.error(
-      `[markExpenseErstattet] bus.emit failed for ${expense.businessId}:`,
-      busErr,
-    );
-  }
+  // A6: surface audit-handler failures (no swallow). Mail handler in
+  // handlers.ts has its own internal best-effort try/catch.
+  await bus.emit("expense.erstattet", {
+    expenseId,
+    expenseBusinessId: expense.businessId,
+    actorUserId,
+    email,
+    vorname,
+    bezeichnung: expense.bezeichnung,
+    betragCents: Number(expense.betragCents),
+    verwendungszweck: input.verwendungszweck ?? expense.bezeichnung,
+    erstattungsAm: new Date(`${chosenDate}T00:00:00Z`),
+  });
 
   return { ok: true, alreadyErstattet: false };
 }
