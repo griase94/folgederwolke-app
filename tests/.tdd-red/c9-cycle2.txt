@@ -1,0 +1,19 @@
+C9 Cycle 2 — AT-002 (project dropdown) + date input formatting
+
+Tests added (failing pre-impl):
+
+1) tests/unit/c9-auslage-layout-projects.test.ts
+   - imports `load` from src/routes/auslage-einreichen/+layout.server.ts
+   - calls it (with a dummy event), inspects the returned shape
+   - asserts data.projects.length >= 1 — there's a seed project in the fixtures
+   - asserts every project has { id, name } shape
+
+2) tests/e2e/c9-auslagen-projects-load.spec.ts (@phase-7.5)
+   - navigates to /auslage-einreichen?bezahltVonKind=verein
+   - asserts the project <select id="wofuer-select"> exists
+   - asserts it has at least 2 <option> elements (1 default + 1 project)
+
+3) tests/unit/c9-date-input-lang.test.ts
+   - reads every Svelte component that contains `type="date"`
+   - asserts that file's <input type="date"> elements include `lang="de"`
+   - covers the admin form date inputs (MitgliederForm, InvoiceForm, ProjectForm, SpendenForm, TransactionEditForm, AuslagenForm)
