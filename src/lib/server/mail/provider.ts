@@ -22,7 +22,7 @@ export async function getMailProvider(): Promise<MailProvider> {
       break;
     case "dev-eml":
       cached = (await import("./dev-eml.js")).createDevEmlProvider({
-        root: "./.dev-data/mail",
+        root: env.MAIL_EML_ROOT,
       });
       break;
     case "resend":
@@ -34,9 +34,4 @@ export async function getMailProvider(): Promise<MailProvider> {
       break;
   }
   return cached;
-}
-
-// Test helper — reset cache between tests (call when switching MAIL_PROVIDER)
-export function _resetMailProviderCache(): void {
-  cached = undefined;
 }

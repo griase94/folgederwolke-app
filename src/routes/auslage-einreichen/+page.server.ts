@@ -25,8 +25,6 @@ import {
 } from "$lib/server/domain/auslagen.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getFileStorage, type FileStorage } from "$lib/server/files/storage.js";
-import { getDriveAuth } from "$lib/server/drive/auth.js";
-import { drive as createDrive } from "@googleapis/drive";
 import { bus } from "$lib/server/events/index.js";
 import { checkAndRecord, RateLimitError } from "$lib/server/auth/rate-limit.js";
 import {
@@ -98,16 +96,6 @@ function berlinYear(now: Date = new Date()): number {
     }).format(now),
     10,
   );
-}
-
-/** Best-effort delete of a Drive file (used to roll back upload on DB failure). */
-async function bestEffortDeleteDriveFile(fileId: string): Promise<void> {
-  try {
-    const drive = createDrive({ version: "v3", auth: getDriveAuth() });
-    await drive.files.delete({ fileId });
-  } catch (err) {
-    console.error("[auslage-einreichen] best-effort Drive delete failed:", err);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -324,9 +312,17 @@ export const actions: Actions = {
         `[auslage-einreichen] DB insert failed for ${ausId}:`,
         dbErr,
       );
-      // Roll back the orphan Drive file (best effort).
+      // Roll back the orphan uploaded file (best effort).
       if (driveFileId) {
-        await bestEffortDeleteDriveFile(driveFileId);
+        try {
+          const storage = await fileStorage();
+          await storage.delete(driveFileId);
+        } catch (rollbackErr) {
+          console.warn(
+            `[auslage-einreichen] rollback delete failed for ${driveFileId}:`,
+            rollbackErr,
+          );
+        }
       }
       return fail(500, {
         error: "Fehler beim Speichern der Einreichung. Bitte erneut versuchen.",

@@ -9,6 +9,7 @@
  * production-grade MIME handling.
  */
 
+import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { MailProvider } from "./provider.js";
@@ -51,7 +52,8 @@ export function createDevEmlProvider(opts: { root: string }): MailProvider {
       await mkdir(opts.root, { recursive: true });
       const ts = new Date().toISOString().replace(/[:.]/g, "-");
       const safe = msg.subject.replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 60);
-      const file = `${ts}-${safe}.eml`;
+      const suffix = randomBytes(2).toString("hex");
+      const file = `${ts}-${safe}-${suffix}.eml`;
       const path = join(opts.root, file);
       await writeFile(path, formatEml(msg));
 

@@ -19,6 +19,8 @@ const schema = z.object({
   STORAGE_BACKEND: z.enum(["drive", "local-fs"]).default("drive"),
   /** Filesystem root used when STORAGE_BACKEND=local-fs. */
   FILE_STORAGE_ROOT: z.string().default("./.dev-data/drive"),
+  /** Filesystem root used when MAIL_PROVIDER=dev-eml. */
+  MAIL_EML_ROOT: z.string().default("./.dev-data/mail"),
 
   // Drive
   DRIVE_PARENT_FOLDER_ID: z.string().default(""),
@@ -147,6 +149,19 @@ export function isPublicFormEnabled(): boolean {
  */
 export function assertProductionEnvSafe(): void {
   const isProd = (process.env["NODE_ENV"] ?? "").toLowerCase() === "production";
+
+  if (isProd) {
+    if (env.MAIL_PROVIDER === "dev-eml" || env.MAIL_PROVIDER === "no-op") {
+      throw new Error(
+        `MAIL_PROVIDER=${env.MAIL_PROVIDER} is dev-only — refusing to run in production`,
+      );
+    }
+    if (env.STORAGE_BACKEND === "local-fs") {
+      throw new Error(
+        "STORAGE_BACKEND=local-fs is dev-only — Vercel filesystem is ephemeral",
+      );
+    }
+  }
 
   const session = env.SESSION_SECRET || process.env["SESSION_SECRET"] || "";
   if (session.length < 32) {

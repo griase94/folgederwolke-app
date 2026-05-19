@@ -59,12 +59,3 @@ export async function getFileStorage(): Promise<FileStorage> {
   }
   return cached;
 }
-
-/**
- * Test helper — reset the cached FileStorage so the next `getFileStorage()`
- * call re-evaluates `env.STORAGE_BACKEND`. Call in `beforeEach` when a test
- * switches backends mid-suite.
- */
-export function _resetFileStorageCache(): void {
-  cached = undefined;
-}

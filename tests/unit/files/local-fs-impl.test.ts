@@ -82,4 +82,27 @@ describe("LocalFsFileStorage", () => {
     await storage.delete(id);
     await expect(storage.download(id)).rejects.toThrow();
   });
+
+  it("archive followed by delete leaves no residue", async () => {
+    const buf = new TextEncoder().encode("residue-test");
+    const { id } = await storage.upload({
+      buffer: buf,
+      mimeType: "text/plain",
+      name: "x.txt",
+      idempotencyKey: "residue",
+    });
+    await storage.archive(id, "archived-2026");
+    await storage.delete(id);
+    const { readdir } = await import("node:fs/promises");
+    const all: string[] = [];
+    async function walk(dir: string) {
+      for (const e of await readdir(dir, { withFileTypes: true })) {
+        const p = `${dir}/${e.name}`;
+        if (e.isDirectory()) await walk(p);
+        else all.push(p);
+      }
+    }
+    await walk(root);
+    expect(all.filter((p) => p.includes("residue"))).toEqual([]);
+  });
 });

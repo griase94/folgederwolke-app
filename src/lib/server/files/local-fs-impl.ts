@@ -83,7 +83,7 @@ export class LocalFsFileStorage implements FileStorage {
 
     return {
       id,
-      viewUrl: `file://${data}`,
+      viewUrl: `/api/dev-files/${id}`,
     };
   }
 
@@ -107,13 +107,20 @@ export class LocalFsFileStorage implements FileStorage {
     await mkdir(folderPath, { recursive: true });
     const dst = join(folderPath, id);
     if (src !== dst) await rename(src, dst);
+    // Move sidecar meta-file alongside, if it exists at the original location.
+    const srcMeta = `${src}.meta.json`;
+    const dstMeta = `${dst}.meta.json`;
+    if (existsSync(srcMeta) && srcMeta !== dstMeta) {
+      await rename(srcMeta, dstMeta);
+    }
   }
 
   async delete(id: string): Promise<void> {
     sanitizeId(id);
-    const path = await findById(this.opts.root, id);
-    if (path) await rm(path, { force: true });
-    const { meta } = locate(this.opts.root, id);
-    await rm(meta, { force: true });
+    const dataPath = await findById(this.opts.root, id);
+    if (dataPath) {
+      await rm(dataPath, { force: true });
+      await rm(`${dataPath}.meta.json`, { force: true });
+    }
   }
 }
