@@ -31,21 +31,18 @@ export default defineConfig({
     stdout: "pipe",
     stderr: "pipe",
     env: {
-      DATABASE_URL: process.env.DATABASE_URL!,
-      DIRECT_DATABASE_URL: process.env.DIRECT_DATABASE_URL!,
-      SESSION_SECRET: process.env.SESSION_SECRET!,
-      STORAGE_BACKEND: process.env.STORAGE_BACKEND!,
-      FILE_STORAGE_ROOT: process.env.FILE_STORAGE_ROOT!,
-      MAIL_PROVIDER: process.env.MAIL_PROVIDER!,
-      MAIL_FROM: process.env.MAIL_FROM!,
-      ADMIN_EMAILS: process.env.ADMIN_EMAILS!,
-      PUBLIC_FORM_ENABLED: process.env.PUBLIC_FORM_ENABLED!,
-      VEREIN_NAME: process.env.VEREIN_NAME!,
-      VEREIN_STEUERNUMMER: process.env.VEREIN_STEUERNUMMER!,
-      VEREIN_VR: process.env.VEREIN_VR!,
-      VEREIN_ADRESSE: process.env.VEREIN_ADRESSE!,
+      // .env.test is loaded by dotenv at the top of this file; we forward
+      // process.env into the spawned node server so it sees all the vars
+      // the SvelteKit app reads via $env/dynamic/private. Explicit overrides
+      // for the dev-server-specific port/host/origin follow.
+      ...process.env,
       PORT: "4173",
       HOST: "127.0.0.1",
+      // ORIGIN: SvelteKit adapter-node's CSRF check rejects form POSTs whose
+      // Origin header doesn't match url.origin. Without this, adapter-node
+      // defaults to https:// (parse_origin guesses from PROTOCOL_HEADER ||
+      // 'https'), making url.origin = 'https://127.0.0.1:4173', while the
+      // browser sends 'http://127.0.0.1:4173' → 403. Set ORIGIN explicitly.
       ORIGIN: "http://127.0.0.1:4173",
     },
   },

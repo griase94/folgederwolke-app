@@ -161,6 +161,19 @@ test.describe("@phase-3 Admin shell — dashboard", () => {
     // Specific KPI labels — those still present after Phase 6/7 changes
     await expect(page.getByText("Offene Auslagen").first()).toBeVisible();
   });
+
+  // Regression guard — the magic-link-flow rewrite quietly dropped these
+  // assertions. Labels match the current $derived list in
+  // src/lib/components/admin/dashboard/KpiSection.svelte. Update both places
+  // together if a KPI is ever renamed.
+  test("dashboard renders all four KPI labels for admin", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await signIn(page);
+    await expect(page.getByText("Offene Auslagen").first()).toBeVisible();
+    await expect(page.getByText("Zu erstatten").first()).toBeVisible();
+    await expect(page.getByText("Beitrag fällig").first()).toBeVisible();
+    await expect(page.getByText("Spenden YTD").first()).toBeVisible();
+  });
 });
 
 test.describe("@phase-3 Search API stub", () => {

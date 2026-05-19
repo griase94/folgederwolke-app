@@ -44,4 +44,32 @@ describe("dev-eml provider", () => {
     });
     expect(messageId).toMatch(/^dev-eml-/);
   });
+
+  it("logs the magic-link URL from the text body to console", async () => {
+    // extractMagicLink() is the whole reason this provider exists in dev:
+    // it surfaces the verify URL in the terminal so the developer can click
+    // through without opening the .eml. Regression-guard it.
+    const logs: string[] = [];
+    const orig = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map((a) => String(a)).join(" "));
+    };
+    try {
+      const p = createDevEmlProvider({ root });
+      await p.send({
+        from: "f",
+        to: "t",
+        subject: "magic_link",
+        html: "",
+        text: "Click here: https://localhost:5173/sign-in/verify?token=abc123",
+      });
+      expect(
+        logs.some((l) =>
+          l.includes("https://localhost:5173/sign-in/verify?token=abc123"),
+        ),
+      ).toBe(true);
+    } finally {
+      console.log = orig;
+    }
+  });
 });
