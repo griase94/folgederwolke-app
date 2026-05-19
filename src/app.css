@@ -129,6 +129,87 @@
   }
 }
 
+/* ── Animation tokens (phase-7 polish) ──────────────────────────────────── */
+
+@layer base {
+  :root {
+    /* Transition shorthand tokens — use in Tailwind: class="transition-base" */
+    --transition-base: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-spring: 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+}
+
+/* Subtle fade-in for page content blocks */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Slide-up for toast / bottom sheets */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Slide-down for dropdowns */
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fade-in var(--transition-slow) both;
+  }
+  .animate-slide-up {
+    animation: slide-up var(--transition-slow) both;
+  }
+  .animate-slide-down {
+    animation: slide-down var(--transition-base) both;
+  }
+  .transition-base {
+    transition: all var(--transition-base);
+  }
+}
+
+/* Respect prefers-reduced-motion — strip decorative animations globally */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Keep skeleton pulse — it helps users know content is loading.
+     We reduce it to a static pulse rather than removing it. */
+  .animate-pulse {
+    animation: none !important;
+    opacity: 0.6;
+  }
+}
+
 /* Rosa primary ramp — overrides shadcn zinc primary with brand color */
 @theme {
   --color-primary: oklch(0.43 0.2 350); /* ≈ #BE185D rosa */
