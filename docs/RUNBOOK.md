@@ -303,7 +303,7 @@ gh run list --workflow=db-backup.yml --repo griase94/folgederwolke-app --limit 5
 SELECT MAX(chain_seq) AS chain_length, COUNT(*) AS total_rows FROM audit_log;
 ```
 
-### 5.5 Year-end Festschreibung
+### 5.4 Year-end Festschreibung
 
 1. Export EÜR: `/app/eur/export?year=YYYY` → save CSV
 2. Review all expenses and income for the year
@@ -312,6 +312,7 @@ SELECT MAX(chain_seq) AS chain_length, COUNT(*) AS total_rows FROM audit_log;
 5. System sets `festgeschrieben_at` on all rows for that year
 6. Export audit log for the year as evidence
 7. Archive EÜR-CSV in Google Drive: `Vereinsverwaltung/Jahresabschlüsse/YYYY/`
+
 ## 6. Migration runbook
 
 ### 6.1 One-time reconciliation before phase-8 merge
@@ -336,7 +337,7 @@ Expected: rows 1-10 covering migrations 0000_init through 0009_audit_log_hardeni
 node -e '
   const fs = require("fs");
   const c = require("crypto");
-  for (const f of ["0010_post_review_hardening", "0011_audit_trigger_digest_path_fix"]) {
+  for (const f of ["0010_post_review_hardening", "0011_audit_trigger_digest_path_fix", "0012_default_privileges"]) {
     const sql = fs.readFileSync(`drizzle/${f}.sql`, "utf8");
     console.log(f, c.createHash("sha256").update(sql).digest("hex"));
   }
@@ -345,24 +346,27 @@ node -e '
 
 Capture the two hashes.
 
-**Step 3 — Register 0010 and 0011 as already-applied:**
+**Step 3 — Apply 0012 against Neon (new migration in phase-8):**
+
+```bash
+psql "$NEON_URL" -f drizzle/0012_default_privileges.sql
+```
+
+0010 and 0011 are already applied (hand-applied during phase-7.5). 0012 is new; this is the only SQL to run.
+
+**Step 4 — Register all three hashes in `__drizzle_migrations`:**
+
+`created_at` values come from `drizzle/meta/_journal.json` (the canonical `when` per entry); using the journal values rather than `$(date +%s%3N)` keeps tracking aligned with the journal so future tooling that compares them stays consistent.
+
+Replace `HASH_xxxx` with the hashes printed in Step 2:
 
 ```bash
 psql "$NEON_URL" <<SQL
 INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
-VALUES ('<hash for 0010 from Step 2>', 1779203339000),
-       ('<hash for 0011 from Step 2>', 1779203925000);
+VALUES ('HASH_0010', 1779203339000),
+       ('HASH_0011', 1779203925000),
+       ('HASH_0012', 1779207384669);
 SQL
-```
-
-**Step 4 — Apply 0012 (the new migration in phase-8):**
-
-```bash
-psql "$NEON_URL" -f drizzle/0012_default_privileges.sql
-
-# Then register it:
-HASH_0012=$(node -e 'console.log(require("crypto").createHash("sha256").update(require("fs").readFileSync("drizzle/0012_default_privileges.sql","utf8")).digest("hex"))')
-psql "$NEON_URL" -c "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ('$HASH_0012', $(date +%s%3N));"
 ```
 
 **Step 5 — Verify default privileges landed:**
@@ -385,9 +389,9 @@ Only after Step 6 prints clean → safe to merge phase-8 to main.
 
 ### 6.2 Ongoing: automated migrate workflow
 
-After phase-8 merges, `.github/workflows/migrate.yml` runs on every push to `main`. It requires the repository secret `NEON_MIGRATE_DATABASE_URL` (DIRECT non-pooled URL with owner privileges). Set this in GitHub → Settings → Secrets and variables → Actions → New repository secret.
+After phase-8 merges, `.github/workflows/migrate.yml` runs when migration-related files change on `main` (`paths:` filter on `drizzle/**` and the workflow file itself), plus manual `workflow_dispatch`. It requires the repository secret `NEON_MIGRATE_DATABASE_URL` (DIRECT non-pooled URL with owner privileges). Set this in GitHub → Settings → Secrets and variables → Actions → New repository secret. If the secret is missing the workflow self-skips with a warning instead of failing.
 
-The workflow runs `pnpm tsx scripts/migrate.ts` twice on each push — the second run must be a no-op, confirming idempotency.
+The workflow runs `pnpm tsx scripts/migrate.ts` twice — the second run must be a no-op, confirming idempotency.
 
 If a future migration fails mid-deploy:
 

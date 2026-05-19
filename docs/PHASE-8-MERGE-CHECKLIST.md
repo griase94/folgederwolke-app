@@ -2,12 +2,14 @@
 
 Single-shot, linear checklist for safely landing `phase-8-local-dev-environment` to `main`. **Run top-to-bottom; don't skip steps.**
 
+> **Status (2026-05-19)**: Steps 1, 2, and 4 are **already done**. The remaining gating step is **Step 3 — one-time Neon `__drizzle_migrations` reconciliation**. Once that's complete you can jump straight to Step 5 (open PR).
+
 The work order is:
 
-1. Phase 7.5 PR merges to `main` first (separate PR — already open).
-2. Rebase phase-8 onto the updated `main`.
-3. **One-time Neon migration reconciliation** (this PR introduces a CI workflow that runs migrations on every push to `main`; before that workflow fires, the live `__drizzle_migrations` table on Neon must agree with what's in `drizzle/meta/_journal.json` — otherwise the first auto-migrate run will explode).
-4. Add the GitHub Actions secret `NEON_MIGRATE_DATABASE_URL`.
+1. ✅ Phase 7.5 PR merged to `main` — landed as **PR #39** (commit `01caa4a`, "pragmatic-rebalance"), not the originally-planned PR #29.
+2. ✅ Phase-8 integrated with `main` — done via `git merge origin/main` (commit `e90f568`), not a rebase. Branch is up to date with main.
+3. 🔴 **One-time Neon migration reconciliation** — REQUIRED. The `migrate.yml` workflow added by this PR will try to re-apply 0010 (which has non-idempotent `ALTER TABLE ADD CONSTRAINT` statements) on first push to main, unless the `__drizzle_migrations` table on Neon is pre-populated.
+4. ✅ GitHub Actions secret `NEON_MIGRATE_DATABASE_URL` — already set on 2026-05-19T20:20:48Z.
 5. Open the PR to `main` and merge.
 6. Verify the auto-migrate workflow ran clean.
 
@@ -15,25 +17,21 @@ The work order is:
 
 ## Pre-merge (do these BEFORE opening the PR)
 
-### Step 1 — Wait for the phase-7.5 PR to merge to main
+### Step 1 — ✅ Phase-7.5 already on main (PR #39)
 
-Don't open the phase-8 PR until phase-7.5 is on `main`. Otherwise the diff will be huge and reviewer-unfriendly.
+The originally-planned PR #29 (`phase(7.5): compliance hardening + audit chain + legal pages`) was closed in favour of PR #39 ("Phase 7.5 + pragmatic-rebalance: compliance fixes scaled to a 10-person Verein"), which is now `main` HEAD as commit `01caa4a`. Nothing to do here.
 
-### Step 2 — Rebase phase-8 onto main
+### Step 2 — ✅ Phase-8 integrated with `main`
 
-```bash
-cd /Users/andygriesbeck/Projects/private/folgederwolke/folgederwolke-app/.claude/worktrees/phase-8-local-dev-environment
-git fetch origin main
-git rebase origin/main
-```
+Done. Phase-8 was integrated via `git merge origin/main` (merge commit `e90f568`). 14 conflicts were resolved — see the commit message for the resolution log. Branch already pushed to origin.
 
-Expected: clean rebase. If conflicts in `CLAUDE.md`, `README.md`, or `MORNING.md`, resolve by keeping both sets of changes where they don't overlap.
-
-After rebasing:
-
-```bash
-git push --force-with-lease origin phase-8-local-dev-environment
-```
+> If you ever need to RE-sync (because main moved further before you opened the PR), repeat:
+>
+> ```bash
+> git fetch origin main && git merge origin/main
+> # resolve conflicts; verify pnpm typecheck && pnpm test --run && pnpm test:e2e --grep '@phase-0|@phase-1|@phase-2'
+> git push origin phase-8-local-dev-environment
+> ```
 
 ### Step 3 — One-time Neon `__drizzle_migrations` reconciliation
 
@@ -82,14 +80,13 @@ DIRECT_DATABASE_URL="$NEON_URL" pnpm tsx scripts/migrate.ts
 
 **Only after step 6 prints "Migrations complete." with no work done is reconciliation done.**
 
-### Step 4 — Set the `NEON_MIGRATE_DATABASE_URL` GitHub secret
+### Step 4 — ✅ `NEON_MIGRATE_DATABASE_URL` GitHub secret already set
 
-The new `.github/workflows/migrate.yml` runs on every push to `main` and applies pending migrations to Neon. It requires the repo secret `NEON_MIGRATE_DATABASE_URL` (DIRECT non-pooled URL with owner privileges).
-
-Run **one** of:
+Set on 2026-05-19T20:20:48Z. Verify with `gh secret list | grep NEON_MIGRATE_DATABASE_URL`. If you ever need to rotate, run **one** of:
 
 ```bash
-# Option A — via gh CLI (fastest; uses .env's DIRECT_DATABASE_URL)
+# Option A — via gh CLI (fastest; uses .env's DIRECT_DATABASE_URL).
+# If `source .env` errors on unquoted values, fall back to Option B.
 set -a && source .env && set +a
 echo "$DIRECT_DATABASE_URL" | gh secret set NEON_MIGRATE_DATABASE_URL
 
@@ -161,7 +158,7 @@ EOF
 gh pr checks --watch
 ```
 
-All four jobs (`unit-and-types`, `build`, `e2e`, `backup-restore-smoke`, `gitleaks`, `check-env-files`) should pass within ~10 minutes.
+All six jobs (`unit-and-types`, `build`, `e2e`, `backup-restore-smoke`, `gitleaks`, `check-env-files`) should pass within ~10 minutes.
 
 ### Step 7 — Merge
 

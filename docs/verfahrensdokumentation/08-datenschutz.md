@@ -49,7 +49,10 @@ sind im DPA-Tracker erfasst: [`docs/legal/auftragsverarbeitung/README.md`](../le
 
 **Release-Gate**: `PUBLIC_FORM_ENABLED=true` darf im Produktionsbetrieb nur gesetzt werden,
 wenn AVV mit Vercel und Neon unterzeichnet und im DPA-Tracker als `signed` markiert sind.
-Die Umgebungsvariable `DPA_GATE_PASSED` muss auf `true` gesetzt werden (Checkliste in DPA-README).
+AVV-Status und Datum werden in `docs/legal/auftragsverarbeitung/README.md` dokumentiert
+(prozessuale Kontrolle anstelle eines separaten Code-Flags — die frühere
+`DPA_GATE_PASSED`-Variable wurde am 2026-05-19 im Rahmen des
+pragmatic-rebalance-Reviews verworfen).
 
 ## 8.6 Datenschutzerklärung
 

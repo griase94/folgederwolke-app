@@ -12,17 +12,18 @@
 
 ## Phases
 
-| #   | Status           | PR  | Notes                                                                                                   |
-| --- | ---------------- | --- | ------------------------------------------------------------------------------------------------------- |
-| 0   | ✅ green         | #1  | Scaffold + Drizzle + healthz + CI + cloud wiring                                                        |
-| 1   | ✅ green         | #3  | Schema (ADRs 0001–0010 minus 0011) + magic-link auth + mail templates                                   |
-| 2   | ✅ green         | #4  | Public form + Drive upload + Eingangsmail                                                               |
-| 3   | ✅ green         | #5  | Admin shell + Mitglieder CRUD                                                                           |
-| 4   | ✅ green         | #6  | Audit Inbox + Importer + Mails                                                                          |
-| 5   | ✅ green         | #7  | Invoices + Transactions + CRM + Spenden (BMF-compliant Bescheinigung)                                   |
-| 6   | ✅ green         | #8  | Importer + Dashboard + EÜR + Crons + WGB                                                                |
-| 7   | ✅ green         | #9  | PWA + polish + sign-out-everywhere + DSGVO panel                                                        |
-| 7.5 | 🟡 awaiting Andy | #29 | Compliance hardening complete + CI green — needs reviewed-by-opus stamp + merge (see §Phase 7.5 status) |
+| #   | Status           | PR  | Notes                                                                                                       |
+| --- | ---------------- | --- | ----------------------------------------------------------------------------------------------------------- |
+| 0   | ✅ green         | #1  | Scaffold + Drizzle + healthz + CI + cloud wiring                                                            |
+| 1   | ✅ green         | #3  | Schema (ADRs 0001–0010 minus 0011) + magic-link auth + mail templates                                       |
+| 2   | ✅ green         | #4  | Public form + Drive upload + Eingangsmail                                                                   |
+| 3   | ✅ green         | #5  | Admin shell + Mitglieder CRUD                                                                               |
+| 4   | ✅ green         | #6  | Audit Inbox + Importer + Mails                                                                              |
+| 5   | ✅ green         | #7  | Invoices + Transactions + CRM + Spenden (BMF-compliant Bescheinigung)                                       |
+| 6   | ✅ green         | #8  | Importer + Dashboard + EÜR + Crons + WGB                                                                    |
+| 7   | ✅ green         | #9  | PWA + polish + sign-out-everywhere + DSGVO panel                                                            |
+| 7.5 | ✅ green         | #39 | Compliance hardening + audit chain + legal pages — merged as PR #39 (pragmatic-rebalance), commit `01caa4a` |
+| 8   | 🟡 awaiting Andy | —   | Local dev + hermetic test environment + migrate.yml CI workflow — see `docs/PHASE-8-MERGE-CHECKLIST.md`     |
 
 ## 🟡 Phase 7.5 status — one manual step left
 
@@ -68,7 +69,7 @@ issues with trigger conditions** so it doesn't sit here as ambient guilt.
 
 | #   | Item                                                                                                                                                                                                                                  | Where                               | Time   |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ------ |
-| 1   | Merge PR #29: stamp `reviewed-by-opus` + `gh pr merge 29 --squash` + tag `phase-7.5-green`                                                                                                                                            | terminal                            | 5 min  |
+| 1   | ✅ Phase-7.5 merged via PR #39 (`01caa4a`). No action.                                                                                                                                                                                | —                                   | done   |
 | 2   | Accept Vercel click-DPA                                                                                                                                                                                                               | Vercel Dashboard → Settings → Legal | 5 min  |
 | 3   | Accept Neon click-DPA                                                                                                                                                                                                                 | Neon Console → Settings → Security  | 5 min  |
 | 4   | Set `PUBLIC_BASE_URL=https://folgederwolke-app.vercel.app` in Vercel env (Production)                                                                                                                                                 | Vercel env                          | 2 min  |
@@ -194,17 +195,17 @@ Script: `scripts/seed-phase2-issues.sh` (idempotent via `gh issue list` filter).
 
 ### Open items for Andy
 
-| Priority | Item                                             | Where                                                   |
-| -------- | ------------------------------------------------ | ------------------------------------------------------- |
-| CRITICAL | Sign Vercel DPA                                  | https://vercel.com/legal/dpa                            |
-| CRITICAL | Sign Neon DPA                                    | https://neon.tech/privacy                               |
-| CRITICAL | Set `DPA_GATE_PASSED=true` after both signed     | Vercel env vars                                         |
-| HIGH     | Configure `BACKUP_REPO` + `BACKUP_TOKEN` secrets | GitHub repo Settings → Secrets                          |
-| HIGH     | Configure `DRIVE_BACKUP_FOLDER_ID` secret        | GitHub repo Settings → Secrets                          |
-| HIGH     | Configure `BACKUP_AGE_RECIPIENT` secret          | GitHub repo Settings → Secrets                          |
-| MEDIUM   | Fill `<!-- FILL -->` sections in Verfahrensdoku  | `docs/verfahrensdokumentation/`                         |
-| MEDIUM   | Steuerberater review of Verfahrensdoku           | `docs/verfahrensdokumentation/12-unterschriften.md`     |
-| LOW      | Google Cloud DPA                                 | https://cloud.google.com/terms/data-processing-addendum |
+| Priority | Item                                                                                                                                                                                      | Where                                                   |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| CRITICAL | Sign Vercel DPA                                                                                                                                                                           | https://vercel.com/legal/dpa                            |
+| CRITICAL | Sign Neon DPA                                                                                                                                                                             | https://neon.tech/privacy                               |
+| CRITICAL | Mark Vercel + Neon `signed` in `docs/legal/auftragsverarbeitung/README.md` (the env-flag `DPA_GATE_PASSED` was dropped during pragmatic-rebalance — process control instead of code flag) | `docs/legal/auftragsverarbeitung/README.md`             |
+| HIGH     | Configure `BACKUP_REPO` + `BACKUP_TOKEN` secrets                                                                                                                                          | GitHub repo Settings → Secrets                          |
+| HIGH     | Configure `DRIVE_BACKUP_FOLDER_ID` secret                                                                                                                                                 | GitHub repo Settings → Secrets                          |
+| HIGH     | Configure `BACKUP_AGE_RECIPIENT` secret                                                                                                                                                   | GitHub repo Settings → Secrets                          |
+| MEDIUM   | Fill `<!-- FILL -->` sections in Verfahrensdoku                                                                                                                                           | `docs/verfahrensdokumentation/`                         |
+| MEDIUM   | Steuerberater review of Verfahrensdoku                                                                                                                                                    | `docs/verfahrensdokumentation/12-unterschriften.md`     |
+| LOW      | Google Cloud DPA                                                                                                                                                                          | https://cloud.google.com/terms/data-processing-addendum |
 
 ---
 
