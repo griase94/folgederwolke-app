@@ -16,10 +16,27 @@ let cached: MailProvider | undefined;
 
 export async function getMailProvider(): Promise<MailProvider> {
   if (cached) return cached;
-  if (env.MAIL_PROVIDER === "resend") {
-    cached = (await import("./resend.js")).resend;
-  } else {
-    cached = (await import("./smtp.js")).smtp;
+  switch (env.MAIL_PROVIDER) {
+    case "no-op":
+      cached = (await import("./no-op.js")).noOpProvider;
+      break;
+    case "dev-eml":
+      cached = (await import("./dev-eml.js")).createDevEmlProvider({
+        root: "./.dev-data/mail",
+      });
+      break;
+    case "resend":
+      cached = (await import("./resend.js")).resend;
+      break;
+    case "smtp":
+    default:
+      cached = (await import("./smtp.js")).smtp;
+      break;
   }
   return cached;
+}
+
+// Test helper — reset cache between tests (call when switching MAIL_PROVIDER)
+export function _resetMailProviderCache(): void {
+  cached = undefined;
 }
