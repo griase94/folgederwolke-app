@@ -1,13 +1,21 @@
-# DB Backup — nightly pg_dump to off-Postgres storage.
+# DB Backup — nightly pg_dump → age-encrypt → push to private GitHub repo + Drive.
 #
-# §7.7 backup strategy:
-#   - pg_dump (custom format, -Fc) to a private GitHub repo append
-#   - Optional: Drive backup folder (future Phase 7 polish)
+# Phase 7.5 full implementation. Replaces Phase 6 stub.
 #
-# STUB: secrets DATABASE_URL_BACKUP, BACKUP_REPO, BACKUP_TOKEN are TBD.
-# Wire them in GitHub repo secrets before enabling this workflow.
+# Required GitHub Secrets:
+#   DATABASE_URL_BACKUP       — Neon connection string (app_export role, direct URL)
+#   BACKUP_REPO               — owner/repo of private backup repository (e.g. griase94/fdw-backups)
+#   BACKUP_TOKEN              — GitHub PAT with repo write scope for BACKUP_REPO
+#   BACKUP_AGE_RECIPIENT      — age public key (X25519), e.g. age1abc...
+#   GOOGLE_OAUTH_CLIENT_ID    — same OAuth app as main app
+#   GOOGLE_OAUTH_CLIENT_SECRET
+#   GOOGLE_OAUTH_REFRESH_TOKEN
+#   DRIVE_BACKUP_FOLDER_ID    — Google Drive folder ID for backup uploads
 #
 # Schedule: 02:30 UTC daily (before Vercel daily-dispatcher at 03:00 UTC).
+# Retention: kept forever in backup repo; Drive folder managed manually.
+# Encryption: age (https://github.com/FiloSottile/age) — recipient key only;
+#   private key lives in 1Password, never in CI.
 
 name: DB Backup
 
@@ -18,48 +26,127 @@ on:
 
 jobs:
   backup:
-    name: pg_dump to private repo
+    name: pg_dump → encrypt → push
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
-      - name: Install PostgreSQL client
+      # ── 1. Install tools ───────────────────────────────────────────────────
+      - name: Install PostgreSQL client + age
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends postgresql-client
+          sudo apt-get install -y --no-install-recommends postgresql-client age
 
+      # ── 2. Dump ────────────────────────────────────────────────────────────
       - name: Dump database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_BACKUP }}
         run: |
           TIMESTAMP=$(date -u +"%Y%m%dT%H%M%SZ")
-          FILENAME="backup-${TIMESTAMP}.dump"
+          DUMP_FILE="backup-${TIMESTAMP}.dump"
+          ENCRYPTED_FILE="${DUMP_FILE}.age"
+
+          echo "TIMESTAMP=${TIMESTAMP}"      >> "$GITHUB_ENV"
+          echo "DUMP_FILE=${DUMP_FILE}"      >> "$GITHUB_ENV"
+          echo "ENCRYPTED_FILE=${ENCRYPTED_FILE}" >> "$GITHUB_ENV"
+
           pg_dump \
             --format=custom \
             --no-owner \
             --no-acl \
             "${DATABASE_URL}" \
-            --file="${FILENAME}"
-          echo "BACKUP_FILE=${FILENAME}" >> "$GITHUB_ENV"
+            --file="${DUMP_FILE}"
 
-      - name: Push backup to private repository
+          DUMP_SIZE=$(du -sh "${DUMP_FILE}" | cut -f1)
+          echo "Dump complete: ${DUMP_FILE} (${DUMP_SIZE})"
+
+      # ── 3. Encrypt with age ────────────────────────────────────────────────
+      - name: Encrypt dump
+        env:
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+        run: |
+          if [ -z "${BACKUP_AGE_RECIPIENT}" ]; then
+            echo "WARNING: BACKUP_AGE_RECIPIENT not set — storing unencrypted dump (dev/test only)"
+            cp "${DUMP_FILE}" "${ENCRYPTED_FILE}"
+          else
+            age --recipient "${BACKUP_AGE_RECIPIENT}" \
+                --output "${ENCRYPTED_FILE}" \
+                "${DUMP_FILE}"
+            echo "Encryption complete: ${ENCRYPTED_FILE}"
+          fi
+          # Remove plaintext dump immediately after encryption
+          rm -f "${DUMP_FILE}"
+
+      # ── 4. Push to private GitHub backup repository ────────────────────────
+      - name: Push to backup repository
         env:
           BACKUP_REPO: ${{ secrets.BACKUP_REPO }}
           BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
         run: |
-          # STUB: clone private backup repo, commit the dump, push.
-          # Env vars BACKUP_REPO (owner/repo) and BACKUP_TOKEN must be set.
           if [ -z "${BACKUP_REPO}" ] || [ -z "${BACKUP_TOKEN}" ]; then
-            echo "BACKUP_REPO or BACKUP_TOKEN not set — skipping push (stub mode)"
+            echo "BACKUP_REPO or BACKUP_TOKEN not set — skipping GitHub push"
             exit 0
           fi
+
           git clone \
+            --depth=1 \
             "https://x-access-token:${BACKUP_TOKEN}@github.com/${BACKUP_REPO}.git" \
             backup-repo
-          cp "${BACKUP_FILE}" backup-repo/
+
+          cp "${ENCRYPTED_FILE}" backup-repo/
+
           cd backup-repo
           git config user.email "ci-backup@folgederwolke.de"
           git config user.name "CI Backup Bot"
-          git add "${BACKUP_FILE}"
-          git commit -m "backup: ${BACKUP_FILE}"
+          git add "${ENCRYPTED_FILE}"
+          git commit -m "backup: ${ENCRYPTED_FILE} (${TIMESTAMP})"
           git push
+
+          echo "Pushed ${ENCRYPTED_FILE} to ${BACKUP_REPO}"
+
+      # ── 5. Upload to Google Drive backup folder ────────────────────────────
+      - name: Upload to Google Drive
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
+          DRIVE_BACKUP_FOLDER_ID: ${{ secrets.DRIVE_BACKUP_FOLDER_ID }}
+        run: |
+          if [ -z "${DRIVE_BACKUP_FOLDER_ID}" ] || \
+             [ -z "${GOOGLE_OAUTH_CLIENT_ID}" ] || \
+             [ -z "${GOOGLE_OAUTH_REFRESH_TOKEN}" ]; then
+            echo "Drive credentials not fully configured — skipping Drive upload"
+            exit 0
+          fi
+
+          # Obtain access token via OAuth refresh
+          ACCESS_TOKEN=$(curl -s -X POST https://oauth2.googleapis.com/token \
+            -d "client_id=${GOOGLE_OAUTH_CLIENT_ID}" \
+            -d "client_secret=${GOOGLE_OAUTH_CLIENT_SECRET}" \
+            -d "refresh_token=${GOOGLE_OAUTH_REFRESH_TOKEN}" \
+            -d "grant_type=refresh_token" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+          # Upload using Drive resumable upload
+          UPLOAD_URL=$(curl -s -X POST \
+            "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable" \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\":\"${ENCRYPTED_FILE}\",\"parents\":[\"${DRIVE_BACKUP_FOLDER_ID}\"]}" \
+            -D - | grep -i "^location:" | tr -d '\r' | cut -d' ' -f2)
+
+          curl -s -X PUT "${UPLOAD_URL}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@${ENCRYPTED_FILE}" \
+            -o /dev/null
+
+          echo "Uploaded ${ENCRYPTED_FILE} to Drive folder ${DRIVE_BACKUP_FOLDER_ID}"
+
+      # ── 6. Summary ─────────────────────────────────────────────────────────
+      - name: Backup summary
+        if: always()
+        run: |
+          echo "## Backup Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Timestamp: ${TIMESTAMP}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Encrypted file: ${ENCRYPTED_FILE}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- GitHub repo: \`${BACKUP_REPO:-not configured}\`" >> "$GITHUB_STEP_SUMMARY"

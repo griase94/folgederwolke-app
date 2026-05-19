@@ -108,3 +108,40 @@ jobs:
       - name: E2E tests (cumulative phase-0|phase-1|phase-2)
         # Cumulative grep: each phase adds its tag — @phase-0|@phase-1|...|@phase-N
         run: pnpm test:e2e --grep '@phase-0|@phase-1|@phase-2'
+
+  backup-restore-smoke:
+    name: backup-restore-smoke
+    runs-on: ubuntu-latest
+    # Phase 7.5: smoke-test the restore pipeline on every push.
+    # Uses a self-contained fixture dump — no live Neon connection required.
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Run restore smoke test
+        env:
+          PGHOST: localhost
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: bash scripts/restore-smoke.sh
