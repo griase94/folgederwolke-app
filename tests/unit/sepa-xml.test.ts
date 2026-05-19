@@ -124,6 +124,55 @@ describe("generateSepaXml", () => {
     const ustrdContent = match?.[1] ?? "";
     expect(ustrdContent.length).toBeLessThanOrEqual(140);
   });
+
+  it("CreDtTm carries a Berlin timezone offset (XSD-strict pain.001)", () => {
+    // 2026-05-19T01:14:25Z = 03:14:25 Berlin (CEST, +02:00)
+    const now = new Date("2026-05-19T01:14:25Z");
+    const { xml, createdAt } = generateSepaXml([tx1], { now });
+    expect(createdAt).toBe("2026-05-19T03:14:25+02:00");
+    expect(xml).toContain("<CreDtTm>2026-05-19T03:14:25+02:00</CreDtTm>");
+  });
+
+  it("CreDtTm winter offset (CET, +01:00)", () => {
+    // 2026-01-15T10:00:00Z = 11:00:00 Berlin (+01:00)
+    const now = new Date("2026-01-15T10:00:00Z");
+    const { createdAt } = generateSepaXml([tx1], { now });
+    expect(createdAt).toBe("2026-01-15T11:00:00+01:00");
+  });
+
+  it("falls back to NOTPROVIDED DbtrAcct when no debtor IBAN", () => {
+    const { xml } = generateSepaXml([tx1]);
+    expect(xml).toContain("<DbtrAcct>");
+    expect(xml).toContain("NOTPROVIDED");
+  });
+
+  it("emits real DbtrAcct/DbtrAgt when debtor iban + bic provided", () => {
+    const { xml } = generateSepaXml([tx1], {
+      debtor: {
+        iban: "DE02701500000000594937",
+        bic: "SSKMDEMMXXX",
+      },
+    });
+    expect(xml).toContain("<IBAN>DE02701500000000594937</IBAN>");
+    expect(xml).toContain("<BIC>SSKMDEMMXXX</BIC>");
+    expect(xml).not.toContain("NOTPROVIDED");
+  });
+
+  it("strips whitespace from debtor IBAN/BIC", () => {
+    const { xml } = generateSepaXml([tx1], {
+      debtor: {
+        iban: "DE02 7015 0000 0000 5949 37",
+        bic: "SSKM DEMM XXX",
+      },
+    });
+    expect(xml).toContain("<IBAN>DE02701500000000594937</IBAN>");
+    expect(xml).toContain("<BIC>SSKMDEMMXXX</BIC>");
+  });
+
+  it("includes <ChrgBr>SLEV</ChrgBr> per SEPA shared-charge convention", () => {
+    const { xml } = generateSepaXml([tx1]);
+    expect(xml).toContain("<ChrgBr>SLEV</ChrgBr>");
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -22,7 +22,6 @@ import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { asc } from "drizzle-orm";
-import { logAudit } from "$lib/server/audit-log/index.js";
 
 function berlinYear(): number {
   return parseInt(
@@ -163,20 +162,8 @@ export const actions = {
             parsed.data.externName ||
             "Unbekannt",
         });
-
-        await logAudit({
-          action: "create",
-          entityKind: "expense",
-          entityId: result.id,
-          entityBusinessId: result.businessId,
-          actorUserId: user.id,
-          actorKind: "user",
-          payload: {
-            bezeichnung: parsed.data.bezeichnung,
-            betragCents: parsed.data.betragCents,
-            source: "direct_entry",
-          },
-        });
+        // Audit log: createExpense emits `expense.created`, the handler
+        // writes the audit_log row (ADR-0004 — no inline logAudit).
 
         redirect(303, `/app/transactions/${result.id}?kind=expense`);
       }
@@ -199,20 +186,8 @@ export const actions = {
           businessId,
           actorUserId: user.id,
         });
-
-        await logAudit({
-          action: "create",
-          entityKind: "income",
-          entityId: result.id,
-          entityBusinessId: result.businessId,
-          actorUserId: user.id,
-          actorKind: "user",
-          payload: {
-            bezeichnung: parsed.data.bezeichnung,
-            betragCents: parsed.data.betragCents,
-            source: "direct_entry",
-          },
-        });
+        // Audit log: createIncome emits `income.created` (handler writes
+        // the audit_log row).
 
         redirect(303, `/app/transactions/${result.id}?kind=income`);
       }
@@ -235,21 +210,8 @@ export const actions = {
           businessId,
           actorUserId: user.id,
         });
-
-        await logAudit({
-          action: "create",
-          entityKind: "donation",
-          entityId: result.id,
-          entityBusinessId: result.businessId,
-          actorUserId: user.id,
-          actorKind: "user",
-          payload: {
-            bezeichnung: parsed.data.bezeichnung,
-            betragCents: parsed.data.betragCents,
-            spendeKind: parsed.data.spendeKind,
-            source: "direct_entry",
-          },
-        });
+        // Audit log: createDonation emits `donation.created` (handler
+        // writes the audit_log row).
 
         redirect(303, `/app/transactions/${result.id}?kind=donation`);
       }

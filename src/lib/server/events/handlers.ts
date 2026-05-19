@@ -391,6 +391,35 @@ export function registerHandlers(): void {
     },
   );
 
+  // ── expense.created / expense.updated / income.created / income.updated /
+  // ── donation.created ───────────────────────────────────────────────────
+  // Direct-entry CRUD events emitted by /app/transactions/neu (create) and
+  // /app/transactions/[id] (update). Each handler writes a single audit_log
+  // row keyed by the corresponding entity_kind + action. Approval and
+  // reimbursement remain on their own events (expense.approved,
+  // expense.erstattet) so the activity timeline can distinguish a master-
+  // data edit from a workflow state change.
+  const txAuditMap = [
+    { event: "expense.created", entityKind: "expense", action: "create" },
+    { event: "expense.updated", entityKind: "expense", action: "update" },
+    { event: "income.created", entityKind: "income", action: "create" },
+    { event: "income.updated", entityKind: "income", action: "update" },
+    { event: "donation.created", entityKind: "donation", action: "create" },
+  ] as const;
+  for (const { event, entityKind, action } of txAuditMap) {
+    bus.on<EventPayload<typeof event>>(event, async (payload) => {
+      await logAudit({
+        action,
+        entityKind,
+        entityId: payload.id,
+        entityBusinessId: payload.businessId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: payload.payload ?? {},
+      });
+    });
+  }
+
   // ── member.created ──────────────────────────────────────────────────────
   bus.on<EventPayload<"member.created">>("member.created", async (payload) => {
     await logAudit({

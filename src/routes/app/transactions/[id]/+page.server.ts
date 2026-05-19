@@ -136,13 +136,14 @@ export const actions = {
         })
         .where(eq(expenses.id, params.id));
 
-      await bus.emit(
-        "expense.updated" as never,
-        {
-          expenseId: params.id,
-          actorUserId: user.id,
-        } as never,
-      );
+      await bus.emit("expense.updated", {
+        id: params.id,
+        actorUserId: user.id,
+        payload: {
+          bezeichnung: parsed.data.bezeichnung,
+          betragCents: parsed.data.betragCents,
+        },
+      });
 
       return { ok: true, saved: true };
     }
@@ -166,6 +167,12 @@ export const actions = {
           updatedAt: new Date(),
         })
         .where(eq(income.id, params.id));
+
+      await bus.emit("income.updated", {
+        id: params.id,
+        actorUserId: user.id,
+        payload: { bezeichnung },
+      });
 
       return { ok: true, saved: true };
     }
@@ -235,6 +242,16 @@ export const actions = {
         updatedAt: new Date(),
       })
       .where(eq(expenses.id, params.id));
+
+    await bus.emit("expense.updated", {
+      id: params.id,
+      actorUserId: user.id,
+      payload: {
+        bezeichnung: parsed.data.bezeichnung,
+        betragCents: parsed.data.betragCents,
+        kind: "save_and_notify",
+      },
+    });
 
     // Then mark as erstattet (fires ErstattungsMail via bus handler)
     const result = await markExpenseErstattet({

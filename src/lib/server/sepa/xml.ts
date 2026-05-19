@@ -17,6 +17,8 @@
 
 import { env } from "$lib/server/env.js";
 import type { ApprovedExpense } from "$lib/server/domain/transactions.js";
+import { getDb } from "$lib/server/db/index.js";
+import { sql } from "drizzle-orm";
 
 export interface SepaTransactionInput {
   id: string;
@@ -29,13 +31,36 @@ export interface SepaTransactionInput {
   recipientName: string;
 }
 
+/**
+ * Debtor (sending-side) account info. When omitted (or both fields blank)
+ * the generator falls back to <Id>NOTPROVIDED</Id> placeholders — a
+ * historical compatibility mode kept for tests/imports without DB access.
+ *
+ * In production, callers SHOULD pass values resolved from `settings`
+ * (`verein.iban` + `verein.bic`) via {@link loadSepaDebtorFromSettings}.
+ */
+export interface SepaDebtor {
+  iban?: string | null;
+  bic?: string | null;
+}
+
+export interface SepaXmlOptions {
+  /** Debtor (Verein) account info. See {@link SepaDebtor}. */
+  debtor?: SepaDebtor;
+  /**
+   * Override for the document creation timestamp. Tests pin this to make
+   * msgId / CreDtTm deterministic. Defaults to `new Date()`.
+   */
+  now?: Date;
+}
+
 export interface SepaXmlResult {
   xml: string;
   /** Number of transactions included */
   txCount: number;
   /** Total in cents */
   totalCents: number;
-  /** ISO timestamp embedded in the document */
+  /** ISO timestamp embedded in the document (with Berlin tz offset). */
   createdAt: string;
   /** Message ID embedded in the document */
   msgId: string;
@@ -75,6 +100,7 @@ export function buildSepaInputs(
  */
 export function generateSepaXml(
   transactions: SepaTransactionInput[],
+  options: SepaXmlOptions = {},
 ): SepaXmlResult {
   if (transactions.length === 0) {
     throw new Error("Keine Transaktionen für SEPA-XML vorhanden");
@@ -84,9 +110,11 @@ export function generateSepaXml(
     env.VEREIN_NAME || "Folge der Wolke e.V.",
   ).slice(0, 70);
 
-  const now = new Date();
-  const createdAt = now.toISOString().slice(0, 19); // YYYY-MM-DDTHH:MM:SS (no Z, local implied)
-  const dateOnly = now.toISOString().slice(0, 10);
+  const now = options.now ?? new Date();
+  // XSD-strict validators (notably KBC, ING, Sparkassen profiles) reject
+  // a CreDtTm without timezone — emit Berlin local time + offset.
+  const createdAt = formatBerlinIso(now);
+  const dateOnly = createdAt.slice(0, 10);
 
   const msgId = `FDW-${dateOnly.replace(/-/g, "")}-${now.getTime().toString(36).toUpperCase()}`;
   const pmtInfId = `${msgId}-PMT`;
@@ -125,6 +153,38 @@ export function generateSepaXml(
     })
     .join("\n");
 
+  // Debtor account (Verein) — prefer real IBAN/BIC from settings; fall
+  // back to NOTPROVIDED placeholders only when BOTH are unset (kept for
+  // tests and historical compatibility — most banks reject this).
+  const dbtrIban = options.debtor?.iban?.replace(/\s/g, "").trim() ?? "";
+  const dbtrBic = options.debtor?.bic?.replace(/\s/g, "").trim() ?? "";
+  const dbtrAcctXml = dbtrIban
+    ? `      <DbtrAcct>
+        <Id>
+          <IBAN>${escapeXml(dbtrIban)}</IBAN>
+        </Id>
+      </DbtrAcct>`
+    : `      <DbtrAcct>
+        <Id>
+          <Othr>
+            <Id>NOTPROVIDED</Id>
+          </Othr>
+        </Id>
+      </DbtrAcct>`;
+  const dbtrAgtXml = dbtrBic
+    ? `      <DbtrAgt>
+        <FinInstnId>
+          <BIC>${escapeXml(dbtrBic)}</BIC>
+        </FinInstnId>
+      </DbtrAgt>`
+    : `      <DbtrAgt>
+        <FinInstnId>
+          <Othr>
+            <Id>NOTPROVIDED</Id>
+          </Othr>
+        </FinInstnId>
+      </DbtrAgt>`;
+
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pain.001.001.03"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -154,20 +214,9 @@ export function generateSepaXml(
       <Dbtr>
         <Nm>${escapeXml(initiatorName)}</Nm>
       </Dbtr>
-      <DbtrAcct>
-        <Id>
-          <Othr>
-            <Id>NOTPROVIDED</Id>
-          </Othr>
-        </Id>
-      </DbtrAcct>
-      <DbtrAgt>
-        <FinInstnId>
-          <Othr>
-            <Id>NOTPROVIDED</Id>
-          </Othr>
-        </FinInstnId>
-      </DbtrAgt>
+${dbtrAcctXml}
+${dbtrAgtXml}
+      <ChrgBr>SLEV</ChrgBr>
 ${cdtTrfTxInf}
     </PmtInf>
   </CstmrCdtTrfInitn>
@@ -179,6 +228,57 @@ ${cdtTrfTxInf}
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Look up Verein IBAN/BIC from the `settings` table (`verein.iban`,
+ * `verein.bic`). Returns blanks when unset.
+ */
+export async function loadSepaDebtorFromSettings(): Promise<SepaDebtor> {
+  const db = getDb();
+  const rows = await db.execute<{ key: string; value: unknown }>(
+    sql`SELECT key, value FROM settings WHERE key IN ('verein.iban', 'verein.bic')`,
+  );
+  const map = new Map<string, string>();
+  for (const r of rows as { key: string; value: unknown }[]) {
+    const v = r.value;
+    if (typeof v === "string") map.set(r.key, v);
+    else if (v !== null && v !== undefined) map.set(r.key, String(v));
+  }
+  return {
+    iban: map.get("verein.iban") ?? "",
+    bic: map.get("verein.bic") ?? "",
+  };
+}
+
+/**
+ * Format a Date as `YYYY-MM-DDTHH:MM:SS+HH:MM` in Europe/Berlin local time.
+ * Required for XSD-strict pain.001 validators.
+ */
+function formatBerlinIso(d: Date): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+    timeZoneName: "shortOffset",
+  }).formatToParts(d);
+  const lookup: Record<string, string> = {};
+  for (const p of parts) lookup[p.type] = p.value;
+  const offsetRaw = lookup.timeZoneName ?? "GMT+01:00";
+  const m = /GMT([+-])(\d{1,2})(?::?(\d{2}))?/.exec(offsetRaw);
+  let offset = "+00:00";
+  if (m && m[1] && m[2]) {
+    const sign = m[1];
+    const hh = m[2].padStart(2, "0");
+    const mm = (m[3] ?? "00").padStart(2, "0");
+    offset = `${sign}${hh}:${mm}`;
+  }
+  return `${lookup.year}-${lookup.month}-${lookup.day}T${lookup.hour}:${lookup.minute}:${lookup.second}${offset}`;
+}
 
 /** Converts cents to "1234.56" EUR string (SEPA requires 2 decimal places). */
 function centsToEurStr(cents: number): string {

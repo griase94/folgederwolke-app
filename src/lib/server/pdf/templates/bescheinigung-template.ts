@@ -146,22 +146,35 @@ function drawGap(ctx: DrawCtx, pts: number): void {
 function bescheidPflichttext(p: BmfPflichtfelder): string[] {
   const lines: string[] = [];
   if (p.bescheidTyp === "freistellungsbescheid") {
+    // BMF compliance: Veranlagungszeitraum is asserted non-empty upstream
+    // (spenden.ts allocateBescheinigung / extractBmfPflichtfelder); we throw
+    // here rather than silently render "-".
+    if (!p.freistellungsbescheidVz) {
+      throw new Error(
+        "freistellungsbescheidVz missing — Bescheinigung renderer requires VZ",
+      );
+    }
     lines.push(
       `Wir sind wegen Foerderung ${p.steuerbegueZwecke} nach dem letzten uns zugegangenen ` +
         `Freistellungsbescheid bzw. nach der Anlage zum Koerperschaftsteuerbescheid des ` +
         `Finanzamts ${maskOrtFromAdresse(p.vereinAdresse)}, StNr. ${p.vereinSteuernummer}, ` +
         `vom ${formatGermanDate(p.bescheidDatum)} fuer den letzten Veranlagungszeitraum ` +
-        `${p.freistellungsbescheidVz ?? "-"} nach Paragraph 5 Abs. 1 Nr. 9 des Koerperschaftsteuergesetzes ` +
+        `${p.freistellungsbescheidVz} nach Paragraph 5 Abs. 1 Nr. 9 des Koerperschaftsteuergesetzes ` +
         `von der Koerperschaftsteuer und nach Paragraph 3 Nr. 6 des Gewerbesteuergesetzes von der Gewerbesteuer ` +
         `befreit.`,
     );
   } else {
+    if (!p.satzungsFassung) {
+      throw new Error(
+        "satzungsFassung missing — Bescheinigung renderer requires Satzungs-Fassungsdatum for §60a",
+      );
+    }
     lines.push(
       `Die Einhaltung der satzungsmaessigen Voraussetzungen nach den Paragraphen 51, 59, 60 und 61 AO ` +
         `wurde vom Finanzamt ${maskOrtFromAdresse(p.vereinAdresse)}, StNr. ${p.vereinSteuernummer}, ` +
         `mit Bescheid vom ${formatGermanDate(p.bescheidDatum)} ` +
         `nach Paragraph 60a AO gesondert festgestellt. Wir foerdern nach unserer Satzung ` +
-        `(Fassung vom ${p.satzungsFassung ? formatGermanDate(p.satzungsFassung) : "-"}) ${p.steuerbegueZwecke}.`,
+        `(Fassung vom ${formatGermanDate(p.satzungsFassung)}) ${p.steuerbegueZwecke}.`,
     );
   }
   lines.push(
@@ -206,7 +219,13 @@ export async function drawBescheinigung(
   drawGap(ctx, mm(8));
 
   // ── Title ──────────────────────────────────────────────────────────────
-  drawText(ctx, "Bestaetigung ueber Geldzuwendungen / Mitgliedsbeitraege", {
+  // BMF Mustervordruck uses distinct titles per Zuwendungs-Art. Do not
+  // generalise — Finanzaemter pattern-match on the exact title string.
+  const title =
+    p.spendeKind === "sachspende"
+      ? "Bestaetigung ueber Sachzuwendungen"
+      : "Bestaetigung ueber Geldzuwendungen / Mitgliedsbeitraege";
+  drawText(ctx, title, {
     size: SIZE_TITLE,
     bold: true,
     color: COLOR_PRIMARY,
@@ -217,14 +236,6 @@ export async function drawBescheinigung(
     { size: SIZE_SMALL, color: COLOR_MUTED },
   );
   drawGap(ctx, mm(3));
-  if (p.spendeKind === "sachspende") {
-    drawText(ctx, "- Sachzuwendung -", {
-      size: SIZE_SUBTITLE,
-      bold: true,
-      color: COLOR_PRIMARY,
-    });
-    drawGap(ctx, mm(2));
-  }
   drawText(ctx, `Bescheinigungs-Nr. ${p.bescheinigungNr}`, {
     size: SIZE_BODY,
     bold: true,

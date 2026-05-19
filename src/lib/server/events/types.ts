@@ -36,6 +36,27 @@ export type MemberEventPayload = {
   payload?: Record<string, unknown>;
 };
 
+/**
+ * Shared shape for direct-entry transaction events
+ * (`expense.created`, `expense.updated`, `income.created`, `income.updated`,
+ *  `donation.created`).
+ *
+ * The matching handler writes a row to `audit_log` with the corresponding
+ * `entityKind` (`expense` | `income` | `donation`) and `action` (`create` |
+ * `update`). Keeping a single shared shape avoids drift across the five
+ * events and lets handlers be expressed as a tiny lookup table.
+ */
+export type TxMetaEventPayload = {
+  /** Row PK (UUID). */
+  id: string;
+  /** Business id ('AUS-…', 'E-…', 'S-…'). Optional so update emits don't
+   *  need to re-fetch it. */
+  businessId?: string;
+  actorUserId: string | null;
+  /** Free-form diff or context (e.g. `{kind: 'erstattet'}`, the parsed form). */
+  payload?: Record<string, unknown>;
+};
+
 export type Events = {
   /** Public Auslage form submission completed (Drive upload + DB insert OK). */
   "auslagen.submitted": {
@@ -161,6 +182,23 @@ export type Events = {
     supersedesBusinessId: string;
     actorUserId: string | null;
   };
+
+  /** A new expense was created via the direct-entry "Neue Transaktion" form
+   *  (NOT via the public Auslagen submission flow — that emits
+   *  `expense.approved` after audit-inbox approval). Audit handler writes
+   *  an `audit_log` row with entity_kind='expense', action='create'. */
+  "expense.created": TxMetaEventPayload;
+  /** Existing expense's master data was edited via the detail page.
+   *  Audit-only. Reimbursement state changes use `expense.erstattet`. */
+  "expense.updated": TxMetaEventPayload;
+  /** A new income row was inserted via the direct-entry form. */
+  "income.created": TxMetaEventPayload;
+  /** Existing income's master data was edited via the detail page. */
+  "income.updated": TxMetaEventPayload;
+  /** A new donation row was inserted via the direct-entry form. The
+   *  Bescheinigung is allocated separately and emits
+   *  `spende.bescheinigung_generated`. */
+  "donation.created": TxMetaEventPayload;
 
   /** A new Mitglied was inserted via the admin UI. */
   "member.created": MemberEventPayload;

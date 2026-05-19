@@ -6,7 +6,7 @@
  * yearly-reset invariant on the in-memory allocator.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   betragInWorten,
   validateSpendeInput,
@@ -239,5 +239,72 @@ describe("validateSpendeInput — BMF Pflichtfeld validation", () => {
     });
     expect(r.success).toBe(true);
     if (r.success) expect(r.data.betragCents).toBe(30000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isBescheinigungEnabled — BMF VZ Pflichtfeld validation (A1)
+// ---------------------------------------------------------------------------
+
+describe("isBescheinigungEnabled — Freistellungsbescheid VZ Pflicht", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+  afterEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+  });
+
+  async function loadWithEnv(overrides: Record<string, string>) {
+    for (const [k, v] of Object.entries(overrides)) {
+      vi.stubEnv(k, v);
+    }
+    const mod = await import("$lib/server/domain/spenden.js");
+    return mod.isBescheinigungEnabled();
+  }
+
+  it("returns false when BESCHEID_DATUM is empty (no Bescheid)", async () => {
+    const enabled = await loadWithEnv({
+      VEREIN_BESCHEID_TYP: "freistellungsbescheid",
+      VEREIN_BESCHEID_DATUM: "",
+      VEREIN_FREISTELLUNGSBESCHEID_VZ: "2024",
+    });
+    expect(enabled).toBe(false);
+  });
+
+  it("returns false when typ=freistellungsbescheid but VZ is empty", async () => {
+    const enabled = await loadWithEnv({
+      VEREIN_BESCHEID_TYP: "freistellungsbescheid",
+      VEREIN_BESCHEID_DATUM: "2024-03-15",
+      VEREIN_FREISTELLUNGSBESCHEID_VZ: "",
+    });
+    expect(enabled).toBe(false);
+  });
+
+  it("returns true when typ=freistellungsbescheid + DATUM + VZ all present", async () => {
+    const enabled = await loadWithEnv({
+      VEREIN_BESCHEID_TYP: "freistellungsbescheid",
+      VEREIN_BESCHEID_DATUM: "2024-03-15",
+      VEREIN_FREISTELLUNGSBESCHEID_VZ: "2024",
+    });
+    expect(enabled).toBe(true);
+  });
+
+  it("returns false when typ=feststellung_60a without SATZUNG_FASSUNG", async () => {
+    const enabled = await loadWithEnv({
+      VEREIN_BESCHEID_TYP: "feststellung_60a",
+      VEREIN_BESCHEID_DATUM: "2024-03-15",
+      VEREIN_SATZUNG_FASSUNG: "",
+    });
+    expect(enabled).toBe(false);
+  });
+
+  it("returns true when typ=feststellung_60a + DATUM + SATZUNG_FASSUNG", async () => {
+    const enabled = await loadWithEnv({
+      VEREIN_BESCHEID_TYP: "feststellung_60a",
+      VEREIN_BESCHEID_DATUM: "2024-03-15",
+      VEREIN_SATZUNG_FASSUNG: "2022-06-01",
+    });
+    expect(enabled).toBe(true);
   });
 });

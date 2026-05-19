@@ -65,7 +65,12 @@ export function isBescheinigungEnabled(): boolean {
   const typ = env.VEREIN_BESCHEID_TYP.trim();
   const datum = env.VEREIN_BESCHEID_DATUM.trim();
   if (!datum) return false;
-  if (typ === "freistellungsbescheid") return true;
+  if (typ === "freistellungsbescheid") {
+    // BMF compliance: Freistellungsbescheid wording quotes the
+    // Veranlagungszeitraum verbatim — without VZ we cannot render a
+    // legally-valid receipt.
+    return env.VEREIN_FREISTELLUNGSBESCHEID_VZ.trim().length > 0;
+  }
   if (typ === "feststellung_60a") {
     // §60a wording requires Satzungs-Fassungsdatum
     return env.VEREIN_SATZUNG_FASSUNG.trim().length > 0;
@@ -614,6 +619,26 @@ export async function allocateBescheinigung(
         : sp.zweckbindungText
       : null;
 
+  // BMF compliance: VZ / Satzungsfassung are quoted verbatim in the
+  // Pflichttext block. Guard non-empty so we never emit "-" placeholders.
+  const vz = env.VEREIN_FREISTELLUNGSBESCHEID_VZ.trim();
+  if (typ === "freistellungsbescheid" && vz.length === 0) {
+    return {
+      ok: false,
+      status: 412,
+      error:
+        "VEREIN_FREISTELLUNGSBESCHEID_VZ fehlt — Bescheinigung nicht erstellbar",
+    };
+  }
+  const satzungsFassung = env.VEREIN_SATZUNG_FASSUNG.trim();
+  if (typ === "feststellung_60a" && satzungsFassung.length === 0) {
+    return {
+      ok: false,
+      status: 412,
+      error: "VEREIN_SATZUNG_FASSUNG fehlt — Bescheinigung nicht erstellbar",
+    };
+  }
+
   const pflichtfelder: BmfPflichtfelder = {
     vereinName: env.VEREIN_NAME,
     vereinSteuernummer: env.VEREIN_STEUERNUMMER,
@@ -621,12 +646,8 @@ export async function allocateBescheinigung(
     vereinAdresse: env.VEREIN_ADRESSE,
     bescheidTyp: typ,
     bescheidDatum: env.VEREIN_BESCHEID_DATUM,
-    satzungsFassung:
-      typ === "feststellung_60a" ? env.VEREIN_SATZUNG_FASSUNG || null : null,
-    freistellungsbescheidVz:
-      typ === "freistellungsbescheid"
-        ? env.VEREIN_FREISTELLUNGSBESCHEID_VZ || null
-        : null,
+    satzungsFassung: typ === "feststellung_60a" ? satzungsFassung : null,
+    freistellungsbescheidVz: typ === "freistellungsbescheid" ? vz : null,
     steuerbegueZwecke: env.VEREIN_STEUERBEGUENSTIGTE_ZWECKE,
 
     spenderName,
@@ -678,6 +699,20 @@ export function extractBmfPflichtfelder(
   if (!sp.spenderName || !sp.spenderAdresse || !sp.zugewendetAm) {
     throw new Error("Spende fehlt Pflichtfelder");
   }
+  // BMF compliance: Freistellungsbescheid wording quotes VZ — assert
+  // non-empty so we never render a Bescheinigung with a "-" placeholder.
+  const vz = env.VEREIN_FREISTELLUNGSBESCHEID_VZ.trim();
+  if (typ === "freistellungsbescheid" && vz.length === 0) {
+    throw new Error(
+      "VEREIN_FREISTELLUNGSBESCHEID_VZ fehlt — Bescheinigung nicht renderbar",
+    );
+  }
+  const satzungsFassung = env.VEREIN_SATZUNG_FASSUNG.trim();
+  if (typ === "feststellung_60a" && satzungsFassung.length === 0) {
+    throw new Error(
+      "VEREIN_SATZUNG_FASSUNG fehlt — Bescheinigung nicht renderbar",
+    );
+  }
   const sacheBeschreibung =
     sp.spendeKind === "sachspende"
       ? sp.zweckbindungText?.includes("Sache:")
@@ -691,12 +726,8 @@ export function extractBmfPflichtfelder(
     vereinAdresse: env.VEREIN_ADRESSE,
     bescheidTyp: typ,
     bescheidDatum: env.VEREIN_BESCHEID_DATUM,
-    satzungsFassung:
-      typ === "feststellung_60a" ? env.VEREIN_SATZUNG_FASSUNG || null : null,
-    freistellungsbescheidVz:
-      typ === "freistellungsbescheid"
-        ? env.VEREIN_FREISTELLUNGSBESCHEID_VZ || null
-        : null,
+    satzungsFassung: typ === "feststellung_60a" ? satzungsFassung : null,
+    freistellungsbescheidVz: typ === "freistellungsbescheid" ? vz : null,
     steuerbegueZwecke: env.VEREIN_STEUERBEGUENSTIGTE_ZWECKE,
     spenderName: sp.spenderName,
     spenderAdresse: sp.spenderAdresse,

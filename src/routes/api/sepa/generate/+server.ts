@@ -11,7 +11,11 @@
 import { json, error } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types.js";
 import { listApprovedPendingErstattet } from "$lib/server/domain/transactions.js";
-import { buildSepaInputs, generateSepaXml } from "$lib/server/sepa/xml.js";
+import {
+  buildSepaInputs,
+  generateSepaXml,
+  loadSepaDebtorFromSettings,
+} from "$lib/server/sepa/xml.js";
 
 export const POST: RequestHandler = async ({ request, locals }) => {
   if (!locals.session?.user) {
@@ -46,7 +50,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     error(422, "Keine Auslagen mit bekannter IBAN — bitte IBAN hinterlegen");
   }
 
-  const result = generateSepaXml(inputs);
+  const debtor = await loadSepaDebtorFromSettings();
+  const result = generateSepaXml(inputs, { debtor });
 
   return json(result);
 };

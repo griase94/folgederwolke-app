@@ -19,6 +19,7 @@ import { donations } from "$lib/server/db/schema/donations.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
 import { zahlungsarten } from "$lib/server/db/schema/zahlungsarten.js";
 import { members } from "$lib/server/db/schema/members.js";
+import { bus } from "$lib/server/events/index.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -653,6 +654,16 @@ export async function createExpense(
     })
     .returning({ id: expenses.id, businessId: expenses.businessId });
   if (!row) throw new Error("INSERT expense returned no row");
+  await bus.emit("expense.created", {
+    id: row.id,
+    businessId: row.businessId,
+    actorUserId: input.actorUserId,
+    payload: {
+      bezeichnung: input.bezeichnung,
+      betragCents: input.betragCents,
+      source: "direct_entry",
+    },
+  });
   return row;
 }
 
@@ -679,6 +690,16 @@ export async function createIncome(
     })
     .returning({ id: income.id, businessId: income.businessId });
   if (!row) throw new Error("INSERT income returned no row");
+  await bus.emit("income.created", {
+    id: row.id,
+    businessId: row.businessId,
+    actorUserId: input.actorUserId,
+    payload: {
+      bezeichnung: input.bezeichnung,
+      betragCents: input.betragCents,
+      source: "direct_entry",
+    },
+  });
   return row;
 }
 
@@ -709,6 +730,16 @@ export async function createDonation(
     })
     .returning({ id: donations.id, businessId: donations.businessId });
   if (!row) throw new Error("INSERT donation returned no row");
+  await bus.emit("donation.created", {
+    id: row.id,
+    businessId: row.businessId,
+    actorUserId: input.actorUserId,
+    payload: {
+      betragCents: input.betragCents,
+      spendeKind: input.spendeKind ?? "geldspende",
+      source: "direct_entry",
+    },
+  });
   return row;
 }
 
