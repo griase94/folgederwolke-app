@@ -1,0 +1,319 @@
+=== money.test.ts ===
+import { describe, it, expect, afterEach } from "vitest";
+import { render, cleanup, screen } from "@testing-library/svelte";
+import Money from "./money.svelte";
+
+afterEach(() => cleanup());
+
+describe("Money", () => {
+  it("renders positive integer cents as German EUR string", () => {
+    render(Money, { props: { valueInCents: 123456 } });
+    const el = screen.getByTestId("money");
+    // German locale: thin-space / nbsp between number and currency symbol
+    expect(el.textContent?.replace(/\s/g, " ")).toMatch(/1\.234,56\s€/);
+  });
+
+  it("renders zero correctly", () => {
+    render(Money, { props: { valueInCents: 0 } });
+    const el = screen.getByTestId("money");
+    expect(el.textContent?.replace(/\s/g, " ")).toMatch(/0,00\s€/);
+  });
+
+  it("renders negative values with minus sign", () => {
+    render(Money, { props: { valueInCents: -50000 } });
+    const el = screen.getByTestId("money");
+    const txt = el.textContent ?? "";
+    expect(txt).toMatch(/-|−/);
+    expect(txt.replace(/\s/g, " ")).toMatch(/500,00\s€/);
+  });
+
+  it("applies tabular-nums class for column alignment", () => {
+    render(Money, { props: { valueInCents: 100 } });
+    const el = screen.getByTestId("money");
+    expect(el.className).toContain("tabular-nums");
+  });
+
+  it("applies emerald color for positive values", () => {
+    render(Money, { props: { valueInCents: 100 } });
+    const el = screen.getByTestId("money");
+    expect(el.className).toMatch(/text-emerald/);
+  });
+
+  it("applies rose color for negative values", () => {
+    render(Money, { props: { valueInCents: -100 } });
+    const el = screen.getByTestId("money");
+    expect(el.className).toMatch(/text-rose/);
+  });
+
+  it("applies muted color for zero values", () => {
+    render(Money, { props: { valueInCents: 0 } });
+    const el = screen.getByTestId("money");
+    expect(el.className).toMatch(/text-muted-foreground/);
+  });
+
+  it("respects forceSign='always' showing + for positive", () => {
+    render(Money, { props: { valueInCents: 100, forceSign: "always" } });
+    const el = screen.getByTestId("money");
+    expect(el.textContent).toMatch(/\+/);
+  });
+
+  it("respects forceSign='never' suppressing sign on negative", () => {
+    render(Money, { props: { valueInCents: -100, forceSign: "never" } });
+    const el = screen.getByTestId("money");
+    expect(el.textContent).not.toMatch(/-|−/);
+  });
+
+  it("merges custom class prop", () => {
+    render(Money, { props: { valueInCents: 100, class: "custom-money" } });
+    const el = screen.getByTestId("money");
+    expect(el.className).toContain("custom-money");
+  });
+});
+
+=== segmented-control.test.ts ===
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { render, cleanup, screen, fireEvent } from "@testing-library/svelte";
+import SegmentedControl from "./segmented-control.svelte";
+
+afterEach(() => cleanup());
+
+const options = [
+  { value: "a", label: "Option A" },
+  { value: "b", label: "Option B" },
+  { value: "c", label: "Option C", disabled: true },
+];
+
+describe("SegmentedControl", () => {
+  it("renders a radiogroup container", () => {
+    render(SegmentedControl, {
+      props: { options, value: "a", onChange: () => {} },
+    });
+    const group = screen.getByRole("radiogroup");
+    expect(group).toBeTruthy();
+  });
+
+  it("renders one radio per option", () => {
+    render(SegmentedControl, {
+      props: { options, value: "a", onChange: () => {} },
+    });
+    const radios = screen.getAllByRole("radio");
+    expect(radios.length).toBe(3);
+  });
+
+  it("marks the selected option with aria-checked=true", () => {
+    render(SegmentedControl, {
+      props: { options, value: "b", onChange: () => {} },
+    });
+    const selected = screen.getByRole("radio", { name: "Option B" });
+    expect(selected.getAttribute("aria-checked")).toBe("true");
+    const unselected = screen.getByRole("radio", { name: "Option A" });
+    expect(unselected.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("renders all option labels", () => {
+    render(SegmentedControl, {
+      props: { options, value: "a", onChange: () => {} },
+    });
+    expect(screen.getByText("Option A")).toBeTruthy();
+    expect(screen.getByText("Option B")).toBeTruthy();
+    expect(screen.getByText("Option C")).toBeTruthy();
+  });
+
+  it("calls onChange when an option is clicked", async () => {
+    const onChange = vi.fn();
+    render(SegmentedControl, { props: { options, value: "a", onChange } });
+    const optB = screen.getByRole("radio", { name: "Option B" });
+    await fireEvent.click(optB);
+    expect(onChange).toHaveBeenCalledWith("b");
+  });
+
+  it("disabled options are not clickable", async () => {
+    const onChange = vi.fn();
+    render(SegmentedControl, { props: { options, value: "a", onChange } });
+    const optC = screen.getByRole("radio", { name: "Option C" });
+    expect(optC.hasAttribute("disabled")).toBe(true);
+    await fireEvent.click(optC);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("supports ArrowRight to move selection forward", async () => {
+    const onChange = vi.fn();
+    render(SegmentedControl, { props: { options, value: "a", onChange } });
+    const group = screen.getByRole("radiogroup");
+    await fireEvent.keyDown(group, { key: "ArrowRight" });
+    expect(onChange).toHaveBeenCalledWith("b");
+  });
+
+  it("supports ArrowLeft to move selection backward", async () => {
+    const onChange = vi.fn();
+    render(SegmentedControl, { props: { options, value: "b", onChange } });
+    const group = screen.getByRole("radiogroup");
+    await fireEvent.keyDown(group, { key: "ArrowLeft" });
+    expect(onChange).toHaveBeenCalledWith("a");
+  });
+
+  it("ArrowRight skips disabled options", async () => {
+    const onChange = vi.fn();
+    render(SegmentedControl, { props: { options, value: "b", onChange } });
+    const group = screen.getByRole("radiogroup");
+    // From b, next is c (disabled), should wrap to a
+    await fireEvent.keyDown(group, { key: "ArrowRight" });
+    expect(onChange).toHaveBeenCalledWith("a");
+  });
+
+  it("merges custom class prop", () => {
+    render(SegmentedControl, {
+      props: { options, value: "a", onChange: () => {}, class: "custom-seg" },
+    });
+    const group = screen.getByRole("radiogroup");
+    expect(group.className).toContain("custom-seg");
+  });
+});
+
+=== page-header.test.ts ===
+import { describe, it, expect, afterEach } from "vitest";
+import { render, cleanup, screen } from "@testing-library/svelte";
+import PageHeaderTest from "./page-header.test.svelte";
+
+afterEach(() => cleanup());
+
+describe("PageHeader", () => {
+  it("renders an h1 with the heading text", () => {
+    render(PageHeaderTest, { props: { heading: "Dashboard" } });
+    const h1 = screen.getByRole("heading", { level: 1 });
+    expect(h1.textContent?.trim()).toBe("Dashboard");
+  });
+
+  it("renders an eyebrow above the heading", () => {
+    render(PageHeaderTest, { props: { heading: "x", eyebrow: "Phase 2" } });
+    const eyebrow = screen.getByTestId("page-header-eyebrow");
+    expect(eyebrow.textContent?.trim()).toBe("Phase 2");
+  });
+
+  it("omits eyebrow when prop not provided", () => {
+    render(PageHeaderTest, { props: { heading: "x" } });
+    expect(screen.queryByTestId("page-header-eyebrow")).toBeNull();
+  });
+
+  it("renders actions slot when provided", () => {
+    render(PageHeaderTest, { props: { heading: "x", withActions: true } });
+    expect(screen.getByTestId("page-header-actions")).toBeTruthy();
+    expect(screen.getByText("Action Button")).toBeTruthy();
+  });
+
+  it("renders description when provided", () => {
+    render(PageHeaderTest, {
+      props: { heading: "x", description: "A nice page" },
+    });
+    expect(screen.getByText("A nice page")).toBeTruthy();
+  });
+
+  it("has data-slot=page-header", () => {
+    const { container } = render(PageHeaderTest, {
+      props: { heading: "x" },
+    });
+    expect(container.querySelector('[data-slot="page-header"]')).toBeTruthy();
+  });
+});
+
+=== page-header.test.svelte ===
+<script lang="ts">
+	import PageHeader from "./page-header.svelte";
+
+	let {
+		heading,
+		eyebrow,
+		description,
+		withActions = false,
+	}: {
+		heading: string;
+		eyebrow?: string;
+		description?: string;
+		withActions?: boolean;
+	} = $props();
+</script>
+
+<PageHeader {heading} {eyebrow} {description}>
+	{#snippet actions()}
+		{#if withActions}
+			<button>Action Button</button>
+		{/if}
+	{/snippet}
+</PageHeader>
+
+=== empty-state.test.ts ===
+import { describe, it, expect, afterEach } from "vitest";
+import { render, cleanup, screen } from "@testing-library/svelte";
+import EmptyStateTest from "./empty-state.test.svelte";
+
+afterEach(() => cleanup());
+
+describe("EmptyState", () => {
+  it("renders the title text", () => {
+    render(EmptyStateTest, { props: { title: "No bookings yet" } });
+    expect(screen.getByText("No bookings yet")).toBeTruthy();
+  });
+
+  it("renders the description text when provided", () => {
+    render(EmptyStateTest, {
+      props: { title: "x", description: "Add your first booking" },
+    });
+    expect(screen.getByText("Add your first booking")).toBeTruthy();
+  });
+
+  it("renders CTA slot when provided", () => {
+    render(EmptyStateTest, { props: { title: "x", withCta: true } });
+    expect(screen.getByTestId("empty-state-cta")).toBeTruthy();
+    expect(screen.getByText("Create one")).toBeTruthy();
+  });
+
+  it("renders icon slot when provided", () => {
+    render(EmptyStateTest, { props: { title: "x", withIcon: true } });
+    expect(screen.getByTestId("empty-state-icon")).toBeTruthy();
+  });
+
+  it("has data-slot=empty-state on the root", () => {
+    const { container } = render(EmptyStateTest, {
+      props: { title: "x" },
+    });
+    expect(container.querySelector('[data-slot="empty-state"]')).toBeTruthy();
+  });
+
+  it("title is rendered in a heading element", () => {
+    render(EmptyStateTest, { props: { title: "Heading text" } });
+    // EmptyState uses an h3 or h2 — test that some heading carries the text
+    const headings = screen.getAllByRole("heading");
+    const match = headings.find((h) => h.textContent?.includes("Heading text"));
+    expect(match).toBeTruthy();
+  });
+});
+
+=== empty-state.test.svelte ===
+<script lang="ts">
+	import EmptyState from "./empty-state.svelte";
+
+	let {
+		title,
+		description,
+		withCta = false,
+		withIcon = false,
+	}: {
+		title: string;
+		description?: string;
+		withCta?: boolean;
+		withIcon?: boolean;
+	} = $props();
+</script>
+
+<EmptyState {title} {description}>
+	{#snippet icon()}
+		{#if withIcon}
+			<svg width="40" height="40"><circle cx="20" cy="20" r="10" /></svg>
+		{/if}
+	{/snippet}
+	{#snippet cta()}
+		{#if withCta}
+			<button>Create one</button>
+		{/if}
+	{/snippet}
+</EmptyState>
