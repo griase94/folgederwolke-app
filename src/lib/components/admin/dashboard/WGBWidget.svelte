@@ -2,8 +2,9 @@
 	/**
 	 * WGBWidget — Wirtschaftlicher Geschäftsbetrieb Freigrenze tracker.
 	 *
-	 * Shows YTD gross Einnahmen (wirtschaftlich sphere) versus the §19 UStG
-	 * Kleinunternehmer-Regelung limit of 45.000 € gross.
+	 * Shows YTD gross Einnahmen (wirtschaftlich sphere) versus the
+	 * § 64 Abs. 3 AO Besteuerungsfreigrenze of 50.000 € gross (ab 2025).
+	 * Distinct from § 19 UStG Kleinunternehmer (25.000 / 100.000 € ab 2025).
 	 *
 	 * Data comes from the dashboard +page.server.ts which queries
 	 * v_wgb_freigrenze_status.
@@ -12,7 +13,7 @@
 	interface Props {
 		/** YTD gross Einnahmen in cents (wirtschaftlich sphere, current year). */
 		einnahmenCents: number;
-		/** Statutory Freigrenze in cents (45.000 € = 4_500_000). */
+		/** Statutory Freigrenze in cents (50.000 € = 5_000_000, § 64 Abs. 3 AO). */
 		freigrenzeCents: number;
 		/** Pre-computed status from v_wgb_freigrenze_status view. */
 		status: 'ok' | 'erhoeht' | 'kritisch' | 'ueberschritten';
@@ -68,7 +69,7 @@
 		<div>
 			<h2 id="wgb-heading" class="text-sm font-medium text-muted-foreground">
 				WGB-Freigrenze {year}
-				<span class="font-normal">(§19 UStG)</span>
+				<span class="font-normal">(§ 64 Abs. 3 AO)</span>
 			</h2>
 			<p class="mt-1 text-2xl font-bold tracking-tight text-foreground">
 				{formatEur(einnahmenCents)}
@@ -102,7 +103,8 @@
 
 	<!-- Statutory note -->
 	<p class="mt-3 text-xs text-muted-foreground">
-		Brutto-Einnahmen des wirtschaftlichen Geschäftsbetriebs. Kleinunternehmer-Status
-		(§19 UStG) entfällt ab 45.000 € brutto/Jahr.
+		Brutto-Einnahmen des wirtschaftlichen Geschäftsbetriebs. Einnahmen über
+		50.000&nbsp;€/Jahr lösen die Körperschaft- und Gewerbesteuerpflicht aus
+		(§ 64 Abs. 3 AO, ab&nbsp;2025).
 	</p>
 </section>

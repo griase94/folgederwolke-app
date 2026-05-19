@@ -39,10 +39,15 @@ const schema = z.object({
   SMTP_PASSWORD: z.string().default(""),
 
   // Feature flags
+  // Default `false`: if the env var is missing or misspelled in production,
+  // the public Auslagen form stays off instead of accidentally exposing it.
+  // Vercel sets PUBLIC_FORM_ENABLED=true explicitly when we're ready to ship.
   PUBLIC_FORM_ENABLED: z
     .string()
-    .default("true")
+    .default("false")
     .transform((v) => v === "true"),
+  /** Canonical public origin (https://folgederwolke-app.vercel.app). Required in prod. */
+  PUBLIC_BASE_URL: z.string().default(""),
 
   // Cron auth
   /** Secret shared between Vercel cron scheduler and the app. */
@@ -90,9 +95,13 @@ export type Env = z.infer<typeof schema>;
 // Build-time SSR / prerender sees an empty env; that's OK.
 // Runtime callers can `requireEnv("DATABASE_URL")` to fail loudly if missing.
 function loadEnv(): Env {
-  // Supplement $env/dynamic/private with process.env — handles the bundle
-  // edge case where dynEnv is captured early and some keys aren't present yet.
-  const merged = { ...process.env, ...dynEnv } as Record<string, string>;
+  // Merge $env/dynamic/private with process.env. process.env wins so that
+  // vi.stubEnv() in tests is reflected on re-import, AND any runtime
+  // process.env update (e.g. CI-injected secrets) takes precedence over a
+  // stale captured dynEnv. We still pull dynEnv as the base layer because
+  // SvelteKit's loader has visibility into vars that aren't on process.env
+  // in some build modes.
+  const merged = { ...dynEnv, ...process.env } as Record<string, string>;
   const result = schema.safeParse(merged);
   if (result.success) return result.data;
   return schema.parse({});
@@ -106,4 +115,45 @@ export function requireEnv<K extends keyof Env>(key: K): NonNullable<Env[K]> {
     throw new Error(`Missing required env var: ${String(key)}`);
   }
   return v as NonNullable<Env[K]>;
+}
+
+/**
+ * Public-form gate. Kept as a function (rather than reading env.PUBLIC_FORM_ENABLED
+ * directly at every callsite) so we have one place to add future preconditions
+ * (e.g. business-hours-only mode, regional restriction).
+ *
+ * The earlier DPA_GATE_PASSED double-flag was dropped on 2026-05-19 after the
+ * pragmatic-rebalance review: Vercel + Neon click-DPAs are enough for a small
+ * gemeinnütziger Verein, and a separate env flag was self-imposed bureaucracy.
+ * See docs/legal/auftragsverarbeitung/README.md.
+ */
+export function isPublicFormEnabled(): boolean {
+  return env.PUBLIC_FORM_ENABLED;
+}
+
+/**
+ * Production startup checks. Called from hooks.server.ts. Throws if any
+ * required env var would render the app insecure in production. In dev the
+ * checks are advisory only.
+ */
+export function assertProductionEnvSafe(): void {
+  const isProd = (process.env["NODE_ENV"] ?? "").toLowerCase() === "production";
+
+  const session = env.SESSION_SECRET || process.env["SESSION_SECRET"] || "";
+  if (session.length < 32) {
+    const msg = `SESSION_SECRET is missing or shorter than 32 chars (len=${session.length}). Cookies would be signed with a weak/empty key.`;
+    if (isProd) throw new Error(msg);
+    console.warn(`[env] ${msg} — non-prod, continuing.`);
+  }
+
+  const baseUrl =
+    env.PUBLIC_BASE_URL ||
+    process.env["PUBLIC_BASE_URL"] ||
+    process.env["ORIGIN"] ||
+    "";
+  if (isProd && !baseUrl) {
+    throw new Error(
+      "PUBLIC_BASE_URL (or ORIGIN) is required in production so magic-link URLs cannot be derived from an attacker-controlled Host header. See docs/reviews/2026-05-19-security-review.md CRIT-2.",
+    );
+  }
 }

@@ -184,10 +184,31 @@ function bescheidPflichttext(p: BmfPflichtfelder): string[] {
   return lines;
 }
 
+/**
+ * Extract the Ort (city) from a free-form Verein address.
+ *
+ * The address can be single-line ("Musterstraße 1, 12345 Musterstadt") or
+ * multi-line ("Musterstraße 1\n12345 Musterstadt"). The previous regex was
+ * a single .split(",") which produced "Westermühlstraße 6\n80469 München"
+ * for the multi-line value — flagged by the 2026-05-19 money review CRIT-2
+ * as actively mangling the BMF Pflichttext on the Bescheinigung.
+ *
+ * Strategy: scan every comma- AND newline-separated segment for the
+ * PLZ+Ort pattern (4-5 digits, whitespace, city name); return the city
+ * portion only. Falls back to the last segment if no PLZ pattern is found.
+ */
 function maskOrtFromAdresse(adr: string): string {
-  const parts = adr.split(",").map((s) => s.trim());
-  const last = parts[parts.length - 1] ?? adr;
-  return last.replace(/^\d{4,5}\s+/, "").trim() || adr;
+  const segments = adr
+    .split(/[,\n]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (segments.length === 0) return adr;
+
+  for (const seg of segments) {
+    const match = seg.match(/^\d{4,5}\s+(.+)$/);
+    if (match && match[1]) return match[1].trim();
+  }
+  return segments[segments.length - 1] ?? adr;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -311,23 +332,24 @@ export async function drawBescheinigung(
   drawRule(ctx);
 
   // ── Signature block ────────────────────────────────────────────────────
+  // Per BMF Mustervordruck IV C 4 — S 2223/19/10004 + §50 Abs. 1 EStDV, a
+  // machine-created Bescheinigung MUST carry the "maschinell erstellt und
+  // ohne Unterschrift gültig" notice. Without it the donor cannot deduct
+  // the Spende (money review CRIT-1, 2026-05-19).
   drawGap(ctx, mm(3));
   drawText(
     ctx,
     `${maskOrtFromAdresse(p.vereinAdresse)}, ${formatGermanDate(p.ausgestelltAm)}`,
     { size: SIZE_BODY },
   );
-  drawGap(ctx, mm(14));
-  ctx.page.drawLine({
-    start: { x: MARGIN_X, y: ctx.y },
-    end: { x: MARGIN_X + mm(70), y: ctx.y },
-    thickness: 0.5,
-    color: COLOR_TEXT,
-  });
-  ctx.y -= mm(4);
+  drawGap(ctx, mm(4));
+  drawText(ctx, p.vereinName, { size: SIZE_BODY, bold: true });
+  drawText(ctx, "Vorstand", { size: SIZE_SMALL, color: COLOR_MUTED });
+  drawGap(ctx, mm(3));
   drawText(
     ctx,
-    "Unterschrift / Stempel der empfangsberechtigten Koerperschaft",
+    "Diese Zuwendungsbestaetigung ist maschinell erstellt und " +
+      "ohne Unterschrift gueltig (Paragraph 50 Absatz 1 EStDV).",
     { size: SIZE_SMALL, color: COLOR_MUTED },
   );
 

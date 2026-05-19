@@ -116,7 +116,7 @@
 	<div class="rounded-b-xl border-t border-border/50 bg-muted/20 px-6 py-3">
 		<p class="text-xs text-muted-foreground">
 			Ideeller Bereich, Vermögensverwaltung und Zweckbetrieb sind steuerfrei. Wirtschaftlicher
-			Geschäftsbetrieb ist steuerfrei unterhalb der Freigrenze von 50.000 € (§ 64 AO ab 2026).
+			Geschäftsbetrieb ist steuerfrei unterhalb der Freigrenze von 50.000 € (§ 64 Abs. 3 AO, ab 2025).
 		</p>
 	</div>
 </div>

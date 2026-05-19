@@ -77,7 +77,7 @@ test.describe("@phase-1 Auth — anti-enumeration", () => {
     await page.fill('input[name="email"]', "notanadmin@randomdomain.example");
     await page.click('button[type="submit"]');
     await expect(page.locator('[role="status"]')).toContainText(
-      "Check your inbox",
+      "Schau in dein Postfach",
     );
 
     // Admin email — needs ADMIN_EMAILS set in test env; if not, still returns same message
@@ -85,7 +85,7 @@ test.describe("@phase-1 Auth — anti-enumeration", () => {
     await page.fill('input[name="email"]', "admin@example.com");
     await page.click('button[type="submit"]');
     await expect(page.locator('[role="status"]')).toContainText(
-      "Check your inbox",
+      "Schau in dein Postfach",
     );
   });
 });

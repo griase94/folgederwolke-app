@@ -1,0 +1,157 @@
+[
+  {
+    "severity": "MUST",
+    "page": "/auslage-einreichen",
+    "tried": "Mit komplett leerem Formular auf 'Auslage einreichen' klicken",
+    "happened": "URL nach Klick: http://127.0.0.1:5175/auslage-einreichen?/default, 0 rote Hinweise",
+    "expected": "Inline-Fehler, KEIN POST, KEINE 500-Seite",
+    "fix": "validate() muss e.preventDefault() VOR jeglichem submit-Verhalten aufrufen",
+    "shot": "no-shot"
+  },
+  {
+    "severity": "MUST",
+    "page": "/auslage-einreichen",
+    "tried": "Form ausgefüllt aber Rechnungsdatum leer gelassen",
+    "happened": "500 Internal Error",
+    "expected": "Entweder akzeptieren oder klarer Validation-Error",
+    "fix": "Server-Validierung darf nicht 500en — fail(422) reicht"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/auslage-einreichen (extern)",
+    "tried": "Externe Person auswählen, Felder prüfen",
+    "happened": "Name=false, IBAN=false, Email=false",
+    "expected": "Alle drei Felder sichtbar",
+    "fix": "—",
+    "shot": "100-auslage-extern"
+  },
+  {
+    "severity": "NICE",
+    "page": "/auslage-einreichen",
+    "tried": "Doppelklick auf Submit",
+    "happened": "URL: http://127.0.0.1:5175/auslage-einreichen?/default",
+    "expected": "Nur eine Einreichung — der isSubmitting guard greift",
+    "fix": "—"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/app/mitglieder/[bogus]",
+    "tried": "Erfundene UUID als Mitglied-Detail aufrufen",
+    "happened": "Inhalt:  Zum Inhalt springen FW JU FW Folge der Wolke Heute Audit Inbox Transaktionen Mitglieder Rechnungen Projekte Kunden Jahresabschluss Einstellungen Mehr JU juliaschwarz97@web.de ju",
+    "expected": "404 oder Fehler 'Mitglied nicht gefunden'",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/app/inbox/[bogus]",
+    "tried": "Inbox-Detail mit erfundener ID",
+    "happened": "404",
+    "expected": "Klare 404",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/auslage-status/not-a-valid-id",
+    "tried": "Komplett kaputte ID-Form",
+    "happened": " 404 Seite nicht gefunden Diese Seite existiert leider nicht. Vielleicht wurde der Link geändert oder die Seite ist nicht mehr verfügbar. Zurück zur Startseite Zurück { __s",
+    "expected": "—",
+    "fix": "—"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/auslage-einreichen",
+    "tried": "7 schnelle POSTs in Folge (Rate-Limit testen)",
+    "happened": "Status-Sequenz: [500,500,500,500,500,500,500]",
+    "expected": "Spätestens die 6. Anfrage sollte 429 sein",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/",
+    "tried": "Service Worker registriert?",
+    "happened": "1 Registrations",
+    "expected": "Mind. 1, sonst keine echte PWA",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/sign-in/verify (mismatch)",
+    "tried": "Magic Link in anderem Browser-Context aufrufen, suchen nach Warnung",
+    "happened": "Warnung sichtbar",
+    "expected": "Visueller Hinweis, dass Link auf anderem Gerät angefordert wurde",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/sign-in",
+    "tried": "autocomplete-Attribut prüfen",
+    "happened": "autocomplete=email",
+    "expected": "email oder username",
+    "fix": "—"
+  },
+  {
+    "severity": "MUST",
+    "page": "/app/rechnungen",
+    "tried": "Rechnungen-Liste aufrufen",
+    "happened": "Status 500",
+    "expected": "200 — auch wenn leer",
+    "fix": "Loader debuggen — wahrscheinlich exception in DB-Query oder Schema-Mismatch",
+    "shot": "106-rechnungen-bug"
+  },
+  {
+    "severity": "NICE",
+    "page": "/app/inbox",
+    "tried": "Tabs / Filter zählen",
+    "happened": "0 Tabs gefunden",
+    "expected": "Mind. 'Offen' / 'Genehmigt' / 'Abgelehnt' Tabs",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/api/search",
+    "tried": "API-Search unauth",
+    "happened": "Status 200",
+    "expected": "401 wenn unauth, 200 wenn auth",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "Mobile bottom-bar",
+    "tried": "Auf 'Audit Inbox' in Bottom-Bar tippen",
+    "happened": "URL: http://127.0.0.1:5175/app/inbox",
+    "expected": "/app/inbox",
+    "fix": "—"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/sign-in",
+    "tried": "Logo auf Sign-in Seite suchen",
+    "happened": "Kein Logo / Branding sichtbar",
+    "expected": "Vereinslogo + Name in Top-Bereich der Sign-in Seite",
+    "fix": "Logo + 'Folge der Wolke e.V.' oben auf /sign-in"
+  },
+  {
+    "severity": "NICE",
+    "page": "/sign-in",
+    "tried": "Hilfetext für 'Was passiert nach dem Senden' suchen",
+    "happened": "Nichts erklärendes",
+    "expected": "Hinweis dass eine E-Mail in 1-2 Minuten kommt, ggf. Spam prüfen",
+    "fix": "Erklärtext am Ende des Formulars"
+  },
+  {
+    "severity": "NICE",
+    "page": "/sign-out (anonymous)",
+    "tried": "Sign-out ohne Session aufrufen",
+    "happened": "URL: http://127.0.0.1:5175/sign-out, status: 500",
+    "expected": "Keine 500, leiser Redirect",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/favicon",
+    "tried": "Favicon abrufen (.ico und .svg)",
+    "happened": "ico=404, svg=404",
+    "expected": "Mindestens eine 200",
+    "fix": "favicon ergänzen"
+  }
+]

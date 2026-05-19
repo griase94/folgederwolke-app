@@ -20,6 +20,7 @@ import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 import { sendMail } from "$lib/server/mail/index.js";
 import { driveFileStorage } from "$lib/server/files/drive-impl.js";
 import type { FileStorage } from "$lib/server/files/storage.js";
+import { verifyAuditChain } from "$lib/server/audit-log/verifier.js";
 
 // ---------------------------------------------------------------------------
 // Cleanup helpers
@@ -141,6 +142,54 @@ export async function retryFailedDriveUploads(
   }
 
   return { attempted: rows.length, succeeded, failed };
+}
+
+// ---------------------------------------------------------------------------
+// Audit-chain nightly verifier (ADR-0004, Phase 7.5)
+// ---------------------------------------------------------------------------
+
+export interface AuditVerifyResult {
+  ok: boolean;
+  rowsChecked: number;
+  preGenesisSkipped: number;
+  breakCount: number;
+  /** First few breaks for the dispatcher response payload; full list in logs. */
+  breaksPreview: Array<{
+    chainSeq: number;
+    rowId: string;
+    kind: string;
+  }>;
+  head: number | null;
+}
+
+/**
+ * Run the audit-log chain verifier. Returns a flat result the dispatcher
+ * can log/persist. Never throws on chain breaks — they are reported in the
+ * response so the caller can decide whether to alert.
+ */
+export async function runAuditChainVerification(): Promise<AuditVerifyResult> {
+  const result = await verifyAuditChain();
+  if (!result.ok) {
+    // Surface in serverless logs immediately. Off-Postgres anchoring is the
+    // ultimate guarantee; this is a fast-path detector.
+    console.error("[cron/audit-verify] CHAIN BREAKS DETECTED", {
+      rowsChecked: result.rowsChecked,
+      breakCount: result.breaks.length,
+      breaks: result.breaks.slice(0, 10),
+    });
+  }
+  return {
+    ok: result.ok,
+    rowsChecked: result.rowsChecked,
+    preGenesisSkipped: result.preGenesisSkipped,
+    breakCount: result.breaks.length,
+    breaksPreview: result.breaks.slice(0, 5).map((b) => ({
+      chainSeq: b.chainSeq,
+      rowId: b.rowId,
+      kind: b.kind,
+    })),
+    head: result.head,
+  };
 }
 
 // ---------------------------------------------------------------------------

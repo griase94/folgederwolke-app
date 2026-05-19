@@ -19,6 +19,7 @@ import type { Cookies } from "@sveltejs/kit";
 import { getDb } from "$lib/server/db/index.js";
 import { magicLinks, sessions, users } from "$lib/server/db/schema/users.js";
 import { canonicalizeEmail } from "$lib/domain/email.js";
+import { ipToPrefix } from "$lib/domain/ip.js";
 import { sendMail } from "$lib/server/mail/index.js";
 import { sha256 } from "./hash.js";
 import {
@@ -42,6 +43,8 @@ export { RateLimitError } from "./rate-limit.js";
 export interface RequestMeta {
   ip: string;
   ua: string;
+  /** Origin of the current request (e.g. http://127.0.0.1:5175), used as fallback when PUBLIC_BASE_URL/ORIGIN are unset. */
+  origin?: string;
 }
 
 export interface SessionUser {
@@ -82,7 +85,7 @@ export async function issueMagicLink(
     // MUST-fix #3: consume rate-limit slot, perform constant-time hash,
     // do NOT send real email, do NOT reveal admin status.
     sha256(randomBytes(32).toString("base64url")); // no-op nonce hash
-    return { ok: true, message: "Check your inbox 💌" };
+    return { ok: true, message: "Schau in dein Postfach 💌" };
   }
 
   // Dedup: if a non-consumed, non-expired link was issued <60s ago, skip new insert
@@ -98,7 +101,7 @@ export async function issueMagicLink(
 
   if (recentLink) {
     // MUST-fix #9: dedup — skip insert + send (no inbox spam)
-    return { ok: true, message: "Check your inbox 💌" };
+    return { ok: true, message: "Schau in dein Postfach 💌" };
   }
 
   // Issue new magic link
@@ -106,24 +109,50 @@ export async function issueMagicLink(
   const tokenHash = sha256(rawToken);
   const expiresAt = new Date(Date.now() + 15 * 60_000);
 
-  await db.insert(magicLinks).values({
-    tokenHash,
-    emailCanonical: canonical,
-    expiresAt,
-  });
+  const [magicLinkRow] = await db
+    .insert(magicLinks)
+    .values({
+      tokenHash,
+      emailCanonical: canonical,
+      expiresAt,
+    })
+    .returning({ id: magicLinks.id });
 
-  // Determine base URL from env or fallback
-  const baseUrl = (
-    process.env["PUBLIC_BASE_URL"] ??
-    process.env["ORIGIN"] ??
-    ""
-  ).replace(/\/$/, "");
+  // Determine base URL for the magic-link target.
+  //
+  // SECURITY: this must NEVER come from a Host-header-derived value in
+  // production. An attacker who POSTs to /sign-in with a forged Host can
+  // otherwise cause the victim's magic-link email to point at their domain
+  // (full token theft). See docs/reviews/2026-05-19-security-review.md CRIT-2.
+  //
+  // Resolution order:
+  //   1. PUBLIC_BASE_URL env (canonical prod URL)
+  //   2. ORIGIN env (SvelteKit convention, also used by adapter-node CSRF)
+  //   3. meta.origin from the request — ONLY in dev (NODE_ENV !== "production"),
+  //      so the local dev experience doesn't break when env is unset.
+  const isProd = (process.env["NODE_ENV"] ?? "").toLowerCase() === "production";
+  const envBaseUrl =
+    process.env["PUBLIC_BASE_URL"] || process.env["ORIGIN"] || "";
+  const baseUrl = (envBaseUrl || (isProd ? "" : meta.origin || "")).replace(
+    /\/$/,
+    "",
+  );
+
+  if (!baseUrl) {
+    // Better to fail loudly than to send a broken/forged URL.
+    throw new Error(
+      "Cannot issue magic link: no PUBLIC_BASE_URL / ORIGIN configured and no request origin available.",
+    );
+  }
   const verifyUrl = `${baseUrl}/sign-in/verify?token=${rawToken}`;
 
+  // Each magic_link issuance is a distinct event — use the magic_links.id as
+  // entity_id so the sent_mails UNIQUE(template, entity_kind, entity_id,
+  // send_attempt) index does not collapse all sends (NULLS NOT DISTINCT).
   await sendMail({
     template: "magic_link",
     entity_kind: "user",
-    entity_id: null,
+    entity_id: magicLinkRow!.id,
     to: canonical,
     props: { magicUrl: verifyUrl, email: canonical, expiresInMinutes: 15 },
   });
@@ -131,7 +160,7 @@ export async function issueMagicLink(
   // Device-binding intent cookie (MUST-fix #7)
   setIntentCookie(cookies, tokenHash);
 
-  return { ok: true, message: "Check your inbox 💌" };
+  return { ok: true, message: "Schau in dein Postfach 💌" };
 }
 
 // ---------------------------------------------------------------------------
@@ -197,7 +226,7 @@ export async function consumeMagicLink(
           entityId: null,
           actorUserId: null,
           actorKind: "system",
-          actorIpPrefix: meta.ip,
+          actorIpPrefix: ipToPrefix(meta.ip),
           payload: { email, reason: "NOT_ADMIN" },
         },
         tx,
@@ -233,7 +262,7 @@ export async function consumeMagicLink(
         entityId: null,
         actorUserId: user.id,
         actorKind: "user",
-        actorIpPrefix: meta.ip,
+        actorIpPrefix: ipToPrefix(meta.ip),
         payload: { email },
       },
       tx,
@@ -322,6 +351,15 @@ export async function resolveSession(
   });
   if (!user) return null;
 
+  // Re-check the admin allowlist on every request. Without this, removing
+  // a user from ADMIN_EMAILS has no effect for up to 30 days (the session
+  // absolute lifetime). Flagged by the 2026-05-19 security review (CRIT-3).
+  if (!isAdminEmail(user.emailCanonical)) {
+    await db.delete(sessions).where(eq(sessions.id, row.id));
+    clearSessionCookie(cookies);
+    return null;
+  }
+
   return {
     session: row,
     user: {
@@ -351,15 +389,21 @@ export async function signOut(
   }
   clearSessionCookie(cookies);
 
-  await logAudit({
-    action: "sign_out",
-    entityKind: "session",
-    entityId: null,
-    actorUserId: userId,
-    actorKind: "user",
-    actorIpPrefix: meta.ip,
-    payload: {},
-  });
+  // signOut is invoked even on GET /sign-out from anonymous visitors. Skip
+  // the audit row in that case — userId is null, actorKind would mis-label
+  // it as "user", and FK actorUserId NULL is fine but the row carries no
+  // useful signal.
+  if (userId) {
+    await logAudit({
+      action: "sign_out",
+      entityKind: "session",
+      entityId: null,
+      actorUserId: userId,
+      actorKind: "user",
+      actorIpPrefix: ipToPrefix(meta.ip),
+      payload: {},
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -387,7 +431,7 @@ export async function signOutEverywhere(
     entityId: null,
     actorUserId: userId,
     actorKind: "user",
-    actorIpPrefix: meta.ip,
+    actorIpPrefix: ipToPrefix(meta.ip),
     payload: { everywhere: true },
   });
 }

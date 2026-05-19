@@ -8,7 +8,7 @@
 
 import { redirect } from "@sveltejs/kit";
 import type { PageServerLoad } from "./$types.js";
-import { env } from "$lib/server/env.js";
+import { isPublicFormEnabled } from "$lib/server/env.js";
 import { resolveSession } from "$lib/server/auth/index.js";
 
 export const load: PageServerLoad = async ({ cookies }) => {
@@ -18,7 +18,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
     throw redirect(302, "/app");
   }
 
-  if (env.PUBLIC_FORM_ENABLED) {
+  if (isPublicFormEnabled()) {
     throw redirect(302, "/auslage-einreichen");
   }
 

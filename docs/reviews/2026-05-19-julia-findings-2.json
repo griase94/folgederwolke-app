@@ -1,0 +1,435 @@
+[
+  {
+    "severity": "SHOULD",
+    "page": "/auslage-eingereicht",
+    "tried": "Success page direkt ohne ?id= aufrufen (z.B. Lesezeichen)",
+    "happened": "Body: ' ✓ Vielen Dank! Deine Auslage wurde erfolgreich eingereicht. Wir haben sie unter der folgenden Kennung gespeichert: Deine Einreichung wurde gespeichert. Falls du eine Bestätigungs-E-Mail erwar'",
+    "expected": "Sinnvolle Seite — entweder Redirect zur Form oder freundlicher Hinweis 'Hier landet man nach Einreichung'",
+    "fix": "Loader prüft id und redirected zu /auslage-einreichen wenn fehlt",
+    "shot": "80-eingereicht-no-id"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/auslage-eingereicht?id=AUS-2099-99999",
+    "tried": "Success page mit erfundener AUS-ID",
+    "happened": "Inhalt: ' ✓ Vielen Dank! Deine Auslage wurde erfolgreich eingereicht. Wir haben sie unter der folgenden Kennung gespeichert: Deine Einreichungs-ID AUS-2099-99999 Du kannst den Status deiner Einreichung'",
+    "expected": "404 oder Hinweis dass die ID unbekannt ist",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/auslage-einreichen (375x700)",
+    "tried": "Auf Mobile Form scrollen, prüfen ob Sticky-CTA das aktive Eingabefeld verdeckt",
+    "happened": "Kein direkter Overlap erkannt",
+    "expected": "CTA sollte beim Tippen nach unten ausweichen (visualViewport handler existiert, scheint aber nicht zu greifen)",
+    "fix": "VisualViewport handler prüfen + bottom-padding der Form erhöhen (`pb-32` reicht evtl. nicht)",
+    "shot": "82-mobile-cta-overlap"
+  },
+  {
+    "severity": "NICE",
+    "page": "/app/inbox",
+    "tried": "Auf 'Manuell hinzufügen' geklickt",
+    "happened": "Dialog geöffnet",
+    "expected": "Dialog / Form um manuell eine Einreichung anzulegen",
+    "fix": "—",
+    "shot": "83-inbox-manuell-add"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/app",
+    "tried": "'Inbox öffnen' Button auf Dashboard angeklickt",
+    "happened": "URL: http://127.0.0.1:5175/app",
+    "expected": "Navigiert zu /app/inbox",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/app",
+    "tried": "'Transaktionen öffnen' Button-Status prüfen (sah ausgegraut aus)",
+    "happened": "disabled=undefined",
+    "expected": "Wenn ausgegraut, dann auch disabled — sonst inkonsistent",
+    "fix": "—"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/app",
+    "tried": "Cmd+K für globale Suche drücken (Hinweis '⌘K' im Suchfeld sichtbar)",
+    "happened": "Kein Suchdialog erschien",
+    "expected": "Globale Suche öffnet sich als Modal",
+    "fix": "Keyboard-Shortcut binden"
+  }
+][
+  {
+    "severity": "SHOULD",
+    "page": "/app (avatar)",
+    "tried": "Auf das Avatar-Icon rechts oben klicken",
+    "happened": "Kein Menü öffnet sich",
+    "expected": "Dropdown mit Profil / Abmelden",
+    "fix": "Avatar-Menü implementieren",
+    "shot": "86-avatar-click"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/sign-out",
+    "tried": "Aufruf von /sign-out",
+    "happened": "URL: http://127.0.0.1:5175/sign-out, session-cookie: HyYvHG85WQdsT-TANihwUt9dVN6L-lka0T0m14W_GaI.4d241138d1635d92d8a0280f6d10dbfc64d1ba4331115a0fa8ded13c0d4d5c06",
+    "expected": "Cookie weg, Redirect zu /sign-in oder /",
+    "fix": "—"
+  },
+  {
+    "severity": "MUST",
+    "page": "/app nach sign-out",
+    "tried": "/app nach abmelden aufrufen",
+    "happened": "URL: http://127.0.0.1:5175/app, status: 200",
+    "expected": "Redirect zu /sign-in",
+    "fix": "Auth guard fixen"
+  },
+  {
+    "severity": "NICE",
+    "page": "/auslage-einreichen",
+    "tried": "Versucht XSS in Bezeichnung: '<script>alert(1)</script>'",
+    "happened": "Eingabefeld zeigt: '<script>alert(1)</script>' (input-Felder rendern Text — kein XSS direkt)",
+    "expected": "Server escaped, Client zeigt sauber",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/auslage-einreichen",
+    "tried": "Cyrillisch + Emoji in Bezeichnung tippen",
+    "happened": "Eingabe akzeptiert (Anzeige normal)",
+    "expected": "—",
+    "fix": "—"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/auslage-einreichen",
+    "tried": "Betrag 0,00 eingeben, blur",
+    "happened": "Kein Fehler erkannt",
+    "expected": "Hinweis 'Betrag muss > 0 sein'",
+    "fix": "—"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/auslage-einreichen",
+    "tried": "Negativer Betrag -50,00",
+    "happened": "Kein Fehler",
+    "expected": "Hinweis 'Negative Beträge nicht erlaubt'",
+    "fix": "parseBetragCents Vorzeichen prüfen"
+  },
+  {
+    "severity": "NICE",
+    "page": "/auslage-einreichen",
+    "tried": "Mega-Betrag 1.000.000.000,00 EUR",
+    "happened": "Kein Fehler — wird wohl akzeptiert (zumindest client-side)",
+    "expected": "Obergrenze + Hinweis (z.B. max 100.000,00 €)",
+    "fix": "Serverseitige Validierung muss ein cap haben"
+  },
+  {
+    "severity": "NICE",
+    "page": "/auslage-einreichen",
+    "tried": "Betrag mit Punkt '12.50' statt Komma '12,50' tippen",
+    "happened": "Akzeptiert — gut, Dual-Mode",
+    "expected": "Beide Formate akzeptieren (Englische Nutzer tippen 12.50)",
+    "fix": "—"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/sign-in/verify (other browser)",
+    "tried": "Magic-Link in einem komplett anderen Browser-Kontext öffnen",
+    "happened": "Keine Warnung sichtbar",
+    "expected": "'Du bist auf einem anderen Gerät' Hinweis mit 'Trotzdem fortfahren' Button",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/healthz",
+    "tried": "Healthcheck abrufen",
+    "happened": "Status 200",
+    "expected": "200 mit ok",
+    "fix": "—"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "Breadcrumb 'Start'",
+    "tried": "Auf 'Start' im Breadcrumb klicken",
+    "happened": "URL: http://127.0.0.1:5175/app/einstellungen",
+    "expected": "Navigiert zu /app",
+    "fix": "—"
+  }
+][
+  {
+    "severity": "NICE",
+    "page": "/app/dsgvo",
+    "tried": "Auskunft für nicht-existente E-Mail",
+    "happened": "Body-Auszug: ' Zum Inhalt springen FW JU FW Folge der Wolke Heute Audit Inbox Transaktionen Mitglieder Rechnungen Projekte Kunden Jahresabschluss Einstellungen Mehr JU juliaschwarz97@web.de juliaschwarz97@web.de Start/ DSGVO Folge der Wolke ⌘K JU 500 Ein Fehler ist aufgetreten Internal Error Zurück zum Dashboard Zurück Heute Audit Inbox Transaktionen Mitglieder Neu Fehler – '",
+    "expected": "Hinweis 'keine Daten gefunden' oder leere Auskunft",
+    "fix": "—",
+    "shot": "91-dsgvo-noexist"
+  },
+  {
+    "severity": "NICE",
+    "page": "Bottom Tab Bar (mobile)",
+    "tried": "Tab 'Heute' suchen",
+    "happened": "Nicht sichtbar",
+    "expected": "Tab sichtbar",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "Bottom Tab Bar (mobile)",
+    "tried": "Tab 'Audit Inbox' suchen",
+    "happened": "Nicht sichtbar",
+    "expected": "Tab sichtbar",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "Bottom Tab Bar (mobile)",
+    "tried": "Tab 'Transaktionen' suchen",
+    "happened": "Nicht sichtbar",
+    "expected": "Tab sichtbar",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "Bottom Tab Bar (mobile)",
+    "tried": "Tab 'Mitglieder' suchen",
+    "happened": "Nicht sichtbar",
+    "expected": "Tab sichtbar",
+    "fix": "—"
+  }
+][
+  {
+    "severity": "NICE",
+    "page": "any",
+    "tried": "CSP-Header prüfen ob Nonce-basierte Inline-Scripts erlaubt werden",
+    "happened": "Nonce vorhanden",
+    "expected": "Strict CSP mit nonce",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/api/health",
+    "tried": "/api/health prüfen",
+    "happened": "Status 200",
+    "expected": "200",
+    "fix": "—"
+  }
+][
+  {
+    "severity": "SHOULD",
+    "page": "/auslage-eingereicht",
+    "tried": "Success page direkt ohne ?id= aufrufen (z.B. Lesezeichen)",
+    "happened": "Body: ' ✓ Vielen Dank! Deine Auslage wurde erfolgreich eingereicht. Wir haben sie unter der folgenden Kennung gespeichert: Deine Einreichung wurde gespeichert. Falls du eine Bestätigungs-E-Mail erwar'",
+    "expected": "Sinnvolle Seite — entweder Redirect zur Form oder freundlicher Hinweis 'Hier landet man nach Einreichung'",
+    "fix": "Loader prüft id und redirected zu /auslage-einreichen wenn fehlt",
+    "shot": "80-eingereicht-no-id"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/auslage-eingereicht?id=AUS-2099-99999",
+    "tried": "Success page mit erfundener AUS-ID",
+    "happened": "Inhalt: ' ✓ Vielen Dank! Deine Auslage wurde erfolgreich eingereicht. Wir haben sie unter der folgenden Kennung gespeichert: Deine Einreichungs-ID AUS-2099-99999 Du kannst den Status deiner Einreichung'",
+    "expected": "404 oder Hinweis dass die ID unbekannt ist",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/auslage-einreichen (375x700)",
+    "tried": "Auf Mobile Form scrollen, prüfen ob Sticky-CTA das aktive Eingabefeld verdeckt",
+    "happened": "Kein direkter Overlap erkannt",
+    "expected": "CTA sollte beim Tippen nach unten ausweichen (visualViewport handler existiert, scheint aber nicht zu greifen)",
+    "fix": "VisualViewport handler prüfen + bottom-padding der Form erhöhen (`pb-32` reicht evtl. nicht)",
+    "shot": "82-mobile-cta-overlap"
+  },
+  {
+    "severity": "NICE",
+    "page": "/app/inbox",
+    "tried": "Auf 'Manuell hinzufügen' geklickt",
+    "happened": "Dialog geöffnet",
+    "expected": "Dialog / Form um manuell eine Einreichung anzulegen",
+    "fix": "—",
+    "shot": "83-inbox-manuell-add"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/app",
+    "tried": "'Inbox öffnen' Button auf Dashboard angeklickt",
+    "happened": "URL: http://127.0.0.1:5175/app",
+    "expected": "Navigiert zu /app/inbox",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/app",
+    "tried": "'Transaktionen öffnen' Button-Status prüfen (sah ausgegraut aus)",
+    "happened": "disabled=undefined",
+    "expected": "Wenn ausgegraut, dann auch disabled — sonst inkonsistent",
+    "fix": "—"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/app",
+    "tried": "Cmd+K für globale Suche drücken (Hinweis '⌘K' im Suchfeld sichtbar)",
+    "happened": "Kein Suchdialog erschien",
+    "expected": "Globale Suche öffnet sich als Modal",
+    "fix": "Keyboard-Shortcut binden"
+  }
+][
+  {
+    "severity": "SHOULD",
+    "page": "/app (avatar)",
+    "tried": "Auf das Avatar-Icon rechts oben klicken",
+    "happened": "Kein Menü öffnet sich",
+    "expected": "Dropdown mit Profil / Abmelden",
+    "fix": "Avatar-Menü implementieren",
+    "shot": "86-avatar-click"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/sign-out",
+    "tried": "Aufruf von /sign-out",
+    "happened": "URL: http://127.0.0.1:5175/sign-out, session-cookie: 7U68arSYDJoKYsCw_Vq9IDaxaZniXNNEZVD97SShj44.56665ee7e382d0bcb434227d50a44d535fac088e3e592471d71dd586cfd58eea",
+    "expected": "Cookie weg, Redirect zu /sign-in oder /",
+    "fix": "—"
+  },
+  {
+    "severity": "MUST",
+    "page": "/app nach sign-out",
+    "tried": "/app nach abmelden aufrufen",
+    "happened": "URL: http://127.0.0.1:5175/app, status: 200",
+    "expected": "Redirect zu /sign-in",
+    "fix": "Auth guard fixen"
+  },
+  {
+    "severity": "NICE",
+    "page": "/auslage-einreichen",
+    "tried": "Versucht XSS in Bezeichnung: '<script>alert(1)</script>'",
+    "happened": "Eingabefeld zeigt: '<script>alert(1)</script>' (input-Felder rendern Text — kein XSS direkt)",
+    "expected": "Server escaped, Client zeigt sauber",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/auslage-einreichen",
+    "tried": "Cyrillisch + Emoji in Bezeichnung tippen",
+    "happened": "Eingabe akzeptiert (Anzeige normal)",
+    "expected": "—",
+    "fix": "—"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/auslage-einreichen",
+    "tried": "Betrag 0,00 eingeben, blur",
+    "happened": "Kein Fehler erkannt",
+    "expected": "Hinweis 'Betrag muss > 0 sein'",
+    "fix": "—"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/auslage-einreichen",
+    "tried": "Negativer Betrag -50,00",
+    "happened": "Kein Fehler",
+    "expected": "Hinweis 'Negative Beträge nicht erlaubt'",
+    "fix": "parseBetragCents Vorzeichen prüfen"
+  },
+  {
+    "severity": "NICE",
+    "page": "/auslage-einreichen",
+    "tried": "Mega-Betrag 1.000.000.000,00 EUR",
+    "happened": "Kein Fehler — wird wohl akzeptiert (zumindest client-side)",
+    "expected": "Obergrenze + Hinweis (z.B. max 100.000,00 €)",
+    "fix": "Serverseitige Validierung muss ein cap haben"
+  },
+  {
+    "severity": "NICE",
+    "page": "/auslage-einreichen",
+    "tried": "Betrag mit Punkt '12.50' statt Komma '12,50' tippen",
+    "happened": "Akzeptiert — gut, Dual-Mode",
+    "expected": "Beide Formate akzeptieren (Englische Nutzer tippen 12.50)",
+    "fix": "—"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "/sign-in/verify (other browser)",
+    "tried": "Magic-Link in einem komplett anderen Browser-Kontext öffnen",
+    "happened": "Keine Warnung sichtbar",
+    "expected": "'Du bist auf einem anderen Gerät' Hinweis mit 'Trotzdem fortfahren' Button",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/healthz",
+    "tried": "Healthcheck abrufen",
+    "happened": "Status 200",
+    "expected": "200 mit ok",
+    "fix": "—"
+  },
+  {
+    "severity": "SHOULD",
+    "page": "Breadcrumb 'Start'",
+    "tried": "Auf 'Start' im Breadcrumb klicken",
+    "happened": "URL: http://127.0.0.1:5175/app/einstellungen",
+    "expected": "Navigiert zu /app",
+    "fix": "—"
+  }
+][
+  {
+    "severity": "NICE",
+    "page": "/app/dsgvo",
+    "tried": "Auskunft für nicht-existente E-Mail",
+    "happened": "Body-Auszug: ' Zum Inhalt springen FW JU FW Folge der Wolke Heute Audit Inbox Transaktionen Mitglieder Rechnungen Projekte Kunden Jahresabschluss Einstellungen Mehr JU juliaschwarz97@web.de juliaschwarz97@web.de Start/ DSGVO Folge der Wolke ⌘K JU 500 Ein Fehler ist aufgetreten Internal Error Zurück zum Dashboard Zurück Heute Audit Inbox Transaktionen Mitglieder Neu Fehler – '",
+    "expected": "Hinweis 'keine Daten gefunden' oder leere Auskunft",
+    "fix": "—",
+    "shot": "91-dsgvo-noexist"
+  },
+  {
+    "severity": "NICE",
+    "page": "Bottom Tab Bar (mobile)",
+    "tried": "Tab 'Heute' suchen",
+    "happened": "Nicht sichtbar",
+    "expected": "Tab sichtbar",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "Bottom Tab Bar (mobile)",
+    "tried": "Tab 'Audit Inbox' suchen",
+    "happened": "Nicht sichtbar",
+    "expected": "Tab sichtbar",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "Bottom Tab Bar (mobile)",
+    "tried": "Tab 'Transaktionen' suchen",
+    "happened": "Nicht sichtbar",
+    "expected": "Tab sichtbar",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "Bottom Tab Bar (mobile)",
+    "tried": "Tab 'Mitglieder' suchen",
+    "happened": "Nicht sichtbar",
+    "expected": "Tab sichtbar",
+    "fix": "—"
+  }
+][
+  {
+    "severity": "NICE",
+    "page": "any",
+    "tried": "CSP-Header prüfen ob Nonce-basierte Inline-Scripts erlaubt werden",
+    "happened": "Nonce vorhanden",
+    "expected": "Strict CSP mit nonce",
+    "fix": "—"
+  },
+  {
+    "severity": "NICE",
+    "page": "/api/health",
+    "tried": "/api/health prüfen",
+    "happened": "Status 200",
+    "expected": "200",
+    "fix": "—"
+  }
+]

@@ -39,7 +39,7 @@
 						<!-- Header -->
 						<tr>
 							<td
-								style="background:linear-gradient(135deg,oklch(0.43 0.20 350) 0%,oklch(0.32 0.18 350) 100%);padding:30px 40px;"
+								style="background:#be185d;padding:30px 40px;"
 							>
 								<p
 									style="margin:0;color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;"
@@ -47,7 +47,7 @@
 									Folge der Wolke e.V.
 								</p>
 								<p style="margin:4px 0 0 0;color:#FBCFE8;font-size:13px;">
-									Ein Liebesbrief von den Finanz-Gschaftler:innen
+									Ein Liebesbrief von den Finanz-Geschäftler:innen
 								</p>
 							</td>
 						</tr>
@@ -55,7 +55,7 @@
 						<!-- Body -->
 						<tr>
 							<td style="padding:36px 40px;line-height:1.6;font-size:14px;">
-								<p style="margin:0 0 14px 0;font-size:16px;color:oklch(0.43 0.20 350);">
+								<p style="margin:0 0 14px 0;font-size:16px;color:#be185d;">
 									<strong>Liebste:r {vorname},</strong>
 								</p>
 								<p style="margin:0 0 18px 0;">
@@ -122,7 +122,7 @@
 
 								<!-- Grund card -->
 								<p style="margin:0 0 8px 0;">
-									<strong style="color:oklch(0.43 0.20 350);">Unsere Begründung:</strong>
+									<strong style="color:#be185d;">Unsere Begründung:</strong>
 								</p>
 								<table
 									role="presentation"
@@ -146,9 +146,9 @@
 									das jederzeit über das Auslagen-Formular tun. Bei Fragen — schreib uns einfach
 									zurück.
 								</p>
-								<p style="margin:0;font-size:15px;color:oklch(0.43 0.20 350);">
+								<p style="margin:0;font-size:15px;color:#be185d;">
 									Mit besten Grüßen 💋<br /><strong
-										>deine Folge der Wolke Finanz-Gschaftler:innen</strong
+										>deine Folge der Wolke Finanz-Geschäftler:innen</strong
 									>
 								</p>
 							</td>

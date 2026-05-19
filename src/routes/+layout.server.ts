@@ -7,10 +7,10 @@
  */
 
 import type { LayoutServerLoad } from "./$types.js";
-import { env } from "$lib/server/env.js";
+import { isPublicFormEnabled } from "$lib/server/env.js";
 
 export const load: LayoutServerLoad = () => {
   return {
-    publicFormEnabled: env.PUBLIC_FORM_ENABLED,
+    publicFormEnabled: isPublicFormEnabled(),
   };
 };

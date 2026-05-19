@@ -8,6 +8,7 @@
  *   2. Delete expired / stale sessions
  *   3. Delete old rate_limit_attempts (> 1 hour)
  *   4. Retry failed Drive uploads for invoices (best-effort, batch of 10)
+ *   5. Verify audit_log hash chain (ADR-0004 Phase 7.5)
  *
  * Auth: CRON_SECRET header required (Vercel Authorization: Bearer <secret>).
  *
@@ -20,6 +21,7 @@ import {
   cleanupSessions,
   cleanupRateLimitAttempts,
   retryFailedDriveUploads,
+  runAuditChainVerification,
 } from "$lib/server/domain/cron-tasks.js";
 import { env } from "$lib/server/env.js";
 
@@ -74,6 +76,19 @@ export const GET: RequestHandler = async ({ request }) => {
   } catch (err) {
     errors.drive_retry = err instanceof Error ? err.message : String(err);
     console.error("[cron/daily-dispatcher] drive retry failed:", err);
+  }
+
+  // 5. Audit-chain verification (ADR-0004). Chain breaks land as
+  //    `errors.audit_chain` so the response shape signals an alert.
+  try {
+    const auditResult = await runAuditChainVerification();
+    results.audit_chain = auditResult;
+    if (!auditResult.ok) {
+      errors.audit_chain = `audit chain broken: ${auditResult.breakCount} mismatch(es) detected (head=${auditResult.head})`;
+    }
+  } catch (err) {
+    errors.audit_chain = err instanceof Error ? err.message : String(err);
+    console.error("[cron/daily-dispatcher] audit chain verify failed:", err);
   }
 
   const hasErrors = Object.keys(errors).length > 0;
