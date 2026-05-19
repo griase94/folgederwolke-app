@@ -176,7 +176,9 @@ export async function runPreflight(
     let remaining = 5000;
     try {
       remaining = JSON.parse(r.stdout).resources.core.remaining;
-    } catch {}
+    } catch {
+      // tolerate gh CLI not yet authenticated / network blip — keep default 5000
+    }
     checks.push(
       check(
         "gh-rate-limit-headroom",
