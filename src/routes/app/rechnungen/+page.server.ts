@@ -1,72 +1,33 @@
 /**
  * /app/rechnungen — list of all invoices the Verein has issued.
  *
- * load()  → all invoices, newest first, joined with customer name + flagged
- *           with whether they have been superseded by a newer correction.
+ * load()  → invoices joined with customer name + flagged with whether they
+ *           have been superseded by a newer correction.
+ *
+ *           Honours two URL searchParams (used by the dashboard chip
+ *           "Offene Rechnungen" — links to ?status=offen&year=<year>):
+ *             - status: "offen" | "bezahlt" | "überfällig" | "alle"
+ *             - year:   integer (Buchungsjahr, defaults to current
+ *                       Berlin year per ADR-0001 / yearForBooking)
+ *           Anything unknown falls back to defaults so a hand-typed garbage
+ *           URL doesn't 500.
  *
  * Actions live on the [id] / new sub-routes — this list page is read-only.
  */
 
-import { desc, eq, isNotNull } from "drizzle-orm";
 import type { PageServerLoad } from "./$types.js";
-import { getDb } from "$lib/server/db/index.js";
-import { invoices } from "$lib/server/db/schema/invoices.js";
-import { customers } from "$lib/server/db/schema/customers.js";
-import type {
-  InvoicePdfStatus,
-  InvoiceDriveStatus,
-  InvoiceRow,
-} from "$lib/domain/invoices.js";
+import { listInvoices } from "$lib/server/domain/invoices.js";
+import { parseInvoiceFilters } from "$lib/domain/invoices.js";
+import { yearForBooking } from "$lib/domain/year.js";
 
-export const load: PageServerLoad = async () => {
-  const db = getDb();
+export const load: PageServerLoad = async ({ url }) => {
+  const defaultYear = yearForBooking(new Date());
+  const filters = parseInvoiceFilters(url.searchParams, defaultYear);
 
-  // Newest first
-  const rows = await db
-    .select({
-      inv: invoices,
-      customerName: customers.name,
-    })
-    .from(invoices)
-    .leftJoin(customers, eq(customers.id, invoices.customerId))
-    .orderBy(desc(invoices.createdAt));
+  const items = await listInvoices({
+    status: filters.status,
+    year: filters.year,
+  });
 
-  // Build a lookup of supersedesId → newer invoice's business id so the row
-  // can show "ersetzt durch FDW-2026-007".
-  const supersedesRows = await db
-    .select({
-      id: invoices.id,
-      businessId: invoices.businessId,
-      supersedesId: invoices.supersedesId,
-    })
-    .from(invoices)
-    .where(isNotNull(invoices.supersedesId));
-  const supersededByMap = new Map<string, string>();
-  for (const r of supersedesRows) {
-    if (r.supersedesId) supersededByMap.set(r.supersedesId, r.businessId);
-  }
-
-  const items: InvoiceRow[] = rows.map(({ inv, customerName }) => ({
-    id: inv.id,
-    businessId: inv.businessId,
-    rechnungsdatum: inv.rechnungsdatum,
-    customerId: inv.customerId,
-    customerName: customerName ?? inv.customerNameSnapshot,
-    bezeichnung: inv.bezeichnung,
-    nettoCents: Number(inv.nettoCents),
-    bruttoCents: Number(inv.bruttoCents),
-    currency: inv.currency,
-    pdfStatus: inv.pdfStatus as InvoicePdfStatus,
-    driveStatus: (inv.driveStatus ?? null) as InvoiceDriveStatus,
-    drivePdfFileId: inv.drivePdfFileId ?? null,
-    hasPdfBytes: inv.pdfBytes !== null && inv.pdfBytes !== undefined,
-    festgeschriebenAt: inv.festgeschriebenAt
-      ? inv.festgeschriebenAt.toISOString()
-      : null,
-    supersedesId: inv.supersedesId ?? null,
-    supersededByBusinessId: supersededByMap.get(inv.id) ?? null,
-    createdAt: inv.createdAt.toISOString(),
-  }));
-
-  return { invoices: items };
+  return { invoices: items, filters };
 };

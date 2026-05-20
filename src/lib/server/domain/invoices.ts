@@ -21,7 +21,7 @@
  * optional convenience storage, not load-bearing.
  */
 
-import { sql, and, eq } from "drizzle-orm";
+import { sql, and, desc, eq, isNotNull, isNull, lt } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "$lib/server/db/index.js";
 import { invoices } from "$lib/server/db/schema/invoices.js";
@@ -38,6 +38,12 @@ import type {
   InvoicePdfRenderer,
   InvoiceRenderInput,
 } from "$lib/server/pdf/invoice.js";
+import type {
+  InvoiceDriveStatus,
+  InvoicePdfStatus,
+  InvoiceRow,
+  RechnungenStatus,
+} from "$lib/domain/invoices.js";
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -694,6 +700,110 @@ export async function supersedeInvoice(
 
 /** Public stable name - Phase 5 callers should use this. */
 export const generatePdf = regeneratePdf;
+
+// ---------------------------------------------------------------------------
+// listInvoices - filtered list for the /app/rechnungen route
+// ---------------------------------------------------------------------------
+
+export interface ListInvoicesOptions {
+  /**
+   * Payment-state filter derived from `bezahlt_am` + `faelligkeits_datum`:
+   *   - "offen"        → bezahlt_am IS NULL
+   *   - "bezahlt"      → bezahlt_am IS NOT NULL
+   *   - "überfällig"   → bezahlt_am IS NULL AND faelligkeits_datum < today
+   *   - "alle" / omitted → no payment-state filter
+   */
+  status?: RechnungenStatus;
+  /** Buchungsjahr (year_of_buchung). Omit to disable year filtering. */
+  year?: number;
+  /** "Today" override for tests — defaults to new Date(). Used to compute
+   * the überfällig cut-off against `faelligkeits_datum`. */
+  now?: Date;
+}
+
+/**
+ * Read-only list of invoices for the admin /app/rechnungen route.
+ *
+ * Filters by Buchungsjahr (via the `year_of_buchung` generated column) and
+ * derived payment status. Joins customers for the visible display name and
+ * builds a "superseded by" lookup so rows can show "ersetzt durch FDW-...".
+ */
+export async function listInvoices(
+  opts: ListInvoicesOptions = {},
+): Promise<InvoiceRow[]> {
+  const db = getDb();
+  const { status, year, now = new Date() } = opts;
+
+  const conditions = [];
+  if (year !== undefined) {
+    conditions.push(eq(invoices.yearOfBuchung, year));
+  }
+  if (status === "offen") {
+    conditions.push(isNull(invoices.bezahltAm));
+  } else if (status === "bezahlt") {
+    conditions.push(isNotNull(invoices.bezahltAm));
+  } else if (status === "überfällig") {
+    const todayIso = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Berlin",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now);
+    conditions.push(isNull(invoices.bezahltAm));
+    conditions.push(lt(invoices.faelligkeitsDatum, todayIso));
+  }
+  // status === "alle" or undefined → no payment-state filter.
+
+  const rows = await db
+    .select({
+      inv: invoices,
+      customerName: customers.name,
+    })
+    .from(invoices)
+    .leftJoin(customers, eq(customers.id, invoices.customerId))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(invoices.createdAt));
+
+  // "superseded by" lookup — second query, scoped to the IDs we just loaded
+  // so we don't accidentally trim it via the filter (a row in the filter set
+  // may be superseded by a row OUTSIDE the filter set).
+  const ids = rows.map((r) => r.inv.id);
+  const supersededByMap = new Map<string, string>();
+  if (ids.length > 0) {
+    const supersedesRows = await db
+      .select({
+        businessId: invoices.businessId,
+        supersedesId: invoices.supersedesId,
+      })
+      .from(invoices)
+      .where(isNotNull(invoices.supersedesId));
+    for (const r of supersedesRows) {
+      if (r.supersedesId) supersededByMap.set(r.supersedesId, r.businessId);
+    }
+  }
+
+  return rows.map(({ inv, customerName }) => ({
+    id: inv.id,
+    businessId: inv.businessId,
+    rechnungsdatum: inv.rechnungsdatum,
+    customerId: inv.customerId,
+    customerName: customerName ?? inv.customerNameSnapshot,
+    bezeichnung: inv.bezeichnung,
+    nettoCents: Number(inv.nettoCents),
+    bruttoCents: Number(inv.bruttoCents),
+    currency: inv.currency,
+    pdfStatus: inv.pdfStatus as InvoicePdfStatus,
+    driveStatus: (inv.driveStatus ?? null) as InvoiceDriveStatus,
+    drivePdfFileId: inv.drivePdfFileId ?? null,
+    hasPdfBytes: inv.pdfBytes !== null && inv.pdfBytes !== undefined,
+    festgeschriebenAt: inv.festgeschriebenAt
+      ? inv.festgeschriebenAt.toISOString()
+      : null,
+    supersedesId: inv.supersedesId ?? null,
+    supersededByBusinessId: supersededByMap.get(inv.id) ?? null,
+    createdAt: inv.createdAt.toISOString(),
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // Live HTML preview - used by the new-invoice route

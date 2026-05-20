@@ -1,0 +1,171 @@
+TDD red-phase bodies for the /app/rechnungen ?status= + ?year= filter wiring.
+
+These were saved before the GREEN commit. Once GREEN lands the live files in
+src/routes/app/rechnungen/page.server.test.ts + tests/e2e/rechnungen-filter.spec.ts
+are the source of truth.
+
+===========================================================================
+File: src/routes/app/rechnungen/page.server.test.ts
+===========================================================================
+/**
+ * @vitest-environment node
+ * @phase-5
+ *
+ * Unit tests for /app/rechnungen `load` — searchParams wiring.
+ *
+ * Background: dashboard chip "Offene Rechnungen" links to
+ *   /app/rechnungen?status=offen&year=2026
+ * but the +page.server.ts load() previously ignored URL params and returned
+ * the full unfiltered list. We mock the domain `listInvoices` and assert that
+ * load() forwards the right ListInvoicesOptions to it.
+ *
+ * We don't hit a real DB — listInvoices is mocked; we test the param-parsing
+ * + delegation seam.
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { ListInvoicesOptions } from "$lib/server/domain/invoices.js";
+
+const { listInvoicesMock } = vi.hoisted(() => ({
+  listInvoicesMock: vi.fn<(opts?: unknown) => Promise<unknown[]>>(async () => []),
+}));
+
+vi.mock("$lib/server/domain/invoices.js", () => ({
+  listInvoices: listInvoicesMock,
+}));
+
+import { load } from "./+page.server.js";
+
+function fakeEvent(search: string) {
+  const url = new URL(`http://localhost/app/rechnungen${search}`);
+  return { url } as Parameters<typeof load>[0];
+}
+
+function callOpts(callIndex = 0): ListInvoicesOptions {
+  const call = listInvoicesMock.mock.calls[callIndex];
+  if (!call) throw new Error(`no listInvoices call at index ${callIndex}`);
+  return call[0] as ListInvoicesOptions;
+}
+
+beforeEach(() => {
+  listInvoicesMock.mockClear();
+});
+
+describe("load: searchParams -> listInvoices options", () => {
+  it("status=offen&year=2026 → forwards status=offen and year=2026", async () => {
+    await load(fakeEvent("?status=offen&year=2026"));
+    expect(listInvoicesMock).toHaveBeenCalledTimes(1);
+    const opts = callOpts();
+    expect(opts.status).toBe("offen");
+    expect(opts.year).toBe(2026);
+  });
+
+  it("unknown status=foo falls back to status='alle' (show all)", async () => {
+    await load(fakeEvent("?status=foo&year=2026"));
+    const opts = listInvoicesMock.mock.calls[0]![0]!;
+    expect(opts.status).toBe("alle");
+    expect(opts.year).toBe(2026);
+  });
+
+  it("no params → defaults to status='alle' + current Berlin year", async () => {
+    await load(fakeEvent(""));
+    const opts = listInvoicesMock.mock.calls[0]![0]!;
+    expect(opts.status).toBe("alle");
+    // Current Berlin year derived via yearForBooking(new Date()).
+    // We check it's a reasonable year >= 2026 — exact value depends on
+    // wall clock during test run.
+    expect(typeof opts.year).toBe("number");
+    expect(opts.year).toBeGreaterThanOrEqual(2026);
+  });
+
+  it("garbage year=abc falls back to default year", async () => {
+    await load(fakeEvent("?status=offen&year=abc"));
+    const opts = listInvoicesMock.mock.calls[0]![0]!;
+    expect(opts.status).toBe("offen");
+    expect(typeof opts.year).toBe("number");
+    expect(opts.year).toBeGreaterThanOrEqual(2026);
+  });
+});
+
+describe("load: returns filters in pageData for the UI banner", () => {
+  it("exposes the active filters under data.filters", async () => {
+    const result = await load(fakeEvent("?status=offen&year=2026"));
+    expect((result as { filters: unknown }).filters).toEqual({
+      status: "offen",
+      year: 2026,
+    });
+  });
+});
+
+===========================================================================
+File: tests/e2e/rechnungen-filter.spec.ts
+===========================================================================
+/**
+ * E2E - chip drilldown @phase-6
+ *
+ * Browses /app/rechnungen?status=offen&year=<current> and asserts that the
+ * "active filter" banner shows up. We don't seed paid + unpaid invoices in
+ * this spec — the route-level behaviour (status reaches the page, banner
+ * renders) is the value here; row-level filtering is covered by the unit
+ * test against listInvoices.
+ */
+
+import { expect, test } from "@playwright/test";
+import { randomBytes, createHash } from "node:crypto";
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+async function signIn(page: import("@playwright/test").Page): Promise<void> {
+  const { default: postgres } = await import("postgres");
+  const client = postgres(process.env["DATABASE_URL"] ?? "", {
+    prepare: false,
+    max: 1,
+  });
+
+  const rawToken = randomBytes(32).toString("base64url");
+  const tokenHash = sha256(rawToken);
+  const expiresAt = new Date(Date.now() + 15 * 60_000);
+  const adminEmail = process.env["TEST_ADMIN_EMAIL"] ?? "admin@example.com";
+
+  await client`
+    INSERT INTO magic_links (token_hash, email_canonical, expires_at)
+    VALUES (${tokenHash}, ${adminEmail}, ${expiresAt})
+  `;
+  await client.end();
+
+  await page.goto(`/sign-in/verify?token=${rawToken}`);
+  const mismatch = page.locator("text=Ja, trotzdem fortfahren");
+  if (await mismatch.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await mismatch.click();
+  }
+  await Promise.all([
+    page.waitForURL(/\/app/, { timeout: 15_000 }),
+    page.click('button[type="submit"]'),
+  ]);
+}
+
+test.beforeEach(async () => {
+  if (!process.env["DATABASE_URL"]) {
+    test.skip();
+  }
+});
+
+test.describe("@phase-6 Rechnungen filter chip", () => {
+  test("?status=offen&year=2026 shows an active-filter banner", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto("/app/rechnungen?status=offen&year=2026");
+    await expect(page).toHaveURL(/status=offen/);
+    await expect(page.getByText(/nur offene/i)).toBeVisible();
+    await expect(page.getByText(/2026/)).toBeVisible();
+  });
+
+  test("no params → no active-filter banner", async ({ page }) => {
+    await signIn(page);
+    await page.goto("/app/rechnungen");
+    await expect(page.getByText(/nur offene/i)).toHaveCount(0);
+  });
+});

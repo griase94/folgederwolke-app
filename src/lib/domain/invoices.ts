@@ -20,6 +20,76 @@ export type InvoiceDriveStatus =
   | "skipped"
   | null;
 
+/**
+ * Derived payment-state used for the /app/rechnungen filter chip from the
+ * dashboard.
+ *
+ * Not a stored column — derived from `bezahlt_am` + `faelligkeits_datum`:
+ *   - "offen"        → `bezahlt_am IS NULL`
+ *   - "bezahlt"      → `bezahlt_am IS NOT NULL`
+ *   - "überfällig"   → `bezahlt_am IS NULL AND faelligkeits_datum < today`
+ *   - "alle"         → no filter (default when param is missing/unknown)
+ */
+export type RechnungenStatus = "offen" | "bezahlt" | "überfällig" | "alle";
+
+export const RECHNUNGEN_STATUS_VALUES: readonly RechnungenStatus[] = [
+  "offen",
+  "bezahlt",
+  "überfällig",
+  "alle",
+] as const;
+
+export function rechnungenStatusLabel(status: RechnungenStatus): string {
+  switch (status) {
+    case "offen":
+      return "Offen";
+    case "bezahlt":
+      return "Bezahlt";
+    case "überfällig":
+      return "Überfällig";
+    case "alle":
+      return "Alle";
+  }
+}
+
+export interface InvoiceListFilters {
+  status: RechnungenStatus;
+  year: number;
+}
+
+/**
+ * Parse + narrow the `?status=` and `?year=` searchParams off the /app/rechnungen
+ * URL. Untrusted user input — anything unknown falls back to the supplied
+ * defaults (status defaults to "alle", year defaults to `defaultYear`).
+ *
+ * Defaults come from the caller because the server-side load() should pass the
+ * Berlin-aware `yearForBooking(new Date())` per ADR-0001.
+ */
+export function parseInvoiceFilters(
+  params: URLSearchParams,
+  defaultYear: number,
+): InvoiceListFilters {
+  const rawStatus = params.get("status");
+  const status: RechnungenStatus =
+    rawStatus !== null &&
+    (RECHNUNGEN_STATUS_VALUES as readonly string[]).includes(rawStatus)
+      ? (rawStatus as RechnungenStatus)
+      : "alle";
+
+  const rawYear = params.get("year");
+  let year = defaultYear;
+  if (rawYear !== null) {
+    const parsed = parseInt(rawYear, 10);
+    // Sanity bounds — Verein founded 2024-ish, dashboard year picker won't
+    // reach 9999 in any realistic future. Reject NaN, negative, absurd.
+    if (Number.isFinite(parsed) && parsed >= 2000 && parsed <= 9999) {
+      year = parsed;
+    }
+  }
+
+  return { status, year };
+}
+
 export interface InvoiceRow {
   id: string;
   businessId: string;

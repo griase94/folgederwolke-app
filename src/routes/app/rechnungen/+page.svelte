@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button/index.js';
 	import InvoiceList from '$lib/components/admin/invoices/InvoiceList.svelte';
+	import { rechnungenStatusLabel } from '$lib/domain/invoices.js';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
@@ -19,6 +20,10 @@
 					);
 				})
 	);
+
+	// Show active-filter banner whenever the URL narrows the list — i.e. user
+	// arrived from the dashboard chip, not from the topbar.
+	const hasActiveStatusFilter = $derived(data.filters.status !== 'alle');
 </script>
 
 <svelte:head>
@@ -50,6 +55,29 @@
 			Neue Rechnung
 		</Button>
 	</div>
+
+	<!-- eslint-disable svelte/no-navigation-without-resolve -->
+	{#if hasActiveStatusFilter}
+		<div
+			class="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2.5 text-sm text-foreground"
+			role="status"
+			aria-live="polite"
+			data-testid="rechnungen-active-filter"
+		>
+			<span class="font-medium">
+				Zeige nur {rechnungenStatusLabel(data.filters.status).toLowerCase()}e Rechnungen aus {data
+					.filters.year}
+			</span>
+			<a
+				href="/app/rechnungen"
+				class="ml-auto text-xs font-medium text-primary underline-offset-2 hover:underline"
+				data-testid="rechnungen-clear-filter"
+			>
+				Filter zurücksetzen
+			</a>
+		</div>
+	{/if}
+	<!-- eslint-enable svelte/no-navigation-without-resolve -->
 
 	<div class="mb-4">
 		<div class="relative w-full sm:max-w-xs">
