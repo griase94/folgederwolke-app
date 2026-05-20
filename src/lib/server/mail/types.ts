@@ -149,7 +149,11 @@ export interface InvoiceVersendetMailProps {
    * is only rendered when `iban` and `empfaenger` are both present.
    */
   iban?: string;
-  /** Verein BIC — optional (EPC 069 allows empty BIC). */
+  /**
+   * Verein BIC — optional at the type level (some legacy invoice flows
+   * don't have it), but the Giro-QR block is only rendered when BIC is
+   * present (EPC 069 v001 requires a non-empty BIC; cycle-2 review F1).
+   */
   bic?: string;
   /** Recipient name for the Giro-QR — typically "Folge der Wolke e.V.". */
   empfaenger?: string;

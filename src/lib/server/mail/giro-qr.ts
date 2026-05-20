@@ -15,10 +15,10 @@
  * Payload structure (each field on its own line, LF only):
  *
  *   BCD                        Service tag (constant)
- *   001                        Version (constant)
+ *   001                        Version (constant — see "BIC required" note)
  *   1                          Character set (1 = UTF-8)
  *   SCT                        Identification (SEPA Credit Transfer)
- *   <BIC>                      Optional — may be empty (line still present)
+ *   <BIC>                      REQUIRED in v001 (this builder)
  *   <Recipient name>           Max 70 chars
  *   <IBAN>                     No spaces
  *   EUR<amount>                Dot-decimal, two places, no thousands sep
@@ -26,12 +26,20 @@
  *   <Structured remittance>    Optional — empty in our payloads
  *   <Unstructured remittance>  Verwendungszweck — max 140 chars
  *
+ * BIC required (v001 vs v002):
+ *   EPC 069 v002 added the "empty BIC allowed for EEA payments where IBAN
+ *   implies BIC" relaxation. v001 still REQUIRES a non-empty BIC. We emit
+ *   v001 ("001" on line 2), so we MUST refuse to build a payload without a
+ *   non-empty BIC. Most DE banking apps parse v001-with-empty-BIC defensively
+ *   in practice, but that's not a contract — out-of-spec payloads can be
+ *   silently rejected by any compliant reader. See cycle-2 expert review F1.
+ *
  * Spec: https://www.europeanpaymentscouncil.eu/document-library/guidance-documents/quick-response-code-guidelines-enable-data-capture-initiation
  */
 
 export interface Epc069Input {
-  /** BIC — optional. If undefined or empty, the field is emitted as an empty line. */
-  bic?: string;
+  /** BIC — REQUIRED for EPC 069 v001. Non-empty (after trim). */
+  bic: string;
   /** Recipient name (max 70 chars per spec — not enforced here, caller's job). */
   name: string;
   /** IBAN — whitespace is stripped automatically. */
@@ -47,6 +55,9 @@ export interface Epc069Input {
  *
  * Pure function — no I/O, no side effects. Encoding the result as a QR
  * image is a separate concern (deferred until a QR lib is approved).
+ *
+ * Throws if `bic` is missing / empty / whitespace-only — EPC 069 v001
+ * requires a non-empty BIC.
  */
 export function buildEpc069Payload(input: Epc069Input): string {
   const { bic, name, iban, amountCents, remittance } = input;
@@ -62,6 +73,15 @@ export function buildEpc069Payload(input: Epc069Input): string {
     );
   }
 
+  // EPC 069 v001: BIC is a REQUIRED field. Refuse to emit out-of-spec.
+  const bicTrimmed = typeof bic === "string" ? bic.trim() : "";
+  if (!bicTrimmed) {
+    throw new Error(
+      "buildEpc069Payload: BIC is required (EPC 069 v001). " +
+        "Callers must supply a non-empty BIC, or skip Giro-QR rendering entirely.",
+    );
+  }
+
   const ibanCompact = iban.replace(/\s+/g, "");
   const amountStr = formatEuro(amountCents);
 
@@ -70,7 +90,7 @@ export function buildEpc069Payload(input: Epc069Input): string {
     "001",
     "1",
     "SCT",
-    bic ?? "",
+    bicTrimmed,
     name,
     ibanCompact,
     `EUR${amountStr}`,

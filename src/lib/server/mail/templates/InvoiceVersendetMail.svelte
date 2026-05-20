@@ -30,14 +30,15 @@
 	const datumFmt = $derived(fmtDate(rechnungsdatum));
 	const faelligFmt = $derived(faelligkeitsDatum ? fmtDate(faelligkeitsDatum) : null);
 
-	// EPC 069 SEPA Giro-QR payload — only rendered when both `iban` and
-	// `empfaenger` are present and currency is EUR. Callers without these
-	// fields keep the existing behaviour (PM-024 deferred PNG rendering).
-	const showGiroQr = $derived(Boolean(iban && empfaenger && currency === 'EUR'));
+	// EPC 069 SEPA Giro-QR payload — only rendered when iban, bic, and
+	// empfaenger are all present and currency is EUR. v001 of the EPC spec
+	// requires a non-empty BIC (cycle-2 expert review F1), so callers
+	// missing any of the three fall back to the no-QR variant.
+	const showGiroQr = $derived(Boolean(iban && bic && empfaenger && currency === 'EUR'));
 	const epcPayload = $derived(
 		showGiroQr
 			? buildEpc069Payload({
-					bic,
+					bic: bic as string,
 					name: empfaenger as string,
 					iban: iban as string,
 					amountCents: bruttoCents,
