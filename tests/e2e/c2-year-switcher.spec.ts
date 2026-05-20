@@ -98,7 +98,7 @@ async function clearFestgeschriebenBis() {
 // load surfaces 2024 as a closed year for the lock-icon + URL assertions.
 
 test.describe
-  .serial("@phase-7.5 C2 year switcher (VB-002 / JB-001 / UI-009)", () => {
+  .serial("@phase-2 @overnight-c2 year switcher (VB-002 / JB-001 / UI-009)", () => {
   test.beforeEach(async () => {
     // Each test prepares the closed-year state. The afterEach below
     // resets it. Tests that don't need a closed year are unaffected —
