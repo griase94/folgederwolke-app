@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 
-test.describe("@phase-7 PWA", () => {
+// Tagged @phase-2 (cycle 3, F3): the PWA share_target POST is the primary
+// untrusted-origin entry point into the public Auslage form and is part of
+// the foundational test surface — it must run on every CI push, not just the
+// (currently skipped) @phase-7 set. PWA shipped alongside the Phase-2 public
+// form, so the @phase-2 tag is correct semantically and lights up CI.
+test.describe("@phase-2 PWA", () => {
   test("manifest.webmanifest is accessible and correct", async ({ page }) => {
     const res = await page.goto("/manifest.webmanifest");
     expect(res?.status()).toBe(200);
@@ -110,5 +115,64 @@ test.describe("@phase-7 PWA", () => {
     expect(getRes?.status()).toBe(200);
     await expect(page.getByTestId("share-prefill-banner")).toBeVisible();
     await expect(page.locator("#bezeichnung")).toHaveValue("Druckerpapier");
+  });
+
+  test("share_target POST without Origin header (Android intent) is NOT blocked by CSRF", async ({
+    request,
+  }) => {
+    // F1 (cycle 3): SvelteKit's kit.csrf.checkOrigin default returns 403 in
+    // production for POSTs whose Origin header doesn't match url.origin OR is
+    // missing entirely. Android PWA share intents (and some non-Chrome PWA
+    // shells) routinely arrive with NO Origin header set — they look exactly
+    // like a CSRF attack to SvelteKit's heuristic.
+    //
+    // The fix lives in server.js (custom adapter-node entry) — it normalises
+    // the Origin header for this one specific path before SvelteKit's
+    // CSRF check runs. This test pins that behaviour against the prod build
+    // (`node server.js`, see playwright.config.ts webServer.command) so a
+    // future regression (e.g. someone reverts to `node build/index.js`)
+    // immediately fails CI instead of breaking real users.
+    const res = await request.post("/auslage-einreichen?source=share", {
+      multipart: {
+        bezeichnung_display: "Test ohne Origin",
+        kommentar_display: "Android-Intent",
+      },
+      headers: {
+        // Explicitly REMOVE Origin by overriding with empty — playwright's
+        // request fixture normally sets it from baseURL. We also try with a
+        // cross-site Origin in the next assertion.
+        Origin: "",
+      },
+      maxRedirects: 0,
+    });
+
+    expect(
+      res.status(),
+      `share POST (no Origin) → status was ${res.status()} (was 403 before F1 fix)`,
+    ).not.toBe(403);
+    expect([303, 200]).toContain(res.status());
+  });
+
+  test("share_target POST with cross-origin Origin (Edge mobile / WebView) is NOT blocked by CSRF", async ({
+    request,
+  }) => {
+    // F1 (cycle 3): some WebView / non-Chromium shells set Origin to e.g.
+    // "null", "chrome-native://intent", or a fully different origin. The
+    // server.js wrapper normalises Origin for the share_target path so the
+    // CSRF heuristic doesn't drop a legitimate share intent.
+    const res = await request.post("/auslage-einreichen?source=share", {
+      multipart: {
+        bezeichnung_display: "Test cross-origin",
+        kommentar_display: "WebView shell",
+      },
+      headers: { Origin: "https://evil.example.com" },
+      maxRedirects: 0,
+    });
+
+    expect(
+      res.status(),
+      `share POST (cross-origin) → status was ${res.status()} (was 403 before F1 fix)`,
+    ).not.toBe(403);
+    expect([303, 200]).toContain(res.status());
   });
 });

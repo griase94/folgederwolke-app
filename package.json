@@ -7,7 +7,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "vercel-build": "pnpm tsx scripts/migrate.ts && vite build",
-    "preview": "PORT=4173 HOST=127.0.0.1 node build/index.js",
+    "preview": "PORT=4173 HOST=127.0.0.1 ORIGIN=http://127.0.0.1:4173 node server.js",
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",

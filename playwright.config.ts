@@ -24,7 +24,11 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "node build/index.js",
+    // `server.js` is a thin custom Node entry that wraps adapter-node's
+    // compiled handler and normalises the `Origin` header for the PWA
+    // share_target POST so SvelteKit's CSRF check doesn't drop legitimate
+    // Android intents. See server.js header comment for the safety argument.
+    command: "node server.js",
     port: 4173,
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,
