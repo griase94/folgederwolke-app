@@ -32,7 +32,11 @@ export const load: ServerLoad = async ({
 };
 
 export const actions: Actions = {
-  default: async ({ cookies, locals, request, getClientAddress }) => {
+  // Named instead of `default:` because SvelteKit forbids mixing a default
+  // action with named actions on the same route. UserMenu posts to
+  // `/sign-out?/signout`; the GET handler above signs out idempotently for
+  // bare visits.
+  signout: async ({ cookies, locals, request, getClientAddress }) => {
     const userId = locals.session?.user.id ?? null;
     const ip = getClientAddress();
     const ua = request.headers.get("user-agent") ?? "";

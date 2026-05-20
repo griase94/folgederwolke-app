@@ -92,6 +92,13 @@
       "when": 1779207384669,
       "tag": "0012_default_privileges",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1779284553000,
+      "tag": "0013_expenses_allow_aus_prefix",
+      "breakpoints": true
     }
   ]
 }

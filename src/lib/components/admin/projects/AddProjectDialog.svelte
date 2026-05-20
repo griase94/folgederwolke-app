@@ -50,7 +50,7 @@
 
 		<form
 			method="POST"
-			action="?/default"
+			action="?/add"
 			use:enhance={() => {
 				loading = true;
 				errors = {};

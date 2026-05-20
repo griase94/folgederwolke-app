@@ -129,7 +129,9 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-  default: async ({ request, locals }) => {
+  // Named `add` — SvelteKit forbids mixing default with named actions.
+  // AddSpendeDialog posts to `?/add`.
+  add: async ({ request, locals }) => {
     const userId = locals.session?.user.id ?? null;
     const formData = await request.formData();
     const raw: Record<string, unknown> = {};

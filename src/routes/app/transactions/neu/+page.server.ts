@@ -250,7 +250,9 @@ export const actions = {
         const gate = await checkFestschreibungGate(year);
         if (!gate.ok) return fail(gate.status, { error: gate.error });
 
-        const businessId = await allocateBusinessId("AUS", year);
+        // `A-` prefix for direct app entries. `AUS-` is reserved for form
+        // submissions (carries over via the inbox approve flow). See ADR-0010.
+        const businessId = await allocateBusinessId("A", year);
         const result = await createExpense({
           ...parsed.data,
           sphereSnapshot,
