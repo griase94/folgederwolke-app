@@ -71,7 +71,7 @@
 		class="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"
 		aria-hidden="true"
 	>
-		{#if submission.belegDriveFileId}
+		{#if submission.belegDriveFileId || submission.belegFileId}
 			<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
 				<path
 					stroke-linecap="round"

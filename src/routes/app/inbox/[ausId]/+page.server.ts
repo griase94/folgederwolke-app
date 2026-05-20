@@ -21,6 +21,7 @@ import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
+import { files } from "$lib/server/db/schema/files.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { zahlungsarten } from "$lib/server/db/schema/zahlungsarten.js";
 import { parseBusinessId } from "$lib/domain/business-id.js";
@@ -79,6 +80,19 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       .where(eq(expenses.id, s.approvedExpenseId))
       .limit(1);
     linkedExpense = expRows[0] ?? null;
+  }
+
+  // ── Fetch the linked `files` row (Phase 9) for mime_type + original_filename.
+  //    Only set when Phase 9 upload pipeline ran; legacy Drive uploads will
+  //    leave belegFileId null and fall back to BelegPreview.
+  let fileRow: typeof files.$inferSelect | null = null;
+  if (s.belegFileId) {
+    const fileRows = await db
+      .select()
+      .from(files)
+      .where(eq(files.id, s.belegFileId))
+      .limit(1);
+    fileRow = fileRows[0] ?? null;
   }
 
   // ── Fetch active zahlungsarten for the mark-erstattet form (Phase 5 reuse) ─
@@ -154,6 +168,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     belegViewLink: s.belegDriveFileId
       ? `https://drive.google.com/file/d/${s.belegDriveFileId}/view`
       : null,
+    // Phase 9 blob-backed Beleg (FilePreview renders this via /api/files/.../blob).
+    belegFileId: s.belegFileId ?? null,
+    belegMimeType: fileRow?.mimeType ?? null,
+    belegOriginalFilename: fileRow?.originalFilename ?? null,
     memberContext: row.memberId
       ? {
           id: row.memberId,

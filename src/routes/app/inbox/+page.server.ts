@@ -62,6 +62,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       submittedAt: s.submittedAt.toISOString(),
       reviewedAt: s.reviewedAt ? s.reviewedAt.toISOString() : null,
       belegDriveFileId: s.belegDriveFileId ?? null,
+      belegFileId: s.belegFileId ?? null,
       belegOriginalName: s.belegOriginalName ?? null,
       projectId: null, // submissions do not link a project yet
       projectName: null,
