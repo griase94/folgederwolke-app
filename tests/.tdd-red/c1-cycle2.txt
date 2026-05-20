@@ -1,0 +1,45 @@
+C1 Cycle 2 — RED: Tabbed workspace shell
+========================================
+
+Targets:
+  - src/routes/app/jahresabschluss/[year]/+layout.server.ts  NEW
+  - src/routes/app/jahresabschluss/[year]/+layout.svelte     NEW
+  - src/routes/app/jahresabschluss/[year]/+page.svelte       REWRITTEN (redirect)
+  - src/routes/app/jahresabschluss/[year]/uebersicht/...     NEW (default tab)
+  - src/routes/app/jahresabschluss/[year]/buchungsliste/...  STUB
+  - src/routes/app/jahresabschluss/[year]/spenden/...        STUB
+  - src/routes/app/jahresabschluss/[year]/exports/...        STUB
+
+Test surface (server-load contract):
+
+The layout.server load must return:
+  - year: number
+  - vereinName: string
+  - closed: boolean
+  - eur: serialized EÜR shape (same as today)
+  - sphereYoY: SphereYoYRow[] (4 rows w/ YoY chips)
+  - priorYear: number
+  - priorEur: { totalUeberschussCents: number } (for top stat card)
+  - monthlyOverschuss: number[] (length 12)
+  - wgb: WgbStatus (the wirtschaftlich bucket)
+  - preFlight: PreFlightChecklist (5 items)
+  - tabs: navigation metadata for the UI
+
+We add a NEW server-side composer in src/lib/server/eur/load.ts (server-side
+DB I/O — shells over getDb) with:
+
+  - loadEurYearWorkspaceData(year, db): Promise<EurWorkspaceData>
+
+This is the testable surface. Mocking db via a small interface keeps the
+test hermetic — same pattern used by other domain modules.
+
+Tests:
+  - composeEurWorkspaceData(rawYear, rawPriorYear, monthlyRows, prefInput):
+      pure helper that takes already-fetched rows (no DB), composes the
+      full payload + asserts:
+        - eur.bySphere has all 4 spheres
+        - sphereYoY length === 4
+        - monthlyOverschuss length === 12
+        - wgb.bucket valid
+        - preFlight present
+        - serializable (no bigints in returned object — Number everywhere)
