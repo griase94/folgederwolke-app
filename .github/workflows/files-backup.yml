@@ -1,0 +1,20 @@
+name: Files Backup
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '17 3 * * *'  # uncomment per RUNBOOK §6.4 when activated
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: "pnpm" }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm tsx scripts/backup-files.ts --dest "$BACKUP_DEST" --verify
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL }}
+          BACKUP_DEST: ${{ secrets.BACKUP_DEST }}
