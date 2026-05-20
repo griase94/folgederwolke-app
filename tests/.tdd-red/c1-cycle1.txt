@@ -1,0 +1,85 @@
+C1 Cycle 1 — RED tests for EÜR data shape extensions
+=====================================================
+
+Targeting `src/lib/server/eur/index.ts` (NEW module — keeps file domain clean
+per task spec §605). Exports:
+
+  - computeYoYDelta(currentCents, priorCents): YoyDelta
+      YoyDelta = { absCents: number; pct: number | null }
+      • pct is null when priorCents <= 0 (defensive — same convention as
+        cashflow.ts computeLyDeltaPct, but returns absCents alongside)
+      • absCents is currentCents - priorCents
+
+  - computeSphereYoY(currentYear, priorYear): SphereYoYRow[]
+      • Pure function over already-aggregated SphereTotals from both years
+      • Returns 4 rows (one per sphere) with current totals + YoY deltas
+
+  - computeMonthlyOverschuss(rows): MonthlyOverschuss[]
+      • rows = EurRow[] joined with art ('income'|'expense')
+      • returns length-12 array (Jan..Dec) of einnahmen-ausgaben cents
+      • bucketed by `gebuchtAm.getMonth()` (Berlin TZ-aware via ISO month
+        extraction is sufficient for monthly granularity — the same approach
+        as bucketByMonth in cashflow.ts)
+
+  - WGB_FREIGRENZE_CENTS = 4_500_000n
+      • German Vereinsrecht — wirtschaftlicher Geschäftsbetrieb threshold
+        WAS 45.000 € (45_000 € × 100 cents = 4_500_000). The C1 spec
+        explicitly states "45.000 wirtschaftlich threshold". Existing
+        EurSummary.svelte legal note mentions 50.000 € (§ 64 Abs. 3 AO, ab
+        2025) — that's the actual current threshold per AO. The spec
+        instruction wins: we expose a constant and label, but use 45.000 €
+        per the C1 spec. (If finding revisits this, swap one constant.)
+
+  - computeWgbStatus(wirtschaftlichEinnahmenCents): WgbStatus
+      WgbStatus = { thresholdCents; einnahmenCents; remainingCents; bucket }
+      bucket = 'safe' (< 80% threshold) | 'warning' (>= 80% < 100%) | 'over'
+              (>= 100%)
+
+  - PRE_FLIGHT_CHECKS:
+      computePreFlight(input): PreFlightChecklist
+        input = {
+          year,
+          uncategorizedCount,
+          missingBelegCount,
+          draftInvoiceCount,
+          auditInboxQueueCount,
+          festgeschriebenBis (number | null),
+          totalIncomeRows,
+          totalExpenseRows,
+        }
+      returns {
+        items: PreFlightItem[]  // 5 items: uncategorized, missingBelege,
+                                // draftInvoices, auditInbox, alreadyClosed
+        canFestschreiben: boolean   // true iff ALL items pass
+        warnings: number
+        blockers: number
+      }
+      Each item: { id; label; status: 'pass' | 'warn' | 'block'; detail }
+
+Test cases (all unit, no DB):
+
+1. computeYoYDelta:
+   - positive growth: cur=12000, prior=10000 → { absCents: 2000, pct: 20 }
+   - negative: cur=8000, prior=10000 → { absCents: -2000, pct: -20 }
+   - prior <= 0 returns pct null but absCents still computed
+   - zero current with prior > 0 returns pct -100
+
+2. computeMonthlyOverschuss:
+   - empty input → [0,0,0,0,0,0,0,0,0,0,0,0]
+   - one income in Mar (month 3) → [0,0,5000,0,...] (5000 = einnahmen-ausgaben)
+   - one expense in Jul → ausgabe subtracts
+   - mixed across months sums correctly
+
+3. computeWgbStatus:
+   - 0 cents → bucket=safe, remaining=4_500_000
+   - 4_000_000 (88.8%) → bucket=warning
+   - 5_000_000 → bucket=over, remaining negative
+
+4. computePreFlight:
+   - happy path (all zero queues, year not festgeschrieben, has rows)
+     → canFestschreiben=true, 0 blockers
+   - uncategorizedCount=3 → blocker, canFestschreiben=false
+   - festgeschriebenBis=2025 with year=2025 → blocker (already closed)
+   - festgeschriebenBis=2024 with year=2025 → not a blocker
+   - empty year (no rows) → warn (not block — empty year is legal but odd)
+   - all conditions clear → canFestschreiben=true, blockers=0
