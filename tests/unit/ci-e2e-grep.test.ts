@@ -27,7 +27,10 @@ function extractCiGrep(ciYml: string): string[] {
 
 function extractDescribeTags(specSrc: string): string[] {
   const tags: string[] = [];
-  const re = /test\.describe\s*\(\s*["'`]([^"'`]+)["'`]/g;
+  // Accept plain test.describe(), .serial(), .only(), .skip(), .parallel().
+  // The (?:\.\w+)? bit lets the meta-test pick up chained variants without
+  // each cluster having to restructure its describe blocks.
+  const re = /test\.describe(?:\.\w+)?\s*\(\s*["'`]([^"'`]+)["'`]/g;
   let m;
   while ((m = re.exec(specSrc)) !== null) {
     const title = m[1]!;
