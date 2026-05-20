@@ -63,15 +63,15 @@
 	</div>
 	<div class="flex flex-wrap gap-2">
 		<Button
-			href={`/app/jahresabschluss/${data.year}/bundle.zip`}
+			href={`/app/jahresabschluss/${data.year}/eur.pdf`}
 			data-testid="quick-action-pdf"
 			variant="default"
-			class="bg-[#9c2870] text-white hover:bg-[#7c2058]"
+			class="bg-primary text-primary-foreground hover:bg-primary/90"
 		>
 			PDF drucken (EÜR)
 		</Button>
 		<Button
-			href={`/app/jahresabschluss/${data.year}/bundle.zip`}
+			href={`/app/jahresabschluss/${data.year}/transactions.csv`}
 			data-testid="quick-action-csv"
 			variant="outline"
 		>
