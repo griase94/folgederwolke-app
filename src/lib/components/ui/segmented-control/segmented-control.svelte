@@ -1,11 +1,21 @@
 <script lang="ts" module>
 	import { cn, type WithElementRef } from "$lib/utils.js";
 	import type { HTMLAttributes } from "svelte/elements";
+	import type { Snippet } from "svelte";
 
 	export type SegmentedOption = {
 		value: string;
 		label: string;
 		disabled?: boolean;
+		/**
+		 * Optional Svelte snippet rendered inside the segment button, BEFORE
+		 * the label. Used by C2 YearSwitcher to put a lock icon inside each
+		 * closed-year segment (UI-009, C2-5). The snippet receives the
+		 * option's `value` so a single shared snippet can serve every
+		 * option that needs an icon. Keep icons aria-hidden so the
+		 * segment's accessible name (from `label`) stays clean for SR.
+		 */
+		icon?: Snippet<[string]>;
 	};
 
 	export type SegmentedControlProps = WithElementRef<HTMLAttributes<HTMLDivElement>> & {
@@ -112,7 +122,7 @@
 			tabindex={selected ? 0 : -1}
 			onclick={() => handleClick(opt)}
 			class={cn(
-				"relative inline-flex items-center justify-center rounded-md font-medium transition-colors",
+				"relative inline-flex items-center justify-center gap-1 rounded-md font-medium transition-colors",
 				"focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
 				size === "sm" ? "h-6 px-2" : "h-7 px-3",
 				selected
@@ -120,6 +130,7 @@
 					: "text-muted-foreground hover:text-foreground"
 			)}
 		>
+			{#if opt.icon}{@render opt.icon(opt.value)}{/if}
 			{opt.label}
 		</button>
 	{/each}
