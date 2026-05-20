@@ -41,6 +41,13 @@ export interface BelegIndexRow {
   kategorieNameSnapshot: string;
   belegDriveFileId: string | null;
   belegOriginalName: string | null;
+  /**
+   * Phase 9 Task 18 — In-bundle relative path to the Beleg under
+   * `09_Belege-{year}/`. Steuerberater opens the bundle and finds the
+   * file at this path. Optional for backwards compatibility (rows
+   * without an in-bundle file fall back to the Drive link).
+   */
+  bundlePath?: string | null;
 }
 
 function driveUrl(fileId: string): string {
@@ -48,8 +55,12 @@ function driveUrl(fileId: string): string {
 }
 
 /**
- * Generate a Beleg-Index CSV listing all expenses with Drive Beleg links.
+ * Generate a Beleg-Index CSV listing all expenses with Beleg references.
  * Returns a UTF-8 string with BOM.
+ *
+ * Phase 9 Task 18: emits a `Beleg-Pfad (im Bundle)` column pointing into
+ * the `09_Belege-{year}/` subfolder. The legacy `Beleg-Link (Drive)`
+ * column is kept for rows whose Beleg is still served from Drive.
  */
 export function generateBelegIndex(rows: BelegIndexRow[]): string {
   const lines: string[] = [];
@@ -63,6 +74,7 @@ export function generateBelegIndex(rows: BelegIndexRow[]): string {
     "Sphäre",
     "Kategorie",
     "Beleg-Dateiname",
+    "Beleg-Pfad (im Bundle)",
     "Beleg-Link (Drive)",
   ]);
   lines.push("﻿" + header);
@@ -78,6 +90,9 @@ export function generateBelegIndex(rows: BelegIndexRow[]): string {
         row.sphereSnapshot,
         row.kategorieNameSnapshot,
         row.belegOriginalName ?? "",
+        row.bundlePath
+          ? `09_Belege-${row.gebuchtAm.getFullYear()}/${row.bundlePath}`
+          : "",
         row.belegDriveFileId ? driveUrl(row.belegDriveFileId) : "",
       ]),
     );

@@ -49,6 +49,18 @@ export interface MemberBeitragRow {
   gezahltAm: string | null;
 }
 
+/**
+ * Phase 9 Task 18 — One Beleg file (PDF/image) to embed under
+ * `09_Belege-{year}/`. `bundlePath` is the in-bundle relative path
+ * (e.g. `expenses/ideeller/A-2026-0001-bueromaterial.pdf`); the route
+ * computes it from the source row's ownerKind, sphere, business_id,
+ * and (slugified) bezeichnung.
+ */
+export interface BelegAttachment {
+  bundlePath: string;
+  bytes: Uint8Array;
+}
+
 export interface BundleInput {
   year: number;
   eur: EurYearResult;
@@ -64,6 +76,12 @@ export interface BundleInput {
   auditLogSlice?: AuditLogSliceRow[];
   /** C1-M3 — Paid member-beitrags for the year. */
   memberBeitrags?: MemberBeitragRow[];
+  /**
+   * Phase 9 Task 18 — Beleg files to embed under `09_Belege-{year}/` in a
+   * sphere-aware folder layout. Each attachment carries the in-bundle path
+   * and the raw bytes (fetched by the route from FileStorage).
+   */
+  belegAttachments?: BelegAttachment[];
 }
 
 /**
@@ -157,6 +175,17 @@ export async function buildJahresabschlussBundle(
   if (input.memberBeitrags && input.memberBeitrags.length > 0) {
     const beitragsCsv = generateMemberBeitragsCsv(input.memberBeitrags);
     zip.file(`08_Mitgliedsbeitraege-${year}.csv`, beitragsCsv);
+  }
+
+  // 09 — Beleg files (Phase 9 Task 18). Sphere-aware folder layout under
+  // `09_Belege-{year}/`. Each attachment's `bundlePath` is a pre-computed
+  // relative path (e.g. `expenses/ideeller/A-2026-0001-slug.pdf`); the
+  // route is responsible for slug normalization + sphere bucketing.
+  if (input.belegAttachments && input.belegAttachments.length > 0) {
+    const folder = zip.folder(`09_Belege-${year}`);
+    for (const att of input.belegAttachments) {
+      folder?.file(att.bundlePath, att.bytes);
+    }
   }
 
   const buffer = await zip.generateAsync({
