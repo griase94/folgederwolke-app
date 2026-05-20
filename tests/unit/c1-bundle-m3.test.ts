@@ -75,12 +75,16 @@ describe("buildJahresabschlussBundle — C1-M3 extras", () => {
     const names = Object.keys(zip.files);
     expect(
       names.some((n) =>
-        n.includes("06_Bescheinigungen-2025/Zuwendungsbestaetigung_B-2025-001.pdf"),
+        n.includes(
+          "06_Bescheinigungen-2025/Zuwendungsbestaetigung_B-2025-001.pdf",
+        ),
       ),
     ).toBe(true);
     expect(
       names.some((n) =>
-        n.includes("06_Bescheinigungen-2025/Zuwendungsbestaetigung_B-2025-002.pdf"),
+        n.includes(
+          "06_Bescheinigungen-2025/Zuwendungsbestaetigung_B-2025-002.pdf",
+        ),
       ),
     ).toBe(true);
   });

@@ -55,9 +55,8 @@ describe.skipIf(!dbConfigured)("C1-H4 — real PDF + CSV endpoints", () => {
   it("eur.pdf endpoint returns Content-Type: application/pdf with non-empty body", async () => {
     // Dynamic import so the route's module-level code only runs in DB-bound
     // contexts.
-    const mod = await import(
-      "../../src/routes/app/jahresabschluss/[year]/eur.pdf/+server.ts"
-    );
+    const mod =
+      await import("../../src/routes/app/jahresabschluss/[year]/eur.pdf/+server.ts");
     const handler = mod.GET;
     expect(typeof handler).toBe("function");
 
@@ -75,9 +74,8 @@ describe.skipIf(!dbConfigured)("C1-H4 — real PDF + CSV endpoints", () => {
   });
 
   it("transactions.csv endpoint returns Content-Type: text/csv with BOM + header", async () => {
-    const mod = await import(
-      "../../src/routes/app/jahresabschluss/[year]/transactions.csv/+server.ts"
-    );
+    const mod =
+      await import("../../src/routes/app/jahresabschluss/[year]/transactions.csv/+server.ts");
     const handler = mod.GET;
     expect(typeof handler).toBe("function");
 
@@ -98,9 +96,8 @@ describe.skipIf(!dbConfigured)("C1-H4 — real PDF + CSV endpoints", () => {
   });
 
   it("eur.pdf rejects out-of-range years with 400", async () => {
-    const mod = await import(
-      "../../src/routes/app/jahresabschluss/[year]/eur.pdf/+server.ts"
-    );
+    const mod =
+      await import("../../src/routes/app/jahresabschluss/[year]/eur.pdf/+server.ts");
     const handler = mod.GET;
     const event = {
       params: { year: "1999" },

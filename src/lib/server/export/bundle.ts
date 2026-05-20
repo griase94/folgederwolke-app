@@ -226,8 +226,7 @@ export function generateMemberBeitragsCsv(rows: MemberBeitragRow[]): string {
         "Gezahlt am",
       ]),
   );
-  const eur = (c: bigint) =>
-    (Number(c) / 100).toFixed(2).replace(".", ",");
+  const eur = (c: bigint) => (Number(c) / 100).toFixed(2).replace(".", ",");
   for (const r of rows) {
     lines.push(
       csvRow([

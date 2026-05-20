@@ -104,9 +104,7 @@ test.describe("@phase-6 jahresabschluss", () => {
     await signIn(page);
     const year = new Date().getFullYear();
     await page.goto(`/app/jahresabschluss/${year}/uebersicht`);
-    await expect(
-      page.locator("text=Jahresabschluss schließen"),
-    ).toBeVisible();
+    await expect(page.locator("text=Jahresabschluss schließen")).toBeVisible();
   });
 
   test("gobd-export page renders for authenticated user", async ({ page }) => {

@@ -71,9 +71,7 @@ describe.skipIf(!dbConfigured)(
       `;
       // 1 paid member-beitrag (6969 cents = 69.69 €)
       // First find or create a member for this year.
-      const [m] = await sql<
-        { id: string }[]
-      >`SELECT id FROM members LIMIT 1`;
+      const [m] = await sql<{ id: string }[]>`SELECT id FROM members LIMIT 1`;
       if (!m) throw new Error("c1-union: needs at least one fixture member");
       memberId = m.id;
       await sql`
