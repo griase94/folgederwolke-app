@@ -258,8 +258,8 @@ describe("composeEurWorkspaceData", () => {
       "spenden",
       "exports",
     ]);
-    expect(out.tabs.every((t) => t.href.includes("/jahresabschluss/2025"))).toBe(
-      true,
-    );
+    expect(
+      out.tabs.every((t) => t.href.includes("/jahresabschluss/2025")),
+    ).toBe(true);
   });
 });

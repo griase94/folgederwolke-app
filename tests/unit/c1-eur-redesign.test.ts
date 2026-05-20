@@ -146,18 +146,14 @@ describe("computeMonthlyOverschuss", () => {
   });
 
   it("one March income → einnahmen at index 2", () => {
-    const rows: MonthlyRow[] = [
-      { art: "income", month: 3, sumCents: 5000 },
-    ];
+    const rows: MonthlyRow[] = [{ art: "income", month: 3, sumCents: 5000 }];
     const out = computeMonthlyOverschuss(rows);
     expect(out[2]).toBe(5000);
     expect(out.filter((v) => v !== 0)).toHaveLength(1);
   });
 
   it("one July expense → ausgabe subtracts at index 6", () => {
-    const rows: MonthlyRow[] = [
-      { art: "expense", month: 7, sumCents: 3000 },
-    ];
+    const rows: MonthlyRow[] = [{ art: "expense", month: 7, sumCents: 3000 }];
     const out = computeMonthlyOverschuss(rows);
     expect(out[6]).toBe(-3000);
   });
@@ -186,9 +182,7 @@ describe("computeMonthlyOverschuss", () => {
   });
 
   it("tolerates bigint sumCents (Postgres SUM returns bigint)", () => {
-    const rows: MonthlyRow[] = [
-      { art: "income", month: 4, sumCents: 12345n },
-    ];
+    const rows: MonthlyRow[] = [{ art: "income", month: 4, sumCents: 12345n }];
     const out = computeMonthlyOverschuss(rows);
     expect(out[3]).toBe(12345);
   });

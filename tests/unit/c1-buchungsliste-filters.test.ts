@@ -37,18 +37,18 @@ describe("parseBuchungslisteFilters", () => {
   });
 
   it("accepts known sort values", () => {
-    expect(parseBuchungslisteFilters(new URLSearchParams("sort=betrag-asc")).sort).toBe(
-      "betrag-asc",
-    );
-    expect(parseBuchungslisteFilters(new URLSearchParams("sort=date-asc")).sort).toBe(
-      "date-asc",
-    );
+    expect(
+      parseBuchungslisteFilters(new URLSearchParams("sort=betrag-asc")).sort,
+    ).toBe("betrag-asc");
+    expect(
+      parseBuchungslisteFilters(new URLSearchParams("sort=date-asc")).sort,
+    ).toBe("date-asc");
   });
 
   it("falls back to date-desc on unknown sort", () => {
-    expect(parseBuchungslisteFilters(new URLSearchParams("sort=garbage")).sort).toBe(
-      "date-desc",
-    );
+    expect(
+      parseBuchungslisteFilters(new URLSearchParams("sort=garbage")).sort,
+    ).toBe("date-desc");
   });
 
   it("returns 'all' when sphere not provided", () => {
@@ -56,21 +56,22 @@ describe("parseBuchungslisteFilters", () => {
   });
 
   it("accepts canonical sphere values", () => {
-    expect(parseBuchungslisteFilters(new URLSearchParams("sphere=zweckbetrieb")).sphere).toBe(
-      "zweckbetrieb",
-    );
+    expect(
+      parseBuchungslisteFilters(new URLSearchParams("sphere=zweckbetrieb"))
+        .sphere,
+    ).toBe("zweckbetrieb");
   });
 
   it("rejects junk sphere → 'all'", () => {
-    expect(parseBuchungslisteFilters(new URLSearchParams("sphere=garbage")).sphere).toBe(
-      "all",
-    );
+    expect(
+      parseBuchungslisteFilters(new URLSearchParams("sphere=garbage")).sphere,
+    ).toBe("all");
   });
 
   it("parses kind=donation", () => {
-    expect(parseBuchungslisteFilters(new URLSearchParams("kind=donation")).kind).toBe(
-      "donation",
-    );
+    expect(
+      parseBuchungslisteFilters(new URLSearchParams("kind=donation")).kind,
+    ).toBe("donation");
   });
 
   it("parses kategorie + project filter ids", () => {
@@ -84,7 +85,12 @@ describe("parseBuchungslisteFilters", () => {
 
 describe("filterAndSortRows", () => {
   const rows: BuchungslisteRow[] = [
-    makeRow({ id: "1", sphereSnapshot: "ideeller", betragCents: 5000, gebuchtAm: "2025-03-10" }),
+    makeRow({
+      id: "1",
+      sphereSnapshot: "ideeller",
+      betragCents: 5000,
+      gebuchtAm: "2025-03-10",
+    }),
     makeRow({
       id: "2",
       sphereSnapshot: "zweckbetrieb",

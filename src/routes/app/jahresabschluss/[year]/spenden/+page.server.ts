@@ -56,7 +56,7 @@ export const load: PageServerLoad = async ({ params }) => {
     spenderDisplay:
       r.memberVorname && r.memberNachname
         ? `${r.memberVorname} ${r.memberNachname}`
-        : r.spenderName ?? "Anonyme Spende",
+        : (r.spenderName ?? "Anonyme Spende"),
     spendeKind: r.spendeKind,
     bescheinigungNr: r.bescheinigungNr,
     bescheinigungAusgestelltAm:

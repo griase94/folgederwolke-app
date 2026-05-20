@@ -98,9 +98,7 @@ describe.skipIf(!dbConfigured)(
     });
 
     it("median over 5 runs < 200ms on 1,000-row fixture", async () => {
-      const { loadEurWorkspaceData } = await import(
-        "$lib/server/eur/load.js"
-      );
+      const { loadEurWorkspaceData } = await import("$lib/server/eur/load.js");
 
       const samples: number[] = [];
       for (let i = 0; i < 5; i++) {

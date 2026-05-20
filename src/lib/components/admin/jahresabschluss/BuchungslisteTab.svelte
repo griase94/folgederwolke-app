@@ -40,6 +40,7 @@
 	let { year, filters, rows, allRowsCount }: BuchungslisteTabProps = $props();
 
 	function hrefWith(overrides: Record<string, string | undefined>): string {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local URL builder, not a Svelte reactive store
 		const params = new URLSearchParams();
 		if (filters.sphere !== 'all') params.set('sphere', filters.sphere);
 		if (filters.kind !== 'all') params.set('kind', filters.kind);
@@ -72,6 +73,9 @@
 		return `/app/transactions/${r.id}`;
 	}
 </script>
+
+<!-- eslint-disable svelte/no-navigation-without-resolve -->
+
 
 <svelte:head>
 	<title>Buchungsliste {year} – Jahresabschluss</title>

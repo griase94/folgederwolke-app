@@ -27,6 +27,7 @@
 	}
 </script>
 
+<!-- eslint-disable svelte/no-navigation-without-resolve -->
 <nav
 	data-testid="workspace-tabs"
 	data-slot="workspace-tabs"

@@ -36,12 +36,6 @@
 import { describe, it } from "vitest";
 
 describe("Festschreibung lock — Layer 2 (DB trigger) follow-up", () => {
-  it.skip(
-    "DB trigger assert_not_festgeschrieben_trg should raise SQLSTATE 23514 on UPDATE — pending db-reviewer investigation (see file header)",
-    () => {},
-  );
-  it.skip(
-    "DB trigger should also raise SQLSTATE 23514 on DELETE — pending same investigation",
-    () => {},
-  );
+  it.skip("DB trigger assert_not_festgeschrieben_trg should raise SQLSTATE 23514 on UPDATE — pending db-reviewer investigation (see file header)", () => {});
+  it.skip("DB trigger should also raise SQLSTATE 23514 on DELETE — pending same investigation", () => {});
 });

@@ -22,7 +22,9 @@ export interface SpendeStatusRow {
 
 const KLEINBETRAG_THRESHOLD_CENTS = 20000; // 200 €
 
-export function bescheinigungStatusFor(row: SpendeStatusRow): BescheinigungStatus {
+export function bescheinigungStatusFor(
+  row: SpendeStatusRow,
+): BescheinigungStatus {
   if (row.bescheinigungNr && row.bescheinigungAusgestelltAm) {
     return "issued";
   }

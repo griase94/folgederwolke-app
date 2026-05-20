@@ -283,12 +283,8 @@ export async function loadEurWorkspaceData(
   const currentAusgaben = currentRows
     .filter((r) => r.art === "expense")
     .map(mkRow);
-  const priorEinnahmen = priorRows
-    .filter((r) => r.art === "income")
-    .map(mkRow);
-  const priorAusgaben = priorRows
-    .filter((r) => r.art === "expense")
-    .map(mkRow);
+  const priorEinnahmen = priorRows.filter((r) => r.art === "income").map(mkRow);
+  const priorAusgaben = priorRows.filter((r) => r.art === "expense").map(mkRow);
 
   // 2. Monthly aggregation for sparkline (current year only). Same direct
   //    base-table query for the same role-grants reason.

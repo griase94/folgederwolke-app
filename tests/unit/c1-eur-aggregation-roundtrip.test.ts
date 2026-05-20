@@ -102,9 +102,7 @@ describe.skipIf(!dbConfigured)(
     });
 
     it("inserted ideeller rows show up in the Übersicht payload", async () => {
-      const { loadEurWorkspaceData } = await import(
-        "$lib/server/eur/load.js"
-      );
+      const { loadEurWorkspaceData } = await import("$lib/server/eur/load.js");
       const out = await loadEurWorkspaceData(PERF_YEAR);
 
       const ideeller = out.eur.bySphere.ideeller;
@@ -120,9 +118,7 @@ describe.skipIf(!dbConfigured)(
     });
 
     it("monthlyOverschuss bucket reflects the inserted income/expense", async () => {
-      const { loadEurWorkspaceData } = await import(
-        "$lib/server/eur/load.js"
-      );
+      const { loadEurWorkspaceData } = await import("$lib/server/eur/load.js");
       const out = await loadEurWorkspaceData(PERF_YEAR);
 
       // April = index 3. We inserted 50000.00 income − 10000.00 expense =

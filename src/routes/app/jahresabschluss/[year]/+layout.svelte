@@ -17,6 +17,7 @@
 </svelte:head>
 
 <div class="mx-auto max-w-6xl px-4 py-6 safe-top lg:px-8 lg:py-8">
+	<!-- eslint-disable svelte/no-navigation-without-resolve -->
 	<!-- Breadcrumb back-link (kept simple — matches existing pattern) -->
 	<div class="mb-3">
 		<a
