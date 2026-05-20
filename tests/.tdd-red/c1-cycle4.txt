@@ -1,0 +1,27 @@
+C1 Cycle 4 — RED: Buchungsliste filter + sort helpers
+=====================================================
+
+Pure helpers in src/lib/server/eur/buchungsliste.ts:
+
+  - parseBuchungslisteFilters(searchParams) → {
+      sphere?: Sphere | 'all';
+      kind?: 'income' | 'expense' | 'donation' | 'all';
+      kategorieId?: string;
+      projectId?: string;
+      sort: 'date-desc' | 'date-asc' | 'betrag-desc' | 'betrag-asc';
+    }
+
+  - filterAndSortRows(rows, filters) → rows
+      • applies filter chips
+      • applies sort (defaults to date-desc when missing or invalid)
+
+Test cases:
+  1. parseBuchungslisteFilters defaults sort='date-desc' when missing
+  2. parseBuchungslisteFilters tolerates unknown sort values (falls back)
+  3. parseBuchungslisteFilters returns 'all' when no sphere
+  4. filterAndSortRows with sphere='ideeller' keeps only ideeller rows
+  5. filterAndSortRows with kind='donation' keeps only donation rows
+  6. filterAndSortRows with sort='date-desc' returns newest first
+  7. filterAndSortRows with sort='betrag-desc' returns largest first
+  8. filterAndSortRows with kategorieId filters strictly
+  9. filterAndSortRows with projectId filters strictly
