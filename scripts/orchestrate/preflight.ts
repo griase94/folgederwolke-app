@@ -127,6 +127,16 @@ export function checkSettingsAutonomousPermits(
   );
 }
 
+/**
+ * gh-rate-limit-headroom check.
+ *
+ * Contract (H3, PR #41 reviewer cycle 1): if we cannot determine the
+ * remaining-core count for any reason — gh CLI not installed, not
+ * authenticated, network blip, malformed JSON — this check FAILS. The safe
+ * direction is to refuse to start an overnight when we don't know how many
+ * API calls we have left; defaulting to a generous 5000 (the old behavior)
+ * masked exactly this class of bug.
+ */
 export function checkGhRateLimitHeadroom(rateLimitStdout: string): CheckResult {
   let remaining = 0; // fail closed: unknown headroom = treat as exhausted
   try {
