@@ -72,15 +72,16 @@ export class LocalFsFileStorage implements FileStorage {
       throw new StorageInvalidError("empty buffer");
     }
     const full = join(this.opts.root, pathname);
-    try {
-      await stat(full);
-      throw new StorageDuplicateError(pathname);
-    } catch (e: unknown) {
-      if (e instanceof StorageDuplicateError) throw e;
-      // ENOENT is fine — file does not exist yet
-    }
     await mkdir(dirname(full), { recursive: true });
-    await writeFile(full, buffer);
+    // Write atomically with `wx` flag — fails with EEXIST if the file exists,
+    // closing the TOCTOU window that a stat-then-write check would leave open.
+    try {
+      await writeFile(full, buffer, { flag: "wx" });
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException;
+      if (err?.code === "EEXIST") throw new StorageDuplicateError(pathname, e);
+      throw err;
+    }
     return { etag: `"${buffer.byteLength}-${Date.now()}"` };
   }
 
