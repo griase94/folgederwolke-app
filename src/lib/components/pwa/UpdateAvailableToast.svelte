@@ -4,22 +4,39 @@
 	 * When a new SW version is waiting, prompts the user to reload.
 	 * Works with the "prompt" registerType from vite-pwa — the new SW
 	 * calls skipWaiting(), so a reload picks up the updated assets.
+	 *
+	 * SSR safety: `useRegisterSW` from vite-plugin-pwa dereferences
+	 * `navigator` synchronously at call time (`"serviceWorker" in navigator`).
+	 * On adapter-node / adapter-vercel that throws `ReferenceError: navigator
+	 * is not defined` for every authenticated /app/* request. We guard the
+	 * call with the SvelteKit `browser` flag so the hook only runs in the
+	 * browser. The server render emits an empty fragment (needRefresh is
+	 * false), which is the correct behavior for SSR anyway.
 	 */
+	import { browser } from '$app/environment';
+	import { writable, type Writable } from 'svelte/store';
 	import { useRegisterSW } from 'virtual:pwa-register/svelte';
 
-	const { needRefresh, updateServiceWorker } = useRegisterSW({
-		onRegisteredSW(swUrl: string, r: ServiceWorkerRegistration | undefined) {
-			// Poll every 60 s so long-running sessions still get updates.
-			if (r) {
-				setInterval(
-					() => {
-						r.update();
-					},
-					60 * 1000
-				);
-			}
-		},
-	});
+	let needRefresh: Writable<boolean> = writable(false);
+	let updateServiceWorker: (reloadPage?: boolean) => Promise<void> = async () => {};
+
+	if (browser) {
+		const registered = useRegisterSW({
+			onRegisteredSW(swUrl: string, r: ServiceWorkerRegistration | undefined) {
+				// Poll every 60 s so long-running sessions still get updates.
+				if (r) {
+					setInterval(
+						() => {
+							r.update();
+						},
+						60 * 1000
+					);
+				}
+			},
+		});
+		needRefresh = registered.needRefresh;
+		updateServiceWorker = registered.updateServiceWorker;
+	}
 
 	async function reload() {
 		await updateServiceWorker(true);
