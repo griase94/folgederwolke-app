@@ -1,6 +1,12 @@
 <script lang="ts" module>
+	import type { Component } from 'svelte';
 	import type { SphereYoYRow, YoyDelta } from '$lib/server/eur/index.js';
+	import { Money } from '$lib/components/ui/money/index.js';
 	import { formatMoney } from '$lib/components/ui/money/index.js';
+	import HeartIcon from '@lucide/svelte/icons/heart';
+	import LandmarkIcon from '@lucide/svelte/icons/landmark';
+	import TargetIcon from '@lucide/svelte/icons/target';
+	import BriefcaseIcon from '@lucide/svelte/icons/briefcase';
 
 	export interface SphereYoYTableProps {
 		rows: SphereYoYRow[];
@@ -19,11 +25,17 @@
 		wirtschaftlich: 'Wirtschaftlicher Geschäftsbetrieb'
 	};
 
-	const SPHERE_ICONS: Record<string, string> = {
-		ideeller: '✦',
-		vermoegen: '◐',
-		zweckbetrieb: '◇',
-		wirtschaftlich: '◆'
+	// C1-L1 — lucide icons per UI-006 design-system pass.
+	// Mapping rationale:
+	//   ideeller       → Heart       (mission-driven, non-economic)
+	//   vermoegen      → Landmark    (assets, treasury)
+	//   zweckbetrieb   → Target      (purpose-driven economic activity)
+	//   wirtschaftlich → Briefcase   (commercial)
+	const SPHERE_ICONS: Record<string, Component> = {
+		ideeller: HeartIcon,
+		vermoegen: LandmarkIcon,
+		zweckbetrieb: TargetIcon,
+		wirtschaftlich: BriefcaseIcon
 	};
 </script>
 
@@ -89,14 +101,18 @@
 			</thead>
 			<tbody>
 				{#each rows as r (r.sphere)}
+					{@const Icon = SPHERE_ICONS[r.sphere]}
 					<tr class="border-b border-border/50 hover:bg-muted/20" data-sphere={r.sphere}>
 						<td class="px-5 py-3">
 							<div class="flex items-center gap-2.5">
 								<span
 									aria-hidden="true"
-									class="text-base text-primary"
+									class="text-primary"
+									data-testid={`sphere-icon-${r.sphere}`}
 								>
-									{SPHERE_ICONS[r.sphere]}
+									{#if Icon}
+										<Icon class="size-4" />
+									{/if}
 								</span>
 								<span class="font-medium text-foreground">
 									{SPHERE_LABELS[r.sphere]}
@@ -104,17 +120,17 @@
 							</div>
 						</td>
 						<td class="px-3 py-3 text-right tabular-nums text-foreground">
-							{formatMoney(r.einnahmenCents)}
+							<Money valueInCents={r.einnahmenCents} />
 						</td>
 						<td class="px-3 py-3 text-right tabular-nums text-foreground">
-							{formatMoney(r.ausgabenCents)}
+							<Money valueInCents={r.ausgabenCents} />
 						</td>
 						<td
 							class="px-3 py-3 text-right tabular-nums font-medium"
 							class:text-emerald-700={r.ueberschussCents >= 0}
 							class:text-rose-700={r.ueberschussCents < 0}
 						>
-							{formatMoney(r.ueberschussCents)}
+							<Money valueInCents={r.ueberschussCents} />
 						</td>
 						<td class="px-5 py-3 text-right">
 							<span
@@ -131,17 +147,17 @@
 				<tr class="border-t-2 border-border bg-muted/40">
 					<td class="px-5 py-3.5 font-bold text-foreground">Gesamt</td>
 					<td class="px-3 py-3.5 text-right tabular-nums font-bold text-foreground">
-						{formatMoney(totalEinnahmenCents)}
+						<Money valueInCents={totalEinnahmenCents} />
 					</td>
 					<td class="px-3 py-3.5 text-right tabular-nums font-bold text-foreground">
-						{formatMoney(totalAusgabenCents)}
+						<Money valueInCents={totalAusgabenCents} />
 					</td>
 					<td
 						class="px-3 py-3.5 text-right tabular-nums font-bold"
 						class:text-emerald-700={totalUeberschussCents >= 0}
 						class:text-rose-700={totalUeberschussCents < 0}
 					>
-						{formatMoney(totalUeberschussCents)}
+						<Money valueInCents={totalUeberschussCents} />
 					</td>
 					<td class="px-5 py-3.5 text-right">
 						<span
