@@ -75,11 +75,30 @@
 	let externIban = $state('');
 	let externEmail = $state('');
 
-	let bezeichnung = $state(initialBezeichnung);
+	// Editable form fields. `bezeichnung` and `kommentar` are seeded from
+	// props (PWA share_target M2 prefill) but MUST remain editable, so they
+	// can't be `$derived` (read-only). The Svelte 5 idiom for "prop-seeded
+	// editable state" is to declare an empty $state and copy the prop in
+	// via $effect.pre — capturing the initial value directly in $state(...)
+	// produces the `state_referenced_locally` warning because the rune
+	// stops tracking the prop after first read. See:
+	// https://svelte.dev/e/state_referenced_locally
+	let bezeichnung = $state('');
 	let betrag = $state('');
 	let rechnungsdatum = $state(new Date().toISOString().split('T')[0]!);
 	let wofuer = $state('');
-	let kommentar = $state(initialKommentar);
+	let kommentar = $state('');
+
+	// Sync props → state on mount and whenever the parent passes new
+	// initial values. Draft restore (onMount → loadDraft → applyDraft)
+	// runs LATER and overwrites these values, so the user's in-progress
+	// work still wins over the share prefill (intentional, see PWA M2 spec).
+	$effect.pre(() => {
+		bezeichnung = initialBezeichnung;
+	});
+	$effect.pre(() => {
+		kommentar = initialKommentar;
+	});
 
 	let belegFile = $state<File | null>(null);
 	let datenschutzConsent = $state(false);
