@@ -4,6 +4,7 @@
  * Resolves UX-001 (sidebar diet 9 → 5) and UX-040 (Heute → Übersicht).
  */
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { mainNavItems, navItems, type NavItem } from "./nav-registry.js";
 
@@ -48,5 +49,23 @@ describe("C9 — rename Heute → Übersicht (UX-040)", () => {
   it('the /app route is labelled "Übersicht"', () => {
     const dashboard = navItems.find((i) => i.href === "/app");
     expect(dashboard?.label).toBe("Übersicht");
+  });
+});
+
+describe("C9 — Topbar breadcrumb root rename (UX-040, cycle 2)", () => {
+  // Topbar's ROUTE_LABELS map is local (not exported). Source-grep the
+  // component file to guarantee the breadcrumb root matches the sidebar.
+  const TOPBAR_SRC = readFileSync(
+    `${process.cwd()}/src/lib/components/admin/Topbar.svelte`,
+    "utf-8",
+  );
+
+  it('Topbar maps the "app" segment to "Übersicht" (not "Start")', () => {
+    expect(TOPBAR_SRC).toMatch(/app:\s*'Übersicht'/);
+    expect(TOPBAR_SRC).not.toMatch(/app:\s*'Start'/);
+  });
+
+  it('Topbar contains no breadcrumb label "Heute"', () => {
+    expect(TOPBAR_SRC).not.toMatch(/:\s*'Heute'/);
   });
 });

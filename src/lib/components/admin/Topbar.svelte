@@ -20,7 +20,7 @@
 	}
 
 	const ROUTE_LABELS: Record<string, string> = {
-		app: 'Start',
+		app: 'Übersicht',
 		inbox: 'Audit Inbox',
 		transactions: 'Transaktionen',
 		mitglieder: 'Mitglieder',
