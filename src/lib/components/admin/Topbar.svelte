@@ -232,7 +232,7 @@
 <svelte:window onkeydown={handleGlobalKeydown} />
 
 <header
-	class="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background/95 px-4 backdrop-blur-sm supports-[backdrop-filter]:bg-background/80 lg:px-6"
+	class="safe-top sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background/95 px-4 backdrop-blur-sm supports-[backdrop-filter]:bg-background/80 lg:px-6"
 >
 	<!-- Breadcrumbs -->
 	<nav aria-label="Breadcrumb" class="hidden flex-1 items-center gap-1 text-sm sm:flex">
@@ -255,8 +255,13 @@
 		{/each}
 	</nav>
 
-	<!-- Mobile: simple logo text in place of breadcrumbs -->
-	<span class="flex-1 text-sm font-semibold text-foreground sm:hidden">Folge der Wolke</span>
+	<!--
+		Mobile (PM-010 / C7-3): hide the Vereinsname wordmark on mobile so the
+		topbar gets back its horizontal space — there's no room for it next to
+		the search-icon + bell + user-menu at iPhone width. The breadcrumb
+		nav above already takes over from `sm:` upwards.
+	-->
+	<span class="hidden">Folge der Wolke</span>
 
 	<!-- Search input (desktop) -->
 	<div class="fdw-search-wrap relative hidden w-64 md:block xl:w-80">
