@@ -42,11 +42,14 @@ test.describe("@phase-7 PWA", () => {
   });
 
   test("icons are accessible", async ({ page }) => {
+    // SVG icons removed from manifest (M1: stale FdW-text design replaced by
+    // marble-PNG variants). The maskable SVGs are kept on disk but not declared
+    // in the manifest; the manifest-declared PNGs are the source of truth.
     for (const icon of [
-      "/icons/icon-192.svg",
-      "/icons/icon-512.svg",
-      "/icons/icon-192-maskable.svg",
-      "/icons/icon-512-maskable.svg",
+      "/icons/icon-192.png",
+      "/icons/icon-512.png",
+      "/icons/icon-192-maskable.png",
+      "/icons/icon-512-maskable.png",
     ]) {
       const res = await page.goto(icon);
       expect(res?.status(), `icon ${icon} should return 200`).toBe(200);
