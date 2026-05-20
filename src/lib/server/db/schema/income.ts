@@ -21,6 +21,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sourceKindEnum, sphereEnum } from "./enums.js";
+import { files } from "./files.js";
 import { kategorien } from "./kategorien.js";
 import { projects } from "./projects.js";
 import { users } from "./users.js";
@@ -78,6 +79,10 @@ export const income = pgTable(
     // --- Beleg ---
     belegDriveFileId: text("beleg_drive_file_id"),
     belegOriginalName: text("beleg_original_name"),
+    // --- Phase 9: FK to normalized `files` table ---
+    belegFileId: uuid("beleg_file_id").references(() => files.id, {
+      onDelete: "restrict",
+    }),
 
     // --- ADR-0006 Festschreibung mixin ---
     festgeschriebenAt: timestamp("festgeschrieben_at", { withTimezone: true }),

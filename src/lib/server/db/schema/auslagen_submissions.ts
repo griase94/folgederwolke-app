@@ -27,6 +27,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { bezahltVonKindEnum } from "./enums.js";
 import { expenses } from "./expenses.js";
+import { files } from "./files.js";
 import { members } from "./members.js";
 import { users } from "./users.js";
 
@@ -66,6 +67,10 @@ export const auslagenSubmissions = pgTable(
     // --- Beleg uploaded to _incoming/ ---
     belegDriveFileId: text("beleg_drive_file_id"),
     belegOriginalName: text("beleg_original_name"),
+    // --- Phase 9: FK to normalized `files` table ---
+    belegFileId: uuid("beleg_file_id").references(() => files.id, {
+      onDelete: "restrict",
+    }),
 
     // --- Audit-inbox state ---
     /** NULL = open in inbox, set when approved or rejected. */

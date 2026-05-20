@@ -37,6 +37,7 @@ import {
   zweckbindungKindEnum,
 } from "./enums.js";
 import { expenses } from "./expenses.js";
+import { files } from "./files.js";
 import { kategorien } from "./kategorien.js";
 import { members } from "./members.js";
 import { projects } from "./projects.js";
@@ -106,6 +107,15 @@ export const donations = pgTable(
     ).references(() => users.id, { onDelete: "set null" }),
     bescheinigungPdfDriveFileId: text("bescheinigung_pdf_drive_file_id"),
     bescheidTyp: bescheidTypEnum("bescheid_typ"),
+
+    // --- Phase 9: FK to normalized `files` table (Drive → Blob migration) ---
+    belegFileId: uuid("beleg_file_id").references(() => files.id, {
+      onDelete: "restrict",
+    }),
+    bescheinigungFileId: uuid("bescheinigung_file_id").references(
+      () => files.id,
+      { onDelete: "restrict" },
+    ),
 
     // --- Aufwandsspende (D9 — schema only, UI deferred to Phase 2) ---
     /**

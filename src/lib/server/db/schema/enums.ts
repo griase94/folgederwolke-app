@@ -108,6 +108,7 @@ export const entityKindEnum = pgEnum("entity_kind", [
   "auslagen_submission",
   "invoice_job",
   "settings",
+  "file",
 ]);
 
 /** Zahlungsart kind (transport-layer for legacy Banküberweisung/Bar etc.). */

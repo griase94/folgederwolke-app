@@ -10,6 +10,7 @@ export * from "./auslagen_submissions.js";
 export * from "./customers.js";
 export * from "./donations.js";
 export * from "./expenses.js";
+export * from "./files.js";
 export * from "./id_counters.js";
 export * from "./import_runs.js";
 export * from "./income.js";
