@@ -232,6 +232,177 @@ function serializeBySphere(
 
 // ── DB shell ─────────────────────────────────────────────────────────────────
 
+/**
+ * Result of `loadEurAggregatesForPdf` — the minimal subset of workspace data
+ * the downloadable EÜR PDF needs.
+ *
+ * Critically, `eur` is computed over the SAME 3-source union (income +
+ * donations + member_beitrags) as the workspace UI. This means the
+ * Steuerberater-PDF and the Übersicht tab show the identical Einnahmen
+ * totals — without this shared path, the PDF would silently undercount
+ * Einnahmen by the ~60-80% that typically come from Mitgliedsbeiträge +
+ * Spenden in a German Verein.
+ */
+export interface EurPdfAggregates {
+  eur: ReturnType<typeof computeEurYear>;
+  vereinName: string;
+  /**
+   * Original income rows + expense rows (with kategorien JOIN for
+   * eur_zeile / anlage_gem_zeile). Returned alongside `eur` so callers
+   * that also need rows for Anlage-Gem-CSV / GoBD-Z3 (e.g. bundle.zip)
+   * can skip a second DB round-trip.
+   *
+   * NB: these are *only* the income + expense rows — donations + paid
+   * Mitgliedsbeiträge are folded INTO `eur` via the union but are NOT
+   * surfaced here, because they have no `eur_zeile` / `anlage_gem_zeile`
+   * (the Anlage-Gem-CSV aggregator skips null Zeilen anyway). Spenden
+   * have their own dedicated bundle export (03_Spendenliste-${year}.csv);
+   * member_beitrags have 08_Mitgliedsbeitraege-${year}.csv.
+   */
+  einnahmenRowsWithKategorien: EurRow[];
+  ausgabenRowsWithKategorien: EurRow[];
+}
+
+/**
+ * Load + compose the EÜR aggregates the PDF generator needs.
+ *
+ * Shared by:
+ *   - `src/routes/app/jahresabschluss/[year]/eur.pdf/+server.ts`
+ *   - `src/routes/app/jahresabschluss/[year]/bundle.zip/+server.ts` (for the
+ *     embedded EÜR PDF only — Anlage-Gem-CSV + GoBD-Z3 use the rows alongside)
+ *
+ * The returned `eur` uses the same 3-source union as `loadEurWorkspaceData`,
+ * guaranteeing the downloaded PDF matches the workspace UI byte-for-byte on
+ * the Einnahmen side.
+ */
+export async function loadEurAggregatesForPdf(
+  year: number,
+): Promise<EurPdfAggregates> {
+  const db = getDb();
+  const vereinName = env.VEREIN_NAME || "Folge der Wolke e.V.";
+
+  // Income + expense rows with the kategorien JOIN (PDF doesn't need
+  // eur_zeile / anlage_gem_zeile itself, but bundle.zip does — pulling
+  // them here lets the bundle reuse this query instead of running its own).
+  const rawEurRows = (await db.execute(sql`
+    SELECT 'income' AS art, i.business_id, i.gebucht_am, i.betrag_cents, i.bezeichnung,
+           i.sphere_snapshot, i.kategorie_id, i.kategorie_name_snapshot,
+           k.eur_zeile, k.anlage_gem_zeile, i.beleg_drive_file_id, i.beleg_original_name
+      FROM income i
+      LEFT JOIN kategorien k ON k.id = i.kategorie_id
+     WHERE i.year_of_buchung = ${year}
+    UNION ALL
+    SELECT 'expense' AS art, e.business_id, e.gebucht_am, e.betrag_cents, e.bezeichnung,
+           COALESCE(e.sphere_override, e.sphere_snapshot),
+           e.kategorie_id, e.kategorie_name_snapshot,
+           k.eur_zeile, k.anlage_gem_zeile, e.beleg_drive_file_id, e.beleg_original_name
+      FROM expenses e
+      LEFT JOIN kategorien k ON k.id = e.kategorie_id
+     WHERE e.year_of_buchung = ${year}
+     ORDER BY gebucht_am ASC
+  `)) as unknown as VEurYearRow[];
+
+  const mkRow = (r: VEurYearRow): EurRow => ({
+    businessId: r.business_id,
+    gebuchtAm: r.gebucht_am,
+    betragCents: BigInt(r.betrag_cents),
+    sphereSnapshot: r.sphere_snapshot as Sphere,
+    kategorieId: r.kategorie_id,
+    kategorieNameSnapshot: r.kategorie_name_snapshot,
+    eurZeile: r.eur_zeile,
+    anlageGemZeile: r.anlage_gem_zeile,
+    bezeichnung: r.bezeichnung,
+    belegDriveFileId: r.beleg_drive_file_id,
+    belegOriginalName: r.beleg_original_name,
+  });
+
+  const einnahmenRowsWithKategorien = rawEurRows
+    .filter((r) => r.art === "income")
+    .map(mkRow);
+  const ausgabenRowsWithKategorien = rawEurRows
+    .filter((r) => r.art === "expense")
+    .map(mkRow);
+
+  // 3-source union on the Einnahmen side — mirrors loadEurWorkspaceData.
+  // Donations table has no bezeichnung column; synthesize from spender or
+  // kategorie name. Mitgliedsbeiträge: paid_cents (gezahlt_am IS NOT NULL),
+  // always 'ideeller' by gemeinnützigkeitsrechtlicher Definition.
+  const donationRows = (await db.execute(sql`
+    SELECT business_id, gebucht_am, betrag_cents,
+           COALESCE(spender_name, kategorie_name_snapshot, 'Spende') AS bezeichnung,
+           sphere_snapshot, kategorie_id, kategorie_name_snapshot
+      FROM donations
+     WHERE year_of_buchung = ${year}
+       AND supersedes_id IS NULL
+  `)) as unknown as Array<{
+    business_id: string;
+    gebucht_am: Date;
+    betrag_cents: bigint;
+    bezeichnung: string;
+    sphere_snapshot: string;
+    kategorie_id: string | null;
+    kategorie_name_snapshot: string;
+  }>;
+
+  const donationEurRows: EurRow[] = donationRows.map((r) => ({
+    businessId: r.business_id,
+    gebuchtAm: r.gebucht_am,
+    betragCents: BigInt(r.betrag_cents),
+    sphereSnapshot: r.sphere_snapshot as Sphere,
+    kategorieId: r.kategorie_id,
+    kategorieNameSnapshot: r.kategorie_name_snapshot,
+    eurZeile: null,
+    anlageGemZeile: null,
+    bezeichnung: r.bezeichnung,
+    belegDriveFileId: null,
+    belegOriginalName: null,
+  }));
+
+  const beitragRows = (await db.execute(sql`
+    SELECT id::text AS business_id, gezahlt_am,
+           paid_cents AS betrag_cents,
+           'Mitgliedsbeitrag ' || year::text AS bezeichnung
+      FROM member_beitrags
+     WHERE year = ${year}
+       AND gezahlt_am IS NOT NULL
+       AND paid_cents > 0
+  `)) as unknown as Array<{
+    business_id: string;
+    gezahlt_am: string;
+    betrag_cents: bigint;
+    bezeichnung: string;
+  }>;
+
+  const beitragEurRows: EurRow[] = beitragRows.map((r) => ({
+    businessId: r.business_id,
+    gebuchtAm: new Date(r.gezahlt_am),
+    betragCents: BigInt(r.betrag_cents),
+    sphereSnapshot: "ideeller",
+    kategorieId: null,
+    kategorieNameSnapshot: "Mitgliedsbeitrag",
+    eurZeile: null,
+    anlageGemZeile: null,
+    bezeichnung: r.bezeichnung,
+    belegDriveFileId: null,
+    belegOriginalName: null,
+  }));
+
+  const einnahmenUnion = [
+    ...einnahmenRowsWithKategorien,
+    ...donationEurRows,
+    ...beitragEurRows,
+  ];
+
+  const eur = computeEurYear(year, einnahmenUnion, ausgabenRowsWithKategorien);
+
+  return {
+    eur,
+    vereinName,
+    einnahmenRowsWithKategorien,
+    ausgabenRowsWithKategorien,
+  };
+}
+
 interface VEurYearRow {
   art: string;
   business_id: string;
@@ -499,7 +670,8 @@ export async function loadEurWorkspaceData(
   const currentJahrRes = (await db.execute<{ jahr: number }>(sql`
     SELECT year_for_booking(NOW())::int AS jahr
   `)) as { jahr: number }[];
-  const currentBuchungsjahr = currentJahrRes[0]?.jahr ?? new Date().getFullYear();
+  const currentBuchungsjahr =
+    currentJahrRes[0]?.jahr ?? new Date().getFullYear();
 
   // 4. festgeschrieben_bis
   const festRes = (await db.execute<{ value: unknown }>(sql`
