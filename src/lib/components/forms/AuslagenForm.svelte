@@ -38,6 +38,15 @@
 		 * `consent`, …).
 		 */
 		serverFieldErrors?: Record<string, string[]> | null;
+		/**
+		 * Optional initial values for the form. Used by the PWA share_target
+		 * (M2) redirect bridge so the form opens pre-populated with the
+		 * bezeichnung/kommentar the user shared. Falsy values are ignored —
+		 * the form keeps its empty default. Draft restore wins over these:
+		 * if a draft exists the user gets their in-progress work back.
+		 */
+		initialBezeichnung?: string;
+		initialKommentar?: string;
 	}
 
 	let {
@@ -49,7 +58,9 @@
 		members = [],
 		projects = [],
 		serverError = null,
-		serverFieldErrors = null
+		serverFieldErrors = null,
+		initialBezeichnung = '',
+		initialKommentar = ''
 	}: Props = $props();
 
 	// ---------------------------------------------------------------------------
@@ -64,11 +75,28 @@
 	let externIban = $state('');
 	let externEmail = $state('');
 
-	let bezeichnung = $state('');
+	// Editable form fields. `bezeichnung` and `kommentar` are seeded from
+	// props (PWA share_target M2 prefill) but MUST remain editable. In
+	// Svelte 5 the idiom for this is a *writable derived*: $derived returns
+	// the prop value, and the user's edits temporarily override it (same
+	// pattern as the official "optimistic UI" example in the $derived
+	// docs). Whenever the parent passes a new initial value the derived
+	// re-syncs; the user's edits before that point are intentionally
+	// discarded only on prop change (which in practice never happens — the
+	// share prefill is a one-shot navigation). Draft restore runs from
+	// onMount and writes through these bindings, so an in-progress draft
+	// still wins over a share prefill (matches the PWA M2 spec).
+	//
+	// Doing this with `let x = $state(initialX)` triggers
+	// `state_referenced_locally` (svelte/state-referenced-locally) because
+	// $state captures the value once and never re-syncs.
+	// Doing it with `$state + $effect` triggers svelte/prefer-writable-derived.
+	// $derived is the documented answer.
+	let bezeichnung = $derived(initialBezeichnung);
 	let betrag = $state('');
 	let rechnungsdatum = $state(new Date().toISOString().split('T')[0]!);
 	let wofuer = $state('');
-	let kommentar = $state('');
+	let kommentar = $derived(initialKommentar);
 
 	let belegFile = $state<File | null>(null);
 	let datenschutzConsent = $state(false);

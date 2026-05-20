@@ -1,0 +1,18 @@
+Cycle 1 (red) — C5 cluster: PWA icon pack + manifest contract.
+
+Red test body lives at: tests/unit/icons-manifest.test.ts
+
+Expected failures before green commit:
+- Missing static/icons/icon-{192,512,192-maskable,512-maskable}.png
+- Missing static/apple-touch-icon.png
+- Missing static/favicon-16.png, favicon-32.png, favicon.ico, favicon.svg
+- Manifest missing dir, categories, id, prefer_related_applications, display_override
+- Manifest start_url = "/app" (need "/app?source=pwa")
+- Manifest icons array references SVG only (need PNG-purpose-any + PNG-purpose-maskable for 192/512)
+- Manifest missing shortcuts (PM-004)
+- Manifest missing share_target (PM-005)
+- src/lib/components/pwa/InstallPrompt.svelte doesn't touch localStorage (PM-011)
+- scripts/build-favicons.sh doesn't exist
+
+Green commit will add the icons, the script, manifest fields, and update
+InstallPrompt + src/app.html + vite.config.ts (share_target + background sync).

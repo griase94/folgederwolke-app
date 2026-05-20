@@ -57,11 +57,43 @@ async function fileStorage(): Promise<FileStorage> {
 // load
 // ---------------------------------------------------------------------------
 
-export const load: PageServerLoad = async () => {
+/**
+ * PWA share_target prefill payload — passed to the page when the user arrives
+ * via a `?from=share` redirect from the share-target action handler.
+ * The server only echoes the textual fields the browser supplied (title/text/
+ * url); file attachments are NOT carried across the redirect (the GET URL
+ * length budget can't fit a Beleg) and the user is asked to re-attach. This
+ * is the M2 minimum-viable shape — full file pass-through can land later.
+ */
+export interface SharePrefill {
+  bezeichnung?: string;
+  kommentar?: string;
+  fileNotice?: boolean;
+}
+
+export const load: PageServerLoad = async ({ url }) => {
   if (!env.PUBLIC_FORM_ENABLED) {
     throw error(404, "Das Formular ist momentan nicht verfügbar.");
   }
-  return { formEnabled: true };
+
+  // PWA share-target prefill (M2): when the browser POSTs a share to
+  // /auslage-einreichen?source=share, the default action intercepts it and
+  // redirects to GET /auslage-einreichen?from=share&… with the textual
+  // fields in query params. Here we hydrate `sharePrefill` so the page
+  // can render the form pre-populated with what the share carried.
+  let sharePrefill: SharePrefill | null = null;
+  if (url.searchParams.get("from") === "share") {
+    sharePrefill = {
+      bezeichnung: url.searchParams.get("title") ?? undefined,
+      kommentar:
+        url.searchParams.get("text") ??
+        url.searchParams.get("url") ??
+        undefined,
+      fileNotice: url.searchParams.get("file") === "1",
+    };
+  }
+
+  return { formEnabled: true, sharePrefill };
 };
 
 // ---------------------------------------------------------------------------
@@ -103,10 +135,47 @@ function berlinYear(now: Date = new Date()): number {
 // ---------------------------------------------------------------------------
 
 export const actions: Actions = {
-  default: async ({ request, getClientAddress }) => {
+  default: async ({ request, getClientAddress, url }) => {
     // ── Gate ──────────────────────────────────────────────────────────────────
     if (!isPublicFormEnabled()) {
       throw error(404, "Das Formular ist momentan nicht verfügbar.");
+    }
+
+    // ── PWA share_target intercept (M2) ───────────────────────────────────────
+    // manifest.webmanifest declares share_target POSTing multipart/form-data
+    // to /auslage-einreichen?source=share with params title→bezeichnung_display,
+    // text→kommentar_display, url→kommentar_url, files[0]→beleg. A normal
+    // submission path would fail(400) on missing betrag/iban/consent. Instead
+    // we redirect (303) to a GET that pre-populates the form with the textual
+    // fields. File attachments are NOT carried across the redirect (URL length
+    // budget) — the user re-attaches the Beleg on the rendered form. A note
+    // banner explains this.
+    if (url.searchParams.get("source") === "share") {
+      let title = "";
+      let text = "";
+      let urlField = "";
+      let hadFile = false;
+      try {
+        const shareData = await request.formData();
+        const t = shareData.get("bezeichnung_display");
+        const tx = shareData.get("kommentar_display");
+        const u = shareData.get("kommentar_url");
+        const f = shareData.get("beleg");
+        if (typeof t === "string") title = t;
+        if (typeof tx === "string") text = tx;
+        if (typeof u === "string") urlField = u;
+        if (f instanceof File && f.size > 0) hadFile = true;
+      } catch {
+        // Malformed share intent → still redirect to the empty form so the
+        // user sees a page they can act on instead of a 400.
+      }
+      const params = new URLSearchParams();
+      params.set("from", "share");
+      if (title) params.set("title", title.slice(0, 200));
+      if (text) params.set("text", text.slice(0, 500));
+      else if (urlField) params.set("text", urlField.slice(0, 500));
+      if (hadFile) params.set("file", "1");
+      throw redirect(303, `/auslage-einreichen?${params.toString()}`);
     }
 
     const ip = getClientAddress();

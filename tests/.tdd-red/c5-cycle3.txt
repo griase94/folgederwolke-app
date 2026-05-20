@@ -1,0 +1,50 @@
+Cycle 3 (red) — C5 cluster: expert fixes for F1/F2/F3 from PR #46 review.
+
+Pre-fix state (red):
+
+F1 — HIGH: SvelteKit CSRF blocks share_target POST in prod build
+  Symptom: `node build/index.js` returns HTTP 403 "Cross-site POST form
+    submissions are forbidden" for a multipart POST to
+    /auslage-einreichen?source=share when the Origin header is missing or
+    cross-site (the exact case for Android share intents).
+  Repro (raw curl, against prod build):
+    body=$'--B\r\nContent-Disposition: form-data; name="bezeichnung_display"\r\n\r\nX\r\n--B--\r\n'
+    printf "%b" "$body" | curl -s -i -X POST \
+      -H "Content-Type: multipart/form-data; boundary=B" \
+      --data-binary @- \
+      "http://127.0.0.1:4173/auslage-einreichen?source=share"
+    → HTTP/1.1 403 Forbidden  Cross-site POST form submissions are forbidden
+  Expected after fix: HTTP/1.1 303 (or 200 with redirect JSON) → location
+    points to /auslage-einreichen?from=share&…
+  Test body:
+    tests/e2e/pwa.spec.ts → "share_target POST is handled" — already shipped in
+    cycle 2; in cycle 3 it was extended with an explicit "missing Origin
+    header" branch that exercises the Android-intent case.
+  Tagging: re-tagged to @phase-2 to enter the CI cumulative grep (F3).
+
+F2 — Svelte 5 state_referenced_locally warnings fail typecheck
+  Symptom:
+    pnpm typecheck → 0 ERRORS 2 WARNINGS 1 FILES_WITH_PROBLEMS
+      src/lib/components/forms/AuslagenForm.svelte 74:27 — initialBezeichnung
+      src/lib/components/forms/AuslagenForm.svelte 78:25 — initialKommentar
+    Exit 1 because of --fail-on-warnings.
+  Expected after fix:
+    pnpm typecheck → 0 ERRORS 0 WARNINGS, exit 0.
+  Fix shape:
+    Replace `let x = $state(initialX)` with the documented Svelte 5 "prop-
+    seeded editable state" pattern: declare `let x = $state('')` and then
+    `$effect.pre(() => { x = initialX; })`. Wrapped so initialization runs
+    once on mount and on prop change.
+
+F3 — CI grep misses @phase-7-tagged e2e (PWA share_target)
+  Symptom:
+    .github/workflows/ci.yml e2e job: `pnpm test:e2e --grep
+      '@phase-0|@phase-1|@phase-2'`. PWA spec is tagged @phase-7, so the
+    share_target prod-build test never runs in CI.
+  Expected after fix:
+    The cycle-3 share_target test runs in CI on every push to overnight-* and
+    main, catching any future CSRF/regression failure on its way in.
+  Fix shape:
+    Re-tag tests/e2e/pwa.spec.ts describe block to @phase-2 (PWA + share_target
+    is part of the foundation testing surface — PWA shipped in phase-2).
+    Document the rationale inline.

@@ -3,12 +3,35 @@
 	 * Android / Chrome "beforeinstallprompt" install CTA.
 	 * Rendered inside the admin Topbar — shows a small "Install" button
 	 * when the browser fires the install event.
+	 *
+	 * PM-011: dismissal is persisted in localStorage for 30 days. Mirrors
+	 * the pattern used by IosInstallHint.svelte (STORAGE_KEY + ts).
 	 */
+
+	const STORAGE_KEY = 'fdw.install-dismissed-at';
+	const DISMISS_TTL_MS = 30 * 24 * 3600 * 1000;
 
 	let deferredPrompt = $state<BeforeInstallPromptEvent | null>(null);
 	let dismissed = $state(false);
 
+	function readPersistedDismissal(): boolean {
+		try {
+			const raw = localStorage.getItem(STORAGE_KEY);
+			if (!raw) return false;
+			const ts = Number.parseInt(raw, 10);
+			if (!Number.isFinite(ts)) return false;
+			return Date.now() - ts < DISMISS_TTL_MS;
+		} catch {
+			return false;
+		}
+	}
+
 	$effect(() => {
+		// Seed state from persisted dismissal so a reload doesn't re-prompt.
+		if (readPersistedDismissal()) {
+			dismissed = true;
+		}
+
 		function handleBeforeInstallPrompt(e: Event) {
 			e.preventDefault();
 			deferredPrompt = e as BeforeInstallPromptEvent;
@@ -30,6 +53,11 @@
 	function dismiss() {
 		dismissed = true;
 		deferredPrompt = null;
+		try {
+			localStorage.setItem(STORAGE_KEY, String(Date.now()));
+		} catch {
+			// storage blocked — fall through; in-memory dismissal still applies for this session
+		}
 	}
 
 	const visible = $derived(!!deferredPrompt && !dismissed);
