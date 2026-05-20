@@ -19,17 +19,17 @@ schreibst, halte dich an diese Regeln — sonst ziehe es in einem Review.
 Eine Schaltfläche muss beschreiben, was sie tut. Generische Texte
 (`Hinzufügen`, `Speichern`, `OK`) sind verboten. Stattdessen:
 
-| Aktion | Label |
-| --- | --- |
-| Neues Mitglied | `Mitglied anlegen` |
-| Neuer Kunde | `Kunden anlegen` |
-| Neues Projekt | `Projekt anlegen` |
-| Neue Rechnung (mit PDF) | `Rechnung erstellen & PDF` |
-| Neue Spende | `Spende erfassen` |
-| Neue Ausgabe | `Ausgabe erfassen` |
-| Neue Einnahme | `Einnahme erfassen` |
-| Bearbeiten speichern | `Änderungen speichern` |
-| Archivieren | `Archivieren` (mit Bestätigungs-Modal) |
+| Aktion                  | Label                                  |
+| ----------------------- | -------------------------------------- |
+| Neues Mitglied          | `Mitglied anlegen`                     |
+| Neuer Kunde             | `Kunden anlegen`                       |
+| Neues Projekt           | `Projekt anlegen`                      |
+| Neue Rechnung (mit PDF) | `Rechnung erstellen & PDF`             |
+| Neue Spende             | `Spende erfassen`                      |
+| Neue Ausgabe            | `Ausgabe erfassen`                     |
+| Neue Einnahme           | `Einnahme erfassen`                    |
+| Bearbeiten speichern    | `Änderungen speichern`                 |
+| Archivieren             | `Archivieren` (mit Bestätigungs-Modal) |
 
 Warm-Wort-Wahl: „erfassen" für Buchungen (Spende, Ausgabe, Einnahme), „anlegen"
 für Stammdaten (Mitglied, Kunde, Projekt), „erstellen" wenn ein Artefakt
@@ -101,13 +101,13 @@ Der Server muss eine entsprechende `restore` Action liefern, die
 
 ## Toast-Sprache
 
-| Situation | Text |
-| --- | --- |
-| Erfolg (anlegen) | `Mitglied angelegt` / `Spende erfasst` |
-| Erfolg (aktualisieren) | `Mitglied aktualisiert` |
-| Erfolg (archivieren, mit Undo) | `Projekt archiviert` + Undo-Action |
-| Undo durchgeführt | `Wiederhergestellt` |
-| Fehler | konkrete Fehlermeldung („IBAN-Prüfsumme stimmt nicht") oder Fallback `Speichern fehlgeschlagen` |
+| Situation                      | Text                                                                                            |
+| ------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Erfolg (anlegen)               | `Mitglied angelegt` / `Spende erfasst`                                                          |
+| Erfolg (aktualisieren)         | `Mitglied aktualisiert`                                                                         |
+| Erfolg (archivieren, mit Undo) | `Projekt archiviert` + Undo-Action                                                              |
+| Undo durchgeführt              | `Wiederhergestellt`                                                                             |
+| Fehler                         | konkrete Fehlermeldung („IBAN-Prüfsumme stimmt nicht") oder Fallback `Speichern fehlgeschlagen` |
 
 ## Tests die diese Konventionen verteidigen
 
