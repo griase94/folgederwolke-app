@@ -41,3 +41,59 @@ export function yearForBooking(gebuchtAm: Date): number {
 export function berlinYear(now: Date = new Date()): number {
   return yearForBooking(now);
 }
+
+// ---------------------------------------------------------------------------
+// C2 — Global year switcher helpers (VB-002, JB-001, JB-006, UX-010)
+// ---------------------------------------------------------------------------
+
+/** Plausible Buchungsjahr range — guards against junk in `?year=` URLs. */
+const MIN_YEAR = 2000;
+const MAX_YEAR = 2200;
+
+/**
+ * Current Buchungsjahr default (Berlin TZ). Alias of `berlinYear()` — kept
+ * separately for naming clarity at year-switcher call sites.
+ */
+export function currentBuchungsjahr(now: Date = new Date()): number {
+  return yearForBooking(now);
+}
+
+/**
+ * Parse a `?year=NNNN` query param to a Buchungsjahr integer, falling back to
+ * `fallback` when missing, non-numeric, or outside the plausible range.
+ */
+export function selectYearFromUrl(
+  searchParams: URLSearchParams,
+  fallback: number,
+): number {
+  const raw = searchParams.get("year");
+  if (raw === null) return fallback;
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n)) return fallback;
+  if (n < MIN_YEAR || n > MAX_YEAR) return fallback;
+  return n;
+}
+
+/**
+ * Coerce a requested year to one present in `available`, choosing the closest
+ * representative (largest below, smallest above). Empty `available` is a
+ * pass-through — the caller is responsible for seeding it.
+ */
+export function clampYearToAvailable(
+  requested: number,
+  available: readonly number[],
+): number {
+  if (available.length === 0) return requested;
+  if (available.includes(requested)) return requested;
+  const sorted = [...available].sort((a, b) => a - b);
+  const min = sorted[0]!;
+  const max = sorted[sorted.length - 1]!;
+  if (requested < min) return min;
+  if (requested > max) return max;
+  let candidate = min;
+  for (const y of sorted) {
+    if (y <= requested) candidate = y;
+    else break;
+  }
+  return candidate;
+}
