@@ -17,14 +17,23 @@
 	];
 </script>
 
-<div class="flex gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label="Transaktionstyp">
+<!--
+  Mobile (< sm) → horizontally scrollable strip so the four tabs can't clip
+  the viewport at 390px (PM-008). The tablist itself stays inline-flex so
+  tabs don't wrap mid-row.
+-->
+<div
+	class="flex gap-1 overflow-x-auto rounded-lg bg-muted p-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+	role="tablist"
+	aria-label="Transaktionstyp"
+>
 	{#each tabs as tab (tab.kind ?? 'all')}
 		<button
 			role="tab"
 			aria-selected={activeKind === tab.kind}
 			onclick={() => onchange(tab.kind)}
 			class={[
-				'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+				'flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
 				activeKind === tab.kind
 					? 'bg-background text-foreground shadow-sm'
 					: 'text-muted-foreground hover:text-foreground',

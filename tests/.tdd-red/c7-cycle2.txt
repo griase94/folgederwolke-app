@@ -1,0 +1,18 @@
+C7 Cycle 2 — RED — Transactions filter chip overflow (PM-008)
+==============================================================
+
+The TypeTabsHeader chips ("Alle / Ausgaben / Einnahmen / Spenden") clip at
+390px viewport width — "Spenden" is half-cut on iPhone 12. SavedViewsBar
+chips below them have the same risk.
+
+Failing tests:
+- E2E: tests/e2e/c7-mobile-polish.spec.ts — at 390x844, /app/transactions
+  shows all 4 type tabs fully inside the viewport (chip row scroll container
+  exists OR chips flex-wrap, but no horizontal overflow on the page).
+- Unit: TypeTabsHeader chips wrap in a horizontally scrollable container at
+  the < md breakpoint.
+
+Fix approach (suggested in finding):
+- wrap the chip row in <div class="flex gap-2 overflow-x-auto -mx-4 px-4
+  snap-x flex-nowrap"> so chips can scroll instead of clip
+- equivalent change to SavedViewsBar

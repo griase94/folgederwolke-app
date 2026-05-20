@@ -62,13 +62,18 @@
 	}
 </script>
 
-<div class="flex flex-wrap items-center gap-2">
-	<span class="text-xs font-medium text-muted-foreground">Ansicht:</span>
+<!--
+  Mobile (< sm) → horizontally scrollable strip so the saved-view chips
+  don't clip the viewport at 390px (PM-008 sibling). On sm+ the chips wrap
+  naturally — that path is the original behaviour.
+-->
+<div class="flex items-center gap-2 overflow-x-auto sm:flex-wrap [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+	<span class="shrink-0 text-xs font-medium text-muted-foreground">Ansicht:</span>
 	{#each views as view (view.id)}
 		<button
 			onclick={() => selectView(view)}
 			class={[
-				'rounded-full border px-3 py-1 text-xs transition-colors',
+				'shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs transition-colors',
 				activeId === view.id
 					? 'border-primary bg-primary/10 text-primary'
 					: 'border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground',
