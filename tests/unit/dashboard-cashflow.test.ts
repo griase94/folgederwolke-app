@@ -170,7 +170,8 @@ describe("loadDashboardKpis(year)", () => {
 
   it("accepts a year argument and returns a cashflow block", async () => {
     // dashboard.loadDashboardKpis issues a fixed sequence of selects. We
-    // supply harmless empty arrays / zero counts in order:
+    // supply harmless empty arrays / zero counts in order. After C3-1
+    // (cycle 2) the sequence now spans 15 queries:
     //
     //   1. openAuslagen.count
     //   2. approvedNotErstattet (count, sum)
@@ -178,14 +179,15 @@ describe("loadDashboardKpis(year)", () => {
     //   4. spendenYtd
     //   5. activeMembers
     //   6. wgbEinnahmen
-    //   7. einnahmen monthly (current year)
-    //   8. ausgaben monthly (current year)
-    //   9. einnahmen LY YTD
-    //  10. ausgaben LY YTD
-    //  11. open invoices count
-    //  12. inbox count (== openAuslagen, but query for chip resolver)
-    //
-    // Each item is "the array the awaited drizzle query resolves to".
+    //   7. income monthly (current year, sphereSnapshot grouped)
+    //   8. donations monthly
+    //   9. beitrags monthly (paidCents bucketed by gezahlt_am)
+    //  10. expenses monthly
+    //  11. income LY YTD
+    //  12. donations LY YTD
+    //  13. beitrags LY YTD
+    //  14. expenses LY YTD
+    //  15. open invoices count
     queryResults.push(
       [{ value: 0 }], // 1
       [{ cnt: 0, sumCents: 0 }], // 2
@@ -197,15 +199,19 @@ describe("loadDashboardKpis(year)", () => {
         { month: 1, sumCents: 1000 },
         { month: 6, sumCents: 5000 },
         { month: 12, sumCents: 9000 },
-      ], // 7 einnahmen monthly
+      ], // 7 income monthly
+      [], // 8 donations monthly (empty for legacy test parity)
+      [], // 9 beitrags monthly (empty)
       [
         { month: 1, sumCents: 500 },
         { month: 6, sumCents: 2500 },
         { month: 12, sumCents: 4500 },
-      ], // 8 ausgaben monthly
-      [{ sumCents: 12000 }], // 9 einnahmen LY YTD
-      [{ sumCents: 6000 }], // 10 ausgaben LY YTD
-      [{ value: 3 }], // 11 open invoices
+      ], // 10 expenses monthly
+      [{ sumCents: 12000 }], // 11 income LY YTD
+      [{ sumCents: 0 }], // 12 donations LY YTD
+      [{ sumCents: 0 }], // 13 beitrags LY YTD
+      [{ sumCents: 6000 }], // 14 expenses LY YTD
+      [{ value: 3 }], // 15 open invoices
     );
 
     const mod = await import("$lib/server/domain/dashboard.js");
@@ -233,10 +239,14 @@ describe("loadDashboardKpis(year)", () => {
       [{ sumCents: 0 }],
       [{ value: 0 }],
       [{ sumCents: 0 }],
-      [], // einnahmen monthly empty
+      [], // einnahmen monthly empty (income)
+      [], // donations monthly empty
+      [], // beitrags monthly empty
       [], // ausgaben monthly empty
-      [{ sumCents: 0 }],
-      [{ sumCents: 0 }],
+      [{ sumCents: 0 }], // income LY
+      [{ sumCents: 0 }], // donations LY
+      [{ sumCents: 0 }], // beitrags LY
+      [{ sumCents: 0 }], // expenses LY
       [{ value: 0 }],
     );
 
@@ -246,5 +256,56 @@ describe("loadDashboardKpis(year)", () => {
     // returned a sensible 4-digit year and the call didn't throw.
     expect(result.cashflow.year).toBeGreaterThanOrEqual(2024);
     expect(result.cashflow.einnahmenMonthlyCents.length).toBe(12);
+  });
+
+  // -------------------------------------------------------------------------
+  // C3-1 (cycle 2) — Einnahmen must union income + donations + member_beitrags
+  // -------------------------------------------------------------------------
+  it("unions Spenden + Mitgliedsbeiträge into Einnahmen YTD + monthly + LY (C3-1)", async () => {
+    // Query order with C3-1 fix:
+    //   1. openAuslagen
+    //   2. approvedNotErstattet
+    //   3. openBeitragsAgg
+    //   4. spendenYtd
+    //   5. activeMembers
+    //   6. wgbEinnahmen
+    //   7. einnahmen monthly (income table)
+    //   8. donations monthly
+    //   9. beitrags monthly (gezahlt_am buckets)
+    //  10. ausgaben monthly
+    //  11. einnahmen LY YTD (income)
+    //  12. donations LY YTD
+    //  13. beitrags LY YTD
+    //  14. ausgaben LY YTD
+    //  15. open invoices count
+    queryResults.push(
+      [{ value: 0 }],
+      [{ cnt: 0, sumCents: 0 }],
+      [{ rowCount: 0, memberCount: 0 }],
+      [{ sumCents: 0 }],
+      [{ value: 0 }],
+      [{ sumCents: 0 }],
+      [{ month: 1, sumCents: 1000 }], // income monthly
+      [{ month: 1, sumCents: 200 }], // donations monthly
+      [{ month: 1, sumCents: 500 }], // beitrags monthly
+      [{ month: 1, sumCents: 100 }], // expenses monthly
+      [{ sumCents: 9000 }], // income LY
+      [{ sumCents: 2000 }], // donations LY
+      [{ sumCents: 1000 }], // beitrags LY
+      [{ sumCents: 6000 }], // expenses LY
+      [{ value: 0 }],
+    );
+    const mod = await import("$lib/server/domain/dashboard.js");
+    const result = await mod.loadDashboardKpis(2024);
+    // Einnahmen sums all 3 income sources
+    expect(result.cashflow.einnahmenYtdCents).toBe(1000 + 200 + 500);
+    expect(result.cashflow.einnahmenLyYtdCents).toBe(9000 + 2000 + 1000);
+    // Monthly bucket Jan also sums all three
+    expect(result.cashflow.einnahmenMonthlyCents[0]).toBe(1000 + 200 + 500);
+    // Saldo inherits the union total
+    expect(result.cashflow.saldoCents).toBe(1700 - 100);
+    // Ausgaben unchanged
+    expect(result.cashflow.ausgabenYtdCents).toBe(100);
+    expect(result.cashflow.ausgabenLyYtdCents).toBe(6000);
   });
 });

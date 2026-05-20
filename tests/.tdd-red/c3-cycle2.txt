@@ -18,3 +18,85 @@ Drives extension to src/lib/server/domain/dashboard.ts:
 Findings traced:
 - VB-003: cashflow at a glance → einnahmen/ausgaben YTD + saldo + LY delta
 - JB-005: identical KPIs → distinct domain values (revenue vs expense vs open work)
+
+
+====================================================================
+2026-05-20 overnight CYCLE 2 — fix-agent RED tests (12 findings)
+====================================================================
+
+C3-1 — Einnahmen YTD must union income + donations + member_beitrags
+--------------------------------------------------------------------
+Added test "includes Spenden + Mitgliedsbeiträge in einnahmen YTD + monthly + LY (C3-1)"
+to tests/unit/dashboard-cashflow.test.ts that mocks 15 query results (3 extra
+sources: donations monthly, beitrags monthly, donations LY, beitrags LY).
+RED proof: expected einnahmenYtd = 1700 (1000+200+500) — green code returns
+only 1000 (income table only).
+
+C3-2 — URL kind= DE↔EN parser helper
+-------------------------------------
+New file tests/unit/transaction-kind-url.test.ts.
+Tests parseKindFromUrl + KIND_DE_TO_EN.
+RED proof: file does not exist yet → ENOENT.
+
+C3-3 — Sphere chips below cards
+--------------------------------
+Added cashflow.einnahmenBySphere + cashflow.ausgabenBySphere fields to the
+domain shape (4-entry record per sphere). UI test asserts 4 sphere chips
+rendered below each card (data-testid="sphere-chip-*").
+RED proof: cashflow.einnahmenBySphere is undefined in current shape.
+
+C3-4 — Festschreibung lock on year header
+-------------------------------------------
+Test that dashboard load returns festgeschriebenBis (nullable number) and the
+year header in CashflowOverviewSection renders <span data-testid="year-lock">
+when selectedYear <= festgeschriebenBis.
+RED proof: dashboard load currently returns no festgeschriebenBis field.
+
+C3-5 — Sparkline trailing-zero clamping for current year
+---------------------------------------------------------
+Pure helper test: clampMonthlyForCurrentYear(data: number[], selectedYear,
+currentYear, currentMonth) clips to the trailing month for the current year,
+returns full 12 for past years.
+RED proof: helper does not exist yet.
+
+C3-6 — LinkChip Saldo uses <Money> primitive
+---------------------------------------------
+CashflowOverviewSection test asserts the Saldo link-chip contains a
+[data-testid="money"] element (Money primitive C6).
+RED proof: chip currently inlines formatMoney() string into <span>.
+
+C3-7 — Hero numbers font-semibold (UI-008)
+-------------------------------------------
+LargeKpiCard test asserts the value span has class font-semibold and NOT
+font-bold.
+RED proof: current value span has font-bold.
+
+C3-8 — Sparkline tone neutral
+-------------------------------
+LargeKpiCard test asserts the sparkline element has tone="neutral" class
+(text-muted-foreground), not the rose/emerald flavor that follows the
+ledger side.
+RED proof: expense card currently passes tone="negative" → text-rose-600.
+
+C3-9 — Anglicism "YTD" → "{year}"
+----------------------------------
+CashflowOverviewSection test asserts label "Einnahmen 2024" / "Ausgaben 2024"
+when year=2024.
+RED proof: current label is "Einnahmen YTD" / "Ausgaben YTD".
+
+C3-11 — Restore separate ?year=2024 E2E test
+---------------------------------------------
+Add a second test in dashboard-cashflow.spec.ts that visits /app?year=2024
+and asserts the year is reflected in the section header AND in the chip
+hrefs.
+RED proof: current spec consolidated into 1 test that does not visit
+/app?year=2024 at all.
+
+C3-12 — Dedupe computeLyDeltaPct
+---------------------------------
+LargeKpiCard.svelte exports lyDeltaPct identical to dashboard.ts'
+computeLyDeltaPct. Replace with import. The behavioral test stays in
+LargeKpiCard.test.ts; the GREEN proof is the absence of the duplicate
+definition (assert by reading source — verified by typecheck + test pass).
+RED proof: source contains two definitions today.
+

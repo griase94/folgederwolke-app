@@ -183,9 +183,13 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
     spendenYtd,
     activeMembers,
     wgbEinnahmen,
-    einnahmenMonthlyRows,
+    incomeMonthlyRows,
+    donationsMonthlyRows,
+    beitragsMonthlyRows,
     ausgabenMonthlyRows,
-    einnahmenLyRows,
+    incomeLyRows,
+    donationsLyRows,
+    beitragsLyRows,
     ausgabenLyRows,
     openInvoicesAgg,
   ] = await Promise.all([
@@ -248,7 +252,7 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         ),
       ),
 
-    // 7. C3 — Einnahmen monthly for selected year (income table, grouped by month)
+    // 7. C3 — Einnahmen monthly (income table only) for selected year
     db
       .select({
         month: sql<number>`EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
@@ -262,7 +266,47 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         sql`EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
       ),
 
-    // 8. C3 — Ausgaben monthly for selected year
+    // 8. C3-1 — Donations monthly for selected year (ideeller sphere; counts
+    //          as Einnahme on the dashboard cashflow even though it's a
+    //          separate table from `income`).
+    db
+      .select({
+        month: sql<number>`EXTRACT(MONTH FROM ${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
+        sumCents: sum(donations.betragCents),
+      })
+      .from(donations)
+      .where(
+        and(
+          eq(donations.yearOfBuchung, currentYear),
+          isNull(donations.supersedesId),
+        ),
+      )
+      .groupBy(
+        sql`EXTRACT(MONTH FROM ${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
+      ),
+
+    // 9. C3-1 — Mitgliedsbeiträge monthly for selected year.
+    //   Bucketed by `gezahlt_am` (when actually paid; null = not yet paid,
+    //   excluded). For unpaid beitrags we have no realized cashflow, so the
+    //   dashboard's einnahmen YTD correctly excludes them — they show up in
+    //   the "offene Beiträge" KPI instead.
+    db
+      .select({
+        month: sql<number>`EXTRACT(MONTH FROM ${memberBeitrags.gezahltAm} AT TIME ZONE 'Europe/Berlin')`,
+        sumCents: sum(memberBeitrags.paidCents),
+      })
+      .from(memberBeitrags)
+      .where(
+        and(
+          eq(memberBeitrags.year, currentYear),
+          isNotNull(memberBeitrags.gezahltAm),
+        ),
+      )
+      .groupBy(
+        sql`EXTRACT(MONTH FROM ${memberBeitrags.gezahltAm} AT TIME ZONE 'Europe/Berlin')`,
+      ),
+
+    // 10. C3 — Ausgaben monthly for selected year
     db
       .select({
         month: sql<number>`EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
@@ -279,7 +323,7 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         sql`EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
       ),
 
-    // 9. C3 — Einnahmen LY same-period YTD (Jan..ytdMonth of currentYear-1)
+    // 11. C3 — Einnahmen LY same-period YTD: income table (Jan..ytdMonth of currentYear-1)
     db
       .select({ sumCents: sum(income.betragCents) })
       .from(income)
@@ -291,7 +335,31 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         ),
       ),
 
-    // 10. C3 — Ausgaben LY same-period YTD
+    // 12. C3-1 — Donations LY same-period YTD
+    db
+      .select({ sumCents: sum(donations.betragCents) })
+      .from(donations)
+      .where(
+        and(
+          eq(donations.yearOfBuchung, currentYear - 1),
+          isNull(donations.supersedesId),
+          sql`EXTRACT(MONTH FROM ${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin') <= ${ytdMonth}`,
+        ),
+      ),
+
+    // 13. C3-1 — Mitgliedsbeiträge LY same-period YTD (by gezahlt_am month)
+    db
+      .select({ sumCents: sum(memberBeitrags.paidCents) })
+      .from(memberBeitrags)
+      .where(
+        and(
+          eq(memberBeitrags.year, currentYear - 1),
+          isNotNull(memberBeitrags.gezahltAm),
+          sql`EXTRACT(MONTH FROM ${memberBeitrags.gezahltAm} AT TIME ZONE 'Europe/Berlin') <= ${ytdMonth}`,
+        ),
+      ),
+
+    // 14. C3 — Ausgaben LY same-period YTD
     db
       .select({ sumCents: sum(expenses.betragCents) })
       .from(expenses)
@@ -303,7 +371,7 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         ),
       ),
 
-    // 11. C3 — Open invoices count (rechnungen with bezahlt_am IS NULL,
+    // 15. C3 — Open invoices count (rechnungen with bezahlt_am IS NULL,
     //         non-superseded, current selected year).
     db
       .select({ value: count() })
@@ -335,11 +403,22 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
           ? "erhoeht"
           : "ok";
 
-  // C3 cashflow assembly
-  const einnahmenMonthlyCents = bucketByMonth(einnahmenMonthlyRows);
+  // C3 cashflow assembly.
+  // C3-1 (cycle 2): Einnahmen = income + donations + member_beitrags(paid)
+  //   sum element-wise into one Jan..Dec series. Same for YTD and LY YTD.
+  const incomeMonthly = bucketByMonth(incomeMonthlyRows);
+  const donationsMonthly = bucketByMonth(donationsMonthlyRows);
+  const beitragsMonthly = bucketByMonth(beitragsMonthlyRows);
+  const einnahmenMonthlyCents = incomeMonthly.map(
+    (v, i) => v + (donationsMonthly[i] ?? 0) + (beitragsMonthly[i] ?? 0),
+  );
   const ausgabenMonthlyCents = bucketByMonth(ausgabenMonthlyRows);
   const einnahmenYtdCents = einnahmenMonthlyCents.reduce((a, b) => a + b, 0);
   const ausgabenYtdCents = ausgabenMonthlyCents.reduce((a, b) => a + b, 0);
+  const einnahmenLyYtdCents =
+    Number(incomeLyRows[0]?.sumCents ?? 0) +
+    Number(donationsLyRows[0]?.sumCents ?? 0) +
+    Number(beitragsLyRows[0]?.sumCents ?? 0);
 
   return {
     openAuslagenCount: openAuslagen[0]?.value ?? 0,
@@ -364,7 +443,7 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
       saldoCents: einnahmenYtdCents - ausgabenYtdCents,
       einnahmenMonthlyCents,
       ausgabenMonthlyCents,
-      einnahmenLyYtdCents: Number(einnahmenLyRows[0]?.sumCents ?? 0),
+      einnahmenLyYtdCents,
       ausgabenLyYtdCents: Number(ausgabenLyRows[0]?.sumCents ?? 0),
       openInvoicesCount: openInvoicesAgg[0]?.value ?? 0,
     },
