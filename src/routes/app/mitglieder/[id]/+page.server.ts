@@ -271,13 +271,22 @@ export const actions: Actions = {
       ? Number(beitragRows[0].betragCents)
       : Number(DEFAULT_BEITRAG_CENTS);
 
-    // Org bank details from env
-    const iban = env.VEREIN_ADRESSE
-      ? "DE25830654080006894453" // fallback: real IBAN in env ideally
-      : "DE25830654080006894453";
-    const bic = "BELADEBEXXX";
-    const bank = "Berliner Volksbank";
-    const empfaenger = "Folge der Wolke e.V.";
+    // Org bank details — env.VEREIN_* is the only source of truth. No
+    // string-literal fallbacks: mismatched IBAN/BIC fallbacks were the
+    // pre-existing bug surfaced by cycle-2 review F2. If the env is
+    // unset, refuse the action and report it to the admin — silently
+    // sending wrong bank data is worse than failing loudly.
+    const iban = env.VEREIN_IBAN;
+    const bic = env.VEREIN_BIC;
+    const bank = env.VEREIN_BANK;
+    const empfaenger = env.VEREIN_NAME;
+    if (!iban || !bic || !bank || !empfaenger) {
+      return fail(500, {
+        action: "send-reminder",
+        error:
+          "Vereins-Bankdaten (VEREIN_IBAN / VEREIN_BIC / VEREIN_BANK / VEREIN_NAME) sind nicht konfiguriert.",
+      });
+    }
 
     try {
       const result = await sendMail({
