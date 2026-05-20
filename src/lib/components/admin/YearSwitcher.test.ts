@@ -58,6 +58,25 @@ describe("C2 YearSwitcher (VB-002 / JB-001 / UX-010 / UI-009 / UI-043)", () => {
     ).toBeNull();
   });
 
+  it("lock icon is rendered INSIDE the segment for each closed year (C2-5)", () => {
+    render(YearSwitcher, {
+      props: { years, selected: 2026, onChange: () => {} },
+    });
+    // The closed-year radio button (segment) must contain the lock icon as a
+    // descendant — sighted users learn from the icon position WHICH year is
+    // festgeschrieben, not from a generic cluster at the end of the switcher.
+    const closedRadio = screen.getByRole("radio", {
+      name: /2024.*festgeschrieben/i,
+    });
+    const lockIcon = closedRadio.querySelector(
+      '[data-testid="year-lock-2024"]',
+    );
+    expect(lockIcon).not.toBeNull();
+    // Open year segments must not contain a lock icon.
+    const openRadio = screen.getByRole("radio", { name: /^2026$/ });
+    expect(openRadio.querySelector('[data-testid^="year-lock-"]')).toBeNull();
+  });
+
   it("exposes accessible name including 'festgeschrieben' on closed years (UI-009)", () => {
     render(YearSwitcher, {
       props: { years, selected: 2026, onChange: () => {} },

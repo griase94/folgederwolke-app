@@ -4,6 +4,7 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import UserMenu from './UserMenu.svelte';
 	import YearSwitcher, { type YearSwitcherOption } from './YearSwitcher.svelte';
+	import MobileYearPicker from './MobileYearPicker.svelte';
 	import type { SessionUser } from '$lib/server/auth/index.js';
 	import InstallPrompt from '$lib/components/pwa/InstallPrompt.svelte';
 	import type { SearchResponse, SearchResult } from '../../../routes/api/search/+server.js';
@@ -488,8 +489,22 @@
 
 	<!-- Year switcher (C2 — sticky in topbar) -->
 	{#if yearData().availableYears.length > 0 && yearData().selectedYear !== null}
+		<!-- Desktop variant (>= sm): SegmentedControl with one segment per year. -->
 		<div class="fdw-year-switcher-wrap hidden sm:block" data-fdw="year-switcher-wrap">
 			<YearSwitcher
+				years={yearData().availableYears}
+				selected={yearData().selectedYear!}
+				onChange={handleYearChange}
+			/>
+		</div>
+		<!--
+			Mobile variant (< sm, C2-4): native <select> picker. Renders ONLY
+			below sm so the desktop SegmentedControl remains the default once
+			there's horizontal space for it. Both variants share the same
+			?year= URL contract via handleYearChange.
+		-->
+		<div class="sm:hidden">
+			<MobileYearPicker
 				years={yearData().availableYears}
 				selected={yearData().selectedYear!}
 				onChange={handleYearChange}

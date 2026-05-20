@@ -2,7 +2,8 @@
  * Server-only Mitglieder domain helpers.
  *
  * - validateAddMember / validateEditMember: Zod schemas + validation
- * - beitragYearsRange: returns the 3-year window (current year -2 … current year)
+ * - beitragYearsRange: returns the 3-year window centered on the anchor year
+ *   (anchor − 1 … anchor + 1). Default anchor is the current calendar year.
  *
  * Client-safe types (MemberView, BeitragStatus, beitragStatusFor) live in
  * $lib/domain/members.ts to avoid the server-module restriction in browser code.
@@ -126,10 +127,14 @@ export function validateEditMember(
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the 3-year window: [currentYear-2, currentYear-1, currentYear].
- * Passed as `years` to the load function so the matrix knows which columns to render.
+ * Returns the 3-year window centered on `anchor`: [anchor-1, anchor, anchor+1].
+ * Default anchor is the current calendar year.
+ *
+ * C2-2: callers thread `?year=` through to anchor the matrix on the selected
+ * Buchungsjahr instead of always showing currentYear ± 1.
  */
-export function beitragYearsRange(): [number, number, number] {
-  const current = new Date().getFullYear();
-  return [current - 2, current - 1, current];
+export function beitragYearsRange(
+  anchor: number = new Date().getFullYear(),
+): [number, number, number] {
+  return [anchor - 1, anchor, anchor + 1];
 }

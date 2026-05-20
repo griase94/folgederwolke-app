@@ -1,86 +1,203 @@
-=== src/lib/components/admin/YearSwitcher.test.ts ===
+=== C2 cycle 3 — RED tests (3 findings) ===
+
+These are the RED-phase tests for the three deferred C2 cycle-2 findings:
+  - C2-2: Mitglieder Beitragsmatrix anchors on ?year= (unit test)
+  - C2-4: Mobile <sm year-picker variant via Select primitive (Playwright)
+  - C2-5: Lock icons inside each closed segment of YearSwitcher (component test)
+
+Each block below replaces or extends an existing test file.
+
+─────────────────────────────────────────────────────────────────────────────
+=== C2-2 — src/lib/server/domain/members.test.ts (extended) ===
+
+// Add to existing describe("beitragYearsRange", ...) block:
+
+  it("accepts an anchor year and returns [anchor-1, anchor, anchor+1] (C2-2)", () => {
+    const years = beitragYearsRange(2024);
+    expect(years).toEqual([2023, 2024, 2025]);
+  });
+
+  it("defaults anchor to the current calendar year (C2-2)", () => {
+    const years = beitragYearsRange();
+    const current = new Date().getFullYear();
+    expect(years).toEqual([current - 1, current, current + 1]);
+  });
+
+
+─────────────────────────────────────────────────────────────────────────────
+=== C2-2 — tests/unit/c2-mitglieder-year.test.ts (new) ===
+
 /**
- * C2 — cycle 3 — RED.
+ * C2 cycle 3 — /app/mitglieder?year=NNNN must anchor the Beitragsmatrix
+ * window on the SELECTED year (selected ± 1), not on the current calendar
+ * year (currentYear ± 1).
  *
- * <YearSwitcher /> — the topbar segmented control that swaps `?year=NNNN` on
- * every list/dashboard route. Built on top of the C6 <SegmentedControl/>
- * primitive — must not reintroduce a one-off pill pattern (UI-043).
- *
- * Resolves: VB-002, JB-001, UX-010, UI-009, UI-043.
+ * Resolves: C2-2 (julia P1 — Mitglieder Beitragsmatrix ignored ?year=).
  */
 
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, cleanup, screen, fireEvent } from "@testing-library/svelte";
-import YearSwitcher from "./YearSwitcher.svelte";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import postgres from "postgres";
+import { load as mitgliederLoad } from "../../src/routes/app/mitglieder/+page.server.js";
 
-afterEach(() => cleanup());
+const url = process.env.DIRECT_DATABASE_URL ?? process.env.DATABASE_URL ?? "";
 
-const years = [
-  { year: 2026, closed: false },
-  { year: 2025, closed: false },
-  { year: 2024, closed: true },
-];
+function makeEvent(searchString: string) {
+  return {
+    url: new URL(`http://localhost/app/mitglieder${searchString}`),
+    locals: {
+      session: {
+        user: {
+          id: "00000000-0000-0000-0000-000000000001",
+          email: "admin@example.com",
+          name: "Admin",
+          isAdmin: true,
+        },
+      },
+    },
+  } as unknown as Parameters<typeof mitgliederLoad>[0];
+}
 
-describe("C2 YearSwitcher (VB-002 / JB-001 / UX-010 / UI-009 / UI-043)", () => {
-  it("renders a radiogroup with one radio per year", () => {
+describe.skipIf(!url)(
+  "C2-2 — Mitglieder Beitragsmatrix anchors on ?year=",
+  () => {
+    it("anchors the 3-year window on ?year=2024 (showing 2023/2024/2025)", async () => {
+      const data = await mitgliederLoad(makeEvent("?year=2024"));
+      expect((data as { years: number[] }).years).toEqual([2023, 2024, 2025]);
+    });
+
+    it("defaults to current-year window when ?year is absent", async () => {
+      const data = await mitgliederLoad(makeEvent(""));
+      const current = new Date().getFullYear();
+      expect((data as { years: number[] }).years).toEqual([
+        current - 1,
+        current,
+        current + 1,
+      ]);
+    });
+
+    it("falls back to current year on garbage ?year input", async () => {
+      const data = await mitgliederLoad(makeEvent("?year=foo"));
+      const current = new Date().getFullYear();
+      expect((data as { years: number[] }).years).toEqual([
+        current - 1,
+        current,
+        current + 1,
+      ]);
+    });
+  },
+);
+
+
+─────────────────────────────────────────────────────────────────────────────
+=== C2-5 — src/lib/components/admin/YearSwitcher.test.ts (extended) ===
+
+// Add new test:
+
+  it("lock icon is rendered INSIDE the segment for each closed year (C2-5)", () => {
     render(YearSwitcher, {
       props: { years, selected: 2026, onChange: () => {} },
     });
-    expect(screen.getByRole("radiogroup")).toBeTruthy();
-    expect(screen.getAllByRole("radio").length).toBe(3);
-  });
-
-  it("marks the selected year aria-checked=true (UX-010 — year is no longer implicit)", () => {
-    render(YearSwitcher, {
-      props: { years, selected: 2025, onChange: () => {} },
+    // The closed-year radio button (segment) must contain the lock icon as a
+    // descendant — sighted users learn from the icon position WHICH year is
+    // festgeschrieben, not from a generic cluster at the end of the switcher.
+    const closedRadio = screen.getByRole("radio", {
+      name: /2024.*festgeschrieben/i,
     });
-    const r2025 = screen.getByRole("radio", { name: /2025/ });
-    const r2026 = screen.getByRole("radio", { name: /2026/ });
-    expect(r2025.getAttribute("aria-checked")).toBe("true");
-    expect(r2026.getAttribute("aria-checked")).toBe("false");
-  });
-
-  it("invokes onChange with the new year on click (JB-001)", async () => {
-    const onChange = vi.fn();
-    render(YearSwitcher, { props: { years, selected: 2026, onChange } });
-    await fireEvent.click(screen.getByRole("radio", { name: /2025/ }));
-    expect(onChange).toHaveBeenCalledWith(2025);
-  });
-
-  it("renders a lock icon for closed (festgeschriebene) years (UI-009)", () => {
-    const { container } = render(YearSwitcher, {
-      props: { years, selected: 2026, onChange: () => {} },
-    });
-    // Lock icon is rendered with data-testid=year-lock-2024 for closed years
-    const lockIcon = container.querySelector('[data-testid="year-lock-2024"]');
+    const lockIcon = closedRadio.querySelector('[data-testid="year-lock-2024"]');
     expect(lockIcon).not.toBeNull();
-    // Open years do not get a lock
-    expect(container.querySelector('[data-testid="year-lock-2026"]')).toBeNull();
+    // Open year segments must not contain a lock icon.
+    const openRadio = screen.getByRole("radio", { name: /^2026$/ });
+    expect(openRadio.querySelector('[data-testid^="year-lock-"]')).toBeNull();
   });
 
-  it("exposes accessible name including 'festgeschrieben' on closed years (UI-009)", () => {
-    render(YearSwitcher, {
-      props: { years, selected: 2026, onChange: () => {} },
+
+─────────────────────────────────────────────────────────────────────────────
+=== C2-4 — tests/e2e/c2-mobile-year-picker.spec.ts (new) ===
+
+/**
+ * C2 cycle 3 — mobile <sm year-picker variant.
+ *
+ * At iPhone-12 width (390x844), the desktop SegmentedControl is hidden
+ * (`hidden sm:block`) — without a mobile alternative there is no way to
+ * switch Buchungsjahr on a phone. This spec asserts that a compact year
+ * picker is visible and tappable on iPhone-12 emulation, and that
+ * selecting a year updates the URL to `?year=NNNN`.
+ *
+ * Resolves: C2-4 (julia P1 + UX-1 blocker).
+ *
+ * Uses the same SSR-crash mitigation as c2-year-switcher.spec.ts —
+ * describe.serial + one test per server boot.
+ */
+
+import { expect, test, devices } from "@playwright/test";
+import { randomBytes, createHash } from "node:crypto";
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+const TEST_ADMIN_EMAIL = process.env["TEST_ADMIN_EMAIL"] ?? "admin@example.com";
+
+test.use({ ...devices["iPhone 12"] });
+
+async function signIn(page: import("@playwright/test").Page): Promise<void> {
+  const { default: postgres } = await import("postgres");
+  const client = postgres(process.env["DATABASE_URL"] ?? "", {
+    prepare: false,
+    max: 1,
+  });
+  const rawToken = randomBytes(32).toString("base64url");
+  const tokenHash = sha256(rawToken);
+  const expiresAt = new Date(Date.now() + 15 * 60_000);
+  await client`
+    INSERT INTO magic_links (token_hash, email_canonical, expires_at)
+    VALUES (${tokenHash}, ${TEST_ADMIN_EMAIL}, ${expiresAt})
+  `;
+  await client.end();
+  await page.goto(`/sign-in/verify?token=${rawToken}`);
+  const mismatch = page.locator("text=Ja, trotzdem fortfahren");
+  if (await mismatch.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await mismatch.click();
+  }
+  await Promise.all([
+    page.waitForURL(/\/app/, { timeout: 15_000 }),
+    page.click('button[type="submit"]'),
+  ]);
+}
+
+test.describe.serial("@phase-2 @overnight-c2 mobile year picker (C2-4)", () => {
+  test("mobile <sm year-picker is visible + selecting a year updates the URL", async ({
+    page,
+  }) => {
+    await signIn(page);
+
+    await page.goto("/app");
+    if (page.url().includes("/sign-in")) test.skip();
+
+    // (1) Desktop SegmentedControl must be hidden at iPhone-12 width.
+    const desktop = page.locator('[data-fdw="year-switcher-wrap"]');
+    if ((await desktop.count()) > 0) {
+      await expect(desktop.first()).toBeHidden();
+    }
+
+    // (2) Mobile picker is visible.
+    const mobile = page.locator('[data-fdw="year-switcher-mobile"]');
+    await expect(mobile).toBeVisible();
+
+    // (3) Selecting a year in the mobile picker updates ?year= in the URL.
+    const select = page.locator(
+      '[data-fdw="year-switcher-mobile"] select',
+    );
+    await expect(select).toBeVisible();
+    const options = await select
+      .locator("option")
+      .evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value));
+    expect(options.length).toBeGreaterThan(0);
+    const firstOption = options[0];
+    await select.selectOption(firstOption!);
+    await page.waitForURL(new RegExp(`\\?year=${firstOption}`), {
+      timeout: 5_000,
     });
-    const closed = screen.getByRole("radio", { name: /2024.*festgeschrieben/i });
-    expect(closed).toBeTruthy();
-  });
-
-  it("still calls onChange when a closed year is clicked (closed = read-only, navigable)", async () => {
-    // Closed years are READABLE — the user can switch into them to view the
-    // EÜR, just not mutate. The DB trigger refuses writes (ADR-0006); the
-    // switcher must not block navigation.
-    const onChange = vi.fn();
-    render(YearSwitcher, { props: { years, selected: 2026, onChange } });
-    await fireEvent.click(screen.getByRole("radio", { name: /2024/ }));
-    expect(onChange).toHaveBeenCalledWith(2024);
-  });
-
-  it("renders the radio group with an aria-label='Buchungsjahr'", () => {
-    render(YearSwitcher, {
-      props: { years, selected: 2026, onChange: () => {} },
-    });
-    const group = screen.getByRole("radiogroup", { name: "Buchungsjahr" });
-    expect(group).toBeTruthy();
+    expect(page.url()).toMatch(new RegExp(`\\?year=${firstOption}`));
   });
 });

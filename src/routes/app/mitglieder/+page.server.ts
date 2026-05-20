@@ -25,11 +25,15 @@ import {
   restoreMember,
   markBeitragPaid,
 } from "$lib/server/domain/members-actions.js";
+import { currentBuchungsjahr, selectYearFromUrl } from "$lib/domain/year.js";
 
 export const load: PageServerLoad = async ({ url }) => {
   const db = getDb();
   const view = url.searchParams.get("view") === "matrix" ? "matrix" : "list";
-  const years = beitragYearsRange();
+  // C2-2: anchor the Beitragsmatrix on ?year= (selected year ± 1). Falls back
+  // to the current Buchungsjahr when ?year is absent or malformed.
+  const anchorYear = selectYearFromUrl(url.searchParams, currentBuchungsjahr());
+  const years = beitragYearsRange(anchorYear);
 
   const allMembers = await db
     .select()
