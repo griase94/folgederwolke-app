@@ -150,29 +150,30 @@ test.describe("@phase-3 Admin shell — sign out", () => {
 });
 
 test.describe("@phase-3 Admin shell — dashboard", () => {
-  test("dashboard shows KPI cards and checklist", async ({ page }) => {
+  test("dashboard shows cashflow overview and checklist", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await signIn(page);
 
-    // Kennzahlen region renders
-    await expect(
-      page.getByRole("region", { name: "Kennzahlen" }),
-    ).toBeVisible();
-    // Specific KPI labels — those still present after Phase 6/7 changes
-    await expect(page.getByText("Offene Auslagen").first()).toBeVisible();
+    // Post-C3: Kassenüberblick region replaces "Kennzahlen"
+    // (resolves VB-003 / JB-005 / UI-008 / UX-330).
+    // C3-9 (cycle 2): label now reads "Einnahmen {year}" with the year
+    // inlined — anglicism "YTD" is gone.
+    await expect(page.getByRole("region").first()).toBeVisible();
+    await expect(page.getByText(/Einnahmen \d{4}/).first()).toBeVisible();
   });
 
-  // Regression guard — the magic-link-flow rewrite quietly dropped these
-  // assertions. Labels match the current $derived list in
-  // src/lib/components/admin/dashboard/KpiSection.svelte. Update both places
-  // together if a KPI is ever renamed.
-  test("dashboard renders all four KPI labels for admin", async ({ page }) => {
+  // Regression guard — labels match the current cashflow overview
+  // assembled in src/lib/components/admin/dashboard/CashflowOverviewSection.svelte.
+  // Update both places together if a label is ever renamed.
+  test("dashboard renders the 2 large KPI cards + key link chips", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await signIn(page);
-    await expect(page.getByText("Offene Auslagen").first()).toBeVisible();
-    await expect(page.getByText("Zu erstatten").first()).toBeVisible();
-    await expect(page.getByText("Beitrag fällig").first()).toBeVisible();
-    await expect(page.getByText("Spenden YTD").first()).toBeVisible();
+    await expect(page.getByText(/Einnahmen \d{4}/).first()).toBeVisible();
+    await expect(page.getByText(/Ausgaben \d{4}/).first()).toBeVisible();
+    await expect(page.getByText("Saldo").first()).toBeVisible();
+    await expect(page.getByText("Offene Rechnungen").first()).toBeVisible();
   });
 });
 

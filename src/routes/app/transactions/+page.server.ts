@@ -17,8 +17,8 @@ import {
   listTransactions,
   listZahlungsarten,
   listApprovedPendingErstattet,
-  type TransactionKind,
 } from "$lib/server/domain/transactions.js";
+import { parseKindFromUrl } from "$lib/domain/transaction-kind-url.js";
 import { markExpenseErstattet } from "$lib/server/domain/audit-inbox-actions.js";
 import { getDb } from "$lib/server/db/index.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
@@ -29,9 +29,10 @@ import { eq, isNull, and } from "drizzle-orm";
 // ---------------------------------------------------------------------------
 
 export const load: PageServerLoad = async ({ url }) => {
-  const kind = (url.searchParams.get("kind") ?? undefined) as
-    | TransactionKind
-    | undefined;
+  // C3-2: accept DE aliases (einnahme/ausgabe/spende, with plurals) in
+  // addition to the canonical EN kinds. Dashboard cards link with German
+  // names because that reads naturally to the treasurer.
+  const kind = parseKindFromUrl(url.searchParams.get("kind")) ?? undefined;
   const search = url.searchParams.get("q") ?? undefined;
   const yearParam = url.searchParams.get("year");
   const year = yearParam ? parseInt(yearParam, 10) : undefined;

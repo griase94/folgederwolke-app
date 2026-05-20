@@ -1,0 +1,33 @@
+C3 Cycle 1 — RED tests (failing → drive minimal impl)
+
+Files:
+- src/lib/components/admin/dashboard/Sparkline.test.ts
+  • renders an svg with a polyline
+  • polyline contains one point per data value
+  • renders a dot (circle) at the latest data point
+  • normalizes points so min maps to bottom and max to top
+  • handles all-zero data without throwing
+  • accepts a custom width/height
+  • uses neutral/positive class on a rising series
+  • renders with fewer than 12 points without crashing
+
+- src/lib/components/admin/dashboard/LargeKpiCard.test.ts
+  • renders the label
+  • renders the Money primitive with the YTD value
+  • renders the sparkline
+  • shows LY-delta chip with +50% for a 50% increase
+  • shows LY-delta chip with -25% for a 25% decrease
+  • displays — (em dash) for LY chip when last year is zero
+  • uses the shadcn Card primitive (data-slot=card)
+
+- src/lib/components/admin/dashboard/LinkChip.test.ts
+  • renders an anchor with the given href
+  • renders the label and value as text content
+  • sets data-testid='link-chip'
+  • supports an accessible aria-label override
+
+Findings traced:
+- UI-008: KPI cards have no hierarchy → 2 large primary + 4 secondary chips solves it
+- UX-330: dashboard is dead → sparkline visualizes 12-month trend
+- VB-003: where is the money going at a glance → Einnahmen + Ausgaben YTD with LY context
+- JB-005: dashboard cards all useless → meaningful headline + drill-in chips

@@ -35,17 +35,20 @@ test.describe("@phase-6 dashboard", () => {
     await expect(page.locator("text=Kassenführung")).toBeVisible();
   });
 
-  test("KPI section renders four cards", async ({ page }) => {
+  test("Cashflow overview renders Einnahmen + Ausgaben YTD (C3)", async ({
+    page,
+  }) => {
     await page.goto("/app");
     if (page.url().includes("/sign-in")) {
       test.skip();
     }
 
-    // Four KPI cards by checking for known labels
-    await expect(page.locator("text=Offene Auslagen")).toBeVisible();
-    await expect(page.locator("text=Zu erstatten")).toBeVisible();
-    await expect(page.locator("text=Beitrag fällig")).toBeVisible();
-    await expect(page.locator("text=Spenden YTD")).toBeVisible();
+    // Post-C3 layout: 2 headline cards + 4 link chips replace the legacy
+    // 4-identical KPI grid (resolves VB-003, JB-005, UI-008, UX-330).
+    await expect(page.locator("text=Einnahmen YTD")).toBeVisible();
+    await expect(page.locator("text=Ausgaben YTD")).toBeVisible();
+    await expect(page.locator("text=Saldo").first()).toBeVisible();
+    await expect(page.locator("text=Offene Rechnungen").first()).toBeVisible();
   });
 
   test("checklist section heading visible", async ({ page }) => {

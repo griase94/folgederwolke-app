@@ -31,3 +31,13 @@ export function yearForBooking(gebuchtAm: Date): number {
   }
   return year;
 }
+
+/**
+ * Current calendar year as observed in Europe/Berlin. Client-safe — used
+ * by the dashboard sparkline clamp helper (C3-5, cycle 2). Server callers
+ * should still pass through the API, but this is identical math to
+ * `dashboard.berlinYear`.
+ */
+export function berlinYear(now: Date = new Date()): number {
+  return yearForBooking(now);
+}
