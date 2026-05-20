@@ -1,0 +1,16 @@
+C3 Cycle 3 — RED E2E test + missing route wiring
+
+Files:
+- tests/e2e/dashboard-cashflow.spec.ts
+  • 2 large KPI cards (Einnahmen + Ausgaben YTD) with money/sparkline/chip
+  • 4 link chips (Saldo, Offene Rechnungen, Inbox, Mitglieder)
+  • ?year=2024 URL contract honored
+  • first-render perf sanity check (5 samples, median < 1500ms)
+
+Drives:
+  • Update src/routes/app/+page.svelte to render LargeKpiCard×2 + LinkChip×4
+  • Update src/routes/app/+page.server.ts to read ?year= and pass to loadDashboardKpis
+  • Serialize new bigint-y cashflow numbers safely
+
+Findings:
+- VB-003 / JB-005 / UI-008 / UX-330: all resolved by the new layout.
