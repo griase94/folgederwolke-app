@@ -13,6 +13,7 @@
 import { fail, error } from "@sveltejs/kit";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { closeBuchhaltungsjahr } from "$lib/server/domain/jahresabschluss.js";
+import { archiveYear } from "$lib/server/files/archive-job.js";
 
 export const load: PageServerLoad = async () => {
   // All payload comes from +layout.server.ts via inherited `data`.
@@ -32,12 +33,24 @@ export const actions: Actions = {
     }
 
     try {
+      // PHASE 1: archive Phase 9 files first. The files Festschreibung trigger
+      // arms once settings.festgeschrieben_bis catches up; today no app code
+      // sets that automatically — but running archive first is
+      // belt-and-suspenders against any future code path that flips the
+      // setting before this action runs. Semantic reason: archive is the
+      // preparation step for close.
+      const archiveResult = await archiveYear(year);
+
+      // PHASE 2: close the books.
       const result = await closeBuchhaltungsjahr(year, user.id);
       return {
         success: true,
         year: result.year,
         totalRows: result.totalRows,
         rowsByTable: result.rowsByTable,
+        archived: archiveResult.archived,
+        archiveFailed: archiveResult.failed,
+        archiveTotal: archiveResult.total,
       };
     } catch (err) {
       if (err && typeof err === "object" && "status" in err && "body" in err) {
