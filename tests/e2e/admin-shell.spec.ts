@@ -156,8 +156,10 @@ test.describe("@phase-3 Admin shell — dashboard", () => {
 
     // Post-C3: Kassenüberblick region replaces "Kennzahlen"
     // (resolves VB-003 / JB-005 / UI-008 / UX-330).
+    // C3-9 (cycle 2): label now reads "Einnahmen {year}" with the year
+    // inlined — anglicism "YTD" is gone.
     await expect(page.getByRole("region").first()).toBeVisible();
-    await expect(page.getByText("Einnahmen YTD").first()).toBeVisible();
+    await expect(page.getByText(/Einnahmen \d{4}/).first()).toBeVisible();
   });
 
   // Regression guard — labels match the current cashflow overview
@@ -168,8 +170,8 @@ test.describe("@phase-3 Admin shell — dashboard", () => {
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await signIn(page);
-    await expect(page.getByText("Einnahmen YTD").first()).toBeVisible();
-    await expect(page.getByText("Ausgaben YTD").first()).toBeVisible();
+    await expect(page.getByText(/Einnahmen \d{4}/).first()).toBeVisible();
+    await expect(page.getByText(/Ausgaben \d{4}/).first()).toBeVisible();
     await expect(page.getByText("Saldo").first()).toBeVisible();
     await expect(page.getByText("Offene Rechnungen").first()).toBeVisible();
   });

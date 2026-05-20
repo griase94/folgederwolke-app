@@ -56,15 +56,14 @@ test.describe("Dashboard cashflow overview @phase-c3", () => {
   // test. When the PWA crash is fixed, this can be split back into per-aspect
   // tests.
 
-  test("renders 2 large KPI cards + 4 link chips, honors ?year= URL", async ({
-    page,
-  }) => {
+  test("renders 2 large KPI cards + 4 link chips on /app", async ({ page }) => {
     await signIn(page);
     await page.goto("/app");
 
-    // (1) Two large headline KPI cards: Einnahmen + Ausgaben YTD
-    await expect(page.getByText(/Einnahmen YTD/i).first()).toBeVisible();
-    await expect(page.getByText(/Ausgaben YTD/i).first()).toBeVisible();
+    // (1) Two large headline KPI cards: Einnahmen + Ausgaben (year-scoped label,
+    //     C3-9 dropped the "YTD" anglicism in cycle 2).
+    await expect(page.getByText(/Einnahmen \d{4}/i).first()).toBeVisible();
+    await expect(page.getByText(/Ausgaben \d{4}/i).first()).toBeVisible();
 
     // (2) Each large card composes Money + Sparkline + LY-delta chip
     const moneyEls = page.getByTestId("money");
@@ -81,5 +80,38 @@ test.describe("Dashboard cashflow overview @phase-c3", () => {
     await expect(page.getByText(/Offene Rechnungen/i).first()).toBeVisible();
     await expect(page.getByText(/Inbox/i).first()).toBeVisible();
     await expect(page.getByText(/Mitglieder/i).first()).toBeVisible();
+
+    // (4) C3-3 (cycle 2): 4 sphere chips per headline card (8 total).
+    const sphereChips = page.getByTestId("sphere-chip");
+    expect(await sphereChips.count()).toBeGreaterThanOrEqual(8);
+  });
+
+  // C3-11 (cycle 2): restore the explicit ?year=2024 URL-contract test that
+  // the C2 year-switcher → C3 dashboard chain depends on. The red commit
+  // (TDD anchor e4251d9) had this; the green commit consolidated it into the
+  // basic-render test without actually visiting /app?year=2024, which silently
+  // dropped the regression guard. Splitting it back out keeps the contract
+  // surfaced as its own failure when broken.
+  test("honors the ?year= URL contract: page header + link hrefs reflect the year", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto("/app?year=2024");
+
+    // The greeting line includes the selected year inline.
+    await expect(page.getByText(/Folge der Wolke e\.V\..*2024/i)).toBeVisible();
+
+    // Cards labeled "Einnahmen 2024" / "Ausgaben 2024".
+    await expect(page.getByText(/Einnahmen 2024/).first()).toBeVisible();
+    await expect(page.getByText(/Ausgaben 2024/).first()).toBeVisible();
+
+    // The 2 headline cards link to /app/transactions with year=2024 query.
+    const heroLinks = page.getByTestId("large-kpi-card-link");
+    const linkCount = await heroLinks.count();
+    expect(linkCount).toBeGreaterThanOrEqual(2);
+    for (let i = 0; i < linkCount; i++) {
+      const href = await heroLinks.nth(i).getAttribute("href");
+      expect(href).toContain("year=2024");
+    }
   });
 });

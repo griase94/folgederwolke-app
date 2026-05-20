@@ -35,9 +35,7 @@ describe("bucketByMonth (client-safe re-home)", () => {
 });
 
 describe("clampMonthlyForCurrentYear (C3-5, cycle 2)", () => {
-  const data = [
-    100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200,
-  ];
+  const data = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200];
 
   it("returns full 12 entries for past years", () => {
     const out = clampMonthlyForCurrentYear(data, 2023, 2024, 6);

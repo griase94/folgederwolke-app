@@ -24,12 +24,15 @@
 		tone?: 'income' | 'expense';
 	}
 
-	// C3-12 (cycle 2): single source of truth for LY-delta math. Live in
-	// $lib/domain/cashflow.ts (client-safe — no server imports). Local
-	// `lyDeltaPct` re-export preserves the public API of this component
-	// module (legacy unit tests + dashboard.test.ts integration tests
-	// import `lyDeltaPct` from here).
-	export { computeLyDeltaPct as lyDeltaPct } from '$lib/domain/cashflow.js';
+	// C3-12 (cycle 2): single source of truth for LY-delta math lives in
+	// $lib/domain/cashflow.ts (client-safe — no server imports). The local
+	// `lyDeltaPct` thin re-export preserves the public API of this
+	// component module so legacy unit tests + dashboard.test.ts integration
+	// tests can keep importing `lyDeltaPct` from this file.
+	import { computeLyDeltaPct as _lyDeltaPctImpl } from '$lib/domain/cashflow.js';
+	export function lyDeltaPct(cur: number, prev: number): number | null {
+		return _lyDeltaPctImpl(cur, prev);
+	}
 </script>
 
 <script lang="ts">

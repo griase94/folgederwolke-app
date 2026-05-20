@@ -193,7 +193,7 @@
 
 	<!-- 4 link chips -->
 	<div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+		<!-- eslint-disable svelte/no-navigation-without-resolve -->
 		<a
 			href={transactionsBase}
 			data-testid="link-chip"
@@ -215,6 +215,7 @@
 				<Money valueInCents={cashflow.saldoCents} forceSign="auto" />
 			</span>
 		</a>
+		<!-- eslint-enable svelte/no-navigation-without-resolve -->
 		<LinkChip
 			label="Offene Rechnungen"
 			value={String(cashflow.openInvoicesCount)}
