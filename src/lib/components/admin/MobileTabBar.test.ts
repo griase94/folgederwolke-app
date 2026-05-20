@@ -45,8 +45,32 @@ describe("MobileTabBar — FAB", () => {
     const { container } = render(MobileTabBar);
     const nav = container.querySelector("nav");
     expect(nav).toBeTruthy();
-    // Tailwind arbitrary value applied as a class — verifies we kept the inset.
+    // The documented utility (.nav-safe-bottom) is defined in app.css with
+    // padding-bottom: env(safe-area-inset-bottom, 0px). Either the class
+    // is applied OR the Tailwind arbitrary value `pb-[env(...)]` is — we
+    // accept both forms so the assertion survives the C7-9 cleanup.
     const cls = nav!.className;
-    expect(cls).toMatch(/safe-area-inset-bottom/);
+    expect(cls).toMatch(/(\bnav-safe-bottom\b|safe-area-inset-bottom)/);
+  });
+
+  // C7-9 cycle 2 — drop the redundant arbitrary value now that
+  // .nav-safe-bottom is the documented utility. Having BOTH the class AND
+  // pb-[env(safe-area-inset-bottom,0px)] is a smell and risks divergence.
+  it("uses the .nav-safe-bottom utility class (C7-9)", () => {
+    const { container } = render(MobileTabBar);
+    const nav = container.querySelector("nav");
+    expect(nav).toBeTruthy();
+    const cls = nav!.className;
+    expect(cls).toMatch(/\bnav-safe-bottom\b/);
+  });
+
+  it("does NOT also carry the redundant pb-[env(...)] arbitrary value (C7-9)", () => {
+    const { container } = render(MobileTabBar);
+    const nav = container.querySelector("nav");
+    expect(nav).toBeTruthy();
+    // The cleanup: when .nav-safe-bottom is applied, the arbitrary
+    // `pb-[env(safe-area-inset-bottom...)` Tailwind class must NOT also be
+    // present. One source of truth.
+    expect(nav!.className).not.toMatch(/pb-\[env\(safe-area-inset-bottom/);
   });
 });

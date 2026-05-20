@@ -1,18 +1,117 @@
-C7 Cycle 2 — RED — Transactions filter chip overflow (PM-008)
-==============================================================
+C7 Cycle 2 — RED bodies for all 9 findings (PR #49)
+====================================================
 
-The TypeTabsHeader chips ("Alle / Ausgaben / Einnahmen / Spenden") clip at
-390px viewport width — "Spenden" is half-cut on iPhone 12. SavedViewsBar
-chips below them have the same risk.
+C7-1 (HIGH) — `?kind=` query param is dead + locale mismatch
+------------------------------------------------------------
 
-Failing tests:
-- E2E: tests/e2e/c7-mobile-polish.spec.ts — at 390x844, /app/transactions
-  shows all 4 type tabs fully inside the viewport (chip row scroll container
-  exists OR chips flex-wrap, but no horizontal overflow on the page).
-- Unit: TypeTabsHeader chips wrap in a horizontally scrollable container at
-  the < md breakpoint.
+FabBottomSheet emits `/app/transactions/neu?kind=ausgabe|einnahme|spende`,
+but:
+  - `+page.server.ts` never reads `url.searchParams.get('kind')`
+  - `+page.svelte:10` hardcodes `selectedType = 'expense'`
+  - Locale mismatch: German `ausgabe` vs domain enum `expense`
 
-Fix approach (suggested in finding):
-- wrap the chip row in <div class="flex gap-2 overflow-x-auto -mx-4 px-4
-  snap-x flex-nowrap"> so chips can scroll instead of clip
-- equivalent change to SavedViewsBar
+Failing tests (RED):
+  - tests/unit/transaction-kind-url.test.ts — parseKindFromUrl maps DE↔EN
+    consistently (and returns null on bogus input)
+  - src/routes/app/transactions/neu/page.server.test.ts — `load()` honours
+    `?kind=einnahme` and surfaces `data.initialType === 'income'`
+  - E2E (c7-mobile-iphone12.spec.ts): after tapping "Neue Einnahme" the form
+    type-tabs reflect aria-pressed="true" on the Einnahme tab.
+
+Fix: NEW src/lib/domain/transaction-kind-url.ts with KIND_DE_TO_EN map and
+parseKindFromUrl(); read in load(); pass `initialType` to +page.svelte; wire
+into $state initial value.
+
+C7-2 (HIGH) — E2E spec non-loadable
+------------------------------------
+
+`test.use({...devices['iPhone 12']})` inside `test.describe` is rejected by
+Playwright (forces a new worker). Spec file fails to LOAD; PM-003 never
+runs.
+
+Failing check (RED):
+  - `npx playwright test --list tests/e2e/c7-mobile-polish.spec.ts` errors
+    out with "Cannot use({ defaultBrowserType }) in a describe group".
+
+Fix: split into one file per device emulation (c7-mobile-iphone12.spec.ts,
+c7-mobile-pixel5.spec.ts, c7-tablet-ipad.spec.ts) — each has top-level
+`test.use(devices[...])`. Replace the original c7-mobile-polish.spec.ts.
+
+C7-3 (MEDIUM) — Topbar wordmark visible on mobile (PM-010)
+----------------------------------------------------------
+
+Topbar.svelte has `<span class="flex-1 text-sm font-semibold ... sm:hidden">
+Folge der Wolke</span>` — this is shown ON mobile (< sm) and hidden ON
+sm+. The PM-010 requirement is the OPPOSITE: hide the wordmark on small
+screens so the topbar gets back the horizontal space.
+
+Failing test (RED):
+  - src/lib/components/admin/Topbar.test.ts — checks the wordmark span has
+    `hidden` or breakpoint utility hiding it BELOW sm/md.
+
+Fix: switch class to `hidden sm:hidden md:flex` (or simply remove on
+mobile). Pair with .safe-top utility.
+
+C7-4 (MEDIUM) — "Auslage einreichen" labelling
+-----------------------------------------------
+
+Admin tapping "Auslage einreichen" lands on `/auslage-einreichen` (public
+external form). Relabel to clarify intent.
+
+Failing test (RED):
+  - src/lib/components/admin/FabBottomSheet.test.ts — assert the menu item
+    label = "Externe Auslage einreichen" (or includes "Externe") and the
+    hint mentions "öffentliches Formular".
+
+C7-5 (LOW) — Chip strip lacks scroll-snap + edge fade
+------------------------------------------------------
+
+TypeTabsHeader + SavedViewsBar overflow at 390px. Add scroll-snap-x and
+mask-image edge fade.
+
+Failing test (RED):
+  - src/lib/components/admin/transactions/TypeTabsHeader.test.ts — asserts
+    the chip strip container has `snap-x` and `mask-image` (or equivalent
+    utility) in its class list.
+
+C7-6 (LOW) — All 4 FAB items use same "+" icon
+-----------------------------------------------
+
+Currently all 4 actions point to the same path (M12 5v14M5 12h14). Diff:
+Ausgabe = Minus, Einnahme = Plus, Spende = HandCoins, Auslage = FileText.
+
+Failing test (RED):
+  - src/lib/components/admin/FabBottomSheet.test.ts — assert 4 distinct
+    icon nodes (e.g., 4 different svg `data-icon` attrs, or 4 different
+    @lucide/svelte components mounted).
+
+C7-7 (LOW) — Topbar doesn't apply `.safe-top`
+----------------------------------------------
+
+app.css defines `.safe-top`. Topbar header doesn't use it.
+
+Failing test (RED):
+  - src/lib/components/admin/Topbar.test.ts — header element classList
+    includes "safe-top".
+
+C7-8 (ADVISORY) — Card variants use raw <a>
+--------------------------------------------
+
+OUT OF SCOPE for C7 cycle 2 (Card primitive doesn't yet support `as` prop).
+Documented in PR comment as a follow-up.
+
+C7-9 (LOW) — Redundant pb-[env(safe-area-inset-bottom)] on tab bar
+-------------------------------------------------------------------
+
+MobileTabBar.svelte:35 has BOTH `.nav-safe-bottom` AND
+`pb-[env(safe-area-inset-bottom,0px)]`. Drop the arbitrary value.
+
+Failing test (RED):
+  - src/lib/components/admin/MobileTabBar.test.ts — nav classList contains
+    `.nav-safe-bottom` and does NOT contain `pb-[env(`.
+
+Note: existing E2E c7-mobile-polish.spec.ts:237 asserts the class string
+matches /safe-area-inset-bottom/ — that will be satisfied by the
+.nav-safe-bottom class (since the class is defined via that env() value).
+Update the assertion to look for the class name instead, OR keep the regex
+loose enough to allow either form.
