@@ -26,7 +26,11 @@ import {
   listAvailableYears,
   type AvailableYear,
 } from "$lib/server/domain/years.js";
-import { currentBuchungsjahr, selectYearFromUrl } from "$lib/domain/year.js";
+import {
+  clampYearToAvailable,
+  currentBuchungsjahr,
+  selectYearFromUrl,
+} from "$lib/domain/year.js";
 
 async function readFestgeschriebenBis(): Promise<number | null> {
   const db = getDb();
@@ -48,10 +52,18 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
   // locals.session is guaranteed non-null here because hooks.server.ts
   // redirects unauthenticated requests before this runs.
   const currentYear = currentBuchungsjahr();
-  const selectedYear = selectYearFromUrl(url.searchParams, currentYear);
+  const rawSelected = selectYearFromUrl(url.searchParams, currentYear);
 
   const [availableYears, festgeschriebenBis]: [AvailableYear[], number | null] =
     await Promise.all([listAvailableYears(), readFestgeschriebenBis()]);
+
+  // C2-6 cycle 2: clamp out-of-range `?year=` requests to the nearest available
+  // year so the switcher always has a checked segment. When `availableYears`
+  // is empty (fresh DB), `clampYearToAvailable` is a pass-through — that
+  // matches the contract documented on the helper and keeps existing tests
+  // that probe the layout in an empty fixture stable.
+  const availableYearNumbers = availableYears.map((y) => y.year);
+  const selectedYear = clampYearToAvailable(rawSelected, availableYearNumbers);
 
   return {
     user: locals.session!.user,
