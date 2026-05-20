@@ -4,7 +4,7 @@
  * C1 cycle 1 — EÜR data shape extensions for the tabbed redesign:
  *   - YoY delta (cur vs prior year per sphere, plus total)
  *   - Monthly Überschuss bucket (length-12) for trend strip
- *   - WGB-Freigrenze status (45.000 € wirtschaftlich threshold)
+ *   - WGB-Freigrenze status (50.000 € wirtschaftlich threshold — JStG 2024)
  *   - Pre-flight checklist before Festschreibung
  *
  * Resolves: VB-001, JB-007, UX-100, UI-002, UI-034 (cycle-1 server-side
@@ -200,26 +200,32 @@ describe("computeWgbStatus", () => {
   });
 
   it("under 80% threshold → safe", () => {
-    // 50% of 4_500_000 = 2_250_000
-    const out = computeWgbStatus(2_250_000);
+    // 50% of 5_000_000 = 2_500_000
+    const out = computeWgbStatus(2_500_000);
     expect(out.bucket).toBe("safe");
   });
 
   it(">= 80% threshold and < 100% → warning", () => {
-    // 90% of 4_500_000 = 4_050_000
-    const out = computeWgbStatus(4_050_000);
+    // 80% of 5_000_000 = 4_000_000 (warning threshold)
+    const out = computeWgbStatus(4_500_000);
     expect(out.bucket).toBe("warning");
-    expect(out.remainingCents).toBe(450_000);
+    expect(out.remainingCents).toBe(500_000);
   });
 
   it(">= 100% threshold → over", () => {
-    const out = computeWgbStatus(5_000_000);
+    const out = computeWgbStatus(5_500_000);
     expect(out.bucket).toBe("over");
     expect(out.remainingCents).toBe(-500_000);
   });
 
-  it("exposes threshold of 45.000 EUR (4_500_000 cents)", () => {
-    expect(WGB_FREIGRENZE_CENTS).toBe(4_500_000n);
+  it("exactly at threshold (5_000_000) → over", () => {
+    const out = computeWgbStatus(5_000_000);
+    expect(out.bucket).toBe("over");
+    expect(out.remainingCents).toBe(0);
+  });
+
+  it("exposes threshold of 50.000 EUR — JStG 2024 (§ 64 Abs. 3 AO i.V.m. JStG 2024)", () => {
+    expect(WGB_FREIGRENZE_CENTS).toBe(5_000_000n);
   });
 });
 

@@ -10,11 +10,9 @@
  *     because Postgres' SUM() returns bigint; we coerce to number internally.
  *   - Sphere order is stable (ideeller, vermoegen, zweckbetrieb, wirtschaftlich)
  *     and matches src/lib/server/domain/eur.ts SPHERES + SPHERE_LABELS.
- *   - WGB-Freigrenze constant per C1 spec (45.000 €). Note the existing
- *     EurSummary legal note mentions 50.000 € (§ 64 Abs. 3 AO ab 2025) —
- *     the C1 spec explicitly calls out 45.000 € as the displayed threshold.
- *     If finding revisits this, swap the constant; everything downstream
- *     reads from WGB_FREIGRENZE_CENTS.
+ *   - WGB-Freigrenze constant: 50.000 € (JStG 2024 raised the threshold from
+ *     45.000 € to 50.000 €, effective 2025-01-01). Everything downstream reads
+ *     from WGB_FREIGRENZE_CENTS.
  *
  * Resolves: VB-001, JB-007, UX-100, UI-002, UI-034 (server side).
  */
@@ -137,14 +135,12 @@ export function computeMonthlyOverschuss(
 
 /**
  * Freigrenze für den wirtschaftlichen Geschäftsbetrieb (§ 64 Abs. 3 AO).
- * Per C1 spec: 45.000 € → 4_500_000 cents.
  *
- * NOTE: the existing EurSummary.svelte legal-note text mentions 50.000 €
- * (the threshold from 2025 onwards under the most recent AO amendment).
- * The C1 spec explicitly calls out 45.000 €; we use that here so the
- * indicator and legal note can be reconciled in a later cluster pass.
+ * 50.000 € (5_000_000 cents) — raised from 45.000 € by JStG 2024 §52 mit Wirkung
+ * zum 01.01.2025. Citation: § 64 Abs. 3 AO i.V.m. JStG 2024. See also dashboard
+ * cashflow / WGBWidget which use the same constant.
  */
-export const WGB_FREIGRENZE_CENTS = 4_500_000n;
+export const WGB_FREIGRENZE_CENTS = 5_000_000n;
 
 export type WgbBucket = "safe" | "warning" | "over";
 

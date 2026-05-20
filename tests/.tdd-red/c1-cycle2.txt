@@ -43,3 +43,101 @@ Tests:
         - wgb.bucket valid
         - preFlight present
         - serializable (no bigints in returned object — Number everywhere)
+
+============================================================================
+CYCLE-2 reviewer fixes (after JB-007/UX-100 deep-dive verdicts) — TDD RED:
+============================================================================
+
+C1-H1 — WGB Freigrenze 45.000 → 50.000 € (JStG 2024)
+---
+File: tests/unit/c1-eur-redesign.test.ts (overwrite WGB block)
+
+  it("WGB_FREIGRENZE_CENTS is 50.000 EUR — JStG 2024 (§ 64 Abs. 3 AO i.V.m. JStG 2024)", () => {
+    expect(WGB_FREIGRENZE_CENTS).toBe(5_000_000n);
+  });
+
+  it("4_000_000 cents → warning (80% of 5_000_000)", () => {
+    expect(computeWgbStatus(4_000_000).bucket).toBe("warning");
+  });
+
+  it("5_000_000 cents → over", () => {
+    expect(computeWgbStatus(5_000_000).bucket).toBe("over");
+  });
+
+C1-H2 — EÜR Einnahmen union spenden + member_beitrags (in load.ts)
+---
+File: tests/unit/c1-eur-union.test.ts (NEW)
+
+  // pure composer accepts extra income arrays
+  it("composeEurWorkspaceData unions Spenden + MemberBeitrags onto ideeller einnahmen", () => {
+    const out = composeEurWorkspaceData({
+      ...minInput,
+      currentEinnahmen: [makeRow({ sphereSnapshot: 'ideeller', betragCents: 1000n })],
+      currentSpenden:   [makeRow({ sphereSnapshot: 'ideeller', betragCents: 5000n })],
+      currentBeitrags:  [makeRow({ sphereSnapshot: 'ideeller', betragCents: 6969n })],
+    });
+    expect(out.eur.bySphere.ideeller.einnahmenCents).toBe(12969);
+  });
+
+C1-H3 — Bescheinigungs-status pre-flight item
+---
+File: tests/unit/c1-eur-redesign.test.ts (extended)
+
+  it("missingBescheinigungenCount > 0 → warn (not block)", () => {
+    const out = computePreFlight({ ...happyInput(), missingBescheinigungenCount: 2 });
+    const item = out.items.find((i) => i.id === "bescheinigungen")!;
+    expect(item.status).toBe("warn");
+    expect(out.canFestschreiben).toBe(true);
+  });
+
+  it("missingBescheinigungenCount === 0 → pass", () => {
+    const out = computePreFlight({ ...happyInput() });
+    const item = out.items.find((i) => i.id === "bescheinigungen")!;
+    expect(item.status).toBe("pass");
+  });
+
+C1-H4 — Real PDF + CSV endpoints separate from bundle.zip
+---
+Files: tests/unit/c1-eur-pdf-endpoint.test.ts + c1-eur-csv-endpoint.test.ts (NEW)
+
+  it("real EÜR PDF endpoint emits Content-Type application/pdf", async () => {
+    // shells over the existing generateEurPdf helper; non-empty body
+  });
+
+  it("real transactions CSV endpoint emits text/csv with UTF-8 BOM", async () => {
+    // header row + one column per Buchung property
+  });
+
+C1-H5 — Pre-flight gates empty + future year
+---
+File: tests/unit/c1-eur-redesign.test.ts (extended)
+
+  it("hasBuchungen blocker: 0 income + 0 expense + 0 donation + 0 beitrag → block", () => {
+    const out = computePreFlight({ ...happyInput(),
+      totalIncomeRows: 0, totalExpenseRows: 0, totalDonationRows: 0, totalBeitragRows: 0 });
+    const item = out.items.find((i) => i.id === "hasBuchungen")!;
+    expect(item.status).toBe("block");
+    expect(out.canFestschreiben).toBe(false);
+  });
+
+  it("yearNotFuture blocker: input.year > currentBuchungsjahr → block", () => {
+    const out = computePreFlight({ ...happyInput(), year: 2099, currentBuchungsjahr: 2025 });
+    const item = out.items.find((i) => i.id === "yearNotFuture")!;
+    expect(item.status).toBe("block");
+    expect(out.canFestschreiben).toBe(false);
+  });
+
+C1-M2 — Kleinbetrag 200 → 300 € (§50 Abs. 4 EStDV)
+---
+File: tests/unit/c1-spenden-status.test.ts (extended)
+
+  it("returns 'na' for anonym < 300 € (§50 Abs. 4 EStDV; vereinfachter Spendennachweis)", () => {
+    expect(bescheinigungStatusFor(makeRow({ memberId: null, spenderName: null, betragCents: 29999 })))
+      .toBe("na");
+  });
+
+  it("returns 'pending' for anonym >= 300 €", () => {
+    expect(bescheinigungStatusFor(makeRow({ memberId: null, spenderName: null, betragCents: 30000 })))
+      .toBe("pending");
+  });
+

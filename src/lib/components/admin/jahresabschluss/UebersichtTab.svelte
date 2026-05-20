@@ -113,6 +113,6 @@
 	class="mt-6 rounded-xl border border-border/60 bg-muted/30 px-5 py-4 text-xs text-muted-foreground"
 >
 	Ideeller Bereich, Vermögensverwaltung und Zweckbetrieb sind steuerfrei. Wirtschaftlicher
-	Geschäftsbetrieb ist steuerfrei unterhalb der Freigrenze (§ 64 Abs. 3 AO). Die Anzeige folgt
-	der C1-Spezifikation: 45.000 € Schwellenwert.
+	Geschäftsbetrieb ist steuerfrei unterhalb der Freigrenze von 50.000 €
+	(§ 64 Abs. 3 AO i.V.m. JStG 2024, gültig ab 01.01.2025).
 </div>
