@@ -194,6 +194,19 @@ describe.skipIf(!dbConfigured)(
       expect((err as { code?: string }).code).toBe("23514");
     });
 
+    it("rejects renaming the festgeschrieben_bis key away from app_runtime", async () => {
+      // Closes the rename-the-row loophole flagged in independent review.
+      await upsertBis(admin, 2024);
+      let err: unknown = null;
+      try {
+        await app`UPDATE settings SET key = 'festgeschrieben_bis_old' WHERE key = 'festgeschrieben_bis'`;
+      } catch (e) {
+        err = e;
+      }
+      expect(err).not.toBeNull();
+      expect((err as { code?: string }).code).toBe("23514");
+    });
+
     it("does NOT interfere with other settings keys (app_runtime)", async () => {
       const otherKey = `tier1_unrelated_${Date.now()}`;
       await admin`INSERT INTO settings (key, value) VALUES (${otherKey}, 'true'::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;

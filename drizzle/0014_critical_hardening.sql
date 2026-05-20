@@ -23,6 +23,22 @@
 --   3. (C5) donations.bescheinigung_nr year-consistency CHECK. Bescheinigungs-
 --      Nummern are user-entered. Without a year_ck, an admin can save
 --      `B-2024-001` on a 2025 donation, which the Finanzamt rejects.
+--
+-- Bypass policy (both triggers):
+--   `session_user <> 'app_runtime'` short-circuits to no-op. Local dev +
+--   test runs as `app_runtime` (per .env.development/.env.test) and so are
+--   enforced. Postgres superuser bypasses (migrations, fixture seeds,
+--   reset-test-db.sh teardown).
+--
+--   PROD CAVEAT (Neon): the project's CLAUDE.md states all app roles are
+--   NOLOGIN in Neon, with Neon managing the connection auth itself. We
+--   assume Neon's compute-role mapping presents `session_user='app_runtime'`
+--   to the trigger. Verify by querying `SELECT session_user` from a prod
+--   function once and confirm the value before relying on enforcement. If
+--   the prod role name differs, a follow-up migration should switch this
+--   guard to a session-variable opt-in (`SET app.bypass_festschreibung`)
+--   that migrations + seeds explicitly set, so app_runtime is always
+--   enforced regardless of the effective role name.
 
 -- ----------------------------------------------------------------------------
 -- 0. Shared helper: tolerant jsonb→integer year extractor
@@ -38,18 +54,27 @@ LANGUAGE plpgsql
 IMMUTABLE
 SET search_path = ''
 AS $$
+DECLARE
+  v_str text;
 BEGIN
-  IF v IS NULL THEN RETURN NULL; END IF;
-  BEGIN
-    RETURN CASE jsonb_typeof(v)
-      WHEN 'number' THEN (v#>>'{}')::integer
-      WHEN 'string' THEN (v#>>'{}')::integer
-      WHEN 'object' THEN (v->>'year')::integer
-      ELSE NULL
-    END;
-  EXCEPTION WHEN others THEN
+  IF v IS NULL OR jsonb_typeof(v) = 'null' THEN
     RETURN NULL;
+  END IF;
+  -- Pull the text representation per shape, then validate it's a plausible
+  -- 4-digit year before casting. This keeps the function liberal in what it
+  -- accepts (matching what the app's `fetchFestgeschriebenBis` parses) while
+  -- still surfacing genuinely corrupt data (non-numeric strings, dates) as
+  -- NULL rather than a fabricated year.
+  v_str := CASE jsonb_typeof(v)
+    WHEN 'number' THEN v#>>'{}'
+    WHEN 'string' THEN v#>>'{}'
+    WHEN 'object' THEN v->>'year'
+    ELSE NULL
   END;
+  IF v_str IS NULL OR v_str !~ '^-?\d{1,9}$' THEN
+    RETURN NULL;
+  END IF;
+  RETURN v_str::integer;
 END;
 $$;
 --> statement-breakpoint
@@ -168,8 +193,8 @@ DECLARE
   v_new_year integer;
 BEGIN
   -- Enforce only for the production runtime role (see assert_not_festgeschrieben_fn
-  -- above for rationale). Tests verifying this trigger fires must connect
-  -- via DATABASE_URL (app_runtime).
+  -- above for rationale + the Neon-role caveat). Tests verifying this trigger
+  -- fires must connect via DATABASE_URL (app_runtime).
   IF session_user <> 'app_runtime' THEN
     RETURN COALESCE(NEW, OLD);
   END IF;
@@ -184,7 +209,17 @@ BEGIN
     RETURN OLD;
   END IF;
 
-  -- UPDATE path
+  -- UPDATE path. Block rename of the festgeschrieben_bis row to a different
+  -- key (which would otherwise be a back-door to "unfreeze" by renaming away
+  -- the lock row and then re-inserting a fresh one with a lower year).
+  IF OLD.key = 'festgeschrieben_bis' AND NEW.key <> 'festgeschrieben_bis' THEN
+    RAISE EXCEPTION
+      'settings.festgeschrieben_bis darf nicht umbenannt werden (alt=%, neu=%)',
+      OLD.key, NEW.key
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  -- For UPDATEs of other settings rows, the trigger is a no-op.
   IF NEW.key <> 'festgeschrieben_bis' THEN
     RETURN NEW;
   END IF;

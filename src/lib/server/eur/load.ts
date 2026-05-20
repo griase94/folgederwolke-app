@@ -30,6 +30,7 @@ import {
 import { isYearClosed } from "$lib/server/domain/jahresabschluss.js";
 import { getDb } from "$lib/server/db/index.js";
 import { env } from "$lib/server/env.js";
+import { berlinYear } from "$lib/domain/year.js";
 
 // ── Serialized payload shapes (returned to the client) ───────────────────────
 
@@ -671,7 +672,8 @@ export async function loadEurWorkspaceData(
     SELECT year_for_booking(NOW())::int AS jahr
   `)) as { jahr: number }[];
   const currentBuchungsjahr =
-    currentJahrRes[0]?.jahr ?? new Date().getFullYear();
+    // ADR-0001: fallback if the SQL year_for_booking call returned nothing.
+    currentJahrRes[0]?.jahr ?? berlinYear();
 
   // 4. festgeschrieben_bis
   const festRes = (await db.execute<{ value: unknown }>(sql`

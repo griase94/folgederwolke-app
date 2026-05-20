@@ -25,6 +25,7 @@ import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
 import { invoices } from "$lib/server/db/schema/invoices.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
+import { berlinYear } from "$lib/domain/year.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -111,19 +112,11 @@ export interface RecentActivityEntry {
   label: string;
 }
 
-// ---------------------------------------------------------------------------
-// Berlin year helper (avoids circular import with spenden.ts)
-// ---------------------------------------------------------------------------
-
-export function berlinYear(now: Date = new Date()): number {
-  return parseInt(
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: "Europe/Berlin",
-      year: "numeric",
-    }).format(now),
-    10,
-  );
-}
+// Re-exported at the top of the imports block so existing
+// `import { berlinYear } from "$lib/server/domain/dashboard.js"` callers
+// keep working. The canonical implementation lives in `$lib/domain/year.js`
+// (ADR-0001).
+export { berlinYear };
 
 // ---------------------------------------------------------------------------
 // Pure helpers — moved to $lib/domain/cashflow.ts in cycle 2 so the client

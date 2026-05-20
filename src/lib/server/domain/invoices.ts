@@ -31,6 +31,7 @@ import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getFileStorage, type FileStorage } from "$lib/server/files/storage.js";
+import { berlinYear } from "$lib/domain/year.js";
 import { bus } from "$lib/server/events/index.js";
 import { env } from "$lib/server/env.js";
 import { pdfLibInvoiceRenderer } from "$lib/server/pdf/pdf-lib-renderer.js";
@@ -175,7 +176,8 @@ async function fetchFestgeschriebenBis(): Promise<number | null> {
 
 function yearOf(iso: string): number {
   const y = parseInt(iso.slice(0, 4), 10);
-  return Number.isFinite(y) ? y : new Date().getFullYear();
+  // ADR-0001: fallback to Berlin-local year (not UTC) for parse failures.
+  return Number.isFinite(y) ? y : berlinYear();
 }
 
 // ---------------------------------------------------------------------------

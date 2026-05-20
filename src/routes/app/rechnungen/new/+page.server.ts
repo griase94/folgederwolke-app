@@ -23,6 +23,7 @@ import {
   renderInvoicePreviewHtml,
 } from "$lib/server/domain/invoices.js";
 import { env } from "$lib/server/env.js";
+import { berlinYear } from "$lib/domain/year.js";
 
 // ---------------------------------------------------------------------------
 // load
@@ -58,17 +59,16 @@ export const load: PageServerLoad = async () => {
         .select({ nextValue: idCounters.nextValue })
         .from(idCounters)
         .where(
-          and(
-            eq(idCounters.kind, "FDW"),
-            eq(idCounters.year, new Date().getFullYear()),
-          ),
+          and(eq(idCounters.kind, "FDW"), eq(idCounters.year, berlinYear())),
         )
         .limit(1),
     ]);
 
   // Compute a preview business id — doesn't bump the counter; the real
-  // allocation happens inside createInvoice().
-  const year = new Date().getFullYear();
+  // allocation happens inside createInvoice(). Use Berlin-local year so the
+  // preview matches what the allocator will pick on Dec 31 23:30 UTC (already
+  // Jan 1 in Berlin) — ADR-0001.
+  const year = berlinYear();
   const nextSeq = counterRows[0] ? Number(counterRows[0].nextValue) : 1;
   const invoiceNumberPreview = `FDW-${year}-${String(nextSeq).padStart(3, "0")}`;
 
@@ -153,7 +153,7 @@ export const actions: Actions = {
       )
       .limit(1);
     void sql; // satisfy lint for the imported helper
-    const year = new Date().getFullYear();
+    const year = berlinYear(); // ADR-0001: Berlin-local Buchhaltungsjahr
     const nextSeq = counterRows[0] ? Number(counterRows[0].nextValue) : 1;
     const invoiceNumberPreview = `FDW-${year}-${String(nextSeq).padStart(3, "0")}`;
 

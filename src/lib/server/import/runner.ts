@@ -34,6 +34,7 @@ import { income } from "$lib/server/db/schema/income.js";
 import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { projects } from "$lib/server/db/schema/projects.js";
+import { berlinYear } from "$lib/domain/year.js";
 import type { LegacySheet } from "./sheet-reader.js";
 import {
   transformLegacySheet,
@@ -430,7 +431,7 @@ async function fetchFestgeschriebenBis(): Promise<number | null> {
 
 function parseYear(businessId: string): number {
   const m = /^[A-Z]+-(\d{4})-/.exec(businessId);
-  return m ? parseInt(m[1]!, 10) : new Date().getFullYear();
+  return m ? parseInt(m[1]!, 10) : berlinYear();
 }
 
 function todayBerlinIso(): string {

@@ -20,6 +20,7 @@ import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 import { sendMail } from "$lib/server/mail/index.js";
 import { getFileStorage, type FileStorage } from "$lib/server/files/storage.js";
 import { verifyAuditChain } from "$lib/server/audit-log/verifier.js";
+import { berlinYear } from "$lib/domain/year.js";
 
 // ---------------------------------------------------------------------------
 // Cleanup helpers
@@ -231,7 +232,9 @@ export async function dispatchBeitragsreminder(opts: {
     const rows = await db.execute<{ yr: number }>(
       sql`SELECT year_for_booking(now()) AS yr`,
     );
-    currentYear = rows[0]?.yr ?? new Date().getFullYear();
+    // ADR-0001: fallback to Berlin-local year if the SQL year_for_booking
+    // call returned no row (shouldn't happen, but defensive).
+    currentYear = rows[0]?.yr ?? berlinYear();
   }
 
   // Members with open Beitrag for current year who have an email address.
