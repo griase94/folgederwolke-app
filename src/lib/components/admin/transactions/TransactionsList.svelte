@@ -4,7 +4,9 @@
 	import TypeTabsHeader from './TypeTabsHeader.svelte';
 	import SavedViewsBar from './SavedViewsBar.svelte';
 	import TransactionRowComponent from './TransactionRow.svelte';
+	import TransactionCardMobile from './TransactionCardMobile.svelte';
 	import BulkActionsBar from './BulkActionsBar.svelte';
+	import { EmptyState } from '$lib/components/ui/empty-state/index.js';
 	import SepaCopyModal from './SepaCopyModal.svelte';
 	import PostSepaMarkErstattetModal from './PostSepaMarkErstattetModal.svelte';
 	import { toast } from 'svelte-sonner';
@@ -211,21 +213,46 @@
 
 	<!-- ── Table ───────────────────────────────────────────────────────────── -->
 	{#if filteredRows().length === 0}
-		<div class="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-muted/30 px-6 py-16 text-center">
-			<div class="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-muted-foreground">
-				<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
+		<EmptyState
+			title="Keine Transaktionen gefunden"
+			description={localSearch
+				? 'Suche verfeinern oder Filter zurücksetzen.'
+				: 'Noch keine Einträge vorhanden.'}
+		>
+			{#snippet icon()}
+				<svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.75">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
 				</svg>
-			</div>
-			<div>
-				<p class="font-medium text-foreground">Keine Transaktionen gefunden</p>
-				<p class="mt-1 text-sm text-muted-foreground">
-					{localSearch ? 'Suche verfeinern oder Filter zurücksetzen.' : 'Noch keine Einträge vorhanden.'}
-				</p>
-			</div>
-		</div>
+			{/snippet}
+		</EmptyState>
 	{:else}
-		<div class="overflow-x-auto rounded-lg border border-border">
+		<!--
+			Mobile (< md): card variant — table columns squish unreadably at 390px
+			(PM-009). Each card surfaces only the fields a Kassenwart scans on a
+			phone (Bezeichnung, Betrag, kind/status, Datum).
+		-->
+		<div
+			data-testid="transactions-card-list"
+			class="space-y-2 md:hidden"
+			role="list"
+			aria-label="Transaktionen"
+		>
+			{#each filteredRows() as row (row.id)}
+				<div role="listitem">
+					<TransactionCardMobile
+						{row}
+						selected={selectedIds.includes(row.id)}
+						ontoggle={toggleRow}
+					/>
+				</div>
+			{/each}
+		</div>
+
+		<!-- Desktop (md+): full table -->
+		<div
+			data-testid="transactions-table"
+			class="hidden overflow-x-auto rounded-lg border border-border md:block"
+		>
 			<table class="w-full text-sm" aria-label="Transaktionen">
 				<thead>
 					<tr class="border-b border-border bg-muted/50 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">

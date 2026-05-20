@@ -1,5 +1,6 @@
 <script lang="ts">
 	import MemberRow from './MemberRow.svelte';
+	import MemberCardMobile from './MemberCardMobile.svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import NoEntries from '$lib/components/empty/NoEntries.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -47,7 +48,31 @@
 		{/snippet}
 	</NoEntries>
 {:else}
-	<div class="space-y-2" role="list" aria-label="Mitgliederliste">
+	<!--
+		Mobile (< md): compact card variant — dropdown actions are removed since
+		hover isn't a touch affordance; the whole card routes to the detail page
+		where the same actions live (PM-009).
+	-->
+	<div
+		data-testid="member-card-list"
+		class="space-y-2 md:hidden"
+		role="list"
+		aria-label="Mitgliederliste"
+	>
+		{#each members as member (member.id)}
+			<div role="listitem">
+				<MemberCardMobile {member} {years} />
+			</div>
+		{/each}
+	</div>
+
+	<!-- Desktop (md+): full row with kebab actions + year beitrag chips -->
+	<div
+		data-testid="member-row-list"
+		class="hidden space-y-2 md:block"
+		role="list"
+		aria-label="Mitgliederliste"
+	>
 		{#each members as member (member.id)}
 			<div role="listitem">
 				<MemberRow {member} {years} {onEdit} />
