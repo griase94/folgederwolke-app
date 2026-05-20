@@ -40,10 +40,32 @@
 		</p>
 	</header>
 
+	{#if data.sharePrefill}
+		<div
+			role="status"
+			data-testid="share-prefill-banner"
+			class="mb-6 rounded-md border border-pink-200 bg-pink-50 p-4 text-sm text-pink-900"
+		>
+			<p class="font-medium">Aus dem Teilen-Menü übernommen</p>
+			<p class="mt-1 leading-relaxed">
+				Wir haben den Titel und Kommentar aus deiner Freigabe vorbefüllt. Bitte ergänze
+				Betrag, Auszahlungsdetails (IBAN bzw. Mitglied) und Datenschutz-Zustimmung.
+				{#if data.sharePrefill.fileNotice}
+					<br />
+					<strong>Hinweis:</strong> Der geteilte Beleg konnte aus technischen Gründen noch
+					nicht übernommen werden — bitte unten erneut anhängen. (Folgt in einer späteren
+					Version.)
+				{/if}
+			</p>
+		</div>
+	{/if}
+
 	<AuslagenForm
 		members={data.members ?? []}
 		projects={data.projects ?? []}
 		serverError={form?.error ?? null}
 		serverFieldErrors={form?.errors ?? null}
+		initialBezeichnung={data.sharePrefill?.bezeichnung ?? ''}
+		initialKommentar={data.sharePrefill?.kommentar ?? ''}
 	/>
 </main>

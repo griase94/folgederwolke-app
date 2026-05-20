@@ -68,4 +68,47 @@ test.describe("@phase-7 PWA", () => {
     // Either redirected to login (302/200) or rendered app shell — both are valid.
     expect(res?.status()).toBeLessThan(400);
   });
+
+  test("share_target POST is handled (no 400) and redirects to a pre-filled GET", async ({
+    page,
+    request,
+  }) => {
+    // Mimic the browser's PWA share_target POST: multipart/form-data with the
+    // four manifest-declared param names. The server must redirect to a GET
+    // with from=share so the user sees the form (not fail(400) "missing
+    // betrag/iban/consent").
+    const res = await request.post("/auslage-einreichen?source=share", {
+      multipart: {
+        bezeichnung_display: "Druckerpapier vom Großhandel",
+        kommentar_display: "Quittung-Foto vom 2026-05-18",
+        kommentar_url: "https://example.com/receipt",
+        beleg: {
+          name: "receipt.jpg",
+          mimeType: "image/jpeg",
+          buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+        },
+      },
+      maxRedirects: 0,
+    });
+
+    // 303 See Other → POST/GET conversion. The redirect Location header must
+    // point at /auslage-einreichen?from=share&...
+    expect([303, 200], `share POST → status was ${res.status()}`).toContain(
+      res.status(),
+    );
+    if (res.status() === 303) {
+      const loc = res.headers()["location"] ?? "";
+      expect(loc).toContain("/auslage-einreichen");
+      expect(loc).toContain("from=share");
+    }
+
+    // Now navigate to the GET the redirect points at and assert the form
+    // renders pre-filled, with the share-prefill banner shown.
+    const getRes = await page.goto(
+      "/auslage-einreichen?from=share&title=Druckerpapier&text=Quittung-Foto&file=1",
+    );
+    expect(getRes?.status()).toBe(200);
+    await expect(page.getByTestId("share-prefill-banner")).toBeVisible();
+    await expect(page.locator("#bezeichnung")).toHaveValue("Druckerpapier");
+  });
 });

@@ -62,6 +62,59 @@ describe("PM-020 — OfflineBanner.svelte exists and is mounted", () => {
   });
 });
 
+describe("PM-005 — share_target POST is handled server-side (no fail(400))", () => {
+  const serverPath = resolve(
+    repoRoot,
+    "src/routes/auslage-einreichen/+page.server.ts",
+  );
+  const src = readFileSync(serverPath, "utf8");
+
+  it("the default action inspects source=share before validating", () => {
+    // The intercept must run BEFORE the normal validation path so the missing
+    // betrag/iban/consent doesn't surface a fail(400) to a share intent.
+    expect(src).toMatch(/source.*===.*['"]share['"]/);
+  });
+
+  it("the action reads multipart fields matching the manifest share_target params", () => {
+    // Manifest declares params: title→bezeichnung_display, text→kommentar_display,
+    // url→kommentar_url, files[0]→beleg. The server must read each one.
+    expect(src).toMatch(/bezeichnung_display/);
+    expect(src).toMatch(/kommentar_display/);
+    expect(src).toMatch(/kommentar_url/);
+    expect(src).toMatch(/get\(['"]beleg['"]\)/);
+  });
+
+  it("the action redirects (303) to a GET with ?from=share so the form renders", () => {
+    // 303 See Other is the correct status for POST→GET conversion.
+    expect(src).toMatch(/redirect\(303,\s*`\/auslage-einreichen\?/);
+    expect(src).toMatch(/from=share|\bfrom['"]?\s*,\s*['"]share['"]/);
+  });
+
+  it("the load function hydrates sharePrefill from ?from=share query params", () => {
+    expect(src).toMatch(/from.*===.*['"]share['"]/);
+    expect(src).toMatch(/sharePrefill/);
+  });
+
+  it("the page renders the share-prefill banner and forwards initial values", () => {
+    const page = readFileSync(
+      resolve(repoRoot, "src/routes/auslage-einreichen/+page.svelte"),
+      "utf8",
+    );
+    expect(page).toMatch(/data-testid=['"]share-prefill-banner['"]/);
+    expect(page).toMatch(/initialBezeichnung/);
+    expect(page).toMatch(/initialKommentar/);
+  });
+
+  it("the AuslagenForm accepts initialBezeichnung/initialKommentar props", () => {
+    const form = readFileSync(
+      resolve(repoRoot, "src/lib/components/forms/AuslagenForm.svelte"),
+      "utf8",
+    );
+    expect(form).toMatch(/initialBezeichnung/);
+    expect(form).toMatch(/initialKommentar/);
+  });
+});
+
 describe("PM-006 — vite.config.ts wires the background-sync queue for the public form", () => {
   const cfg = readFileSync(resolve(repoRoot, "vite.config.ts"), "utf8");
 

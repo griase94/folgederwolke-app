@@ -38,6 +38,15 @@
 		 * `consent`, …).
 		 */
 		serverFieldErrors?: Record<string, string[]> | null;
+		/**
+		 * Optional initial values for the form. Used by the PWA share_target
+		 * (M2) redirect bridge so the form opens pre-populated with the
+		 * bezeichnung/kommentar the user shared. Falsy values are ignored —
+		 * the form keeps its empty default. Draft restore wins over these:
+		 * if a draft exists the user gets their in-progress work back.
+		 */
+		initialBezeichnung?: string;
+		initialKommentar?: string;
 	}
 
 	let {
@@ -49,7 +58,9 @@
 		members = [],
 		projects = [],
 		serverError = null,
-		serverFieldErrors = null
+		serverFieldErrors = null,
+		initialBezeichnung = '',
+		initialKommentar = ''
 	}: Props = $props();
 
 	// ---------------------------------------------------------------------------
@@ -64,11 +75,11 @@
 	let externIban = $state('');
 	let externEmail = $state('');
 
-	let bezeichnung = $state('');
+	let bezeichnung = $state(initialBezeichnung);
 	let betrag = $state('');
 	let rechnungsdatum = $state(new Date().toISOString().split('T')[0]!);
 	let wofuer = $state('');
-	let kommentar = $state('');
+	let kommentar = $state(initialKommentar);
 
 	let belegFile = $state<File | null>(null);
 	let datenschutzConsent = $state(false);
