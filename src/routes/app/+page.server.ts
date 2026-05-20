@@ -20,15 +20,40 @@ import {
   loadDashboardKpis,
   loadRecentActivity,
 } from "$lib/server/domain/dashboard.js";
+import { getDb } from "$lib/server/db/index.js";
+import { sql } from "drizzle-orm";
+
+/**
+ * Read `settings.festgeschrieben_bis` for the C3-4 year-lock badge.
+ * Returns the year as a number, or `null` when not set / unparseable.
+ * Kept local to the dashboard load so we don't introduce a cross-domain
+ * dependency just for this one read.
+ */
+async function fetchFestgeschriebenBis(): Promise<number | null> {
+  const db = getDb();
+  const rows = await db.execute<{ value: unknown }>(
+    sql`SELECT value FROM settings WHERE key = 'festgeschrieben_bis'`,
+  );
+  const row = (rows as { value: unknown }[])[0];
+  if (!row) return null;
+  const v = row.value;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const parsed = Number(v.replace(/^"|"$/g, ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
 
 export const load: PageServerLoad = async ({ url }) => {
   const yearParam = url.searchParams.get("year");
   const yearArg = yearParam ? parseInt(yearParam, 10) : undefined;
   const year = Number.isFinite(yearArg) ? yearArg : undefined;
 
-  const [kpis, recentActivity] = await Promise.all([
+  const [kpis, recentActivity, festgeschriebenBis] = await Promise.all([
     loadDashboardKpis(year),
     loadRecentActivity(),
+    fetchFestgeschriebenBis(),
   ]);
 
   return {
@@ -42,5 +67,7 @@ export const load: PageServerLoad = async ({ url }) => {
     wgb: kpis.wgb,
     // C3 cashflow block — all values are plain numbers (no BigInt).
     cashflow: kpis.cashflow,
+    // C3-4 (cycle 2): year-lock signal for the cashflow header badge.
+    festgeschriebenBis,
   };
 };

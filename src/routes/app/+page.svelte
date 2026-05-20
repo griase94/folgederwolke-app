@@ -32,12 +32,15 @@
 		</p>
 	</div>
 
-	<!-- C3 — Cashflow overview: 2 large cards + 4 link chips
-	     (resolves VB-003, JB-005, UI-008, UX-330) -->
+	<!-- C3 — Cashflow overview: 2 large cards + 4 sphere chips + 4 link chips
+	     (cycle 1: VB-003, JB-005, UI-008, UX-330;
+	      cycle 2: C3-3 sphere chips, C3-4 festschreibung lock, C3-6 Money in
+	      Saldo, C3-9 "im Jahr" labels) -->
 	<CashflowOverviewSection
 		cashflow={data.cashflow}
 		openInboxCount={data.openAuslagenCount}
 		activeMemberCount={data.activeMemberCount}
+		festgeschriebenBis={data.festgeschriebenBis}
 	/>
 
 	<!-- Prescriptive checklist -->

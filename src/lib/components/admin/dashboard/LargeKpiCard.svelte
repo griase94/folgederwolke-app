@@ -16,19 +16,20 @@
 		lyValueInCents: number;
 		/** Optional href if the card should be a link. */
 		href?: string;
-		/** 'income' (default) → emerald sparkline; 'expense' → rose. */
+		/**
+		 * Side-of-ledger hint. Drives the LY-delta chip color logic ONLY:
+		 * for income, "up" is positive; for expense, "up" is negative. The
+		 * sparkline itself is foreground-neutral per UI-008 (C3-8).
+		 */
 		tone?: 'income' | 'expense';
 	}
 
-	/**
-	 * Pure helper exported for the integration tests in
-	 * `dashboard.test.ts`: percentage delta of `cur` vs `prev` (rounded).
-	 * Returns `null` when `prev` is non-positive (avoids divide-by-zero).
-	 */
-	export function lyDeltaPct(cur: number, prev: number): number | null {
-		if (prev <= 0) return null;
-		return Math.round(((cur - prev) / prev) * 100);
-	}
+	// C3-12 (cycle 2): single source of truth for LY-delta math. Live in
+	// $lib/domain/cashflow.ts (client-safe — no server imports). Local
+	// `lyDeltaPct` re-export preserves the public API of this component
+	// module (legacy unit tests + dashboard.test.ts integration tests
+	// import `lyDeltaPct` from here).
+	export { computeLyDeltaPct as lyDeltaPct } from '$lib/domain/cashflow.js';
 </script>
 
 <script lang="ts">
@@ -36,6 +37,7 @@
 	import { Money } from '$lib/components/ui/money/index.js';
 	import Sparkline from './Sparkline.svelte';
 	import { cn } from '$lib/utils.js';
+	import { computeLyDeltaPct } from '$lib/domain/cashflow.js';
 
 	let {
 		label,
@@ -46,7 +48,7 @@
 		tone = 'income',
 	}: LargeKpiCardProps = $props();
 
-	const delta = $derived(lyDeltaPct(valueInCents, lyValueInCents));
+	const delta = $derived(computeLyDeltaPct(valueInCents, lyValueInCents));
 	const deltaSign = $derived(
 		delta === null ? 'neutral' : delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat',
 	);
@@ -58,9 +60,9 @@
 		return delta > 0 ? 'negative' : delta < 0 ? 'positive' : 'neutral';
 	});
 
-	const sparkTone = $derived<'positive' | 'negative' | 'neutral'>(
-		tone === 'income' ? 'positive' : 'negative',
-	);
+	// C3-8 (cycle 2): sparkline is foreground-neutral regardless of
+	// side-of-ledger. Only the LY-delta chip colors by direction.
+	const sparkTone = 'neutral';
 
 	const deltaLabel = $derived(() => {
 		if (delta === null) return '— vs. Vorjahr';
@@ -82,7 +84,7 @@
 	<div class="flex h-full flex-col gap-3 p-5">
 		<p class="text-sm font-medium text-muted-foreground">{label}</p>
 		<div class="flex items-baseline gap-3">
-			<span class="text-3xl font-bold tracking-tight tabular-nums">
+			<span class="text-3xl font-semibold tracking-tight tabular-nums">
 				<Money valueInCents={valueInCents} forceSign="never" />
 			</span>
 			<span

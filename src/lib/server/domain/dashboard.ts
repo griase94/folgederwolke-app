@@ -46,6 +46,17 @@ export interface WgbStatus {
  * 0-indexed (Jan…Dec) for the selected `year`. LY = last year, same period
  * (Jan→today's month, capped at 12) — direct year-over-year for past years.
  */
+/**
+ * Per-sphere split of an YTD total. ADR-0002: ideeller / vermoegen /
+ * zweckbetrieb / wirtschaftlich. All cents.
+ */
+export interface SphereSplit {
+  ideeller: number;
+  vermoegen: number;
+  zweckbetrieb: number;
+  wirtschaftlich: number;
+}
+
 export interface CashflowOverview {
   year: number;
   einnahmenYtdCents: number;
@@ -61,6 +72,13 @@ export interface CashflowOverview {
   ausgabenLyYtdCents: number;
   /** Open invoices (issued but bezahlt_am IS NULL, supersedesId IS NULL). */
   openInvoicesCount: number;
+  /**
+   * C3-3 (cycle 2): per-sphere YTD breakdown of einnahmen/ausgaben for the
+   * "4 chips below each card" visual. Sums across income + donations +
+   * member_beitrags for einnahmen; just expenses for ausgaben.
+   */
+  einnahmenBySphereCents: SphereSplit;
+  ausgabenBySphereCents: SphereSplit;
 }
 
 export interface DashboardKpis {
@@ -108,39 +126,18 @@ export function berlinYear(now: Date = new Date()): number {
 }
 
 // ---------------------------------------------------------------------------
-// Pure helpers (exported for unit tests)
+// Pure helpers — moved to $lib/domain/cashflow.ts in cycle 2 so the client
+// bundle (LargeKpiCard) can use them without dragging Drizzle in. Re-exported
+// here for backwards compatibility with the existing unit tests.
 // ---------------------------------------------------------------------------
 
-/**
- * Year-over-year percentage delta of `cur` vs `prev`, rounded to nearest int.
- * Returns null when `prev` is non-positive (defensive — no signal to convey).
- */
-export function computeLyDeltaPct(cur: number, prev: number): number | null {
-  if (prev <= 0) return null;
-  return Math.round(((cur - prev) / prev) * 100);
-}
+import {
+  computeLyDeltaPct,
+  bucketByMonth,
+  clampMonthlyForCurrentYear,
+} from "$lib/domain/cashflow.js";
 
-/**
- * Reduce `(month, sumCents)` rows into a length-12 array, 0-indexed (Jan=0).
- * Tolerates bigint / string sums returned by Postgres' SUM().
- */
-export function bucketByMonth(
-  rows: ReadonlyArray<{
-    month: number | string | bigint | null;
-    sumCents: number | string | bigint | null;
-  }>,
-): number[] {
-  const out = new Array<number>(12).fill(0);
-  for (const r of rows) {
-    if (r.month === null || r.month === undefined) continue;
-    const m = Number(r.month);
-    if (!Number.isFinite(m) || m < 1 || m > 12) continue;
-    const v = Number(r.sumCents ?? 0);
-    if (!Number.isFinite(v)) continue;
-    out[m - 1]! += v;
-  }
-  return out;
-}
+export { computeLyDeltaPct, bucketByMonth, clampMonthlyForCurrentYear };
 
 // ---------------------------------------------------------------------------
 // KPI queries
@@ -192,6 +189,10 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
     beitragsLyRows,
     ausgabenLyRows,
     openInvoicesAgg,
+    incomeBySphereRows,
+    donationsBySphereRows,
+    expensesBySphereRows,
+    beitragsYtdAgg,
   ] = await Promise.all([
     // 1. Open auslagen submissions (no decision yet)
     db
@@ -383,6 +384,59 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
           eq(invoices.yearOfBuchung, currentYear),
         ),
       ),
+
+    // 16. C3-3 — Income YTD grouped by sphere
+    db
+      .select({
+        sphere: income.sphereSnapshot,
+        sumCents: sum(income.betragCents),
+      })
+      .from(income)
+      .where(
+        and(eq(income.yearOfBuchung, currentYear), isNull(income.supersedesId)),
+      )
+      .groupBy(income.sphereSnapshot),
+
+    // 17. C3-3 — Donations YTD grouped by sphere
+    db
+      .select({
+        sphere: donations.sphereSnapshot,
+        sumCents: sum(donations.betragCents),
+      })
+      .from(donations)
+      .where(
+        and(
+          eq(donations.yearOfBuchung, currentYear),
+          isNull(donations.supersedesId),
+        ),
+      )
+      .groupBy(donations.sphereSnapshot),
+
+    // 18. C3-3 — Expenses YTD grouped by sphere
+    db
+      .select({
+        sphere: expenses.sphereSnapshot,
+        sumCents: sum(expenses.betragCents),
+      })
+      .from(expenses)
+      .where(
+        and(
+          eq(expenses.yearOfBuchung, currentYear),
+          isNull(expenses.supersedesId),
+        ),
+      )
+      .groupBy(expenses.sphereSnapshot),
+
+    // 19. C3-3 — Member-beitrags YTD (always ideeller sphere)
+    db
+      .select({ sumCents: sum(memberBeitrags.paidCents) })
+      .from(memberBeitrags)
+      .where(
+        and(
+          eq(memberBeitrags.year, currentYear),
+          isNotNull(memberBeitrags.gezahltAm),
+        ),
+      ),
   ]);
 
   // § 64 Abs. 3 AO Besteuerungsfreigrenze for wirtschaftlicher Geschäftsbetrieb:
@@ -420,6 +474,37 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
     Number(donationsLyRows[0]?.sumCents ?? 0) +
     Number(beitragsLyRows[0]?.sumCents ?? 0);
 
+  // C3-3: per-sphere YTD splits. Income + donations are sphere-tagged
+  // (sphere_snapshot); expenses similarly. Member-beitrags are always
+  // ideeller (no sphere column on the table).
+  const bucketBySphere = (
+    rows: ReadonlyArray<{ sphere: string | null; sumCents: unknown }>,
+  ): SphereSplit => {
+    const out: SphereSplit = {
+      ideeller: 0,
+      vermoegen: 0,
+      zweckbetrieb: 0,
+      wirtschaftlich: 0,
+    };
+    for (const r of rows) {
+      const s = r.sphere as keyof SphereSplit | null;
+      if (s === null || s === undefined) continue;
+      if (s in out) out[s] += Number(r.sumCents ?? 0);
+    }
+    return out;
+  };
+
+  const einnahmenBySphereCents = bucketBySphere(incomeBySphereRows);
+  const donationsSplit = bucketBySphere(donationsBySphereRows);
+  einnahmenBySphereCents.ideeller += donationsSplit.ideeller;
+  einnahmenBySphereCents.vermoegen += donationsSplit.vermoegen;
+  einnahmenBySphereCents.zweckbetrieb += donationsSplit.zweckbetrieb;
+  einnahmenBySphereCents.wirtschaftlich += donationsSplit.wirtschaftlich;
+  // Member-beitrags always count as ideeller.
+  einnahmenBySphereCents.ideeller += Number(beitragsYtdAgg[0]?.sumCents ?? 0);
+
+  const ausgabenBySphereCents = bucketBySphere(expensesBySphereRows);
+
   return {
     openAuslagenCount: openAuslagen[0]?.value ?? 0,
     approvedNotErstattetCount: approvedNotErstattet[0]?.cnt ?? 0,
@@ -446,6 +531,8 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
       einnahmenLyYtdCents,
       ausgabenLyYtdCents: Number(ausgabenLyRows[0]?.sumCents ?? 0),
       openInvoicesCount: openInvoicesAgg[0]?.value ?? 0,
+      einnahmenBySphereCents,
+      ausgabenBySphereCents,
     },
   };
 }

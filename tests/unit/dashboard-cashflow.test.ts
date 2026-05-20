@@ -212,6 +212,10 @@ describe("loadDashboardKpis(year)", () => {
       [{ sumCents: 0 }], // 13 beitrags LY YTD
       [{ sumCents: 6000 }], // 14 expenses LY YTD
       [{ value: 3 }], // 15 open invoices
+      [], // 16 income by sphere
+      [], // 17 donations by sphere
+      [], // 18 expenses by sphere
+      [{ sumCents: 0 }], // 19 beitrags YTD aggregate
     );
 
     const mod = await import("$lib/server/domain/dashboard.js");
@@ -229,6 +233,9 @@ describe("loadDashboardKpis(year)", () => {
     expect(result.cashflow.einnahmenMonthlyCents[0]).toBe(1000);
     expect(result.cashflow.einnahmenMonthlyCents[5]).toBe(5000);
     expect(result.cashflow.einnahmenMonthlyCents[11]).toBe(9000);
+    // C3-3 — sphere splits initialized to zero per key (defensive shape)
+    expect(result.cashflow.einnahmenBySphereCents.ideeller).toBe(0);
+    expect(result.cashflow.ausgabenBySphereCents.ideeller).toBe(0);
   });
 
   it("defaults to current Berlin year when no arg is given", async () => {
@@ -247,7 +254,11 @@ describe("loadDashboardKpis(year)", () => {
       [{ sumCents: 0 }], // donations LY
       [{ sumCents: 0 }], // beitrags LY
       [{ sumCents: 0 }], // expenses LY
-      [{ value: 0 }],
+      [{ value: 0 }], // open invoices
+      [], // income by sphere
+      [], // donations by sphere
+      [], // expenses by sphere
+      [{ sumCents: 0 }], // beitrags YTD aggregate
     );
 
     const mod = await import("$lib/server/domain/dashboard.js");
@@ -293,7 +304,11 @@ describe("loadDashboardKpis(year)", () => {
       [{ sumCents: 2000 }], // donations LY
       [{ sumCents: 1000 }], // beitrags LY
       [{ sumCents: 6000 }], // expenses LY
-      [{ value: 0 }],
+      [{ value: 0 }], // open invoices
+      [], // income by sphere
+      [], // donations by sphere
+      [], // expenses by sphere
+      [{ sumCents: 500 }], // beitrags YTD aggregate (for sphere split)
     );
     const mod = await import("$lib/server/domain/dashboard.js");
     const result = await mod.loadDashboardKpis(2024);
@@ -307,5 +322,56 @@ describe("loadDashboardKpis(year)", () => {
     // Ausgaben unchanged
     expect(result.cashflow.ausgabenYtdCents).toBe(100);
     expect(result.cashflow.ausgabenLyYtdCents).toBe(6000);
+  });
+
+  // -------------------------------------------------------------------------
+  // C3-3 (cycle 2) — sphere split surfaces all 4 spheres with proper sums
+  // -------------------------------------------------------------------------
+  it("returns per-sphere YTD breakdown for both einnahmen + ausgaben (C3-3)", async () => {
+    queryResults.push(
+      [{ value: 0 }],
+      [{ cnt: 0, sumCents: 0 }],
+      [{ rowCount: 0, memberCount: 0 }],
+      [{ sumCents: 0 }],
+      [{ value: 0 }],
+      [{ sumCents: 0 }],
+      [], // income monthly
+      [], // donations monthly
+      [], // beitrags monthly
+      [], // expenses monthly
+      [{ sumCents: 0 }], // income LY
+      [{ sumCents: 0 }], // donations LY
+      [{ sumCents: 0 }], // beitrags LY
+      [{ sumCents: 0 }], // expenses LY
+      [{ value: 0 }], // open invoices
+      // Income by sphere: zweckbetrieb 1000, wirtschaftlich 2000
+      [
+        { sphere: "zweckbetrieb", sumCents: 1000 },
+        { sphere: "wirtschaftlich", sumCents: 2000 },
+      ],
+      // Donations by sphere: ideeller 5000
+      [{ sphere: "ideeller", sumCents: 5000 }],
+      // Expenses by sphere: ideeller 100, zweckbetrieb 200
+      [
+        { sphere: "ideeller", sumCents: 100 },
+        { sphere: "zweckbetrieb", sumCents: 200 },
+      ],
+      [{ sumCents: 750 }], // beitrags YTD agg (always ideeller)
+    );
+    const mod = await import("$lib/server/domain/dashboard.js");
+    const result = await mod.loadDashboardKpis(2024);
+
+    const { einnahmenBySphereCents: e, ausgabenBySphereCents: a } =
+      result.cashflow;
+    // Einnahmen: income + donations + beitrags(ideeller)
+    expect(e.ideeller).toBe(5000 + 750);
+    expect(e.zweckbetrieb).toBe(1000);
+    expect(e.wirtschaftlich).toBe(2000);
+    expect(e.vermoegen).toBe(0);
+    // Ausgaben: expenses only
+    expect(a.ideeller).toBe(100);
+    expect(a.zweckbetrieb).toBe(200);
+    expect(a.wirtschaftlich).toBe(0);
+    expect(a.vermoegen).toBe(0);
   });
 });

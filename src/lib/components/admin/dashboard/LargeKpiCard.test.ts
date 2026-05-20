@@ -114,4 +114,45 @@ describe("LargeKpiCard", () => {
     });
     expect(container.querySelector("[data-slot='card']")).toBeTruthy();
   });
+
+  // -------------------------------------------------------------------------
+  // Cycle 2 — UI polish: C3-7 (font-semibold), C3-8 (neutral sparkline tone)
+  // -------------------------------------------------------------------------
+
+  it("renders hero number with font-semibold, not font-bold (C3-7)", () => {
+    render(LargeKpiCard, {
+      props: {
+        label: "Einnahmen 2024",
+        valueInCents: 1500000,
+        sparklineData: sparkData,
+        lyValueInCents: 1000000,
+      },
+    });
+    // The Money primitive is wrapped in the hero number span carrying
+    // the size + weight classes.
+    const money = screen.getByTestId("money");
+    const heroSpan = money.parentElement as HTMLElement | null;
+    expect(heroSpan).toBeTruthy();
+    expect(heroSpan!.className).toMatch(/font-semibold/);
+    expect(heroSpan!.className).not.toMatch(/font-bold/);
+  });
+
+  it("renders the sparkline with neutral tone regardless of side-of-ledger (C3-8)", () => {
+    // Expense card previously forced rose tone on the sparkline; UI-008
+    // wants the sparkline foreground-neutral, with direction signaled
+    // only by the LY-delta chip color.
+    render(LargeKpiCard, {
+      props: {
+        label: "Ausgaben 2024",
+        valueInCents: 750000,
+        sparklineData: sparkData,
+        lyValueInCents: 1000000,
+        tone: "expense",
+      },
+    });
+    const spark = screen.getByTestId("sparkline");
+    expect(spark.className).toMatch(/text-muted-foreground/);
+    expect(spark.className).not.toMatch(/text-rose/);
+    expect(spark.className).not.toMatch(/text-emerald/);
+  });
 });
