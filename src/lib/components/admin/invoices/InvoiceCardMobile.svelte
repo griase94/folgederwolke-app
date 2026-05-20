@@ -23,7 +23,7 @@
 	const rowOpacity = $derived(isSuperseded ? 'opacity-60' : '');
 </script>
 
-<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+<!-- eslint-disable svelte/no-navigation-without-resolve -->
 <a
 	href="/app/rechnungen/{invoice.id}"
 	data-testid="invoice-card"

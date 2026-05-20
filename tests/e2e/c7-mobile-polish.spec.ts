@@ -19,8 +19,7 @@ function sha256(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-const TEST_ADMIN_EMAIL =
-  process.env["TEST_ADMIN_EMAIL"] ?? "admin@example.com";
+const TEST_ADMIN_EMAIL = process.env["TEST_ADMIN_EMAIL"] ?? "admin@example.com";
 
 async function signIn(
   page: import("@playwright/test").Page,
@@ -144,15 +143,11 @@ test.describe("@phase-7 C7 list card variant", () => {
     await page.goto("/app/transactions");
 
     // Mobile card list is identified by data-testid; table is hidden on < md.
-    const mobileCards = page.locator(
-      '[data-testid="transactions-card-list"]',
-    );
+    const mobileCards = page.locator('[data-testid="transactions-card-list"]');
     await expect(mobileCards).toBeVisible();
 
     // The desktop <table> is wrapped in a hidden md:block container.
-    const desktopTable = page.locator(
-      '[data-testid="transactions-table"]',
-    );
+    const desktopTable = page.locator('[data-testid="transactions-table"]');
     await expect(desktopTable).toBeHidden();
     await context.close();
   });
@@ -170,9 +165,7 @@ test.describe("@phase-7 C7 list card variant", () => {
     const desktopTable = page.locator('[data-testid="transactions-table"]');
     await expect(desktopTable).toBeVisible();
 
-    const mobileCards = page.locator(
-      '[data-testid="transactions-card-list"]',
-    );
+    const mobileCards = page.locator('[data-testid="transactions-card-list"]');
     await expect(mobileCards).toBeHidden();
     await context.close();
   });

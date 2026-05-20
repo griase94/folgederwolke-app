@@ -92,7 +92,7 @@
 		-->
 		<div class="grid gap-1 px-2 pb-2" role="menu" aria-label="Schnellaktionen">
 			{#each ACTIONS as action (action.href)}
-				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+				<!-- eslint-disable svelte/no-navigation-without-resolve -->
 				<a
 					role="menuitem"
 					href={action.href}

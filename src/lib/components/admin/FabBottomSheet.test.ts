@@ -15,10 +15,16 @@ describe("FabBottomSheet", () => {
     render(FabBottomSheetTest, { props: { open: true } });
 
     // The four actions
-    expect(screen.getByRole("menuitem", { name: /Neue Ausgabe/i })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: /Neue Einnahme/i })).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: /Neue Ausgabe/i }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: /Neue Einnahme/i }),
+    ).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: /Neue Spende/i })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: /Auslage einreichen/i })).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: /Auslage einreichen/i }),
+    ).toBeTruthy();
   });
 
   it("each action links to its correct target", () => {
@@ -27,7 +33,9 @@ describe("FabBottomSheet", () => {
     const ausgabe = screen.getByRole("menuitem", { name: /Neue Ausgabe/i });
     const einnahme = screen.getByRole("menuitem", { name: /Neue Einnahme/i });
     const spende = screen.getByRole("menuitem", { name: /Neue Spende/i });
-    const auslage = screen.getByRole("menuitem", { name: /Auslage einreichen/i });
+    const auslage = screen.getByRole("menuitem", {
+      name: /Auslage einreichen/i,
+    });
 
     expect(ausgabe.getAttribute("href")).toBe(
       "/app/transactions/neu?kind=ausgabe",

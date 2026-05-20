@@ -45,9 +45,7 @@ describe("InvoiceList — mobile card variant (PM-009)", () => {
     const { container } = render(InvoiceListTest, {
       props: { invoices: [sampleInvoice] },
     });
-    const rowList = container.querySelector(
-      '[data-testid="invoice-row-list"]',
-    );
+    const rowList = container.querySelector('[data-testid="invoice-row-list"]');
     expect(rowList).toBeTruthy();
     expect(rowList!.className).toMatch(/hidden/);
     expect(rowList!.className).toMatch(/md:block/);

@@ -32,7 +32,12 @@ const sampleMember: MemberView = {
   isFixture: false,
   createdAt: "2025-01-15",
   beitrags: {
-    2026: { id: "b1", betragCents: 5000, paidCents: 5000, gezahltAm: "2026-02-01" },
+    2026: {
+      id: "b1",
+      betragCents: 5000,
+      paidCents: 5000,
+      gezahltAm: "2026-02-01",
+    },
   },
 };
 
@@ -52,9 +57,7 @@ describe("MemberList — mobile card variant (PM-009)", () => {
     const { container } = render(MemberListTest, {
       props: { members: [sampleMember], years: [2026] },
     });
-    const rowList = container.querySelector(
-      '[data-testid="member-row-list"]',
-    );
+    const rowList = container.querySelector('[data-testid="member-row-list"]');
     expect(rowList).toBeTruthy();
     expect(rowList!.className).toMatch(/hidden/);
     expect(rowList!.className).toMatch(/md:block/);

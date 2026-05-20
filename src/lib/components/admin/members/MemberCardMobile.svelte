@@ -68,7 +68,7 @@
 	};
 </script>
 
-<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+<!-- eslint-disable svelte/no-navigation-without-resolve -->
 <a
 	href="/app/mitglieder/{member.id}"
 	data-testid="member-card"

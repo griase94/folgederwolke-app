@@ -62,9 +62,7 @@ describe("TransactionsList — card variant (PM-009)", () => {
     const { container } = render(TransactionsListTest, {
       props: { rows: [sampleRow], total: 1 },
     });
-    const table = container.querySelector(
-      '[data-testid="transactions-table"]',
-    );
+    const table = container.querySelector('[data-testid="transactions-table"]');
     expect(table).toBeTruthy();
     // Hidden by default, shown at md+
     expect(table!.className).toMatch(/hidden/);
@@ -75,7 +73,9 @@ describe("TransactionsList — card variant (PM-009)", () => {
     const { container } = render(TransactionsListTest, {
       props: { rows: [sampleRow, { ...sampleRow, id: "txn_2" }], total: 2 },
     });
-    const cards = container.querySelectorAll('[data-testid="transaction-card"]');
+    const cards = container.querySelectorAll(
+      '[data-testid="transaction-card"]',
+    );
     expect(cards.length).toBe(2);
   });
 
