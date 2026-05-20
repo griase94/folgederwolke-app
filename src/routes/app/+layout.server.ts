@@ -26,10 +26,7 @@ import {
   listAvailableYears,
   type AvailableYear,
 } from "$lib/server/domain/years.js";
-import {
-  currentBuchungsjahr,
-  selectYearFromUrl,
-} from "$lib/domain/year.js";
+import { currentBuchungsjahr, selectYearFromUrl } from "$lib/domain/year.js";
 
 async function readFestgeschriebenBis(): Promise<number | null> {
   const db = getDb();
@@ -53,10 +50,8 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
   const currentYear = currentBuchungsjahr();
   const selectedYear = selectYearFromUrl(url.searchParams, currentYear);
 
-  const [availableYears, festgeschriebenBis]: [
-    AvailableYear[],
-    number | null,
-  ] = await Promise.all([listAvailableYears(), readFestgeschriebenBis()]);
+  const [availableYears, festgeschriebenBis]: [AvailableYear[], number | null] =
+    await Promise.all([listAvailableYears(), readFestgeschriebenBis()]);
 
   return {
     user: locals.session!.user,

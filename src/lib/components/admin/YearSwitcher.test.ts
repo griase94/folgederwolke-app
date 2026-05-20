@@ -53,7 +53,9 @@ describe("C2 YearSwitcher (VB-002 / JB-001 / UX-010 / UI-009 / UI-043)", () => {
     const lockIcon = container.querySelector('[data-testid="year-lock-2024"]');
     expect(lockIcon).not.toBeNull();
     // Open years do not get a lock
-    expect(container.querySelector('[data-testid="year-lock-2026"]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="year-lock-2026"]'),
+    ).toBeNull();
   });
 
   it("exposes accessible name including 'festgeschrieben' on closed years (UI-009)", () => {

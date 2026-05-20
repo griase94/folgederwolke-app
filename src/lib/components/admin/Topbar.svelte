@@ -58,7 +58,7 @@
 		if (typeof window === 'undefined') return;
 		const hasUrlYear = $page.url.searchParams.has('year');
 		if (hasUrlYear) return;
-		let stored: string | null = null;
+		let stored: string | null;
 		try {
 			stored = localStorage.getItem(YEAR_LS_KEY);
 		} catch {
