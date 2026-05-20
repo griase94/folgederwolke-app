@@ -1,0 +1,16 @@
+C7 Cycle 1 — RED — FabBottomSheet component
+============================================
+
+The FAB on MobileTabBar is currently disabled. Build a real bottom-sheet that:
+- triggers from the MobileTabBar plus button
+- shows 4 menu items:
+    Neue Ausgabe   → /app/transactions/neu?kind=ausgabe
+    Neue Einnahme  → /app/transactions/neu?kind=einnahme
+    Neue Spende    → /app/transactions/neu?kind=spende
+    Auslage einreichen → /auslage-einreichen
+- a11y: keyboard focus traps within the sheet (delegated to shadcn-svelte Sheet → bits-ui Dialog primitive), ESC closes, return focus to FAB
+- uses shadcn-svelte Sheet with side="bottom"
+
+Failing tests:
+- src/lib/components/admin/FabBottomSheet.test.ts — renders 4 actions with correct hrefs and labels when open
+- src/lib/components/admin/MobileTabBar.test.ts — FAB is enabled and has aria-label "Neu erfassen"
