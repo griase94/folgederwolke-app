@@ -15,6 +15,15 @@ import { currentBuchungsjahr } from "$lib/domain/year.js";
 
 const url = process.env.DIRECT_DATABASE_URL ?? process.env.DATABASE_URL ?? "";
 
+// Layout return type — pulled out to keep test bodies tidy and avoid
+// repeating the awkward `Awaited<ReturnType<…>>` cast.
+type LayoutData = {
+  availableYears: { year: number; closed: boolean }[];
+  selectedYear: number;
+  currentYear: number;
+  festgeschriebenBis: number | null;
+};
+
 function makeEvent(searchString: string) {
   return {
     url: new URL(`http://localhost/app${searchString}`),
@@ -28,7 +37,11 @@ function makeEvent(searchString: string) {
         },
       },
     },
-  } as Parameters<typeof layoutLoad>[0];
+  } as unknown as Parameters<typeof layoutLoad>[0];
+}
+
+async function runLoad(searchString: string): Promise<LayoutData> {
+  return (await layoutLoad(makeEvent(searchString))) as unknown as LayoutData;
 }
 
 describe.skipIf(!url)("C2 /app layout year context (JB-001/JB-006)", () => {
@@ -43,7 +56,7 @@ describe.skipIf(!url)("C2 /app layout year context (JB-001/JB-006)", () => {
   });
 
   it("exposes availableYears + currentYear + selectedYear + festgeschriebenBis", async () => {
-    const data = await layoutLoad(makeEvent(""));
+    const data = await runLoad("");
     expect(Array.isArray(data.availableYears)).toBe(true);
     expect(data.availableYears.length).toBeGreaterThan(0);
     expect(typeof data.currentYear).toBe("number");
@@ -55,17 +68,17 @@ describe.skipIf(!url)("C2 /app layout year context (JB-001/JB-006)", () => {
   });
 
   it("selectedYear defaults to current Buchungsjahr when ?year is absent", async () => {
-    const data = await layoutLoad(makeEvent(""));
+    const data = await runLoad("");
     expect(data.selectedYear).toBe(currentBuchungsjahr());
   });
 
   it("selectedYear honors ?year=NNNN (JB-006 — the bug was that ?year was ignored)", async () => {
-    const data = await layoutLoad(makeEvent("?year=2024"));
+    const data = await runLoad("?year=2024");
     expect(data.selectedYear).toBe(2024);
   });
 
   it("selectedYear falls back to current year on garbage input", async () => {
-    const data = await layoutLoad(makeEvent("?year=foo"));
+    const data = await runLoad("?year=foo");
     expect(data.selectedYear).toBe(currentBuchungsjahr());
   });
 
@@ -74,7 +87,7 @@ describe.skipIf(!url)("C2 /app layout year context (JB-001/JB-006)", () => {
       INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', '2024'::jsonb)
       ON CONFLICT (key) DO UPDATE SET value = '2024'::jsonb
     `;
-    const data = await layoutLoad(makeEvent(""));
+    const data = await runLoad("");
     expect(data.festgeschriebenBis).toBe(2024);
   });
 });
