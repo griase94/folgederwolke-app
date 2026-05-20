@@ -84,7 +84,7 @@
 		</p>
 		<ul class="space-y-1 text-xs text-muted-foreground">
 			<li class="flex items-center gap-2">
-				<span class="text-primary">01</span> EÜR-{year}.pdf — Einnahmen-Überschuss-Rechnung (rosa)
+				<span class="text-primary">01</span> EÜR-{year}.pdf — Einnahmen-Überschuss-Rechnung
 			</li>
 			<li class="flex items-center gap-2">
 				<span class="text-primary">02</span> Anlage-Gem-{year}.csv — Steuerbegünstigte Zwecke
@@ -97,6 +97,15 @@
 			</li>
 			<li class="flex items-center gap-2">
 				<span class="text-primary">05</span> GoBD-Z3-{year}/ — IDEA-XML + README
+			</li>
+			<li class="flex items-center gap-2">
+				<span class="text-primary">06</span> Bescheinigungen-{year}/ — Zuwendungsbestätigungen (PDF)
+			</li>
+			<li class="flex items-center gap-2">
+				<span class="text-primary">07</span> Audit-Log-{year}.csv — Aktionen im Jahr
+			</li>
+			<li class="flex items-center gap-2">
+				<span class="text-primary">08</span> Mitgliedsbeiträge-{year}.csv — Bezahlte Beiträge
 			</li>
 		</ul>
 	</div>

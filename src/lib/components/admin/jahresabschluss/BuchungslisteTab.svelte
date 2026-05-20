@@ -39,6 +39,17 @@
 
 	let { year, filters, rows, allRowsCount }: BuchungslisteTabProps = $props();
 
+	// C1-M4 — distinguish "no rows because filters are too tight" from
+	// "no rows because the year is empty". If no filters are active AND the
+	// total row count is zero, show the "first booking" CTA instead of the
+	// misleading "filters too tight" copy.
+	const filtersActive = $derived(
+		filters.sphere !== 'all' ||
+			filters.kind !== 'all' ||
+			!!filters.kategorieId ||
+			!!filters.projectId
+	);
+
 	function hrefWith(overrides: Record<string, string | undefined>): string {
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local URL builder, not a Svelte reactive store
 		const params = new URLSearchParams();
@@ -173,16 +184,31 @@
 
 	<!-- Rows -->
 	{#if rows.length === 0}
-		<EmptyState
-			title="Keine Buchungen passen zu den Filtern"
-			description="Lockere die Filter oder wechsle zur Übersicht."
-		>
-			{#snippet cta()}
-				<Button href={`/app/jahresabschluss/${year}/buchungsliste`} variant="outline">
-					Filter zurücksetzen
-				</Button>
-			{/snippet}
-		</EmptyState>
+		{#if filtersActive}
+			<EmptyState
+				data-testid="buchungsliste-empty-filtered"
+				title="Keine Buchungen passen zu den Filtern"
+				description="Lockere die Filter oder wechsle zur Übersicht."
+			>
+				{#snippet cta()}
+					<Button href={`/app/jahresabschluss/${year}/buchungsliste`} variant="outline">
+						Filter zurücksetzen
+					</Button>
+				{/snippet}
+			</EmptyState>
+		{:else}
+			<EmptyState
+				data-testid="buchungsliste-empty-new-year"
+				title={`Noch keine Buchungen für ${year}`}
+				description="Lege die erste Einnahme, Ausgabe oder Spende für dieses Buchungsjahr an."
+			>
+				{#snippet cta()}
+					<Button href="/app/transactions/neu" variant="default">
+						Erste Buchung anlegen
+					</Button>
+				{/snippet}
+			</EmptyState>
+		{/if}
 	{:else}
 		<div
 			data-testid="buchungsliste-table"
