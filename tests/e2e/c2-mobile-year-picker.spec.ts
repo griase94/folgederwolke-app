@@ -49,44 +49,41 @@ async function signIn(page: import("@playwright/test").Page): Promise<void> {
   ]);
 }
 
-test.describe.serial(
-  "@phase-2 @overnight-c2 mobile year picker (C2-4)",
-  () => {
-    test("mobile <sm year-picker is visible + selecting a year updates the URL", async ({
-      page,
-    }) => {
-      await signIn(page);
+test.describe.serial("@phase-2 @overnight-c2 mobile year picker (C2-4)", () => {
+  test("mobile <sm year-picker is visible + selecting a year updates the URL", async ({
+    page,
+  }) => {
+    await signIn(page);
 
-      await page.goto("/app");
-      if (page.url().includes("/sign-in")) test.skip();
+    await page.goto("/app");
+    if (page.url().includes("/sign-in")) test.skip();
 
-      // (1) Mobile picker is visible at iPhone-12 width.
-      const mobile = page.locator('[data-fdw="year-switcher-mobile"]');
-      await expect(mobile).toBeVisible();
+    // (1) Mobile picker is visible at iPhone-12 width.
+    const mobile = page.locator('[data-fdw="year-switcher-mobile"]');
+    await expect(mobile).toBeVisible();
 
-      // (2) The desktop SegmentedControl wrap is hidden at iPhone-12 width.
-      // Use `toBeHidden` rather than `toHaveCount(0)` because the markup
-      // remains in the DOM, just hidden via `hidden sm:block`.
-      const desktop = page.locator('[data-fdw="year-switcher-wrap"]');
-      if ((await desktop.count()) > 0) {
-        await expect(desktop.first()).toBeHidden();
-      }
+    // (2) The desktop SegmentedControl wrap is hidden at iPhone-12 width.
+    // Use `toBeHidden` rather than `toHaveCount(0)` because the markup
+    // remains in the DOM, just hidden via `hidden sm:block`.
+    const desktop = page.locator('[data-fdw="year-switcher-wrap"]');
+    if ((await desktop.count()) > 0) {
+      await expect(desktop.first()).toBeHidden();
+    }
 
-      // (3) The picker exposes a native <select> with at least one option.
-      const select = mobile.locator("select");
-      await expect(select).toBeVisible();
-      const options = await select
-        .locator("option")
-        .evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value));
-      expect(options.length).toBeGreaterThan(0);
+    // (3) The picker exposes a native <select> with at least one option.
+    const select = mobile.locator("select");
+    await expect(select).toBeVisible();
+    const options = await select
+      .locator("option")
+      .evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value));
+    expect(options.length).toBeGreaterThan(0);
 
-      // (4) Selecting a year updates ?year= in the URL.
-      const targetValue = options[0]!;
-      await select.selectOption(targetValue);
-      await page.waitForURL(new RegExp(`year=${targetValue}`), {
-        timeout: 5_000,
-      });
-      expect(page.url()).toMatch(new RegExp(`year=${targetValue}`));
+    // (4) Selecting a year updates ?year= in the URL.
+    const targetValue = options[0]!;
+    await select.selectOption(targetValue);
+    await page.waitForURL(new RegExp(`year=${targetValue}`), {
+      timeout: 5_000,
     });
-  },
-);
+    expect(page.url()).toMatch(new RegExp(`year=${targetValue}`));
+  });
+});
