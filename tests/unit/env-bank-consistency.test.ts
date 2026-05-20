@@ -6,8 +6,9 @@
  *
  * Backstop for the pre-existing bug surfaced by PR #44 cycle-1: the
  * (committed) cron + manual-reminder fallback values had IBAN
- * "DE25 8306 5408 ..." (BLZ 83065408 = Sparkasse Mittelthüringen, BIC
- * prefix HELADEF1) paired with BIC "BELADEBEXXX" (Berliner Sparkasse,
+ * "DE25 8306 5408 ..." (BLZ 83065408 = Deutsche Skatbank, BIC
+ * prefix GENODEF1) paired with a BIC prefix from a completely
+ * different bank (BELADEBEXXX — Berliner Volksbank / Berliner Sparkasse,
  * BLZ 10050000). Those are completely different banks — a BIC and an
  * IBAN-encoded BLZ MUST agree.
  *
@@ -44,9 +45,10 @@ describe("extractDeBlz", () => {
 
 describe("assertVereinBankConsistent", () => {
   it("REFUSES to boot when VEREIN_BIC and IBAN-encoded BLZ disagree (the PR-44 cycle-1 bug)", () => {
-    // IBAN DE25 8306 5408 ... encodes BLZ 83065408 → Sparkasse Mittelthüringen
-    // (BIC prefix HELADEF1). Pairing it with BELADEBEXXX (Berliner Sparkasse,
-    // BLZ 10050000, BIC prefix BELADEBE) is internally inconsistent.
+    // IBAN DE25 8306 5408 ... encodes BLZ 83065408 → Deutsche Skatbank
+    // (BIC prefix GENODEF1). Pairing it with BELADEBEXXX (Berliner
+    // Volksbank / Berliner Sparkasse, BLZ 10050000, BIC prefix BELADEBE)
+    // is internally inconsistent.
     expect(() =>
       assertVereinBankConsistent({
         iban: "DE43830654089999999999",
@@ -55,11 +57,11 @@ describe("assertVereinBankConsistent", () => {
     ).toThrow(/IBAN.*BIC|BIC.*IBAN|mismatch/i);
   });
 
-  it("accepts a matched IBAN/BIC pair (Sparkasse Mittelthüringen)", () => {
+  it("accepts a matched IBAN/BIC pair (Deutsche Skatbank)", () => {
     expect(() =>
       assertVereinBankConsistent({
         iban: "DE43830654089999999999",
-        bic: "HELADEF1WEM",
+        bic: "GENODEF1SLR",
       }),
     ).not.toThrow();
   });
@@ -68,7 +70,7 @@ describe("assertVereinBankConsistent", () => {
     expect(() =>
       assertVereinBankConsistent({
         iban: "DE43830654089999999999",
-        bic: "HELADEF1",
+        bic: "GENODEF1",
       }),
     ).not.toThrow();
   });
@@ -77,7 +79,7 @@ describe("assertVereinBankConsistent", () => {
     expect(() =>
       assertVereinBankConsistent({
         iban: "DE43830654089999999999",
-        bic: "heladef1wem",
+        bic: "genodef1slr",
       }),
     ).not.toThrow();
   });

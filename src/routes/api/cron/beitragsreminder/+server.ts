@@ -36,10 +36,11 @@ export const GET: RequestHandler = async ({ request }) => {
 
   // Bank details come exclusively from env.VEREIN_* — no string-literal
   // fallbacks. Mismatched IBAN/BIC fallbacks were the root cause of the
-  // cycle-2 review finding F2 (Sparkasse Mittelthüringen IBAN paired with
-  // a completely unrelated BIC). Empty env → empty payload → EPC builder
-  // refuses to emit a v001 payload without BIC (F1), which is the right
-  // failure mode: a misconfigured env should not silently send wrong data.
+  // cycle-2 review finding F2 (Deutsche Skatbank IBAN — BLZ 83065408 —
+  // paired with a completely unrelated BIC). Empty env → empty payload →
+  // EPC builder refuses to emit a v001 payload without BIC (F1), which
+  // is the right failure mode: a misconfigured env should not silently
+  // send wrong data.
   if (!env.VEREIN_IBAN || !env.VEREIN_BIC) {
     console.error(
       "[cron/beitragsreminder] VEREIN_IBAN/VEREIN_BIC unset — refusing to dispatch reminders with no bank data.",

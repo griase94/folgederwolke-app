@@ -1,3 +1,8 @@
+# Note (2026-05-20, post-merge follow-up): the Verein's actual bank is Deutsche
+# Skatbank (BIC GENODEF1SLR), not Sparkasse Mittelthüringen. Test fixtures
+# in the live tests/ directory have been updated; this anchor file documents
+# the original RED state of cycle 2 and is intentionally not edited.
+
 C8 Cycle 2 — RED test bodies that failed before the GREEN fixes landed.
 These are exact copies of the failing assertions added during cycle 2 to capture
 the expert-review findings (F1 + F2). Once the GREEN fixes were applied they

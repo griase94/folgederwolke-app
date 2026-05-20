@@ -15,13 +15,13 @@ import { z } from "zod";
 // bank-account migration we'll ever do) and the check is conservative: for
 // BLZs not in the table, the assertion is a no-op. The goal is to catch the
 // SPECIFIC class of bug from PR #44 cycle-1 — where VEREIN_IBAN encodes
-// Sparkasse Mittelthüringen but VEREIN_BIC is for a completely unrelated bank
-// — without overengineering a full BLZ registry.
+// Deutsche Skatbank (BLZ 83065408) but VEREIN_BIC is for a completely
+// unrelated bank — without overengineering a full BLZ registry.
 //
 // Sources: Bundesbank Bankleitzahlendatei (public),
 // https://www.bundesbank.de/de/aufgaben/unbarer-zahlungsverkehr/serviceangebot/bankleitzahlen
 const KNOWN_DE_BLZ_TO_BIC8: Readonly<Record<string, string>> = Object.freeze({
-  "83065408": "HELADEF1", // Sparkasse Mittelthüringen (Erfurt)
+  "83065408": "GENODEF1", // Deutsche Skatbank, Altenburg
   "10050000": "BELADEBE", // Berliner Sparkasse / Landesbank Berlin
   "10090000": "BEVODEBB", // Berliner Volksbank
   "70150000": "SSKMDEMM", // Stadtsparkasse München

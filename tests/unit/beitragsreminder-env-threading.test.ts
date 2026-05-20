@@ -7,9 +7,10 @@
  * BEFORE: both call sites contained string-literal fallbacks for IBAN,
  * BIC, Bankname, and Empfänger. When VEREIN_* env vars were unset (which
  * was the case for all dev/test envs), reminders went out with hardcoded
- * placeholder values — and the placeholder IBAN encoded Sparkasse
- * Mittelthüringen but the placeholder BIC was Berliner Sparkasse's, so
- * the data was outright wrong, not just stale.
+ * placeholder values — and the placeholder IBAN encoded Deutsche Skatbank
+ * (BLZ 83065408) but the placeholder BIC was Berliner Sparkasse's
+ * (BELADEBEXXX, BLZ 10050000), so the data was outright wrong, not just
+ * stale.
  *
  * AFTER: both call sites read exclusively from env.VEREIN_*. If any
  * required env var is unset, the action refuses to run instead of
