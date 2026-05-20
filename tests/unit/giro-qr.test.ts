@@ -63,15 +63,16 @@ describe("buildEpc069Payload", () => {
   // EEA payments where the IBAN implies the BIC. We ship v001 → must refuse
   // out-of-spec payloads at the builder. (Cycle-2 expert review F1.)
   it("REJECTS payload build when BIC is missing entirely", () => {
-    expect(() =>
-      buildEpc069Payload({
-        // @ts-expect-error — bic is now required on the input type
-        name: "Folge der Wolke e.V.",
-        iban: "DE25830654080006894453",
-        amountCents: 12345,
-        remittance: "Test",
-      }),
-    ).toThrow(/BIC/i);
+    // bic is required on the Epc069Input type now; this call deliberately
+    // violates the contract to assert the runtime guard also fires.
+    const inputWithoutBic = {
+      name: "Folge der Wolke e.V.",
+      iban: "DE25830654080006894453",
+      amountCents: 12345,
+      remittance: "Test",
+    } as unknown as Parameters<typeof buildEpc069Payload>[0];
+
+    expect(() => buildEpc069Payload(inputWithoutBic)).toThrow(/BIC/i);
   });
 
   it("REJECTS payload build when BIC is the empty string", () => {
