@@ -26,11 +26,11 @@ import {
 
 describe("extractDeBlz", () => {
   it("extracts the 8-digit BLZ from a canonical DE IBAN", () => {
-    expect(extractDeBlz("DE25830654080006894453")).toBe("83065408");
+    expect(extractDeBlz("DE43830654089999999999")).toBe("83065408");
   });
 
   it("tolerates whitespace and case", () => {
-    expect(extractDeBlz("de25 8306 5408 0006 8944 53")).toBe("83065408");
+    expect(extractDeBlz("de00 8306 5408 9999 9999 99")).toBe("83065408");
   });
 
   it("returns null for non-DE IBANs", () => {
@@ -49,7 +49,7 @@ describe("assertVereinBankConsistent", () => {
     // BLZ 10050000, BIC prefix BELADEBE) is internally inconsistent.
     expect(() =>
       assertVereinBankConsistent({
-        iban: "DE25830654080006894453",
+        iban: "DE43830654089999999999",
         bic: "BELADEBEXXX",
       }),
     ).toThrow(/IBAN.*BIC|BIC.*IBAN|mismatch/i);
@@ -58,7 +58,7 @@ describe("assertVereinBankConsistent", () => {
   it("accepts a matched IBAN/BIC pair (Sparkasse Mittelthüringen)", () => {
     expect(() =>
       assertVereinBankConsistent({
-        iban: "DE25830654080006894453",
+        iban: "DE43830654089999999999",
         bic: "HELADEF1WEM",
       }),
     ).not.toThrow();
@@ -67,7 +67,7 @@ describe("assertVereinBankConsistent", () => {
   it("accepts the 8-char short BIC form", () => {
     expect(() =>
       assertVereinBankConsistent({
-        iban: "DE25830654080006894453",
+        iban: "DE43830654089999999999",
         bic: "HELADEF1",
       }),
     ).not.toThrow();
@@ -76,7 +76,7 @@ describe("assertVereinBankConsistent", () => {
   it("is case-insensitive on the BIC", () => {
     expect(() =>
       assertVereinBankConsistent({
-        iban: "DE25830654080006894453",
+        iban: "DE43830654089999999999",
         bic: "heladef1wem",
       }),
     ).not.toThrow();
@@ -91,7 +91,7 @@ describe("assertVereinBankConsistent", () => {
   it("is a no-op when BIC is empty (build-time tolerance)", () => {
     expect(() =>
       assertVereinBankConsistent({
-        iban: "DE25830654080006894453",
+        iban: "DE43830654089999999999",
         bic: "",
       }),
     ).not.toThrow();

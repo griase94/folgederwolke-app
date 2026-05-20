@@ -21,7 +21,7 @@ const FIXTURE: InvoiceRenderInput = {
     adresse: "Westermuehlstrasse 6\n80469 Muenchen",
     steuernummer: "143/215/10028",
     vereinsregister: "VR 211227",
-    iban: "DE25830654080006894453",
+    iban: "DE43830654089999999999",
     bic: "GENODEF1ETK",
     bank: "Bank fuer Kirche und Diakonie",
   },

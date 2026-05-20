@@ -220,7 +220,7 @@ describe("retryFailedDriveUploads", () => {
 
 describe("dispatchBeitragsreminder", () => {
   const opts = {
-    iban: "DE25830654080006894453",
+    iban: "DE43830654089999999999",
     bic: "BELADEBEXXX",
     bank: "Berliner Volksbank",
     empfaenger: "Folge der Wolke e.V.",

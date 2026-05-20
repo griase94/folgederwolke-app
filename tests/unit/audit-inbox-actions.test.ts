@@ -553,9 +553,9 @@ describe("approveSubmission — idempotency", () => {
       bezahltVonKind: "extern",
       bezahltVonMemberId: null,
       externName: "Lea Mustermann",
-      externIban: "DE25830654080006894453",
+      externIban: "DE43830654089999999999",
       externEmail: "lea@example.com",
-      bezahltVonDisplay: "Extern: Lea Mustermann (DE25...4453)",
+      bezahltVonDisplay: "Extern: Lea Mustermann (DE43...9999)",
     });
 
     const result = await approveSubmission({

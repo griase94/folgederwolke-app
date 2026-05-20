@@ -37,7 +37,7 @@ describe("buildEpc069Payload", () => {
     const payload = buildEpc069Payload({
       bic: "SSKMDEMMXXX",
       name: "Folge der Wolke e.V.",
-      iban: "DE25830654080006894453",
+      iban: "DE43830654089999999999",
       amountCents: 5000,
       remittance: "Mitgliedsbeitrag 2026 Lea Mustermann",
     });
@@ -50,7 +50,7 @@ describe("buildEpc069Payload", () => {
         "SCT",
         "SSKMDEMMXXX",
         "Folge der Wolke e.V.",
-        "DE25830654080006894453",
+        "DE43830654089999999999",
         "EUR50.00",
         "",
         "",
@@ -67,7 +67,7 @@ describe("buildEpc069Payload", () => {
     // violates the contract to assert the runtime guard also fires.
     const inputWithoutBic = {
       name: "Folge der Wolke e.V.",
-      iban: "DE25830654080006894453",
+      iban: "DE43830654089999999999",
       amountCents: 12345,
       remittance: "Test",
     } as unknown as Parameters<typeof buildEpc069Payload>[0];
@@ -80,7 +80,7 @@ describe("buildEpc069Payload", () => {
       buildEpc069Payload({
         bic: "",
         name: "Folge der Wolke e.V.",
-        iban: "DE25830654080006894453",
+        iban: "DE43830654089999999999",
         amountCents: 12345,
         remittance: "Test",
       }),
@@ -92,7 +92,7 @@ describe("buildEpc069Payload", () => {
       buildEpc069Payload({
         bic: "   ",
         name: "Folge der Wolke e.V.",
-        iban: "DE25830654080006894453",
+        iban: "DE43830654089999999999",
         amountCents: 12345,
         remittance: "Test",
       }),
@@ -103,19 +103,19 @@ describe("buildEpc069Payload", () => {
     const payload = buildEpc069Payload({
       bic: "HELADEF1WEM",
       name: "Folge der Wolke e.V.",
-      iban: "DE25 8306 5408 0006 8944 53",
+      iban: "DE43 8306 5408 9999 9999 99",
       amountCents: 100,
       remittance: "x",
     });
 
-    expect(payload.split("\n")[6]).toBe("DE25830654080006894453");
+    expect(payload.split("\n")[6]).toBe("DE43830654089999999999");
   });
 
   it("trims whitespace around the BIC", () => {
     const payload = buildEpc069Payload({
       bic: "  HELADEF1WEM  ",
       name: "Folge der Wolke e.V.",
-      iban: "DE25830654080006894453",
+      iban: "DE43830654089999999999",
       amountCents: 100,
       remittance: "x",
     });
@@ -149,7 +149,7 @@ describe("buildEpc069Payload", () => {
     const payload = buildEpc069Payload({
       bic: "HELADEF1WEM",
       name: "Folge der Wolke e.V.",
-      iban: "DE25830654080006894453",
+      iban: "DE43830654089999999999",
       amountCents: 5000,
       remittance: "Test",
     });

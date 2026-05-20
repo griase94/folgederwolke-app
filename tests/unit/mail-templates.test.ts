@@ -160,7 +160,7 @@ describe("BeitragsReminder — brand strip + content + Giro-QR", () => {
     nachname: "Mustermann",
     jahr: 2026,
     betragCents: 5000,
-    iban: "DE25830654080006894453",
+    iban: "DE43830654089999999999",
     bic: "SSKMDEMMXXX",
     bank: "Stadtsparkasse München",
     empfaenger: "Folge der Wolke e.V.",
@@ -176,7 +176,7 @@ describe("BeitragsReminder — brand strip + content + Giro-QR", () => {
     expect(html).toContain("Liebste:r Lea");
     expect(html).toContain("2026");
     expect(html).toContain("50,00");
-    expect(html).toContain("DE25 8306");
+    expect(html).toContain("DE43 8306");
     expect(html).toContain("Mitgliedsbeitrag 2026 Lea Mustermann");
   });
 
@@ -186,7 +186,7 @@ describe("BeitragsReminder — brand strip + content + Giro-QR", () => {
     expect(html).toMatch(/<pre[^>]*>[\s\S]*BCD\s*\n001\s*\n1\s*\nSCT/);
     // BIC + IBAN appear inside the payload.
     expect(html).toMatch(/SSKMDEMMXXX/);
-    expect(html).toMatch(/DE25830654080006894453/);
+    expect(html).toMatch(/DE43830654089999999999/);
     // Amount formatted as EUR50.00 (no thousands separators, dot decimal).
     expect(html).toMatch(/EUR50\.00/);
     // Verwendungszweck (unstructured remittance — last non-empty line).
@@ -212,7 +212,7 @@ describe("InvoiceVersendetMail — brand strip + content + Giro-QR", () => {
     rechnungsdatum: "2026-05-15",
     faelligkeitsDatum: "2026-06-14",
     downloadUrl: "https://app.folgederwolke.de/invoices/RE-2026-007.pdf",
-    iban: "DE25830654080006894453",
+    iban: "DE43830654089999999999",
     bic: "SSKMDEMMXXX",
     empfaenger: "Folge der Wolke e.V.",
   };
