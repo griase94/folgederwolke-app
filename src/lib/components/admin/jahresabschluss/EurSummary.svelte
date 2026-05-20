@@ -47,7 +47,7 @@
 		<h2 class="text-lg font-semibold text-foreground">
 			Einnahmen-Überschuss-Rechnung {eur.year}
 		</h2>
-		<p class="mt-0.5 text-sm text-muted-foreground">Sphere-Aggregation nach ADR-0002</p>
+		<p class="mt-0.5 text-sm text-muted-foreground">Aggregation pro steuerlicher Sphäre</p>
 	</div>
 
 	<!-- Table -->

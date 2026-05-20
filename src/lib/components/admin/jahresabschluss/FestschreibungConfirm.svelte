@@ -25,7 +25,7 @@
 	<div class="px-6 py-5">
 		<h3 class="text-base font-semibold text-foreground">Jahresabschluss schließen</h3>
 		<p class="mt-1 text-sm text-muted-foreground">
-			Festschreibung: Alle Buchungen des Jahres {year} werden unveränderlich markiert (ADR-0006).
+			Festschreibung: Alle Buchungen des Jahres {year} werden unveränderlich markiert.
 			Korrekturen sind danach nur noch per Storno möglich.
 		</p>
 	</div>

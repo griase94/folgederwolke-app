@@ -84,7 +84,7 @@
 			Sphären-Übersicht {year} vs. {priorYear}
 		</h2>
 		<p class="mt-0.5 text-xs text-muted-foreground sm:text-sm">
-			Einnahmen-Überschuss-Rechnung pro steuerlicher Sphäre · ADR-0002
+			Einnahmen-Überschuss-Rechnung pro steuerlicher Sphäre
 		</p>
 	</div>
 
