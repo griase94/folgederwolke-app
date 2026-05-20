@@ -73,15 +73,17 @@ describe("Sparkline", () => {
     expect(() =>
       render(Sparkline, { props: { data: new Array(12).fill(0) } }),
     ).not.toThrow();
-    const polyline = screen
-      .getByTestId("sparkline")
-      .querySelector("polyline");
+    const polyline = screen.getByTestId("sparkline").querySelector("polyline");
     expect(polyline).toBeTruthy();
   });
 
   it("accepts a custom width/height", () => {
     render(Sparkline, {
-      props: { data: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], width: 200, height: 60 },
+      props: {
+        data: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        width: 200,
+        height: 60,
+      },
     });
     const svg = screen.getByTestId("sparkline");
     expect(svg.getAttribute("viewBox")).toBe("0 0 200 60");

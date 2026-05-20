@@ -74,44 +74,38 @@ vi.mock("drizzle-orm", () => ({
 
 describe("computeLyDeltaPct", () => {
   it("returns +50 for a 50% increase", async () => {
-    const { computeLyDeltaPct } = await import(
-      "$lib/server/domain/dashboard.js"
-    );
+    const { computeLyDeltaPct } =
+      await import("$lib/server/domain/dashboard.js");
     expect(computeLyDeltaPct(1500000, 1000000)).toBe(50);
   });
 
   it("returns -25 for a 25% decrease", async () => {
-    const { computeLyDeltaPct } = await import(
-      "$lib/server/domain/dashboard.js"
-    );
+    const { computeLyDeltaPct } =
+      await import("$lib/server/domain/dashboard.js");
     expect(computeLyDeltaPct(750000, 1000000)).toBe(-25);
   });
 
   it("returns null when previous is zero (avoid div-by-zero)", async () => {
-    const { computeLyDeltaPct } = await import(
-      "$lib/server/domain/dashboard.js"
-    );
+    const { computeLyDeltaPct } =
+      await import("$lib/server/domain/dashboard.js");
     expect(computeLyDeltaPct(1500000, 0)).toBeNull();
   });
 
   it("returns null when previous is negative (defensive)", async () => {
-    const { computeLyDeltaPct } = await import(
-      "$lib/server/domain/dashboard.js"
-    );
+    const { computeLyDeltaPct } =
+      await import("$lib/server/domain/dashboard.js");
     expect(computeLyDeltaPct(1500000, -100)).toBeNull();
   });
 
   it("returns 0 when values are equal", async () => {
-    const { computeLyDeltaPct } = await import(
-      "$lib/server/domain/dashboard.js"
-    );
+    const { computeLyDeltaPct } =
+      await import("$lib/server/domain/dashboard.js");
     expect(computeLyDeltaPct(1000, 1000)).toBe(0);
   });
 
   it("rounds to nearest integer", async () => {
-    const { computeLyDeltaPct } = await import(
-      "$lib/server/domain/dashboard.js"
-    );
+    const { computeLyDeltaPct } =
+      await import("$lib/server/domain/dashboard.js");
     // 1234/1000 → 23.4 → 23
     expect(computeLyDeltaPct(1234, 1000)).toBe(23);
   });
@@ -119,9 +113,7 @@ describe("computeLyDeltaPct", () => {
 
 describe("bucketByMonth", () => {
   it("places amounts in their 0-indexed month bucket", async () => {
-    const { bucketByMonth } = await import(
-      "$lib/server/domain/dashboard.js"
-    );
+    const { bucketByMonth } = await import("$lib/server/domain/dashboard.js");
     const rows = [
       { month: 1, sumCents: 1000 }, // Jan → idx 0
       { month: 3, sumCents: 3000 }, // Mar → idx 2
@@ -138,18 +130,14 @@ describe("bucketByMonth", () => {
   });
 
   it("returns array of 12 zeros when given no rows", async () => {
-    const { bucketByMonth } = await import(
-      "$lib/server/domain/dashboard.js"
-    );
+    const { bucketByMonth } = await import("$lib/server/domain/dashboard.js");
     const result = bucketByMonth([]);
     expect(result.length).toBe(12);
     expect(result.every((v) => v === 0)).toBe(true);
   });
 
   it("coerces bigint and string sums to number", async () => {
-    const { bucketByMonth } = await import(
-      "$lib/server/domain/dashboard.js"
-    );
+    const { bucketByMonth } = await import("$lib/server/domain/dashboard.js");
     const rows = [
       { month: 1, sumCents: BigInt(5000) },
       { month: 2, sumCents: "12345" },
@@ -160,9 +148,7 @@ describe("bucketByMonth", () => {
   });
 
   it("sums duplicate months (defensive)", async () => {
-    const { bucketByMonth } = await import(
-      "$lib/server/domain/dashboard.js"
-    );
+    const { bucketByMonth } = await import("$lib/server/domain/dashboard.js");
     const rows = [
       { month: 1, sumCents: 1000 },
       { month: 1, sumCents: 500 },

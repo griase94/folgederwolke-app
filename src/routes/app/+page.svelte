@@ -1,5 +1,5 @@
 <script lang="ts">
-	import KpiSection from '$lib/components/admin/dashboard/KpiSection.svelte';
+	import CashflowOverviewSection from '$lib/components/admin/dashboard/CashflowOverviewSection.svelte';
 	import ChecklistSection from '$lib/components/admin/dashboard/ChecklistSection.svelte';
 	import RecentActivity from '$lib/components/admin/dashboard/RecentActivity.svelte';
 	import WGBWidget from '$lib/components/admin/dashboard/WGBWidget.svelte';
@@ -27,16 +27,16 @@
 		<h1 class="text-2xl font-bold tracking-tight text-foreground">
 			{greeting()}, {displayName()} 👋
 		</h1>
-		<p class="mt-1 text-sm text-muted-foreground">Folge der Wolke e.V. · Kassenführung</p>
+		<p class="mt-1 text-sm text-muted-foreground">
+			Folge der Wolke e.V. · Kassenführung · {data.cashflow.year}
+		</p>
 	</div>
 
-	<!-- KPI cards row -->
-	<KpiSection
-		openAuslagenCount={data.openAuslagenCount}
-		approvedNotErstattetCount={data.approvedNotErstattetCount}
-		approvedNotErstattetSumCents={data.approvedNotErstattetSumCents}
-		openBeitragsMembers={data.openBeitragsMembers}
-		spendenYtdCents={data.spendenYtdCents}
+	<!-- C3 — Cashflow overview: 2 large cards + 4 link chips
+	     (resolves VB-003, JB-005, UI-008, UX-330) -->
+	<CashflowOverviewSection
+		cashflow={data.cashflow}
+		openInboxCount={data.openAuslagenCount}
 		activeMemberCount={data.activeMemberCount}
 	/>
 
@@ -48,7 +48,7 @@
 		openBeitragsMembers={data.openBeitragsMembers}
 	/>
 
-	<!-- WGB Freigrenze widget — §19 UStG Kleinunternehmer tracker -->
+	<!-- WGB Freigrenze widget — §64 Abs. 3 AO gemeinnützigkeitsrechtliche Freigrenze -->
 	<div class="mt-6">
 		<WGBWidget
 			einnahmenCents={data.wgb.einnahmenCents}

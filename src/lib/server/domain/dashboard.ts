@@ -125,7 +125,10 @@ export function computeLyDeltaPct(cur: number, prev: number): number | null {
  * Tolerates bigint / string sums returned by Postgres' SUM().
  */
 export function bucketByMonth(
-  rows: ReadonlyArray<{ month: number | string | bigint | null; sumCents: number | string | bigint | null }>,
+  rows: ReadonlyArray<{
+    month: number | string | bigint | null;
+    sumCents: number | string | bigint | null;
+  }>,
 ): number[] {
   const out = new Array<number>(12).fill(0);
   for (const r of rows) {
@@ -253,10 +256,7 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
       })
       .from(income)
       .where(
-        and(
-          eq(income.yearOfBuchung, currentYear),
-          isNull(income.supersedesId),
-        ),
+        and(eq(income.yearOfBuchung, currentYear), isNull(income.supersedesId)),
       )
       .groupBy(
         sql`EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,

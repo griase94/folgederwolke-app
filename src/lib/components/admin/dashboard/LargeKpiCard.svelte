@@ -99,6 +99,7 @@
 	</div>
 {/snippet}
 
+<!-- eslint-disable svelte/no-navigation-without-resolve -->
 {#if href}
 	<a
 		{href}
@@ -114,3 +115,4 @@
 		{@render body()}
 	</Card>
 {/if}
+<!-- eslint-enable svelte/no-navigation-without-resolve -->
