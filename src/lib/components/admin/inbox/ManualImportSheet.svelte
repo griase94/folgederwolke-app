@@ -315,6 +315,7 @@
 				<Input
 					id="mi-datum"
 					type="date"
+					lang="de"
 					max={new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' })}
 					bind:value={rechnungsdatum}
 				/>

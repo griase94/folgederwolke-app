@@ -121,6 +121,7 @@
 								id="edit-spende-datum"
 								name="zugewendet_am"
 								type="date"
+								lang="de"
 								value={spende.zugewendetAm ?? ''}
 								required
 							/>

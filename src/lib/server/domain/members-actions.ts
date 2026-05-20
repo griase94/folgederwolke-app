@@ -49,6 +49,8 @@ export type EditMemberResult = { ok: true } | ActionFailure;
 
 export type DeleteMemberResult = { ok: true } | ActionFailure;
 
+export type RestoreMemberResult = { ok: true } | ActionFailure;
+
 export type MarkBeitragPaidResult = { ok: true } | ActionFailure;
 
 // ---------------------------------------------------------------------------
@@ -181,6 +183,34 @@ export async function softDeleteMember(
   await bus.emit("member.deleted", {
     memberId,
     actorUserId,
+  });
+
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// restoreMember — clears austrittsDatum (undoes a soft-delete). Backs the
+// undo toast surfaced after softDeleteMember. C9/UX-050.
+// ---------------------------------------------------------------------------
+
+export async function restoreMember(
+  memberId: string,
+  actorUserId: string | null,
+): Promise<RestoreMemberResult> {
+  if (!memberId) {
+    return { ok: false, status: 400, error: "Fehlende Mitglieds-ID" };
+  }
+
+  const db = getDb();
+  await db
+    .update(members)
+    .set({ austrittsDatum: null, updatedAt: new Date() })
+    .where(eq(members.id, memberId));
+
+  await bus.emit("member.updated", {
+    memberId,
+    actorUserId,
+    payload: { restored: true },
   });
 
   return { ok: true };

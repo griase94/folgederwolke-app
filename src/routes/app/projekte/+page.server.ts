@@ -6,6 +6,7 @@
  *   default (?/add)  → add a new project
  *   ?/edit           → edit an existing project
  *   ?/delete         → soft-delete (sets deleted_at = now())
+ *   ?/restore        → undo the soft-delete (clears deleted_at)
  */
 
 import { fail } from "@sveltejs/kit";
@@ -17,6 +18,7 @@ import {
   addProject,
   editProject,
   softDeleteProject,
+  restoreProject,
 } from "$lib/server/domain/projects-actions.js";
 
 export const load: PageServerLoad = async () => {
@@ -95,5 +97,19 @@ export const actions: Actions = {
     }
 
     return { action: "delete", success: true };
+  },
+
+  // ── Restore soft-deleted project (undo) ────────────────────────────────────
+  restore: async ({ request, locals }) => {
+    const userId = locals.session?.user.id ?? null;
+    const formData = await request.formData();
+    const id = formData.get("id")?.toString() ?? "";
+
+    const result = await restoreProject(id, userId);
+    if (!result.ok) {
+      return fail(result.status, { action: "restore", error: result.error });
+    }
+
+    return { action: "restore", success: true };
   },
 };

@@ -34,6 +34,7 @@ export type AddCustomerResult =
   | ActionFailure;
 export type EditCustomerResult = { ok: true } | ActionFailure;
 export type DeleteCustomerResult = { ok: true } | ActionFailure;
+export type RestoreCustomerResult = { ok: true } | ActionFailure;
 
 // ---------------------------------------------------------------------------
 // addCustomer
@@ -131,6 +132,34 @@ export async function softDeleteCustomer(
   await bus.emit("customer.deleted", {
     customerId,
     actorUserId,
+  });
+
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// restoreCustomer — soft-undelete (clears deletedAt). Backs the undo toast
+// shown after softDeleteCustomer. C9/UX-050.
+// ---------------------------------------------------------------------------
+
+export async function restoreCustomer(
+  customerId: string,
+  actorUserId: string | null,
+): Promise<RestoreCustomerResult> {
+  if (!customerId) {
+    return { ok: false, status: 400, error: "Fehlende Kunden-ID" };
+  }
+
+  const db = getDb();
+  await db
+    .update(customers)
+    .set({ deletedAt: null, updatedAt: new Date() })
+    .where(eq(customers.id, customerId));
+
+  await bus.emit("customer.updated", {
+    customerId,
+    actorUserId,
+    payload: { restored: true },
   });
 
   return { ok: true };

@@ -22,6 +22,7 @@ import {
   addMember,
   editMember,
   softDeleteMember,
+  restoreMember,
   markBeitragPaid,
 } from "$lib/server/domain/members-actions.js";
 
@@ -146,6 +147,20 @@ export const actions: Actions = {
     }
 
     return { action: "delete", success: true };
+  },
+
+  // ── Restore soft-deleted member (undo) ──────────────────────────────────────
+  restore: async ({ request, locals }) => {
+    const userId = locals.session?.user.id ?? null;
+    const formData = await request.formData();
+    const id = formData.get("id")?.toString() ?? "";
+
+    const result = await restoreMember(id, userId);
+    if (!result.ok) {
+      return fail(result.status, { action: "restore", error: result.error });
+    }
+
+    return { action: "restore", success: true };
   },
 
   // ── Mark Beitrag paid ───────────────────────────────────────────────────────

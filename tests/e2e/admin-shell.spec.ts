@@ -75,8 +75,8 @@ test.describe("@phase-3 Admin shell — sidebar (desktop)", () => {
     // mobile topbar + main heading; assertion just checks it renders)
     await expect(page.getByText("Folge der Wolke").first()).toBeVisible();
 
-    // Dashboard nav item highlighted
-    const dashLink = page.getByRole("link", { name: /Heute/ });
+    // Dashboard nav item highlighted (C9: renamed Heute → Übersicht)
+    const dashLink = page.getByRole("link", { name: /Übersicht/ });
     await expect(dashLink).toBeVisible();
   });
 });

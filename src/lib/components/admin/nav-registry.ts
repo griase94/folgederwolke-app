@@ -6,6 +6,15 @@
  *  - MobileTabBar (mobile bottom tabs)
  *
  * Adding a new admin route: add one entry here, nothing else to edit.
+ *
+ * ── Sidebar diet (C9, UX-001) ───────────────────────────────────────────────
+ * The sidebar's "main" group is intentionally trimmed to **5 entries** — the
+ * ones a Kassenwartin reaches multiple times per session: Übersicht, Audit
+ * Inbox, Transaktionen, Mitglieder, Rechnungen. Everything else (Projekte,
+ * Kunden, Jahresabschluss, Einstellungen, DSGVO, Dev/Mails) lives in the
+ * collapsible "Mehr" section. The legacy `/app/sheet-resync` importer is
+ * intentionally NOT in the registry — it remains reachable by URL for
+ * one-time admin tasks but isn't a navigation target.
  */
 
 export interface NavItem {
@@ -29,9 +38,9 @@ export interface NavItem {
 }
 
 export const navItems: NavItem[] = [
-  // ── Main group ────────────────────────────────────────────────────────────
+  // ── Main group (5 entries — see "Sidebar diet" note above) ────────────────
   {
-    label: "Heute",
+    label: "Übersicht",
     href: "/app",
     icon: "CheckSquare",
     mobileTab: 1,
@@ -64,31 +73,31 @@ export const navItems: NavItem[] = [
     icon: "FileText",
     group: "main",
   },
+  // ── More group ────────────────────────────────────────────────────────────
   {
     label: "Projekte",
     href: "/app/projekte",
     icon: "FolderOpen",
-    group: "main",
+    group: "more",
   },
   {
     label: "Kunden",
     href: "/app/kunden",
     icon: "Building2",
-    group: "main",
+    group: "more",
   },
   {
     label: "Jahresabschluss",
     href: "/app/jahresabschluss",
     icon: "BookOpen",
-    group: "main",
+    group: "more",
   },
   {
     label: "Einstellungen",
     href: "/app/einstellungen",
     icon: "Settings",
-    group: "main",
+    group: "more",
   },
-  // ── More group ────────────────────────────────────────────────────────────
   {
     label: "DSGVO",
     href: "/app/dsgvo",

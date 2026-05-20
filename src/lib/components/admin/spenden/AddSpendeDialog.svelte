@@ -195,6 +195,7 @@
 						id="add-spende-datum"
 						name="zugewendet_am"
 						type="date"
+						lang="de"
 						required
 						data-testid="zugewendet-am-input"
 					/>
@@ -340,7 +341,7 @@
 					{/snippet}
 				</Dialog.Close>
 				<Button type="submit" disabled={loading} data-testid="submit-spende">
-					{loading ? 'Speichern…' : 'Spende anlegen'}
+					{loading ? 'Speichern…' : 'Spende erfassen'}
 				</Button>
 			</Dialog.Footer>
 		</form>

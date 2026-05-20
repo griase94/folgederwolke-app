@@ -73,6 +73,7 @@
 		spenden={data.spenden}
 		bescheinigungEnabled={data.bescheinigungEnabled}
 		{onEdit}
+		onAdd={() => (addOpen = true)}
 	/>
 </div>
 

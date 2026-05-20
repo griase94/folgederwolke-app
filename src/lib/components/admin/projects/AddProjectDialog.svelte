@@ -104,11 +104,11 @@
 			<div class="grid grid-cols-2 gap-3">
 				<div class="space-y-1">
 					<Label for="add-proj-start">Startdatum</Label>
-					<Input id="add-proj-start" name="start_date" type="date" />
+					<Input id="add-proj-start" name="start_date" type="date" lang="de" />
 				</div>
 				<div class="space-y-1">
 					<Label for="add-proj-end">Enddatum</Label>
-					<Input id="add-proj-end" name="end_date" type="date" />
+					<Input id="add-proj-end" name="end_date" type="date" lang="de" />
 				</div>
 			</div>
 
@@ -144,7 +144,7 @@
 							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
 						</svg>
 					{/if}
-					Hinzufügen
+					Projekt anlegen
 				</Button>
 			</Dialog.Footer>
 		</form>

@@ -1,21 +1,42 @@
 /**
  * Layout-level load for /auslage-einreichen.
  *
- * Provides `members` and `projects` to the page without touching the action's
- * +page.server.ts. Both are Phase-3 endpoints; for now we return empty arrays
- * so the form degrades to its stub state.
+ * Provides `members` and `projects` to the page so the AuslagenForm can
+ * render its project-select. C9/AT-002 fixed the projects path (previously
+ * a stub `projects: []`) — the form now reads the actual active project list
+ * from the DB.
  *
- * When Phase 3 adds /api/members and /api/projects, replace the stubs below
- * with real DB queries (imported from the domain layer — never raw SQL here).
+ * `members` is still a stub: the public form does not surface a member
+ * picker (members self-identify by typing name + email), so we keep the
+ * contract but return [] until a future feature needs it.
  */
 
+import { isNull } from "drizzle-orm";
 import type { LayoutServerLoad } from "./$types.js";
+import { getDb } from "$lib/server/db/index.js";
+import { projects as projectsTable } from "$lib/server/db/schema/projects.js";
 
 export const load: LayoutServerLoad = async () => {
-  // Phase 3: load from DB / API
+  const db = getDb();
+
+  // Active (non-archived) projects, ordered by name for deterministic UI.
+  const rows = await db
+    .select({
+      id: projectsTable.id,
+      name: projectsTable.name,
+    })
+    .from(projectsTable)
+    .where(isNull(projectsTable.deletedAt))
+    .orderBy(projectsTable.name);
+
+  const projects: Array<{ id: string; name: string }> = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+  }));
+
+  // Members are not exposed on the public form — see note above.
   const members: Array<{ id: string; display_name: string; email?: string }> =
     [];
-  const projects: Array<{ id: string; name: string }> = [];
 
   return { members, projects };
 };

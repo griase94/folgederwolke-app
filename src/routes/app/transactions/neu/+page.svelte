@@ -170,6 +170,7 @@
 						id="rechnungsdatum"
 						name="rechnungsdatum"
 						type="date"
+						lang="de"
 						class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 					/>
 				</div>
@@ -241,6 +242,7 @@
 						id="geldEingangDatum"
 						name="geldEingangDatum"
 						type="date"
+						lang="de"
 						class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 					/>
 				</div>
@@ -314,6 +316,7 @@
 						id="zugewendetAm"
 						name="zugewendetAm"
 						type="date"
+						lang="de"
 						class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 					/>
 				</div>

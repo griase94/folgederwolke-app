@@ -137,6 +137,7 @@
 				<label for="rechnungsdatum" class="mb-1 block text-sm font-medium">Rechnungsdatum</label>
 				<input
 					type="date"
+					lang="de"
 					id="rechnungsdatum"
 					name="rechnungsdatum"
 					bind:value={rechnungsdatum}
@@ -148,6 +149,7 @@
 				<label for="leistungsDatum" class="mb-1 block text-sm font-medium">Leistungsdatum (optional)</label>
 				<input
 					type="date"
+					lang="de"
 					id="leistungsDatum"
 					name="leistungsDatum"
 					bind:value={leistungsDatum}
@@ -160,6 +162,7 @@
 			<label for="faelligkeitsDatum" class="mb-1 block text-sm font-medium">Fällig bis (optional)</label>
 			<input
 				type="date"
+				lang="de"
 				id="faelligkeitsDatum"
 				name="faelligkeitsDatum"
 				bind:value={faelligkeitsDatum}
@@ -258,7 +261,7 @@
 				disabled={submitting || !customerId || nettoCents <= 0}
 				class="bg-primary text-primary-foreground hover:bg-primary/90"
 			>
-				{submitting ? 'Wird erstellt …' : 'PDF generieren'}
+				{submitting ? 'Wird erstellt …' : 'Rechnung erstellen & PDF'}
 			</Button>
 		</div>
 	</form>

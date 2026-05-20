@@ -1,0 +1,12 @@
+C9 Cycle 1 — Sidebar diet + "Heute" → "Übersicht" rename
+
+Tests added (failing pre-impl):
+  src/lib/components/admin/c9-nav-registry.test.ts
+
+Assertions:
+  - "Heute" label gone from navItems
+  - "Übersicht" label exists, at href="/app"
+  - mainNavItems.length === 5 (sidebar diet target)
+  - sheet-resync (/app/sheet-resync) NOT in navItems
+  - mainNavItems hrefs include the 5 canonical: /app, /app/inbox, /app/transactions, /app/mitglieder, /app/rechnungen
+  - all the other previous mains (projekte, kunden, jahresabschluss, einstellungen) still exist in navItems (group=more or main is fine — just not lost)

@@ -17,6 +17,7 @@ import {
   addCustomer,
   editCustomer,
   softDeleteCustomer,
+  restoreCustomer,
 } from "$lib/server/domain/customers-actions.js";
 
 export const load: PageServerLoad = async () => {
@@ -94,5 +95,19 @@ export const actions: Actions = {
     }
 
     return { action: "delete", success: true };
+  },
+
+  // ── Restore soft-deleted customer (undo) ───────────────────────────────────
+  restore: async ({ request, locals }) => {
+    const userId = locals.session?.user.id ?? null;
+    const formData = await request.formData();
+    const id = formData.get("id")?.toString() ?? "";
+
+    const result = await restoreCustomer(id, userId);
+    if (!result.ok) {
+      return fail(result.status, { action: "restore", error: result.error });
+    }
+
+    return { action: "restore", success: true };
   },
 };

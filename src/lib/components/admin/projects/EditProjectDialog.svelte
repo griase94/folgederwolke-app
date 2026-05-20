@@ -71,10 +71,26 @@
 				use:enhance={() => {
 					deleteLoading = true;
 					deleteError = null;
+					const projectId = project?.id ?? '';
 					return async ({ result }) => {
 						deleteLoading = false;
 						if (result.type === 'success') {
-							toast.success('Projekt archiviert');
+							// Soft-undo toast (UX-050): the destructive op is reversible
+							// for ~8s via the project's restore action.
+							const toastId = toast.success('Projekt archiviert', {
+								action: {
+									label: 'Rückgängig',
+									onClick: async () => {
+										const fd = new FormData();
+										fd.set('id', projectId);
+										await fetch('?/restore', { method: 'POST', body: fd });
+										await invalidateAll();
+										toast.dismiss(toastId);
+										toast.info('Wiederhergestellt');
+									},
+								},
+								duration: 8000,
+							});
 							open = false;
 							reset();
 							onSuccess?.();
@@ -151,11 +167,11 @@
 				<div class="grid grid-cols-2 gap-3">
 					<div class="space-y-1">
 						<Label for="edit-proj-start">Startdatum</Label>
-						<Input id="edit-proj-start" name="start_date" type="date" value={project.startDate ?? ''} />
+						<Input id="edit-proj-start" name="start_date" type="date" lang="de" value={project.startDate ?? ''} />
 					</div>
 					<div class="space-y-1">
 						<Label for="edit-proj-end">Enddatum</Label>
-						<Input id="edit-proj-end" name="end_date" type="date" value={project.endDate ?? ''} />
+						<Input id="edit-proj-end" name="end_date" type="date" lang="de" value={project.endDate ?? ''} />
 					</div>
 				</div>
 
