@@ -10,7 +10,7 @@ import { getDb } from "$lib/server/db/index.js";
 import { donations } from "$lib/server/db/schema/donations.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { isBescheinigungEnabled } from "$lib/server/domain/spenden.js";
-import { bescheinigungStatusFor } from "$lib/server/eur/spenden-status.js";
+import { bescheinigungStatusFor } from "$lib/domain/bescheinigungs-status.js";
 
 export const load: PageServerLoad = async ({ params }) => {
   const year = parseInt(params.year, 10);

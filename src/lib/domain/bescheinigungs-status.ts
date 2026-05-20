@@ -1,6 +1,10 @@
 /**
  * Bescheinigungs-Status mapper for the C1 Spenden tab (pure, no DB).
  *
+ * Lives under `src/lib/domain/` because the Svelte component (SpendenTab)
+ * needs the label map at render time — `$lib/server/...` cannot be imported
+ * from client-side code, even if the helper itself is pure.
+ *
  * Heuristic until product defines a richer state machine:
  *   - issued   → bescheinigungNr + bescheinigungAusgestelltAm both set
  *   - na       → no member_id AND no spender_name AND < 200 € (Anonymspende)

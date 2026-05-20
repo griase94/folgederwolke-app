@@ -1,6 +1,6 @@
 <script lang="ts" module>
-	import type { BescheinigungStatus } from '$lib/server/eur/spenden-status.js';
-	import { BESCHEINIGUNG_STATUS_LABEL } from '$lib/server/eur/spenden-status.js';
+	import type { BescheinigungStatus } from '$lib/domain/bescheinigungs-status.js';
+	import { BESCHEINIGUNG_STATUS_LABEL } from '$lib/domain/bescheinigungs-status.js';
 
 	export interface SpendeRowData {
 		id: string;

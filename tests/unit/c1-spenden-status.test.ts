@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import {
   bescheinigungStatusFor,
   type SpendeStatusRow,
-} from "$lib/server/eur/spenden-status.js";
+} from "$lib/domain/bescheinigungs-status.js";
 
 function makeRow(over: Partial<SpendeStatusRow> = {}): SpendeStatusRow {
   return {
