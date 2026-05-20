@@ -77,19 +77,16 @@ describe("FabBottomSheet", () => {
 
   // ─── C7-6 cycle 2 — distinct icons per action ─────────────────────
   it("each action renders a distinct icon (no shared placeholder) (C7-6)", () => {
-    const { container } = render(FabBottomSheetTest, {
-      props: { open: true },
-    });
+    render(FabBottomSheetTest, { props: { open: true } });
 
-    // Each menu item must contain its own SVG. Collect all <svg> elements
-    // INSIDE the menu items (not the chevron suffix), then verify the
-    // inner-HTML markup differs across all four — the cluster-finding asks
-    // for unique iconography.
-    const menuItems = container.querySelectorAll('[role="menuitem"]');
+    // Sheet portals its content to <body>, so we look up the menu items
+    // via screen.getAllByRole (works across the document) rather than
+    // querying the render container.
+    const menuItems = screen.getAllByRole("menuitem");
     expect(menuItems.length).toBe(4);
 
     const iconSignatures = new Set<string>();
-    for (const item of Array.from(menuItems)) {
+    for (const item of menuItems) {
       // The leading icon lives in the first `aria-hidden` span — its <svg>
       // content is what differentiates the actions.
       const iconHost = item.querySelector('[aria-hidden="true"]');

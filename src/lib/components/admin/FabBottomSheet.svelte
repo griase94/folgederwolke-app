@@ -6,7 +6,13 @@
     - Neue Ausgabe   → /app/transactions/neu?kind=ausgabe
     - Neue Einnahme  → /app/transactions/neu?kind=einnahme
     - Neue Spende    → /app/transactions/neu?kind=spende
-    - Auslage einreichen → /auslage-einreichen  (public form)
+    - Externe Auslage einreichen → /auslage-einreichen  (public outsider form)
+      C7-4 — labelled explicitly as "Externe" so an admin tapping it isn't
+      surprised to land on the IBAN-collecting public form. Admins file
+      their own expenses via "Neue Ausgabe" above.
+
+  C7-6 — each action now has a UNIQUE icon (Minus / Plus / HandCoins /
+  FileText) instead of all four sharing the same "+" placeholder.
 
   A11y notes:
   - shadcn-svelte Sheet wraps bits-ui Dialog → focus is trapped while open,
@@ -18,6 +24,11 @@
 -->
 <script lang="ts">
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
+	import MinusIcon from '@lucide/svelte/icons/minus';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import HandCoinsIcon from '@lucide/svelte/icons/hand-coins';
+	import FileTextIcon from '@lucide/svelte/icons/file-text';
+	import type { Component } from 'svelte';
 
 	let { open = $bindable(false) }: { open?: boolean } = $props();
 
@@ -25,38 +36,40 @@
 		href: string;
 		label: string;
 		hint: string;
-		icon: string;
+		icon: Component;
 		tone: string;
 	};
 
-	// Lucide-style icon paths. Stroke 2 / 24x24 viewBox.
+	// C7-6 — distinct lucide icons per action. Ausgabe = Minus (money
+	// leaving), Einnahme = Plus (money arriving), Spende = HandCoins
+	// (giving), Auslage = FileText (form / receipt).
 	const ACTIONS: Action[] = [
 		{
 			href: '/app/transactions/neu?kind=ausgabe',
 			label: 'Neue Ausgabe',
 			hint: 'Beleg, Datum, Betrag',
-			icon: 'M12 5v14M5 12h14',
+			icon: MinusIcon,
 			tone: 'bg-red-50 text-red-700'
 		},
 		{
 			href: '/app/transactions/neu?kind=einnahme',
 			label: 'Neue Einnahme',
 			hint: 'z.B. Zahlung einer Rechnung',
-			icon: 'M12 5v14M5 12h14',
+			icon: PlusIcon,
 			tone: 'bg-emerald-50 text-emerald-700'
 		},
 		{
 			href: '/app/transactions/neu?kind=spende',
 			label: 'Neue Spende',
 			hint: 'Geld- oder Sachspende',
-			icon: 'M12 5v14M5 12h14',
+			icon: HandCoinsIcon,
 			tone: 'bg-blue-50 text-blue-700'
 		},
 		{
 			href: '/auslage-einreichen',
-			label: 'Auslage einreichen',
-			hint: 'Öffentliches Formular',
-			icon: 'M12 5v14M5 12h14',
+			label: 'Externe Auslage einreichen',
+			hint: 'Öffentliches Formular (IBAN, externe Person)',
+			icon: FileTextIcon,
 			tone: 'bg-amber-50 text-amber-800'
 		}
 	];
@@ -103,19 +116,7 @@
 						class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full {action.tone}"
 						aria-hidden="true"
 					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							width="20"
-							height="20"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2.25"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<path d={action.icon} />
-						</svg>
+						<action.icon size={20} strokeWidth={2.25} />
 					</span>
 					<span class="flex min-w-0 flex-1 flex-col">
 						<span class="text-sm font-medium text-foreground">{action.label}</span>
