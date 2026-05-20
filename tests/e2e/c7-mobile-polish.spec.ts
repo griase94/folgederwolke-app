@@ -179,6 +179,53 @@ test.describe("@phase-7 C7 list card variant", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Device matrix smoke — iPhone 12 / iPhone SE / Pixel 5 / iPad Mini
+// One pass per device: load /app, ensure the bottom nav (mobile) or sidebar
+// (md+) renders, and assert no horizontal page overflow. These act as the
+// "visual snapshot" guard requested in the cluster brief (true pixel
+// snapshots are reviewer-only).
+// ---------------------------------------------------------------------------
+const deviceMatrix = [
+  { name: "iPhone 12", desc: devices["iPhone 12"], mobile: true },
+  { name: "iPhone SE", desc: devices["iPhone SE"], mobile: true },
+  { name: "Pixel 5", desc: devices["Pixel 5"], mobile: true },
+  { name: "iPad Mini", desc: devices["iPad Mini"], mobile: false },
+];
+
+for (const dev of deviceMatrix) {
+  test.describe(`@phase-7 C7 device matrix — ${dev.name}`, () => {
+    test.use({ ...dev.desc });
+
+    test(`/app renders with no horizontal overflow on ${dev.name}`, async ({
+      page,
+    }) => {
+      await signIn(page);
+      await page.goto("/app");
+
+      // No horizontal page overflow
+      const overflows = await page.evaluate(() => {
+        return document.documentElement.scrollWidth > window.innerWidth + 1;
+      });
+      expect(overflows, `${dev.name} should not horizontally overflow`).toBe(
+        false,
+      );
+
+      if (dev.mobile) {
+        // Mobile devices: tab bar visible
+        await expect(
+          page.getByRole("navigation", { name: "Mobile Navigation" }),
+        ).toBeVisible();
+      } else {
+        // Tablet/desktop: sidebar visible
+        await expect(
+          page.getByRole("complementary", { name: "Hauptnavigation" }),
+        ).toBeVisible();
+      }
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Safe-area-inset audit — bottom nav padded for home indicator
 // ---------------------------------------------------------------------------
 test.describe("@phase-7 C7 safe-area-inset audit", () => {
