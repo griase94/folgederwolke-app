@@ -102,7 +102,9 @@ export const load: PageServerLoad = async ({ url }) => {
 
 export const actions: Actions = {
   // ── Add member ─────────────────────────────────────────────────────────────
-  default: async ({ request, locals }) => {
+  // Named `add` instead of `default:` — SvelteKit forbids mixing default with
+  // named actions on the same route. AddMemberDialog posts to `?/add`.
+  add: async ({ request, locals }) => {
     const userId = locals.session?.user.id ?? null;
     const formData = await request.formData();
     const raw: Record<string, unknown> = {};

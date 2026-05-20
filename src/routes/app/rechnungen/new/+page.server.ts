@@ -86,7 +86,9 @@ export const load: PageServerLoad = async () => {
 // ---------------------------------------------------------------------------
 
 export const actions: Actions = {
-  default: async ({ request, locals }) => {
+  // Named `create` — SvelteKit forbids mixing default with named actions.
+  // InvoiceForm posts to `?/create`.
+  create: async ({ request, locals }) => {
     const actorUserId = locals.session?.user.id ?? null;
     const formData = await request.formData();
     const raw: Record<string, unknown> = {};

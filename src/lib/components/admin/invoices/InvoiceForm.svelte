@@ -104,6 +104,7 @@
 	<!-- ── Form ───────────────────────────────────────────────────────── -->
 	<form
 		method="POST"
+		action="?/create"
 		use:enhance={() => {
 			submitting = true;
 			return async ({ update }) => {

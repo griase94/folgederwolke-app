@@ -104,12 +104,9 @@ export const navItems: NavItem[] = [
     icon: "Shield",
     group: "more",
   },
-  {
-    label: "Dev / Mails",
-    href: "/app/dev/mails",
-    icon: "Mail",
-    group: "more",
-  },
+  // "Dev / Mails" removed: route /app/dev/mails was never implemented and
+  // surfaced as a 404 in production. Re-add (gated on dev env) if/when the
+  // dev mailbox preview lands.
 ];
 
 /** Items that appear in the mobile tab bar, sorted by mobileTab index. */

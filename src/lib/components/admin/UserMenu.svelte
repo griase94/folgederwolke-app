@@ -52,7 +52,7 @@
 		<DropdownMenuSeparator />
 
 		<!-- Sign-out: use onSelect to submit the form via JS (no asChild needed) -->
-		<form method="POST" action="/sign-out" id="sign-out-form" class="hidden"></form>
+		<form method="POST" action="/sign-out?/signout" id="sign-out-form" class="hidden"></form>
 		<DropdownMenuItem
 			variant="destructive"
 			onSelect={() => {
