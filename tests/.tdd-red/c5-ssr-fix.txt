@@ -1,0 +1,36 @@
+TDD-red — cluster C5 SSR navigator fix
+========================================
+
+Bug
+---
+`UpdateAvailableToast.svelte` (mounted in AdminShell → /app/+layout.svelte) calls
+`useRegisterSW({ ... })` at module top-level. The implementation of
+`useRegisterSW` (from `vite-plugin-pwa/dist/client/build/svelte.js`) synchronously
+invokes `register()`, which dereferences `navigator` (`"serviceWorker" in navigator`).
+
+On adapter-node / adapter-vercel SSR, `navigator` is undefined → `ReferenceError:
+navigator is not defined` is thrown for every authenticated request to /app/*.
+The exception bubbles up but is recovered by Svelte's component error boundary,
+so the page still renders. The logs are noisy, and any future code-path that
+handles the exception less gracefully will break user-visible behavior.
+
+Two independent C3/C7 reviewers confirmed the crash from `pnpm build && node
+server.js` walkthroughs.
+
+Red expectations
+----------------
+1. Source-level assertion (matches existing pwa-extras.test.ts house style):
+   `UpdateAvailableToast.svelte` must guard the `useRegisterSW` call with
+   the SvelteKit `browser` flag (or an `onMount` move). Plain top-level call
+   is forbidden.
+
+2. SSR-render assertion (svelte/server.render()):
+   Rendering the component in a Node-like environment (no `globalThis.navigator`)
+   must NOT throw. Pre-fix this would throw `navigator is not defined`.
+
+Run before the fix:
+
+    pnpm test --run -t "C5 SSR navigator guard"
+
+Expected before fix: both assertions in the new file fail.
+Expected after fix:  both pass.
