@@ -28,7 +28,7 @@ async function loadBeitragsReminder(): Promise<Component> {
 
 describe("BeitragsReminder mail carries env-derived bank data end to end", () => {
   it("renders IBAN, BIC, Bankname from env into the HTML", async () => {
-    // .env.test sets these to a consistent Sparkasse Mittelthueringen pair.
+    // .env.test sets these to a consistent Deutsche Skatbank pair.
     const props = {
       vorname: "Lea",
       nachname: "Mustermann",

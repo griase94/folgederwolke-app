@@ -101,7 +101,7 @@ describe("buildEpc069Payload", () => {
 
   it("strips whitespace from the IBAN", () => {
     const payload = buildEpc069Payload({
-      bic: "HELADEF1WEM",
+      bic: "GENODEF1SLR",
       name: "Folge der Wolke e.V.",
       iban: "DE43 8306 5408 9999 9999 99",
       amountCents: 100,
@@ -113,14 +113,14 @@ describe("buildEpc069Payload", () => {
 
   it("trims whitespace around the BIC", () => {
     const payload = buildEpc069Payload({
-      bic: "  HELADEF1WEM  ",
+      bic: "  GENODEF1SLR  ",
       name: "Folge der Wolke e.V.",
       iban: "DE43830654089999999999",
       amountCents: 100,
       remittance: "x",
     });
 
-    expect(payload.split("\n")[4]).toBe("HELADEF1WEM");
+    expect(payload.split("\n")[4]).toBe("GENODEF1SLR");
   });
 
   it("formats amounts with two decimal places and a dot separator", () => {
@@ -135,7 +135,7 @@ describe("buildEpc069Payload", () => {
     ];
     for (const [cents, expected] of cases) {
       const payload = buildEpc069Payload({
-        bic: "HELADEF1WEM",
+        bic: "GENODEF1SLR",
         name: "X",
         iban: "DE00",
         amountCents: cents,
@@ -147,7 +147,7 @@ describe("buildEpc069Payload", () => {
 
   it("uses LF line separators (no CRLF — EPC spec mandates LF)", () => {
     const payload = buildEpc069Payload({
-      bic: "HELADEF1WEM",
+      bic: "GENODEF1SLR",
       name: "Folge der Wolke e.V.",
       iban: "DE43830654089999999999",
       amountCents: 5000,
@@ -160,7 +160,7 @@ describe("buildEpc069Payload", () => {
   it("rejects negative amounts", () => {
     expect(() =>
       buildEpc069Payload({
-        bic: "HELADEF1WEM",
+        bic: "GENODEF1SLR",
         name: "X",
         iban: "DE00",
         amountCents: -1,
@@ -172,7 +172,7 @@ describe("buildEpc069Payload", () => {
   it("rejects non-integer amounts (cents must be integer)", () => {
     expect(() =>
       buildEpc069Payload({
-        bic: "HELADEF1WEM",
+        bic: "GENODEF1SLR",
         name: "X",
         iban: "DE00",
         amountCents: 12.5,
