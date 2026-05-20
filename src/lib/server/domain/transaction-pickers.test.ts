@@ -33,9 +33,7 @@ import {
 // Fixtures
 // ---------------------------------------------------------------------------
 
-function kat(
-  overrides: Partial<KategorieOption> = {},
-): KategorieOption {
+function kat(overrides: Partial<KategorieOption> = {}): KategorieOption {
   return {
     id: "00000000-0000-0000-0000-000000000001",
     kind: "expense",
@@ -215,7 +213,12 @@ describe("pickDefaultKategorieName", () => {
 
   it("falls back to the first non-deactivated kategorie by sortOrder when no history exists", () => {
     const kategorien = [
-      kat({ name: "Deactiviert", kind: "expense", sortOrder: 0, deactivated: true }),
+      kat({
+        name: "Deactiviert",
+        kind: "expense",
+        sortOrder: 0,
+        deactivated: true,
+      }),
       kat({ name: "Bürobedarf", kind: "expense", sortOrder: 1 }),
       kat({ name: "Raummiete", kind: "expense", sortOrder: 2 }),
     ];
@@ -258,7 +261,12 @@ describe("pickDefaultKategorieName", () => {
 
   it("filters deactivated kategorien out of the fallback", () => {
     const kategorien = [
-      kat({ name: "Alt-Kategorie", kind: "expense", sortOrder: 1, deactivated: true }),
+      kat({
+        name: "Alt-Kategorie",
+        kind: "expense",
+        sortOrder: 1,
+        deactivated: true,
+      }),
       kat({ name: "Bürobedarf", kind: "expense", sortOrder: 2 }),
     ];
     expect(
