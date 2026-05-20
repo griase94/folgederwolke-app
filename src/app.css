@@ -191,6 +191,43 @@
   .transition-base {
     transition: all var(--transition-base);
   }
+
+  /* ── Safe-area-inset utilities (C7 / PM-010) ─────────────────────────────
+     viewport-fit=cover in src/app.html exposes the four env() values. These
+     utilities apply them as PADDING so element backgrounds extend into the
+     safe areas (the bar visually covers the home indicator / Dynamic
+     Island gap, rather than leaving a translucent strip).
+
+     Usage:
+       <nav class="safe-bottom">   — for bottom tab bar (home indicator)
+       <header class="safe-top">   — for top bar on Dynamic Island devices
+       <div class="safe-x">        — for left/right gutter on landscape
+
+     Each utility uses max() with a 0 fallback so non-PWA / non-notched
+     screens see no extra padding. */
+  .safe-top {
+    padding-top: max(env(safe-area-inset-top, 0px), 0px);
+  }
+  .safe-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+  }
+  .safe-left {
+    padding-left: max(env(safe-area-inset-left, 0px), 0px);
+  }
+  .safe-right {
+    padding-right: max(env(safe-area-inset-right, 0px), 0px);
+  }
+  .safe-x {
+    padding-left: max(env(safe-area-inset-left, 0px), 0px);
+    padding-right: max(env(safe-area-inset-right, 0px), 0px);
+  }
+
+  /* Combined nav-bottom utility — bottom tab bar variant that adds the
+     standard 0 baseline if the device has no inset. Useful for nav bars
+     that should always sit flush with the home indicator. */
+  .nav-safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
 }
 
 /* Respect prefers-reduced-motion — strip decorative animations globally */

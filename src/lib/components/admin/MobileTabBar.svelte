@@ -32,7 +32,7 @@
   background extends behind the indicator on devices that need it.
 -->
 <nav
-	class="fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-background pb-[env(safe-area-inset-bottom,0px)] md:hidden"
+	class="nav-safe-bottom fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-background pb-[env(safe-area-inset-bottom,0px)] md:hidden"
 	aria-label="Mobile Navigation"
 >
 	{#each mobileTabItems as item (item.href)}
