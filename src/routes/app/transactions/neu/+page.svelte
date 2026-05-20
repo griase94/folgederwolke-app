@@ -7,7 +7,11 @@
 
 	type TransactionType = 'expense' | 'income' | 'donation';
 
-	let selectedType = $state<TransactionType>('expense');
+	// C7-1 — initialType comes from ?kind=… (mapped from German URL slug to
+	// the English domain enum in +page.server.ts via parseKindFromUrl).
+	// Defaults to 'expense' when no query param is present.
+	// svelte-ignore state_referenced_locally
+	let selectedType = $state<TransactionType>(data.initialType ?? 'expense');
 	let submitting = $state(false);
 
 	const typeLabels: Record<TransactionType, string> = {

@@ -1,0 +1,25 @@
+C7 Cycle 3 — RED — Card variant for TransactionsList, MemberList, InvoiceList (PM-009)
+======================================================================================
+
+Tables don't degrade gracefully on iPhone width. The TransactionsList <table>
+squishes Typ/Bezeichnung/Betrag/Datum/Status/Festgeschrieben unreadably.
+MemberList rows ALSO hide their beitrag chips below sm so the only useful
+info is the avatar+name+email — fine for mobile, but should use a card.
+
+Required:
+- New <TransactionCardMobile> rendered inside <div class="md:hidden">
+- Existing <table> wrapped in <div class="hidden md:block">
+- Card shows: Bezeichnung (bold), Betrag (right-aligned, large, via Money),
+  Datum + status pill (small below), bezahlt_von line if present
+- Same pattern for MemberList (mobile card already minimal — wrap existing
+  MemberRow in a md:hidden block, or refactor row to be denser on mobile).
+- Same pattern for InvoiceList — single-line row already, mobile-friendly,
+  but mark it explicitly with data-testid so tests can verify the variant.
+
+Failing tests:
+- TransactionsList renders [data-testid=transactions-card-list] block visible
+  at < md width, [data-testid=transactions-table] visible at md+.
+- Cards use Money component (formatMoney in cents) — class="tabular-nums"
+- MemberList mobile cards are present below md
+- E2E iPhone 12: visit /app/transactions → see mobile card list (not table)
+- E2E desktop: visit /app/transactions → see table (not mobile card list)

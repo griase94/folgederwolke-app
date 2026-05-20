@@ -37,6 +37,7 @@ import { getDb } from "$lib/server/db/index.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { asc, eq } from "drizzle-orm";
+import { parseKindFromUrl } from "$lib/domain/transaction-kind-url.js";
 
 function berlinYear(): number {
   return parseInt(
@@ -52,9 +53,18 @@ function berlinYear(): number {
 // load
 // ---------------------------------------------------------------------------
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
   const db = getDb();
   const userId = locals.session?.user?.id ?? null;
+
+  // C7-1 — the FabBottomSheet emits German URL slugs
+  //   /app/transactions/neu?kind=ausgabe|einnahme|spende
+  // Domain enum is English. parseKindFromUrl maps both directions and
+  // returns null on missing/bogus input. Form defaults to "expense" so
+  // a fresh /app/transactions/neu (no query) lands on Ausgabe — preserves
+  // the cycle-1 default.
+  const initialType: "expense" | "income" | "donation" =
+    parseKindFromUrl(url.searchParams.get("kind")) ?? "expense";
 
   const [
     zahlungsarten,
@@ -101,6 +111,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     incomeKategorien,
     defaultExpenseKategorie,
     defaultIncomeKategorie,
+    initialType,
   };
 };
 

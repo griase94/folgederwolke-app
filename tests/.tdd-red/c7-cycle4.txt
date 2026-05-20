@@ -1,0 +1,23 @@
+C7 Cycle 4 — RED — Safe-area-inset audit pass
+=============================================
+
+Bottom tab bar already pads pb-[env(safe-area-inset-bottom,0px)]. The
+remaining gaps:
+
+1. Dynamic Island devices (iPhone 14 Pro+) have a TOP safe-area inset that
+   we don't currently honor in the Topbar. Adding a Tailwind-friendly
+   utility class `safe-top` keeps the topbar visible below the island.
+2. The FabBottomSheet's bottom padding uses
+   `pb-[max(env(safe-area-inset-bottom),1rem)]` — verify it doesn't get
+   clipped on iPhone 12.
+3. Provide centralized safe-area utilities in app.css so future
+   contributors don't reinvent the pattern.
+
+Failing tests:
+- E2E: c7-mobile-polish.spec.ts verifies the nav has env(safe-area-inset)
+  applied (asserted in cycle 1).
+- Unit: src/app-css.test.ts ensures the safe-* utilities are present.
+
+Fix:
+- Add @layer utilities { .safe-top, .safe-bottom, .safe-x } to app.css
+- viewport-fit=cover already in app.html — no change needed there.

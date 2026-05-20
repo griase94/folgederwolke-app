@@ -180,7 +180,7 @@ vi.mock("$lib/server/db/index.js", () => ({
 // because SvelteKit reserves `+`-prefixed filenames inside `src/routes` for
 // actual route modules. Vitest still picks it up via the
 // `src/**/*.test.ts` glob in vitest.config.ts.
-const { actions } = await import("./+page.server.js");
+const { actions, load } = await import("./+page.server.js");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -327,5 +327,56 @@ describe("/app/transactions/neu — create action honors ADR-0008", () => {
       sphereSnapshot: string;
     };
     expect(callArg.sphereSnapshot).toBe("wirtschaftlich");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C7-1 — load() reads ?kind=… and surfaces an initialType so the form lands
+// on the right tab when reached via the FAB bottom-sheet quick actions.
+// ---------------------------------------------------------------------------
+
+interface LoadEvent {
+  url: URL;
+  locals: { session: { user: { id: string } } | null };
+}
+
+function makeLoadEvent(search: string): LoadEvent {
+  return {
+    url: new URL(`http://test.local/app/transactions/neu${search}`),
+    locals: { session: { user: { id: "user-test-1" } } },
+  };
+}
+
+async function runLoad(event: LoadEvent): Promise<{ initialType: string }> {
+  const fn = load as unknown as (e: LoadEvent) => Promise<{
+    initialType: string;
+  }>;
+  return fn(event);
+}
+
+describe("/app/transactions/neu — load() honours ?kind= (C7-1)", () => {
+  it("?kind=ausgabe → initialType='expense'", async () => {
+    const data = await runLoad(makeLoadEvent("?kind=ausgabe"));
+    expect(data.initialType).toBe("expense");
+  });
+
+  it("?kind=einnahme → initialType='income'", async () => {
+    const data = await runLoad(makeLoadEvent("?kind=einnahme"));
+    expect(data.initialType).toBe("income");
+  });
+
+  it("?kind=spende → initialType='donation'", async () => {
+    const data = await runLoad(makeLoadEvent("?kind=spende"));
+    expect(data.initialType).toBe("donation");
+  });
+
+  it("no ?kind=… → initialType defaults to 'expense'", async () => {
+    const data = await runLoad(makeLoadEvent(""));
+    expect(data.initialType).toBe("expense");
+  });
+
+  it("?kind=bogus → initialType defaults to 'expense' (silently ignored)", async () => {
+    const data = await runLoad(makeLoadEvent("?kind=bogus"));
+    expect(data.initialType).toBe("expense");
   });
 });
