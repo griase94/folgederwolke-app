@@ -128,7 +128,9 @@
 						<td
 							class="px-3 py-3 text-right tabular-nums font-medium"
 							class:text-emerald-700={r.ueberschussCents >= 0}
+							class:dark:text-emerald-400={r.ueberschussCents >= 0}
 							class:text-rose-700={r.ueberschussCents < 0}
+							class:dark:text-rose-400={r.ueberschussCents < 0}
 						>
 							<Money valueInCents={r.ueberschussCents} />
 						</td>
@@ -155,7 +157,9 @@
 					<td
 						class="px-3 py-3.5 text-right tabular-nums font-bold"
 						class:text-emerald-700={totalUeberschussCents >= 0}
+						class:dark:text-emerald-400={totalUeberschussCents >= 0}
 						class:text-rose-700={totalUeberschussCents < 0}
+						class:dark:text-rose-400={totalUeberschussCents < 0}
 					>
 						<Money valueInCents={totalUeberschussCents} />
 					</td>

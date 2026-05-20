@@ -48,6 +48,7 @@
 	<ul class="mt-4 space-y-3" role="list">
 		{#each preFlight.items as item (item.id)}
 			{@const ico = iconFor(item.status)}
+			{@const actionable = item.status !== 'pass' && item.fixHref}
 			<li
 				class="flex items-start gap-3"
 				data-testid={`preflight-item-${item.id}`}
@@ -59,10 +60,26 @@
 				>
 					{ico.glyph}
 				</span>
-				<div class="min-w-0 flex-1">
-					<div class="text-sm font-medium text-foreground">{item.label}</div>
-					<p class="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
-				</div>
+				{#if actionable}
+					<a
+						href={item.fixHref}
+						class="group min-w-0 flex-1 rounded-md transition hover:bg-accent/40 focus:bg-accent/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring -mx-1 px-1"
+						data-testid={`preflight-fix-${item.id}`}
+					>
+						<div
+							class="text-sm font-medium text-foreground group-hover:underline group-focus:underline"
+						>
+							{item.label}
+							<span aria-hidden="true" class="text-muted-foreground"> →</span>
+						</div>
+						<p class="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
+					</a>
+				{:else}
+					<div class="min-w-0 flex-1">
+						<div class="text-sm font-medium text-foreground">{item.label}</div>
+						<p class="mt-0.5 text-xs text-muted-foreground">{item.detail}</p>
+					</div>
+				{/if}
 			</li>
 		{/each}
 	</ul>

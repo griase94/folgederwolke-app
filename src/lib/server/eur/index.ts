@@ -188,6 +188,13 @@ export interface PreFlightItem {
   status: PreFlightStatus;
   /** Human-readable detail line shown under the label. */
   detail: string;
+  /**
+   * Optional href that turns the item into an actionable link to the place
+   * the user can resolve it (e.g. `/app/transactions?kategorie=missing`).
+   * `undefined` for items the user can't directly act on (e.g. "year not
+   * in future").
+   */
+  fixHref?: string;
 }
 
 export interface PreFlightChecklist {
@@ -259,6 +266,7 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
       detail: `${input.uncategorizedCount} Buchung${
         input.uncategorizedCount === 1 ? "" : "en"
       } ohne Kategorie. Bitte zuordnen, bevor das Jahr festgeschrieben wird.`,
+      fixHref: `/app/transactions?year=${input.year}&kategorie=missing`,
     });
   } else {
     items.push({
@@ -278,6 +286,7 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
       detail: `${input.missingBelegCount} Buchung${
         input.missingBelegCount === 1 ? "" : "en"
       } ohne Beleg-Datei. Festschreibung weiterhin möglich, aber Belege später nachreichen.`,
+      fixHref: `/app/transactions?year=${input.year}&beleg=missing`,
     });
   } else {
     items.push({
@@ -297,6 +306,7 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
       detail: `${input.draftInvoiceCount} Rechnung${
         input.draftInvoiceCount === 1 ? "" : "en"
       } im Entwurfsstatus. Bitte finalisieren oder verwerfen.`,
+      fixHref: `/app/rechnungen?year=${input.year}&status=draft`,
     });
   } else {
     items.push({
@@ -316,6 +326,7 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
       detail: `${input.auditInboxQueueCount} Eintr${
         input.auditInboxQueueCount === 1 ? "ag" : "äge"
       } in der Audit-Inbox. Bitte zuerst freigeben oder ablehnen.`,
+      fixHref: "/app/inbox",
     });
   } else {
     items.push({
@@ -361,6 +372,7 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
       detail: `${missingBescheinigungenCount} Spende${
         missingBescheinigungenCount === 1 ? "" : "n"
       } ≥ 300 € ohne Bescheinigungs-Nummer. Nach Festschreibung ist eine Neuvergabe der Nummern aufwendig — wir empfehlen, sie jetzt auszustellen.`,
+      fixHref: `/app/transactions/spenden?year=${input.year}&bescheinigung=missing`,
     });
   } else {
     items.push({
@@ -385,6 +397,7 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
       label: "Mindestens eine Buchung im Jahr",
       status: "block",
       detail: `Buchungsjahr ${input.year} enthält keine Buchungen. Festschreibung ist nur sinnvoll, wenn mindestens eine Einnahme, Ausgabe, Spende oder ein Mitgliedsbeitrag erfasst wurde.`,
+      fixHref: "/app/transactions/neu",
     });
   } else {
     items.push({
