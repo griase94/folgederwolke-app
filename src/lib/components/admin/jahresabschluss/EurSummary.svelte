@@ -43,11 +43,11 @@
 
 <div class="rounded-xl border border-border bg-card shadow-sm">
 	<!-- Header -->
-	<div class="rounded-t-xl bg-[#9c2870] px-6 py-4">
-		<h2 class="text-lg font-semibold text-white">
+	<div class="rounded-t-xl border-b border-border bg-muted/30 px-6 py-4">
+		<h2 class="text-lg font-semibold text-foreground">
 			Einnahmen-Überschuss-Rechnung {eur.year}
 		</h2>
-		<p class="mt-0.5 text-sm text-pink-200">Sphere-Aggregation nach ADR-0002</p>
+		<p class="mt-0.5 text-sm text-muted-foreground">Sphere-Aggregation nach ADR-0002</p>
 	</div>
 
 	<!-- Table -->
@@ -91,7 +91,7 @@
 				{/each}
 			</tbody>
 			<tfoot>
-				<tr class="border-t-2 border-[#9c2870]/30 bg-pink-50/30">
+				<tr class="border-t-2 border-border bg-muted/40">
 					<td class="px-6 py-4 font-bold text-foreground">Gesamt</td>
 					<td class="px-4 py-4"></td>
 					<td class="px-4 py-4 text-right tabular-nums font-bold text-foreground">

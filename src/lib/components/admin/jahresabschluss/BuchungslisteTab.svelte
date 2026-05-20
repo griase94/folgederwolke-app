@@ -95,7 +95,7 @@
 					<a
 						href={hrefWith({ sphere: 'all' })}
 						data-active={filters.sphere === 'all'}
-						class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted data-[active=true]:border-[#9c2870] data-[active=true]:bg-[#9c2870]/10 data-[active=true]:text-[#9c2870]"
+						class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
 					>
 						Alle
 					</a>
@@ -104,7 +104,7 @@
 							href={hrefWith({ sphere: s })}
 							data-active={filters.sphere === s}
 							data-testid={`filter-sphere-${s}`}
-							class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted data-[active=true]:border-[#9c2870] data-[active=true]:bg-[#9c2870]/10 data-[active=true]:text-[#9c2870]"
+							class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
 						>
 							{SPHERE_LABELS[s]}
 						</a>
@@ -119,7 +119,7 @@
 					<a
 						href={hrefWith({ kind: 'all' })}
 						data-active={filters.kind === 'all'}
-						class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted data-[active=true]:border-[#9c2870] data-[active=true]:bg-[#9c2870]/10 data-[active=true]:text-[#9c2870]"
+						class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
 					>
 						Alle
 					</a>
@@ -128,7 +128,7 @@
 							href={hrefWith({ kind: k })}
 							data-active={filters.kind === k}
 							data-testid={`filter-kind-${k}`}
-							class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted data-[active=true]:border-[#9c2870] data-[active=true]:bg-[#9c2870]/10 data-[active=true]:text-[#9c2870]"
+							class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
 						>
 							{KIND_LABEL[k]}
 						</a>
@@ -147,7 +147,7 @@
 							href={hrefWith({ sort: opt.id })}
 							data-active={filters.sort === opt.id}
 							data-testid={`sort-${opt.id}`}
-							class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted data-[active=true]:border-[#9c2870] data-[active=true]:bg-[#9c2870]/10 data-[active=true]:text-[#9c2870]"
+							class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
 						>
 							{opt.label}
 						</a>
@@ -163,7 +163,7 @@
 			{#if rows.length !== allRowsCount}
 				<a
 					href={`/app/jahresabschluss/${year}/buchungsliste`}
-					class="font-medium text-[#9c2870] hover:underline"
+					class="font-medium text-primary hover:underline"
 				>
 					Filter zurücksetzen
 				</a>
@@ -212,7 +212,7 @@
 								<td class="px-4 py-3">
 									<a
 										href={detailHref(r)}
-										class="font-medium text-foreground hover:text-[#9c2870] hover:underline"
+										class="font-medium text-foreground hover:text-primary hover:underline"
 									>
 										{r.bezeichnung}
 									</a>

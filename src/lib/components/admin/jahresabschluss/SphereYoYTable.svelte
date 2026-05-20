@@ -67,11 +67,11 @@
 	data-testid="sphere-yoy-table"
 	class="rounded-xl border border-border bg-card shadow-sm"
 >
-	<div class="rounded-t-xl bg-[#9c2870] px-5 py-4">
-		<h2 class="text-base font-semibold text-white sm:text-lg">
+	<div class="rounded-t-xl border-b border-border bg-muted/30 px-5 py-4">
+		<h2 class="text-base font-semibold text-foreground sm:text-lg">
 			Sphären-Übersicht {year} vs. {priorYear}
 		</h2>
-		<p class="mt-0.5 text-xs text-pink-200 sm:text-sm">
+		<p class="mt-0.5 text-xs text-muted-foreground sm:text-sm">
 			Einnahmen-Überschuss-Rechnung pro steuerlicher Sphäre · ADR-0002
 		</p>
 	</div>
@@ -94,7 +94,7 @@
 							<div class="flex items-center gap-2.5">
 								<span
 									aria-hidden="true"
-									class="text-base text-[#9c2870] dark:text-pink-400"
+									class="text-base text-primary"
 								>
 									{SPHERE_ICONS[r.sphere]}
 								</span>
@@ -128,7 +128,7 @@
 				{/each}
 			</tbody>
 			<tfoot>
-				<tr class="border-t-2 border-[#9c2870]/30 bg-pink-50/30 dark:bg-pink-950/10">
+				<tr class="border-t-2 border-border bg-muted/40">
 					<td class="px-5 py-3.5 font-bold text-foreground">Gesamt</td>
 					<td class="px-3 py-3.5 text-right tabular-nums font-bold text-foreground">
 						{formatMoney(totalEinnahmenCents)}

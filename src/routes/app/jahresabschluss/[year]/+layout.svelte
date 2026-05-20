@@ -39,7 +39,7 @@
 			<Button
 				href={`/app/jahresabschluss/${data.year}/bundle.zip`}
 				data-testid="header-action-bundle"
-				class="bg-[#9c2870] text-white hover:bg-[#7c2058]"
+				class="bg-primary text-primary-foreground hover:bg-primary/90"
 			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"

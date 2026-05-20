@@ -71,7 +71,7 @@
 			<a
 				href={gobdZipUrl}
 				download="Jahresabschluss-{data.year}.zip"
-				class="inline-flex items-center gap-2 rounded-lg bg-[#9c2870] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#7d1f5a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				class="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -102,19 +102,19 @@
 		<div class="border-t border-border/50 px-6 py-4">
 			<ol class="space-y-2 text-sm text-muted-foreground">
 				<li class="flex gap-3">
-					<span class="font-medium text-[#9c2870]">1.</span>
+					<span class="font-medium text-primary">1.</span>
 					Bundle-ZIP herunterladen und entpacken
 				</li>
 				<li class="flex gap-3">
-					<span class="font-medium text-[#9c2870]">2.</span>
+					<span class="font-medium text-primary">2.</span>
 					IDEA starten → Datei → Datei importieren
 				</li>
 				<li class="flex gap-3">
-					<span class="font-medium text-[#9c2870]">3.</span>
+					<span class="font-medium text-primary">3.</span>
 					Dateityp: XML &middot; Schema: Z3 (GDPdU)
 				</li>
 				<li class="flex gap-3">
-					<span class="font-medium text-[#9c2870]">4.</span>
+					<span class="font-medium text-primary">4.</span>
 					Datei auswählen: <code class="rounded bg-muted px-1 text-xs"
 						>05_GoBD-Z3-{data.year}/gobd_z3_{data.year}.xml</code
 					>

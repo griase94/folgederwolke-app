@@ -80,8 +80,10 @@
 	</div>
 </div>
 
-<!-- 2-column grid: Sphere YoY (wide) + Right-rail (WGB + trend) -->
-<div class="grid grid-cols-1 gap-5 lg:grid-cols-3">
+<!-- 2-column grid: Sphere YoY (wide) + Right-rail (WGB + trend).
+     md: 2-col so iPad-Mini width gets a useful layout instead of 1-col stack.
+     lg: 3-col (sphere table takes 2 of 3 columns). -->
+<div class="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
 	<div class="lg:col-span-2 space-y-5">
 		<SphereYoYTable
 			rows={data.sphereYoY}

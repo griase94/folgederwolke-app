@@ -41,16 +41,49 @@ describe("bescheinigungStatusFor", () => {
     );
   });
 
-  it("returns 'na' when no member AND small donation (< 200 €) AND no spenderName", () => {
+  it("returns 'na' when no member AND small donation (< 300 € per §50 Abs. 4 EStDV) AND no spenderName", () => {
     expect(
       bescheinigungStatusFor(
         makeRow({
           memberId: null,
           spenderName: null,
-          betragCents: 15000, // 150€
+          betragCents: 15000, // 150€ — well below 300 €
         }),
       ),
     ).toBe("na");
+  });
+
+  it("returns 'na' just below the 300 € Kleinbetrag threshold", () => {
+    expect(
+      bescheinigungStatusFor(
+        makeRow({
+          memberId: null,
+          spenderName: null,
+          betragCents: 29999, // 299,99 €
+        }),
+      ),
+    ).toBe("na");
+  });
+
+  it("returns 'pending' at and above the 300 € threshold (anonymous donor)", () => {
+    expect(
+      bescheinigungStatusFor(
+        makeRow({
+          memberId: null,
+          spenderName: null,
+          betragCents: 30000, // exactly 300 €
+        }),
+      ),
+    ).toBe("pending");
+    expect(
+      bescheinigungStatusFor(
+        makeRow({
+          memberId: null,
+          spenderName: null,
+          betragCents: 30001,
+        }),
+      ),
+    ).toBe("pending");
   });
 
   it("returns 'pending' when no member but spenderName present", () => {

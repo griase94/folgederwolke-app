@@ -28,7 +28,7 @@
 			<a
 				href={bundleUrl}
 				download="Jahresabschluss-{year}.zip"
-				class="inline-flex items-center justify-center gap-2 rounded-lg bg-[#9c2870] px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#7d1f5a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				class="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -84,19 +84,19 @@
 		</p>
 		<ul class="space-y-1 text-xs text-muted-foreground">
 			<li class="flex items-center gap-2">
-				<span class="text-[#9c2870]">01</span> EÜR-{year}.pdf — Einnahmen-Überschuss-Rechnung (rosa)
+				<span class="text-primary">01</span> EÜR-{year}.pdf — Einnahmen-Überschuss-Rechnung (rosa)
 			</li>
 			<li class="flex items-center gap-2">
-				<span class="text-[#9c2870]">02</span> Anlage-Gem-{year}.csv — Steuerbegünstigte Zwecke
+				<span class="text-primary">02</span> Anlage-Gem-{year}.csv — Steuerbegünstigte Zwecke
 			</li>
 			<li class="flex items-center gap-2">
-				<span class="text-[#9c2870]">03</span> Spendenliste-{year}.csv — BMF-Pflichtfelder
+				<span class="text-primary">03</span> Spendenliste-{year}.csv — BMF-Pflichtfelder
 			</li>
 			<li class="flex items-center gap-2">
-				<span class="text-[#9c2870]">04</span> Beleg-Index-{year}.csv — Drive-Links aller Belege
+				<span class="text-primary">04</span> Beleg-Index-{year}.csv — Drive-Links aller Belege
 			</li>
 			<li class="flex items-center gap-2">
-				<span class="text-[#9c2870]">05</span> GoBD-Z3-{year}/ — IDEA-XML + README
+				<span class="text-primary">05</span> GoBD-Z3-{year}/ — IDEA-XML + README
 			</li>
 		</ul>
 	</div>
