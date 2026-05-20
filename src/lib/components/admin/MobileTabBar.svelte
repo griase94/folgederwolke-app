@@ -31,8 +31,14 @@
   home indicator. We pad the *bar* (not just an inner spacer) so the
   background extends behind the indicator on devices that need it.
 -->
+<!--
+  C7-9 — the `.nav-safe-bottom` utility (defined in app.css) is the
+  documented single source of truth for bottom-bar safe-area padding;
+  drop the duplicate `pb-[env(safe-area-inset-bottom,0px)]` arbitrary
+  value so we don't risk the two diverging.
+-->
 <nav
-	class="nav-safe-bottom fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-background pb-[env(safe-area-inset-bottom,0px)] md:hidden"
+	class="nav-safe-bottom fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-background md:hidden"
 	aria-label="Mobile Navigation"
 >
 	{#each mobileTabItems as item (item.href)}
