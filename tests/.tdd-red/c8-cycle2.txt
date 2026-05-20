@@ -1,0 +1,117 @@
+C8 Cycle 2 — RED test bodies that failed before the GREEN fixes landed.
+These are exact copies of the failing assertions added during cycle 2 to capture
+the expert-review findings (F1 + F2). Once the GREEN fixes were applied they
+turned green; the original failing forms are preserved here as a TDD anchor.
+
+================================================================================
+F1 — EPC 069 v001 BIC must be required (tests/unit/giro-qr.test.ts)
+================================================================================
+
+  it("REJECTS payload build when BIC is missing (EPC 069 v001 requires BIC)", () => {
+    // EPC 069 v001 requires a non-empty BIC. Only v002+ allows empty BIC for
+    // EEA payments where the IBAN implies the BIC. We ship v001 → must refuse
+    // payloads without BIC instead of emitting an out-of-spec line.
+    expect(() =>
+      buildEpc069Payload({
+        // @ts-expect-error — bic is now required at the type level too.
+        name: "Folge der Wolke e.V.",
+        iban: "DE25830654080006894453",
+        amountCents: 100,
+        remittance: "x",
+      }),
+    ).toThrow(/BIC/i);
+  });
+
+  it("REJECTS payload build when BIC is the empty string", () => {
+    expect(() =>
+      buildEpc069Payload({
+        bic: "",
+        name: "Folge der Wolke e.V.",
+        iban: "DE25830654080006894453",
+        amountCents: 100,
+        remittance: "x",
+      }),
+    ).toThrow(/BIC/i);
+  });
+
+  it("REJECTS payload build when BIC is whitespace only", () => {
+    expect(() =>
+      buildEpc069Payload({
+        bic: "   ",
+        name: "Folge der Wolke e.V.",
+        iban: "DE25830654080006894453",
+        amountCents: 100,
+        remittance: "x",
+      }),
+    ).toThrow(/BIC/i);
+  });
+
+================================================================================
+F2a — env.ts startup-time IBAN/BIC consistency check (tests/unit/env-bank-consistency.test.ts — new file)
+================================================================================
+
+  it("REFUSES to boot when VEREIN_BIC and IBAN-encoded BLZ disagree (DE)", () => {
+    // IBAN DE25 8306 5408 ... encodes BLZ 83065408 → Sparkasse Mittelthüringen
+    // (HELADEF1WEM). Pairing it with BELADEBEXXX (Berliner Volksbank, BLZ
+    // 10090000) is internally inconsistent and almost certainly a config bug.
+    expect(() =>
+      assertVereinBankConsistent({
+        iban: "DE25830654080006894453",
+        bic: "BELADEBEXXX",
+      }),
+    ).toThrow(/IBAN.*BIC|BIC.*IBAN/i);
+  });
+
+  it("accepts a matched IBAN/BIC pair (Sparkasse Mittelthüringen)", () => {
+    expect(() =>
+      assertVereinBankConsistent({
+        iban: "DE25830654080006894453",
+        bic: "HELADEF1WEM",
+      }),
+    ).not.toThrow();
+  });
+
+  it("is a no-op when either value is empty (dev / build-time tolerance)", () => {
+    // Build-time SSR / prerender sees an empty env; that's OK. Refusing to
+    // boot only when BOTH are present AND disagree avoids breaking dev/test.
+    expect(() => assertVereinBankConsistent({ iban: "", bic: "ANY" })).not.toThrow();
+    expect(() => assertVereinBankConsistent({ iban: "DE25830654080006894453", bic: "" })).not.toThrow();
+  });
+
+  it("is a no-op for non-DE IBANs (we only assert German BLZ ↔ BIC for now)", () => {
+    expect(() =>
+      assertVereinBankConsistent({
+        iban: "AT611904300234573201",
+        bic: "BKAUATWW",
+      }),
+    ).not.toThrow();
+  });
+
+================================================================================
+F2b — cron + manual reminder action thread env through (tests/unit/beitragsreminder-env-threading.test.ts — new file)
+================================================================================
+
+  it("cron handler builds dispatch opts from env.VEREIN_*, not hardcoded fallbacks", () => {
+    // We don't boot the full +server.ts handler here — too much SvelteKit
+    // glue. Instead we extract the small builder fn that maps env → opts and
+    // assert the mapping is direct, with no string-literal fallbacks for the
+    // three banking fields.
+    const src = readFileSync(
+      "src/routes/api/cron/beitragsreminder/+server.ts",
+      "utf-8",
+    );
+    // No hardcoded IBAN/BIC/Bankname in the cron handler.
+    expect(src).not.toMatch(/DE25830654080006894453/);
+    expect(src).not.toMatch(/BELADEBEXXX/);
+    expect(src).not.toMatch(/Berliner Volksbank/);
+  });
+
+  it("manual /mitglieder/[id] send-reminder action builds props from env, not hardcoded fallbacks", () => {
+    const src = readFileSync(
+      "src/routes/app/mitglieder/[id]/+page.server.ts",
+      "utf-8",
+    );
+    expect(src).not.toMatch(/DE25830654080006894453/);
+    expect(src).not.toMatch(/BELADEBEXXX/);
+    expect(src).not.toMatch(/Berliner Volksbank/);
+  });

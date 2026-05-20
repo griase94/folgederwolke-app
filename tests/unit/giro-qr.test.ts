@@ -59,27 +59,48 @@ describe("buildEpc069Payload", () => {
     );
   });
 
-  it("omits BIC (empty line) when not provided", () => {
-    const payload = buildEpc069Payload({
-      name: "Folge der Wolke e.V.",
-      iban: "DE25830654080006894453",
-      amountCents: 12345,
-      remittance: "Test",
-    });
+  // EPC 069 v001 REQUIRES a non-empty BIC. Only v002+ allows empty BIC for
+  // EEA payments where the IBAN implies the BIC. We ship v001 → must refuse
+  // out-of-spec payloads at the builder. (Cycle-2 expert review F1.)
+  it("REJECTS payload build when BIC is missing entirely", () => {
+    expect(() =>
+      buildEpc069Payload({
+        // @ts-expect-error — bic is now required on the input type
+        name: "Folge der Wolke e.V.",
+        iban: "DE25830654080006894453",
+        amountCents: 12345,
+        remittance: "Test",
+      }),
+    ).toThrow(/BIC/i);
+  });
 
-    const lines = payload.split("\n");
-    expect(lines[0]).toBe("BCD");
-    expect(lines[1]).toBe("001");
-    expect(lines[2]).toBe("1");
-    expect(lines[3]).toBe("SCT");
-    expect(lines[4]).toBe(""); // BIC empty
-    expect(lines[5]).toBe("Folge der Wolke e.V.");
-    expect(lines[6]).toBe("DE25830654080006894453");
-    expect(lines[7]).toBe("EUR123.45");
+  it("REJECTS payload build when BIC is the empty string", () => {
+    expect(() =>
+      buildEpc069Payload({
+        bic: "",
+        name: "Folge der Wolke e.V.",
+        iban: "DE25830654080006894453",
+        amountCents: 12345,
+        remittance: "Test",
+      }),
+    ).toThrow(/BIC/i);
+  });
+
+  it("REJECTS payload build when BIC is whitespace only", () => {
+    expect(() =>
+      buildEpc069Payload({
+        bic: "   ",
+        name: "Folge der Wolke e.V.",
+        iban: "DE25830654080006894453",
+        amountCents: 12345,
+        remittance: "Test",
+      }),
+    ).toThrow(/BIC/i);
   });
 
   it("strips whitespace from the IBAN", () => {
     const payload = buildEpc069Payload({
+      bic: "HELADEF1WEM",
       name: "Folge der Wolke e.V.",
       iban: "DE25 8306 5408 0006 8944 53",
       amountCents: 100,
@@ -87,6 +108,18 @@ describe("buildEpc069Payload", () => {
     });
 
     expect(payload.split("\n")[6]).toBe("DE25830654080006894453");
+  });
+
+  it("trims whitespace around the BIC", () => {
+    const payload = buildEpc069Payload({
+      bic: "  HELADEF1WEM  ",
+      name: "Folge der Wolke e.V.",
+      iban: "DE25830654080006894453",
+      amountCents: 100,
+      remittance: "x",
+    });
+
+    expect(payload.split("\n")[4]).toBe("HELADEF1WEM");
   });
 
   it("formats amounts with two decimal places and a dot separator", () => {
@@ -101,6 +134,7 @@ describe("buildEpc069Payload", () => {
     ];
     for (const [cents, expected] of cases) {
       const payload = buildEpc069Payload({
+        bic: "HELADEF1WEM",
         name: "X",
         iban: "DE00",
         amountCents: cents,
@@ -112,6 +146,7 @@ describe("buildEpc069Payload", () => {
 
   it("uses LF line separators (no CRLF — EPC spec mandates LF)", () => {
     const payload = buildEpc069Payload({
+      bic: "HELADEF1WEM",
       name: "Folge der Wolke e.V.",
       iban: "DE25830654080006894453",
       amountCents: 5000,
@@ -124,6 +159,7 @@ describe("buildEpc069Payload", () => {
   it("rejects negative amounts", () => {
     expect(() =>
       buildEpc069Payload({
+        bic: "HELADEF1WEM",
         name: "X",
         iban: "DE00",
         amountCents: -1,
@@ -135,6 +171,7 @@ describe("buildEpc069Payload", () => {
   it("rejects non-integer amounts (cents must be integer)", () => {
     expect(() =>
       buildEpc069Payload({
+        bic: "HELADEF1WEM",
         name: "X",
         iban: "DE00",
         amountCents: 12.5,
