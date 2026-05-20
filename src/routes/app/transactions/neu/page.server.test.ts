@@ -41,9 +41,9 @@ const createExpenseMock = vi.fn(async (input: { sphereSnapshot: string }) => ({
   id: "exp-new-1",
   businessId: input ? "AUS-2026-001" : "AUS-2026-001",
 }));
-const createIncomeMock = vi.fn(async (_input: { sphereSnapshot: string }) => ({
+const createIncomeMock = vi.fn(async (input: { sphereSnapshot: string }) => ({
   id: "inc-new-1",
-  businessId: "E-2026-001",
+  businessId: input ? "E-2026-001" : "E-2026-001",
 }));
 const createDonationMock = vi.fn(async () => ({
   id: "don-new-1",
@@ -176,6 +176,10 @@ vi.mock("$lib/server/db/index.js", () => ({
 // SUT — import AFTER all vi.mock() declarations
 // ---------------------------------------------------------------------------
 
+// Note: this test file is named `page.server.test.ts` (no leading `+`)
+// because SvelteKit reserves `+`-prefixed filenames inside `src/routes` for
+// actual route modules. Vitest still picks it up via the
+// `src/**/*.test.ts` glob in vitest.config.ts.
 const { actions } = await import("./+page.server.js");
 
 // ---------------------------------------------------------------------------

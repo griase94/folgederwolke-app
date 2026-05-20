@@ -35,7 +35,8 @@ import {
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members } from "$lib/server/db/schema/members.js";
-import { asc } from "drizzle-orm";
+import { projects } from "$lib/server/db/schema/projects.js";
+import { asc, eq } from "drizzle-orm";
 
 function berlinYear(): number {
   return parseInt(
@@ -55,23 +56,28 @@ export const load: PageServerLoad = async ({ locals }) => {
   const db = getDb();
   const userId = locals.session?.user?.id ?? null;
 
-  const [zahlungsarten, allMembers, expenseKategorien, incomeKategorien, recent] =
-    await Promise.all([
-      listZahlungsarten(),
-      db
-        .select({
-          id: members.id,
-          vorname: members.vorname,
-          nachname: members.nachname,
-          email: members.email,
-          iban: members.iban,
-        })
-        .from(members)
-        .orderBy(asc(members.nachname)),
-      listKategorieOptions("expense"),
-      listKategorieOptions("income"),
-      userId ? loadRecentKategorieUsage(userId) : Promise.resolve([]),
-    ]);
+  const [
+    zahlungsarten,
+    allMembers,
+    expenseKategorien,
+    incomeKategorien,
+    recent,
+  ] = await Promise.all([
+    listZahlungsarten(),
+    db
+      .select({
+        id: members.id,
+        vorname: members.vorname,
+        nachname: members.nachname,
+        email: members.email,
+        iban: members.iban,
+      })
+      .from(members)
+      .orderBy(asc(members.nachname)),
+    listKategorieOptions("expense"),
+    listKategorieOptions("income"),
+    userId ? loadRecentKategorieUsage(userId) : Promise.resolve([]),
+  ]);
 
   // Pre-compute the no-project default for each kind so the form lands on a
   // sensible pick without an extra round-trip (last-used > sortOrder fallback).
@@ -210,12 +216,24 @@ export const actions = {
         }
 
         // Sphere is server-truth: re-derive from the picked kategorie so a
-        // tampered form body cannot mis-classify the booking.
+        // tampered form body cannot mis-classify the booking. When a project
+        // is attached, its `sphereDefault` overrides the kategorie default
+        // (ADR-0008) — mirrors the canonical pattern in invoices.ts:234-243.
         const expenseKategorien = await listKategorieOptions("expense");
+        const db = getDb();
+        const project = parsed.data.projectId
+          ? ((
+              await db
+                .select({ sphereDefault: projects.sphereDefault })
+                .from(projects)
+                .where(eq(projects.id, parsed.data.projectId))
+                .limit(1)
+            )[0] ?? null)
+          : null;
         const sphereSnapshot = resolveSphereForKategorie({
           kategorien: expenseKategorien,
           kategorieName: parsed.data.kategorieNameSnapshot,
-          projectSphereOverride: null,
+          projectSphereOverride: project?.sphereDefault ?? null,
         });
 
         const gate = await checkFestschreibungGate(year);
@@ -248,10 +266,20 @@ export const actions = {
         }
 
         const incomeKategorien = await listKategorieOptions("income");
+        const db = getDb();
+        const project = parsed.data.projectId
+          ? ((
+              await db
+                .select({ sphereDefault: projects.sphereDefault })
+                .from(projects)
+                .where(eq(projects.id, parsed.data.projectId))
+                .limit(1)
+            )[0] ?? null)
+          : null;
         const sphereSnapshot = resolveSphereForKategorie({
           kategorien: incomeKategorien,
           kategorieName: parsed.data.kategorieNameSnapshot,
-          projectSphereOverride: null,
+          projectSphereOverride: project?.sphereDefault ?? null,
         });
 
         const gate = await checkFestschreibungGate(year);

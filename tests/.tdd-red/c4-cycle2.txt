@@ -6,7 +6,8 @@ lines 218 + 254 hardcodes `projectSphereOverride: null`, silently breaking
 ADR-0008 (project sphere override). Tax-correctness invariant violated for
 e.g. a "Verpflegung" expense on a Bar-Pop-up (wirtschaftlich) project.
 
-Red tests live in: src/routes/app/transactions/neu/+page.server.test.ts
+Red tests live in: src/routes/app/transactions/neu/page.server.test.ts
+(no leading `+` — SvelteKit reserves that prefix for route files)
 
 Test bodies (failing prior to fix):
 ------------------------------------
