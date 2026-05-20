@@ -22,7 +22,11 @@ function sha256(value: string): string {
 
 const TEST_ADMIN_EMAIL = process.env["TEST_ADMIN_EMAIL"] ?? "admin@example.com";
 
-test.use({ ...devices["iPhone 12"] });
+// iPhone-12 emulation gives us viewport, user-agent, touch, and devicePixelRatio,
+// but `devices["iPhone 12"]` also sets `defaultBrowserType: "webkit"`. CI only
+// installs Chromium (.github/workflows/ci.yml), so override `browserName` to
+// chromium — engine swap only, mobile emulation stays intact.
+test.use({ ...devices["iPhone 12"], browserName: "chromium" });
 
 async function signIn(page: import("@playwright/test").Page): Promise<void> {
   const { default: postgres } = await import("postgres");
