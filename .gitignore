@@ -33,3 +33,6 @@ vite.config.ts.timestamp-*
 
 # Claude tooling (worktrees, plans, agent state)
 .claude/
+# …but DO version the agent feedback memories so they survive across sessions
+!.claude/memory/
+!.claude/memory/**
