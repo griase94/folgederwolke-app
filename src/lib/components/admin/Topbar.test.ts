@@ -30,13 +30,17 @@ vi.mock("$app/navigation", () => ({
 
 import Topbar from "./Topbar.svelte";
 
-const mockUser = {
+// SessionUser is structurally complex (sessions/roles/etc.). The Topbar
+// only reads vorname/nachname/email for the avatar / menu — we cast a
+// minimal stub to `any` so the test doesn't drag in the full type.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockUser: any = {
   id: "user-test-1",
   email: "admin@example.com",
   name: "Admin",
   vorname: "Admin",
   nachname: "Tester",
-} as unknown as Parameters<typeof Topbar>[0]["user"];
+};
 
 afterEach(() => cleanup());
 

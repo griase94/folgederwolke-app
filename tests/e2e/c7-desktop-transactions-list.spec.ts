@@ -57,15 +57,17 @@ test.beforeEach(async () => {
   }
 });
 
-test("@phase-7 PM-009 on desktop viewport, TransactionsList renders the table (no cards)", async ({
-  page,
-}) => {
-  await signIn(page);
-  await page.goto("/app/transactions");
+test.describe("@phase-7 C7 mobile-polish (desktop list)", () => {
+  test("PM-009 on desktop viewport, TransactionsList renders the table (no cards)", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto("/app/transactions");
 
-  const desktopTable = page.locator('[data-testid="transactions-table"]');
-  await expect(desktopTable).toBeVisible();
+    const desktopTable = page.locator('[data-testid="transactions-table"]');
+    await expect(desktopTable).toBeVisible();
 
-  const mobileCards = page.locator('[data-testid="transactions-card-list"]');
-  await expect(mobileCards).toBeHidden();
+    const mobileCards = page.locator('[data-testid="transactions-card-list"]');
+    await expect(mobileCards).toBeHidden();
+  });
 });

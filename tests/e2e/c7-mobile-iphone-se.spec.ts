@@ -54,18 +54,20 @@ test.beforeEach(async () => {
   }
 });
 
-test("@phase-7 C7 /app renders with no horizontal overflow on iPhone SE", async ({
-  page,
-}) => {
-  await signIn(page);
-  await page.goto("/app");
+test.describe("@phase-7 C7 mobile-polish (iPhone SE)", () => {
+  test("/app renders with no horizontal overflow on iPhone SE", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto("/app");
 
-  const overflows = await page.evaluate(() => {
-    return document.documentElement.scrollWidth > window.innerWidth + 1;
+    const overflows = await page.evaluate(() => {
+      return document.documentElement.scrollWidth > window.innerWidth + 1;
+    });
+    expect(overflows, "iPhone SE should not horizontally overflow").toBe(false);
+
+    await expect(
+      page.getByRole("navigation", { name: "Mobile Navigation" }),
+    ).toBeVisible();
   });
-  expect(overflows, "iPhone SE should not horizontally overflow").toBe(false);
-
-  await expect(
-    page.getByRole("navigation", { name: "Mobile Navigation" }),
-  ).toBeVisible();
 });

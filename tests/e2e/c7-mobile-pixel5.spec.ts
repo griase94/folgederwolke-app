@@ -53,18 +53,20 @@ test.beforeEach(async () => {
   }
 });
 
-test("@phase-7 C7 /app renders with no horizontal overflow on Pixel 5", async ({
-  page,
-}) => {
-  await signIn(page);
-  await page.goto("/app");
+test.describe("@phase-7 C7 mobile-polish (Pixel 5)", () => {
+  test("/app renders with no horizontal overflow on Pixel 5", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto("/app");
 
-  const overflows = await page.evaluate(() => {
-    return document.documentElement.scrollWidth > window.innerWidth + 1;
+    const overflows = await page.evaluate(() => {
+      return document.documentElement.scrollWidth > window.innerWidth + 1;
+    });
+    expect(overflows, "Pixel 5 should not horizontally overflow").toBe(false);
+
+    await expect(
+      page.getByRole("navigation", { name: "Mobile Navigation" }),
+    ).toBeVisible();
   });
-  expect(overflows, "Pixel 5 should not horizontally overflow").toBe(false);
-
-  await expect(
-    page.getByRole("navigation", { name: "Mobile Navigation" }),
-  ).toBeVisible();
 });

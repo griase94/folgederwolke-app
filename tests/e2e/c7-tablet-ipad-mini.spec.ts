@@ -53,19 +53,21 @@ test.beforeEach(async () => {
   }
 });
 
-test("@phase-7 C7 /app renders with no horizontal overflow on iPad Mini", async ({
-  page,
-}) => {
-  await signIn(page);
-  await page.goto("/app");
+test.describe("@phase-7 C7 mobile-polish (iPad Mini)", () => {
+  test("/app renders with no horizontal overflow on iPad Mini", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto("/app");
 
-  const overflows = await page.evaluate(() => {
-    return document.documentElement.scrollWidth > window.innerWidth + 1;
+    const overflows = await page.evaluate(() => {
+      return document.documentElement.scrollWidth > window.innerWidth + 1;
+    });
+    expect(overflows, "iPad Mini should not horizontally overflow").toBe(false);
+
+    // Tablet+: sidebar visible (mobile nav is hidden ≥ md)
+    await expect(
+      page.getByRole("complementary", { name: "Hauptnavigation" }),
+    ).toBeVisible();
   });
-  expect(overflows, "iPad Mini should not horizontally overflow").toBe(false);
-
-  // Tablet+: sidebar visible (mobile nav is hidden ≥ md)
-  await expect(
-    page.getByRole("complementary", { name: "Hauptnavigation" }),
-  ).toBeVisible();
 });
