@@ -22,7 +22,15 @@
  * StorageError so we never leak credentials into logs or audit entries.
  */
 
-import { copy, del, head, list, put } from "@vercel/blob";
+import {
+  BlobError,
+  BlobNotFoundError,
+  copy,
+  del,
+  head,
+  list,
+  put,
+} from "@vercel/blob";
 import {
   StorageDuplicateError,
   StorageImmutabilityError,
@@ -68,15 +76,42 @@ function redact(s: string): string {
  * `never`-returning would prevent TypeScript from narrowing the surrounding
  * try/catch correctly when the wrapped result is inspected (see the
  * Phase A / Phase C branches in `archive`).
+ *
+ * Detection strategy:
+ *
+ * - **Not found**: `instanceof BlobNotFoundError`. The SDK emits this for the
+ *   API `not_found` response code (`getBlobError` in chunk-3D2SZ6M2.js).
+ *   Message is "Vercel Blob: The requested blob does not exist" — regex
+ *   matching against that string was unreliable, so we match the class.
+ * - **Duplicate write**: the SDK has no dedicated class. When `put` is called
+ *   with `allowOverwrite: false` against an existing blob, the API returns
+ *   `not_allowed`, which falls through `getBlobError`'s switch to
+ *   `BlobUnknownError("Unknown error, please visit https://vercel.com/help.")`.
+ *   This is indistinguishable from a real unknown error via class alone — so
+ *   we rely on the caller passing an `op: "write_no_overwrite"` hint. In that
+ *   context a non-NotFound `BlobError` is overwhelmingly a duplicate-write
+ *   conflict (auth/store/precondition failures fail much earlier, with their
+ *   own dedicated subclasses we leave as `StorageNetworkError`). We also keep
+ *   a message-regex fallback to catch any future SDK change that exposes a
+ *   clearer signal (`already exists`, `operation_not_allowed`).
+ * - **Everything else**: `StorageNetworkError`, preserving the original
+ *   error via `cause`.
  */
-function wrap(e: unknown): Error {
+type WrapOp = "write_no_overwrite" | "other";
+
+function wrap(e: unknown, op: WrapOp = "other"): Error {
+  if (e instanceof BlobNotFoundError) {
+    return new StorageNotFoundError(redact(e.message), e);
+  }
   if (e instanceof Error) {
     const msg = redact(e.message);
-    if (/already exists|conflict|409|BlobAlreadyExists/i.test(msg)) {
+    const looksLikeDuplicate =
+      /already exists|operation_not_allowed|not[_\s]allowed/i.test(msg);
+    if (
+      e instanceof BlobError &&
+      (op === "write_no_overwrite" || looksLikeDuplicate)
+    ) {
       return new StorageDuplicateError(msg, e);
-    }
-    if (/not found|404|BlobNotFound/i.test(msg)) {
-      return new StorageNotFoundError(msg, e);
     }
     return new StorageNetworkError(msg, e);
   }
@@ -116,7 +151,7 @@ export class VercelBlobFileStorage implements FileStorage {
       });
       return { etag: res.url };
     } catch (e) {
-      throw wrap(e);
+      throw wrap(e, "write_no_overwrite");
     }
   }
 
