@@ -1,15 +1,13 @@
 <script lang="ts">
-	import { EmptyState } from '$lib/components/ui/empty-state/index.js';
+	import SpendenTab from '$lib/components/admin/jahresabschluss/SpendenTab.svelte';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
 </script>
 
-<svelte:head>
-	<title>Spenden {data.year} – Jahresabschluss</title>
-</svelte:head>
-
-<EmptyState
-	title={`Spenden ${data.year}`}
-	description={`${data.spendenCount} Spende${data.spendenCount === 1 ? '' : 'n'} im Jahr. Listendarstellung folgt in Zyklus 5.`}
+<SpendenTab
+	year={data.year}
+	rows={data.rows}
+	totals={data.totals}
+	bescheinigungEnabled={data.bescheinigungEnabled}
 />

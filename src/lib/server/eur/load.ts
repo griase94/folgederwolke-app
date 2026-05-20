@@ -221,26 +221,13 @@ interface VEurYearRow {
   beleg_original_name: string | null;
 }
 
-function toEurRow(r: VEurYearRow): EurRow {
-  return {
-    businessId: r.business_id,
-    gebuchtAm: r.gebucht_am,
-    betragCents: BigInt(r.betrag_cents),
-    sphereSnapshot: r.sphere_snapshot as Sphere,
-    kategorieId: r.kategorie_id,
-    kategorieNameSnapshot: r.kategorie_name_snapshot,
-    eurZeile: r.eur_zeile,
-    anlageGemZeile: r.anlage_gem_zeile,
-    bezeichnung: r.bezeichnung,
-    belegDriveFileId: r.beleg_drive_file_id,
-    belegOriginalName: r.beleg_original_name,
-  };
-}
-
 /**
  * Load + compose the full workspace payload for /app/jahresabschluss/[year].
- * Single function, single roundtrip-per-resource — kept thin so the unit
- * tests against `composeEurWorkspaceData` cover the interesting logic.
+ *
+ * Queries the base `income` + `expenses` tables directly (NOT the v_eur_year
+ * view). `app_runtime` has CRUD on the base tables per 0002_roles.sql but
+ * v_eur_year was only granted to `app_export` — using the view would fail
+ * for the live route runtime AND the unit/e2e test runner.
  */
 export async function loadEurWorkspaceData(
   year: number,
@@ -248,42 +235,78 @@ export async function loadEurWorkspaceData(
   const db = getDb();
   const priorYear = year - 1;
 
-  // 1. v_eur_year rows for current + prior year (single query)
+  // 1. Income + expense rows for current + prior year, mirroring the
+  //    v_eur_year UNION shape (without the kategorien JOIN — c1 doesn't
+  //    use eur_zeile/anlage_gem_zeile in the workspace payload, only in
+  //    the bundle-export path which keeps its existing query).
   const rawRows = (await db.execute(sql`
-    SELECT
-      art, business_id, gebucht_am, year_of_buchung, betrag_cents,
-      bezeichnung, sphere_snapshot, kategorie_id, kategorie_name_snapshot,
-      eur_zeile, anlage_gem_zeile, beleg_drive_file_id, beleg_original_name
-    FROM v_eur_year
-    WHERE year_of_buchung IN (${year}, ${priorYear})
-    ORDER BY gebucht_am ASC
-  `)) as unknown as Array<VEurYearRow & { year_of_buchung: number }>;
+    SELECT 'income' AS art, business_id, gebucht_am, year_of_buchung,
+           betrag_cents, bezeichnung, sphere_snapshot, kategorie_id,
+           kategorie_name_snapshot, beleg_drive_file_id, beleg_original_name
+      FROM income
+     WHERE year_of_buchung IN (${year}, ${priorYear})
+    UNION ALL
+    SELECT 'expense' AS art, business_id, gebucht_am, year_of_buchung,
+           betrag_cents, bezeichnung,
+           COALESCE(sphere_override, sphere_snapshot) AS sphere_snapshot,
+           kategorie_id, kategorie_name_snapshot,
+           beleg_drive_file_id, beleg_original_name
+      FROM expenses
+     WHERE year_of_buchung IN (${year}, ${priorYear})
+     ORDER BY gebucht_am ASC
+  `)) as unknown as Array<
+    Omit<VEurYearRow, "eur_zeile" | "anlage_gem_zeile"> & {
+      year_of_buchung: number;
+    }
+  >;
 
   const currentRows = rawRows.filter((r) => r.year_of_buchung === year);
   const priorRows = rawRows.filter((r) => r.year_of_buchung === priorYear);
 
+  const mkRow = (r: (typeof rawRows)[number]): EurRow => ({
+    businessId: r.business_id,
+    gebuchtAm: r.gebucht_am,
+    betragCents: BigInt(r.betrag_cents),
+    sphereSnapshot: r.sphere_snapshot as Sphere,
+    kategorieId: r.kategorie_id,
+    kategorieNameSnapshot: r.kategorie_name_snapshot,
+    eurZeile: null,
+    anlageGemZeile: null,
+    bezeichnung: r.bezeichnung,
+    belegDriveFileId: r.beleg_drive_file_id,
+    belegOriginalName: r.beleg_original_name,
+  });
+
   const currentEinnahmen = currentRows
     .filter((r) => r.art === "income")
-    .map(toEurRow);
+    .map(mkRow);
   const currentAusgaben = currentRows
     .filter((r) => r.art === "expense")
-    .map(toEurRow);
+    .map(mkRow);
   const priorEinnahmen = priorRows
     .filter((r) => r.art === "income")
-    .map(toEurRow);
+    .map(mkRow);
   const priorAusgaben = priorRows
     .filter((r) => r.art === "expense")
-    .map(toEurRow);
+    .map(mkRow);
 
-  // 2. Monthly aggregation for sparkline (current year only)
+  // 2. Monthly aggregation for sparkline (current year only). Same direct
+  //    base-table query for the same role-grants reason.
   const monthlyRows = (await db.execute(sql`
-    SELECT art,
+    SELECT 'income' AS art,
            EXTRACT(MONTH FROM gebucht_am AT TIME ZONE 'Europe/Berlin')::int AS month,
            SUM(betrag_cents)::bigint AS sum_cents
-    FROM v_eur_year
-    WHERE year_of_buchung = ${year}
-    GROUP BY art, month
-    ORDER BY month ASC
+      FROM income
+     WHERE year_of_buchung = ${year}
+     GROUP BY month
+    UNION ALL
+    SELECT 'expense' AS art,
+           EXTRACT(MONTH FROM gebucht_am AT TIME ZONE 'Europe/Berlin')::int AS month,
+           SUM(betrag_cents)::bigint AS sum_cents
+      FROM expenses
+     WHERE year_of_buchung = ${year}
+     GROUP BY month
+     ORDER BY month ASC
   `)) as unknown as Array<{
     art: "income" | "expense";
     month: number;
