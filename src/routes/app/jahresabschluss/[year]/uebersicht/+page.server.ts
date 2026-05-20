@@ -1,21 +1,15 @@
 /**
- * /app/jahresabschluss/[year]/+page.server.ts
+ * /app/jahresabschluss/[year]/uebersicht — explicit Übersicht tab route.
  *
- * The tabbed workspace's default landing tab is Übersicht. The bare
- * /app/jahresabschluss/[year] URL renders that tab inline so existing
- * deep-links (and the @phase-6 jahresabschluss e2e tests) keep working
- * without an extra redirect roundtrip.
- *
- * Workspace data is loaded by +layout.server.ts and inherited here.
- * The Festschreibung action is also reachable via this route's URL.
+ * Festschreibung action mirrors the bare-[year] route's action so users
+ * landing on /uebersicht directly can still submit the form.
  */
 
-import { fail, error } from "@sveltejs/kit";
+import { fail } from "@sveltejs/kit";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { closeBuchhaltungsjahr } from "$lib/server/domain/jahresabschluss.js";
 
 export const load: PageServerLoad = async () => {
-  // All payload comes from +layout.server.ts via inherited `data`.
   return {};
 };
 
@@ -25,12 +19,10 @@ export const actions: Actions = {
     if (!Number.isFinite(year) || year < 2020 || year > 2100) {
       return fail(400, { error: `Ungültiges Jahr: ${params.year}` });
     }
-
     const user = locals.session?.user;
     if (!user) {
       return fail(401, { error: "Nicht angemeldet" });
     }
-
     try {
       const result = await closeBuchhaltungsjahr(year, user.id);
       return {
@@ -40,14 +32,8 @@ export const actions: Actions = {
         rowsByTable: result.rowsByTable,
       };
     } catch (err) {
-      if (err && typeof err === "object" && "status" in err && "body" in err) {
-        // SvelteKit error — re-throw
-        throw err;
-      }
       const msg = err instanceof Error ? err.message : String(err);
       return fail(500, { error: `Festschreibung fehlgeschlagen: ${msg}` });
     }
   },
 };
-// keep `error` import live for future per-action 404s
-void error;
