@@ -50,7 +50,7 @@ const beitragsProps = {
   nachname: "Mustermann",
   jahr: 2026,
   betragCents: 5000,
-  iban: "DE25830654080006894453",
+  iban: "DE43830654089999999999",
   bic: "SSKMDEMMXXX",
   bank: "Stadtsparkasse München",
   empfaenger: "Folge der Wolke e.V.",
@@ -146,7 +146,7 @@ describe("BeitragsReminder", () => {
     expect(html).toContain("2026");
     expect(html).toContain("50,00");
     // IBAN formatted
-    expect(html).toContain("DE25 8306");
+    expect(html).toContain("DE43 8306");
     // Verwendungszweck
     expect(html).toContain("Mitgliedsbeitrag 2026 Lea Mustermann");
     // Warning about Verwendungszweck

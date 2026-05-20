@@ -199,13 +199,18 @@ async function main() {
       .onConflictDoNothing();
 
     // Bankverbindung (legacy BANKVERBINDUNG).
+    // PLACEHOLDER IBAN — real Verein IBAN lives in Vercel env (VEREIN_IBAN),
+    // never in committed code. The placeholder keeps the real BLZ (83065408)
+    // so the BLZ-consistency check in env.ts treats it like a known bank;
+    // the check-digits (00) and account portion (9999999999) are obviously
+    // non-real so this can't be mistaken for a live account.
     await db
       .insert(schema.settings)
       .values({
         key: "verein.bankverbindung",
         value: {
           empfaenger: "Folge der Wolke e.V.",
-          iban: "DE25830654080006894453",
+          iban: "DE43830654089999999999",
           bic: "GENODEF1SLR",
           bank: "Deutsche Skatbank",
         },
@@ -215,7 +220,7 @@ async function main() {
         set: {
           value: {
             empfaenger: "Folge der Wolke e.V.",
-            iban: "DE25830654080006894453",
+            iban: "DE43830654089999999999",
             bic: "GENODEF1SLR",
             bank: "Deutsche Skatbank",
           },

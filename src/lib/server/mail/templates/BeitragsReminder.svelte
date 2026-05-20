@@ -9,7 +9,7 @@
 		(betragCents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
 	);
 
-	// Format IBAN in 4-char groups: DE25830654080006894453 → DE25 8306 5408 0006 8944 53
+	// Format IBAN in 4-char groups: DE43830654089999999999 → DE43 8306 5408 9999 9999 99
 	const ibanReadable = $derived(
 		iban
 			.replace(/\s+/g, '')

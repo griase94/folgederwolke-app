@@ -129,7 +129,7 @@ describe("validateAuslageInput", async () => {
     bezahlt_von: {
       kind: "extern" as const,
       name: "Lea Mustermann",
-      iban: "DE25830654080006894453",
+      iban: "DE43830654089999999999",
       email: "lea@example.com",
     },
   };
@@ -200,12 +200,12 @@ describe("composeBezahltVonDisplay", async () => {
     const result = composeBezahltVonDisplay({
       kind: "extern",
       name: "Lea Mustermann",
-      iban: "DE25830654080006894453",
+      iban: "DE43830654089999999999",
       email: "lea@example.com",
     });
     expect(result).toContain("Lea Mustermann");
-    expect(result).toContain("DE25");
-    expect(result).toContain("4453");
+    expect(result).toContain("DE43");
+    expect(result).toContain("9999");
     expect(result).toContain("...");
   });
 });

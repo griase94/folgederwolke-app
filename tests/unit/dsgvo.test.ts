@@ -44,7 +44,7 @@ const FIXTURE: AuskunftData = {
       nachname: "Muster",
       email: "test@example.com",
       emailCanonical: "test@example.com",
-      iban: "DE25830654080006894453",
+      iban: "DE43830654089999999999",
       telefon: "+49 89 123456",
       adresse: "Teststraße 1\n80469 München",
       dateOfBirth: "1990-01-15",
