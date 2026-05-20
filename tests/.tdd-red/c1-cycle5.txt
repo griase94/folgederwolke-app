@@ -1,0 +1,26 @@
+C1 Cycle 5 — RED: Spenden tab + Exports tab
+==========================================
+
+Spenden tab helpers (pure):
+  - bescheinigungStatusFor(donation) → 'issued' | 'pending' | 'declined' | 'na'
+      • issued: bescheinigung_nr is set + bescheinigung_ausgestellt_am set
+      • declined: bescheid_typ === null AND bescheinigung_nr === null AND
+        (heuristic: spende_kind === 'sachspende_unbar' for now — we'll wait
+        for product to define a real "declined" state; default 'pending')
+      • pending: bescheinigung_nr null, env-gated (Bescheinigungs-Generierung)
+      • na: spende below Bescheinigungs-Minimum? For now, anything < 200 €
+        AND no member_id is 'na' (treuhand convention).
+
+  Tests:
+    1. populated bescheinigung_nr → 'issued'
+    2. no nr + active env → 'pending'
+    3. < 200€ + no member id → 'na'
+    4. handles bigint betragCents
+
+Exports tab — no pure helper needed; the page just renders existing bundle
+download + GoBD link. We add a simple e2e-ready aria-label sanity check via
+component-render test (Vitest with @testing-library/svelte) if cheap, or
+defer to the @phase-6 e2e walkthrough by the UX reviewer.
+
+For cycle 5 we keep it lean: a small unit test file for status mapper +
+a smoke test on the spenden component shape (rows shape).

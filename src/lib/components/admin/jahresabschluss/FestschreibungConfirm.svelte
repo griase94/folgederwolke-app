@@ -4,9 +4,18 @@
 	interface Props {
 		year: number;
 		closed: boolean;
+		/** Pre-flight gate (C1). When false, the button is rendered disabled with
+		 *  an explanation. Defaults to true to preserve legacy callers. */
+		canFestschreiben?: boolean;
+		blockerCount?: number;
 	}
 
-	let { year, closed }: Props = $props();
+	let {
+		year,
+		closed,
+		canFestschreiben = true,
+		blockerCount = 0
+	}: Props = $props();
 
 	let showModal = $state(false);
 	let submitting = $state(false);
@@ -16,7 +25,7 @@
 	<div class="px-6 py-5">
 		<h3 class="text-base font-semibold text-foreground">Jahresabschluss schließen</h3>
 		<p class="mt-1 text-sm text-muted-foreground">
-			Festschreibung: Alle Buchungen des Jahres {year} werden unveränderlich markiert (ADR-0006).
+			Festschreibung: Alle Buchungen des Jahres {year} werden unveränderlich markiert.
 			Korrekturen sind danach nur noch per Storno möglich.
 		</p>
 	</div>
@@ -47,7 +56,10 @@
 			<button
 				type="button"
 				onclick={() => (showModal = true)}
-				class="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-5 py-2.5 text-sm font-medium text-amber-900 shadow-sm transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				disabled={!canFestschreiben}
+				data-testid="festschreibung-open-button"
+				aria-describedby={canFestschreiben ? undefined : 'festschreibung-blocker-hint'}
+				class="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-5 py-2.5 text-sm font-medium text-amber-900 shadow-sm transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -66,6 +78,14 @@
 				</svg>
 				Jahresabschluss schließen ({year})
 			</button>
+			{#if !canFestschreiben}
+				<p
+					id="festschreibung-blocker-hint"
+					class="mt-2 text-xs text-rose-700 dark:text-rose-400"
+				>
+					{blockerCount} Blocker in der Checkliste oben. Bitte zuerst beheben.
+				</p>
+			{/if}
 		{/if}
 	</div>
 </div>

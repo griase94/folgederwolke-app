@@ -1,0 +1,25 @@
+RED test for C1 cycle 3 NEW-1 — EÜR PDF code path uses 3-source union.
+
+File: tests/unit/c1-eur-pdf-union.test.ts
+
+Purpose: assert that the downloadable EÜR PDF reports the SAME einnahmen
+totals as the workspace UI (composeEurWorkspaceData). Before this fix, the
+PDF endpoint computed eur only from income + expenses (no donations, no
+member_beitrags), so the PDF undercounted Einnahmen for any Verein where
+Mitgliedsbeiträge + Spenden dominate ideelle Einnahmen.
+
+Strategy:
+1. Seed: 1 donation + 1 paid member_beitrag for a fixed year, NO income.
+2. Call the new shared `loadEurAggregatesForPdf(YEAR)` function and the
+   existing `loadEurWorkspaceData(YEAR)`.
+3. Assert: the eur.totalEinnahmenCents from BOTH match each other (both
+   include donation + beitrag in the union).
+4. Bonus assertion: also call the PDF endpoint handler and assert the
+   underlying eur computation matches (via inspecting bytes for Verein
+   name + year is not feasible; we rely on the shared function contract).
+
+Why this test catches the bug: pre-fix `eur.pdf/+server.ts` queried only
+income + expenses; with no income rows, eur.totalEinnahmenCents would be 0
+while the workspace correctly reports 56969 (50000 + 6969).
+
+Test file body shown below for traceability.

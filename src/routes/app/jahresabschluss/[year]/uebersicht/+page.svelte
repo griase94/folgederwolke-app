@@ -2,7 +2,6 @@
 	import UebersichtTab from '$lib/components/admin/jahresabschluss/UebersichtTab.svelte';
 	import type { PageData, ActionData } from './$types.js';
 
-	// Inherits the workspace payload from +layout.server.ts.
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 </script>
 

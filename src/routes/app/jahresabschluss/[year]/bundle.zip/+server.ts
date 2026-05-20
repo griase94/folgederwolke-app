@@ -13,31 +13,19 @@ import { error } from "@sveltejs/kit";
 import { sql } from "drizzle-orm";
 import type { RequestHandler } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
-import {
-  computeEurYear,
-  type EurRow,
-  type Sphere,
-} from "$lib/server/domain/eur.js";
+import { computeEurYear } from "$lib/server/domain/eur.js";
 import type { SpendenlisteRow } from "$lib/server/export/spendenliste-csv.js";
 import type { BelegIndexRow } from "$lib/server/export/beleg-index.js";
-import { buildJahresabschlussBundle } from "$lib/server/export/bundle.js";
+import {
+  buildJahresabschlussBundle,
+  type BescheinigungAttachment,
+  type AuditLogSliceRow,
+  type MemberBeitragRow,
+} from "$lib/server/export/bundle.js";
 import { generateEurPdf } from "$lib/server/export/eur-pdf.js";
+import { loadEurAggregatesForPdf } from "$lib/server/eur/load.js";
+import { getFileStorage } from "$lib/server/files/storage.js";
 import { env } from "$lib/server/env.js";
-
-interface VEurRow {
-  art: string;
-  business_id: string;
-  gebucht_am: Date;
-  betrag_cents: bigint;
-  bezeichnung: string;
-  sphere_snapshot: string;
-  kategorie_id: string | null;
-  kategorie_name_snapshot: string;
-  eur_zeile: number | null;
-  anlage_gem_zeile: number | null;
-  beleg_drive_file_id: string | null;
-  beleg_original_name: string | null;
-}
 
 interface DonationRow {
   business_id: string;
@@ -63,51 +51,26 @@ export const GET: RequestHandler = async ({ params }) => {
   }
 
   const db = getDb();
-  const vereinName = env.VEREIN_NAME || "Folge der Wolke e.V.";
 
-  // 1. Fetch EÜR rows
-  const rawEurRows = await db.execute(sql`
-    SELECT art, business_id, gebucht_am, betrag_cents, bezeichnung,
-           sphere_snapshot, kategorie_id, kategorie_name_snapshot,
-           eur_zeile, anlage_gem_zeile, beleg_drive_file_id, beleg_original_name
-    FROM v_eur_year
-    WHERE year_of_buchung = ${year}
-    ORDER BY gebucht_am ASC
-  `);
-  const eurRows = rawEurRows as unknown as VEurRow[];
-
-  const einnahmen: EurRow[] = eurRows
-    .filter((r) => r.art === "income")
-    .map((r) => ({
-      businessId: r.business_id,
-      gebuchtAm: r.gebucht_am,
-      betragCents: BigInt(r.betrag_cents),
-      sphereSnapshot: r.sphere_snapshot as Sphere,
-      kategorieId: r.kategorie_id,
-      kategorieNameSnapshot: r.kategorie_name_snapshot,
-      eurZeile: r.eur_zeile,
-      anlageGemZeile: r.anlage_gem_zeile,
-      bezeichnung: r.bezeichnung,
-      belegDriveFileId: r.beleg_drive_file_id,
-      belegOriginalName: r.beleg_original_name,
-    }));
-
-  const ausgaben: EurRow[] = eurRows
-    .filter((r) => r.art === "expense")
-    .map((r) => ({
-      businessId: r.business_id,
-      gebuchtAm: r.gebucht_am,
-      betragCents: BigInt(r.betrag_cents),
-      sphereSnapshot: r.sphere_snapshot as Sphere,
-      kategorieId: r.kategorie_id,
-      kategorieNameSnapshot: r.kategorie_name_snapshot,
-      eurZeile: r.eur_zeile,
-      anlageGemZeile: r.anlage_gem_zeile,
-      bezeichnung: r.bezeichnung,
-      belegDriveFileId: r.beleg_drive_file_id,
-      belegOriginalName: r.beleg_original_name,
-    }));
-
+  // 1. Fetch EÜR rows + compute aggregates.
+  //
+  // C1 cycle 3 NEW-1: the embedded EÜR PDF MUST report identical Einnahmen
+  // totals to the workspace UI. The shared `loadEurAggregatesForPdf` runs
+  // the 3-source union (income + donations + member_beitrags) so the PDF
+  // matches Übersicht byte-for-byte on the totals.
+  //
+  // Separately, the Anlage-Gem-CSV and the GoBD-Z3 XML rely on the *non*-
+  // union row arrays (with eur_zeile + anlage_gem_zeile from the kategorien
+  // JOIN). Donations + Mitgliedsbeiträge have no eur_zeile / anlage_gem_zeile
+  // and have their own dedicated bundle exports (03_Spendenliste,
+  // 08_Mitgliedsbeitraege). We therefore keep a second non-union `eurForRows`
+  // for those two consumers.
+  const {
+    eur: eurForPdf,
+    vereinName,
+    einnahmenRowsWithKategorien: einnahmen,
+    ausgabenRowsWithKategorien: ausgaben,
+  } = await loadEurAggregatesForPdf(year);
   const eur = computeEurYear(year, einnahmen, ausgaben);
 
   // 2. Fetch Spenden
@@ -167,8 +130,100 @@ export const GET: RequestHandler = async ({ params }) => {
       belegOriginalName: r.belegOriginalName,
     }));
 
-  // 4. Generate EÜR PDF
-  const eurPdfBytes = await generateEurPdf(eur, vereinName);
+  // 4. Generate EÜR PDF — use the union-based aggregates so the embedded
+  //    PDF matches the workspace Übersicht (C1 cycle 3 NEW-1).
+  const eurPdfBytes = await generateEurPdf(eurForPdf, vereinName);
+
+  // C1-M3 — Bescheinigung PDFs: load any donations with a stored
+  // bescheinigung_pdf_drive_file_id and pull the bytes via FileStorage.
+  // Failures are non-fatal (one missing file shouldn't break the bundle).
+  const storage = await getFileStorage();
+  const bescheinigungRows = (await db.execute(sql`
+    SELECT business_id, bescheinigung_nr, bescheinigung_pdf_drive_file_id
+      FROM donations
+     WHERE year_of_buchung = ${year}
+       AND bescheinigung_pdf_drive_file_id IS NOT NULL
+       AND supersedes_id IS NULL
+  `)) as unknown as Array<{
+    business_id: string;
+    bescheinigung_nr: string | null;
+    bescheinigung_pdf_drive_file_id: string;
+  }>;
+  const bescheinigungPdfs: BescheinigungAttachment[] = [];
+  for (const r of bescheinigungRows) {
+    try {
+      const bytes = await storage.download(r.bescheinigung_pdf_drive_file_id);
+      const nrPart = r.bescheinigung_nr ?? r.business_id;
+      bescheinigungPdfs.push({
+        filename: `Zuwendungsbestaetigung_${nrPart.replace(/[^A-Za-z0-9_-]/g, "_")}.pdf`,
+        bytes,
+      });
+    } catch (e) {
+      // Non-fatal — log a warning and continue. (No-console rule isn't
+      // configured project-wide; this is route-level diagnostics.)
+      console.warn(
+        `bundle: failed to fetch Bescheinigung-PDF for donation ${r.business_id}: ${String(e)}`,
+      );
+    }
+  }
+
+  // C1-M3 — Audit-log slice for the year (Europe/Berlin).
+  const auditRows = (await db.execute(sql`
+    SELECT a.occurred_at::text AS occurred_at,
+           a.actor_kind,
+           COALESCE(u.name, u.email, 'system') AS actor_display,
+           a.action,
+           a.entity_kind,
+           a.entity_business_id,
+           COALESCE(a.payload::text, '') AS payload
+      FROM audit_log a
+      LEFT JOIN users u ON u.id = a.actor_user_id
+     WHERE a.occurred_at >= (${year}::text || '-01-01 00:00:00')::timestamptz AT TIME ZONE 'Europe/Berlin'
+       AND a.occurred_at <  ((${year} + 1)::text || '-01-01 00:00:00')::timestamptz AT TIME ZONE 'Europe/Berlin'
+     ORDER BY a.occurred_at ASC
+  `)) as unknown as Array<{
+    occurred_at: string;
+    actor_kind: string;
+    actor_display: string;
+    action: string;
+    entity_kind: string;
+    entity_business_id: string | null;
+    payload: string;
+  }>;
+  const auditLogSlice: AuditLogSliceRow[] = auditRows.map((r) => ({
+    occurredAt: r.occurred_at,
+    actorKind: r.actor_kind,
+    actorDisplay: r.actor_display,
+    action: r.action,
+    entityKind: r.entity_kind,
+    entityBusinessId: r.entity_business_id,
+    payload: r.payload,
+  }));
+
+  // C1-M3 — Paid Mitgliedsbeiträge for the year.
+  const beitragRows = (await db.execute(sql`
+    SELECT concat_ws(' ', m.vorname, m.nachname) AS member_name,
+           mb.year, mb.betrag_cents, mb.paid_cents,
+           mb.gezahlt_am::text AS gezahlt_am
+      FROM member_beitrags mb
+      JOIN members m ON m.id = mb.member_id
+     WHERE mb.year = ${year}
+       AND mb.paid_cents > 0
+     ORDER BY m.nachname ASC, m.vorname ASC
+  `)) as unknown as Array<{
+    member_name: string;
+    year: number;
+    betrag_cents: bigint;
+    paid_cents: bigint;
+    gezahlt_am: string | null;
+  }>;
+  const memberBeitrags: MemberBeitragRow[] = beitragRows.map((r) => ({
+    memberName: r.member_name,
+    year: r.year,
+    betragCents: BigInt(r.betrag_cents),
+    paidCents: BigInt(r.paid_cents),
+    gezahltAm: r.gezahlt_am,
+  }));
 
   // 5. Build ZIP
   const zipBuffer = await buildJahresabschlussBundle({
@@ -180,6 +235,9 @@ export const GET: RequestHandler = async ({ params }) => {
     vereinName,
     vereinSteuernummer: env.VEREIN_STEUERNUMMER || undefined,
     includeGobdZ3: true,
+    bescheinigungPdfs,
+    auditLogSlice,
+    memberBeitrags,
   });
 
   const filename = `Jahresabschluss-${year}.zip`;
