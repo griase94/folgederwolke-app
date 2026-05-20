@@ -40,7 +40,7 @@ The legal review (`docs/reviews/2026-05-19-dsgvo-legal-review.md`) flagged perso
   - `/api/files/[id]/blob` — auth-checked proxy route (replaces `/api/dev-files/[id]`)
   - `/api/files/[id]/thumbnail` — auth-checked thumbnail proxy (sized image preview)
   - `/app/files` — Vorstand browse view with URL-param-persisted filters
-  - `/app/jahresabschluss/[year]/export/files.zip` — streaming ZIP with sphere subfolders + EÜR PDF + index CSV
+  - **Extend** existing `/app/jahresabschluss/[year]/bundle.zip` from c1 (`src/lib/server/export/bundle.ts`) to include Belege bytes in a new `09_Belege-{year}/` subfolder with sphere-aware substructure. The bundle already includes EÜR PDF, Spendenliste, Beleg-Index CSV, GoBD-Z3, Bescheinigungs-PDFs, Audit-Log slice, Mitgliedsbeiträge — Phase 9 just adds the actual Beleg files alongside the existing index. **No new `/export/files.zip` route**.
 - **Upload pipeline**: client-side compression (`browser-image-compression` + `pdfjs-dist`/`pdf-lib`) with per-page progress UI; server-side magic-byte MIME sniff (`file-type` npm); deterministic pathname-from-file_id; **blob upload first, then short DB transaction** (inverted from v1 to eliminate orphan windows on lost-ACK).
 - **Thumbnail generation at upload**: for image kinds, generate a `200×200` webp at `belege/<year>/<id>.thumb.webp` alongside the original. PDF kind: render page 1 to webp.
 - **Festschreibung**: three-layer enforcement (`denyWritesToReservedPrefixes` covering `archived/`+`quarantine/`+`tmp/`, route-action `festgeschriebenBis` checks, DB row-level trigger extended to `files`). Resumable archive job.
@@ -482,52 +482,55 @@ Per-row actions:
 - **Herunterladen** — `<a download>` using the export-style filename
 - **Löschen** (Vorstand only, not for archived years) — confirm dialog, then sets `deleted_at` + `delete_reason='vorstand_purge'`
 
-### 7.4 Export `/app/jahresabschluss/[year]/export/files.zip`
+### 7.4 Extend `/app/jahresabschluss/[year]/bundle.zip` with Beleg files
 
-Vorstand-only. Streams ZIP via `archiver` (level 0 — files are already compressed).
-
-Idempotency: a debounce per-user-per-year prevents accidental parallel exports. Second click within 30s of an in-flight export returns 429 with a Retry-After header.
-
-Archive structure (sphere-aware for Verein 4-sphere compliance):
+The Steuerberater bundle already exists from c1 (`src/lib/server/export/bundle.ts`) and ships these entries via JSZip:
 
 ```
-folge-der-wolke-belege-2026.zip
-├── 00-EUER-2026.pdf                            # the existing EÜR export, generated server-side
-├── 00-INDEX.csv                                # manifest (see columns below)
+01_EÜR-{year}.pdf
+02_Anlage-Gem-{year}.csv
+03_Spendenliste-{year}.csv
+04_Beleg-Index-{year}.csv          ← existing; uses Drive URLs — update to file_id refs
+05_GoBD-Z3-{year}/                 ← gobd_z3_{year}.xml + README.md
+06_Bescheinigungen-{year}/         ← per-donation PDFs
+07_Audit-Log-{year}.csv
+08_Mitgliedsbeiträge-{year}.csv
+```
+
+Phase 9 adds **one** new top-level entry: `09_Belege-{year}/` containing the actual Beleg PDFs/images in a sphere-aware structure. The existing `04_Beleg-Index-{year}.csv` becomes the manifest that ties business_id → local bundle path.
+
+```
+09_Belege-{year}/
 ├── ausgaben/
 │   ├── ideeller/
-│   │   ├── A-2026-0001-Büromaterial-Müller-AG.pdf
-│   │   └── …
+│   │   └── A-2026-0001-Büromaterial-Müller-AG.pdf
 │   ├── vermoegen/
 │   ├── zweckbetrieb/
 │   └── wirtschaftlich/
 ├── einnahmen/
 │   ├── ideeller/
-│   ├── …
+│   └── …
 ├── spenden/
-│   ├── D-2026-0001.pdf                         # no donor name in filename
-│   └── D-2026-0042.pdf
-├── rechnungen/
-│   └── R-2026-0001.pdf
-└── bescheinigungen/
-    └── Z-2026-0001.pdf                         # no donor name in filename
+│   ├── D-2026-0001.pdf            # business_id only, no donor name
+│   └── …
+└── rechnungen/                     # (06 already covers Bescheinigungen)
+    └── R-2026-0001.pdf
 ```
 
-Donor PII protection: `D-` and `Z-` prefixes use ONLY business_id, never Spendername. The mapping from business_id → donor name lives in the encrypted `00-INDEX.csv` (which the Steuerberater has anyway, but at least it's not in the ZIP filename listing).
+Donor PII protection: `D-` filenames use ONLY business_id, never Spendername. The business_id → name mapping lives in the existing `03_Spendenliste-{year}.csv` (which already carries names — Steuerberater needs them).
 
-`00-INDEX.csv` columns (UTF-8 BOM, German headers):
+`exportFilename(file, owner)` slugifies German-language `bezeichnung` (umlauts → ue, ß → ss; max 40 chars). For donations the slug is omitted.
 
-```csv
-ladend_nr;datum;sphäre;kategorie;bezeichnung;betrag_eur;beleg_dateiname;sha256;hochgeladen_am;storniert_von_id
-A-2026-0001;2026-01-15;ideeller;Verbrauchsmaterial;Büromaterial Müller AG;42,50;ausgaben/ideeller/A-2026-0001-Büromaterial-Müller-AG.pdf;abc123…;2026-01-16T10:23:00Z;
-…
-```
+**Two implementation updates required**:
 
-Storno entries appear as separate rows with `storniert_von_id` filled in to link the chain.
+1. `src/lib/server/export/beleg-index.ts` (existing) — change the `drive_url` column to `bundle_path` referencing the local in-bundle path under `09_Belege-{year}/...` so the CSV is self-contained.
+2. `src/lib/server/export/bundle.ts` (existing) — accept a new optional `belegAttachments?: BelegAttachment[]` input parallel to `bescheinigungPdfs`; the bundle.zip route's `+server.ts` fetches Beleg bytes from `getFileStorage().download(file.storage_key)` for each file referenced by the year's expenses/income/donations/rechnungen, and passes them to `buildJahresabschlussBundle()`.
 
-`exportFilename(file, owner)` slugifies German-language `bezeichnung` (umlauts → ue, sharp s → ss; max 40 chars); for donations the slug is omitted.
+**Streaming consideration**: c1's bundle uses `JSZip` in-memory. For our 10-year horizon (max ~5GB lifetime, ~500MB per year at upper bound), in-memory is acceptable. If a single year ever crosses ~500MB, the plan includes a switch to streaming `archiver` as a follow-up; not required for Phase 9 ship.
 
-`downloadStream` interface method handles streaming. The `Response` is constructed via `new Response(Readable.toWeb(archive), {...})` — the spike from §10.9 verifies this works on Vercel Fluid Compute before plan-time.
+Idempotency: bundle.zip route from c1 already handles per-request — no change.
+
+Soft-deleted Belege are excluded from the bundle. Archived Belege (post-Festschreibung, at `archived/`) are included normally — they live at `archived/belege/<year>/<id>.ext`, the bundle reads via `storage.download()` which works on any pathname.
 
 The same export filename logic is reused by the single-file download route `/app/files/[id]/download`.
 
