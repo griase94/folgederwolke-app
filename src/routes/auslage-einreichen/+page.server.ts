@@ -317,34 +317,19 @@ export const actions: Actions = {
     const year = berlinYear();
     const ausId = await allocateBusinessId("AUS", year);
 
-    // ── 4. Drive upload (BEFORE DB insert — Drive→DB ordering) ────────────────
-    // Use the client-supplied submissionNonce as idempotency key so retries
-    // de-dup at the Drive level. Generate a fallback if missing.
+    // ── 4. Blob upload (BEFORE DB insert — storage→DB ordering) ───────────────
+    // FIXME(Phase 9 Task 11): rewire to the upload pipeline that registers a
+    // `files` row, computes the deterministic pathname, and persists the
+    // file_id (not the legacy Drive file id) on the submission row. For now
+    // the storage write is skipped so the form keeps compiling — Task 11
+    // brings the public form back to a working upload end-to-end.
     const submissionNonce = input.submissionNonce ?? randomUUID();
-    const idempotencyKey = `${ausId}:${submissionNonce}`;
-
-    let driveFileId: string | null = null;
-    if (belegBytes && belegSniffedMime) {
-      try {
-        const result = await (
-          await fileStorage()
-        ).upload({
-          buffer: new Uint8Array(belegBytes),
-          mimeType: belegSniffedMime,
-          name: `${ausId}_${belegFilenameSafe}`,
-          idempotencyKey,
-        });
-        driveFileId = result.id;
-      } catch (driveErr) {
-        console.error(
-          `[auslage-einreichen] Drive upload failed for ${ausId}:`,
-          driveErr,
-        );
-        return fail(502, {
-          error: "Beleg-Upload fehlgeschlagen. Bitte erneut versuchen.",
-        });
-      }
-    }
+    void submissionNonce;
+    void belegBytes;
+    void belegSniffedMime;
+    void belegFilenameSafe;
+    void fileStorage;
+    const driveFileId: string | null = null;
 
     // ── 5. Insert DB row ──────────────────────────────────────────────────────
     const db = getDb();
@@ -381,18 +366,11 @@ export const actions: Actions = {
         `[auslage-einreichen] DB insert failed for ${ausId}:`,
         dbErr,
       );
-      // Roll back the orphan uploaded file (best effort).
-      if (driveFileId) {
-        try {
-          const storage = await fileStorage();
-          await storage.delete(driveFileId);
-        } catch (rollbackErr) {
-          console.warn(
-            `[auslage-einreichen] rollback delete failed for ${driveFileId}:`,
-            rollbackErr,
-          );
-        }
-      }
+      // FIXME(Phase 9 Task 11): roll back the orphan blob (registered file row
+      // + deterministic pathname). The new FileStorage interface is
+      // pathname-addressed and does not expose a delete primitive; the upload
+      // pipeline will own the rollback path.
+      void driveFileId;
       return fail(500, {
         error: "Fehler beim Speichern der Einreichung. Bitte erneut versuchen.",
       });
