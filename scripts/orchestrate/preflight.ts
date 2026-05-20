@@ -1,4 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, rmdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 
 export interface CheckResult {
   id: string;
@@ -11,6 +14,12 @@ export interface PreflightResultSummary {
 }
 export interface PreflightOptions {
   dryRun?: boolean;
+  /** Override path to ~/.claude/settings.json (for tests). */
+  settingsPath?: string;
+  /** Override repo root (for tests). Defaults to `git rev-parse --show-toplevel`. */
+  repoRoot?: string;
+  /** Override raw output of `gh api rate_limit` (for tests). */
+  rateLimitStdout?: string;
 }
 
 const PHASE_8_TIP = "3153a3c";
@@ -28,10 +37,118 @@ const check = (id: string, ok: boolean, detail = ""): CheckResult => ({
   detail,
 });
 
+function defaultSettingsPath(): string {
+  return join(homedir(), ".claude", "settings.json");
+}
+
+function defaultRepoRoot(): string {
+  const r = safeRun("git", ["rev-parse", "--show-toplevel"]);
+  return r.code === 0 ? r.stdout.trim() : process.cwd();
+}
+
+/** Returns the deny-rules block of settings.json as a string, or null on error. */
+function readSettingsFile(path: string): string | null {
+  try {
+    if (!existsSync(path)) return null;
+    return readFileSync(path, "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+export function checkNoClaudePSubprocess(settingsPath: string): CheckResult {
+  const raw = readSettingsFile(settingsPath);
+  if (raw === null) {
+    return check(
+      "no-claude-p-subprocess",
+      false,
+      `cannot read ${settingsPath} — cannot verify deny rule`,
+    );
+  }
+  // Look for a deny rule mentioning `claude -p` or `claude --dangerously…`.
+  // We accept either string anywhere in the file (the file is JSON with deny
+  // entries; either is a sufficient signal).
+  const hasDeny = /claude\s+-p/.test(raw) || /claude\s+--dangerously/.test(raw);
+  return check(
+    "no-claude-p-subprocess",
+    hasDeny,
+    hasDeny
+      ? `deny rule for 'claude -p' / --dangerously found in ${settingsPath}`
+      : `no deny rule for 'claude -p' in ${settingsPath}`,
+  );
+}
+
+export function checkWorktreeDirsCreatable(repoRoot: string): CheckResult {
+  const probe = join(repoRoot, ".claude", "worktrees", ".preflight-probe");
+  try {
+    mkdirSync(probe, { recursive: true });
+  } catch (e) {
+    return check(
+      "worktree-dirs-creatable",
+      false,
+      `mkdir failed: ${(e as Error).message}`,
+    );
+  }
+  try {
+    rmdirSync(probe);
+  } catch (e) {
+    return check(
+      "worktree-dirs-creatable",
+      false,
+      `rmdir failed: ${(e as Error).message}`,
+    );
+  }
+  return check(
+    "worktree-dirs-creatable",
+    true,
+    `${dirname(probe)} is creatable and writable`,
+  );
+}
+
+export function checkSettingsAutonomousPermits(
+  settingsPath: string,
+): CheckResult {
+  const raw = readSettingsFile(settingsPath);
+  if (raw === null) {
+    return check(
+      "settings-autonomous-permits",
+      false,
+      `cannot read ${settingsPath}`,
+    );
+  }
+  // Probe one specific allowlist entry: `gh pr create` should be permitted.
+  const hasGhPrCreate = /gh\s+pr\s+create/.test(raw);
+  return check(
+    "settings-autonomous-permits",
+    hasGhPrCreate,
+    hasGhPrCreate
+      ? `'gh pr create' allowlisted in ${settingsPath}`
+      : `'gh pr create' not allowlisted in ${settingsPath}`,
+  );
+}
+
+export function checkGhRateLimitHeadroom(rateLimitStdout: string): CheckResult {
+  let remaining = 0; // fail closed: unknown headroom = treat as exhausted
+  try {
+    const parsed = JSON.parse(rateLimitStdout);
+    const v = parsed?.resources?.core?.remaining;
+    if (typeof v === "number") remaining = v;
+  } catch {
+    // keep remaining = 0 — silent parse failure must NOT pass.
+  }
+  return check(
+    "gh-rate-limit-headroom",
+    remaining >= 4000,
+    `core remaining: ${remaining}`,
+  );
+}
+
 export async function runPreflight(
   opts: PreflightOptions = {},
 ): Promise<PreflightResultSummary> {
   const checks: CheckResult[] = [];
+  const settingsPath = opts.settingsPath ?? defaultSettingsPath();
+  const repoRoot = opts.repoRoot ?? defaultRepoRoot();
 
   if (opts.dryRun) {
     checks.push(check("phase-8-on-main", true, "skipped in dry-run"));
@@ -53,20 +170,8 @@ export async function runPreflight(
     );
   }
 
-  checks.push(
-    check(
-      "settings-autonomous-permits",
-      true,
-      "verified at runtime when first dispatch happens",
-    ),
-  );
-  checks.push(
-    check(
-      "no-claude-p-subprocess",
-      true,
-      "dispatcher uses in-process Agent tool",
-    ),
-  );
+  checks.push(checkSettingsAutonomousPermits(settingsPath));
+  checks.push(checkNoClaudePSubprocess(settingsPath));
 
   if (opts.dryRun) {
     checks.push(check("ci-workflow-patched", true, "skipped in dry-run"));
@@ -130,27 +235,41 @@ export async function runPreflight(
     ),
   );
 
+  // H2: canary check no longer requires a hardcoded count. Instead we
+  // require that `pnpm test --run tests/canary/` exits 0. In dry-run we just
+  // assert the canary directory exists with at least one .test.ts file.
   if (opts.dryRun) {
     checks.push(check("canary-suite-present", true, "skipped in dry-run"));
   } else {
-    const r = safeRun("bash", ["-c", "ls tests/canary/*.test.ts | wc -l"]);
-    const n = parseInt(r.stdout.trim(), 10) || 0;
-    checks.push(
-      check(
-        "canary-suite-present",
-        n >= 10,
-        `${n} canary test files (need >= 10)`,
-      ),
-    );
+    // Quick presence probe — fast feedback before spending vitest time.
+    const lsCanary = safeRun("bash", [
+      "-c",
+      "ls tests/canary/*.test.ts 2>/dev/null | wc -l",
+    ]);
+    const n = parseInt(lsCanary.stdout.trim(), 10) || 0;
+    if (n < 1) {
+      checks.push(
+        check(
+          "canary-suite-present",
+          false,
+          "no canary test files in tests/canary/",
+        ),
+      );
+    } else {
+      const run = safeRun("pnpm", ["test", "--run", "tests/canary/"]);
+      checks.push(
+        check(
+          "canary-suite-present",
+          run.code === 0,
+          run.code === 0
+            ? `${n} canary file(s) present, all green`
+            : `${n} canary file(s) present, run FAILED`,
+        ),
+      );
+    }
   }
 
-  checks.push(
-    check(
-      "worktree-dirs-creatable",
-      true,
-      ".claude/worktrees/ is gitignored + creatable",
-    ),
-  );
+  checks.push(checkWorktreeDirsCreatable(repoRoot));
 
   if (opts.dryRun) {
     checks.push(check("port-collision-sanity", true, "skipped in dry-run"));
@@ -172,20 +291,9 @@ export async function runPreflight(
   if (opts.dryRun) {
     checks.push(check("gh-rate-limit-headroom", true, "skipped in dry-run"));
   } else {
-    const r = safeRun("gh", ["api", "rate_limit"]);
-    let remaining = 5000;
-    try {
-      remaining = JSON.parse(r.stdout).resources.core.remaining;
-    } catch {
-      // tolerate gh CLI not yet authenticated / network blip — keep default 5000
-    }
-    checks.push(
-      check(
-        "gh-rate-limit-headroom",
-        remaining >= 4000,
-        `core remaining: ${remaining}`,
-      ),
-    );
+    const rl =
+      opts.rateLimitStdout ?? safeRun("gh", ["api", "rate_limit"]).stdout;
+    checks.push(checkGhRateLimitHeadroom(rl));
   }
 
   return { passed: checks.every((c) => c.ok), checks };
