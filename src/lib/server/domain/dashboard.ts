@@ -23,6 +23,7 @@ import { auditLog } from "$lib/server/db/schema/audit_log.js";
 import { donations } from "$lib/server/db/schema/donations.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
+import { invoices } from "$lib/server/db/schema/invoices.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 
 // ---------------------------------------------------------------------------
@@ -34,6 +35,32 @@ export interface WgbStatus {
   freigrenzeCents: number;
   status: "ok" | "erhoeht" | "kritisch" | "ueberschritten";
   year: number;
+}
+
+/**
+ * Cashflow overview block (C3, 2026-05-20). Drives the 2 large Einnahmen/
+ * Ausgaben cards (with sparkline + LY-delta) and the 4 link chips on the
+ * dashboard.
+ *
+ * All values are integer cents (ADR-0003). Monthly arrays are length 12,
+ * 0-indexed (Jan…Dec) for the selected `year`. LY = last year, same period
+ * (Jan→today's month, capped at 12) — direct year-over-year for past years.
+ */
+export interface CashflowOverview {
+  year: number;
+  einnahmenYtdCents: number;
+  ausgabenYtdCents: number;
+  /** Net surplus/deficit YTD (einnahmen - ausgaben). */
+  saldoCents: number;
+  /** Monthly income totals, 12 entries (Jan=0 … Dec=11) for `year`. */
+  einnahmenMonthlyCents: number[];
+  /** Monthly expense totals, 12 entries (Jan=0 … Dec=11) for `year`. */
+  ausgabenMonthlyCents: number[];
+  /** Last-year YTD totals (same calendar window). */
+  einnahmenLyYtdCents: number;
+  ausgabenLyYtdCents: number;
+  /** Open invoices (issued but bezahlt_am IS NULL, supersedesId IS NULL). */
+  openInvoicesCount: number;
 }
 
 export interface DashboardKpis {
@@ -51,6 +78,8 @@ export interface DashboardKpis {
   activeMemberCount: number;
   /** WGB Freigrenze status for the WGBWidget. */
   wgb: WgbStatus;
+  /** C3 cashflow overview (year-scoped headline + chips). */
+  cashflow: CashflowOverview;
 }
 
 export interface RecentActivityEntry {
@@ -79,16 +108,70 @@ export function berlinYear(now: Date = new Date()): number {
 }
 
 // ---------------------------------------------------------------------------
+// Pure helpers (exported for unit tests)
+// ---------------------------------------------------------------------------
+
+/**
+ * Year-over-year percentage delta of `cur` vs `prev`, rounded to nearest int.
+ * Returns null when `prev` is non-positive (defensive — no signal to convey).
+ */
+export function computeLyDeltaPct(cur: number, prev: number): number | null {
+  if (prev <= 0) return null;
+  return Math.round(((cur - prev) / prev) * 100);
+}
+
+/**
+ * Reduce `(month, sumCents)` rows into a length-12 array, 0-indexed (Jan=0).
+ * Tolerates bigint / string sums returned by Postgres' SUM().
+ */
+export function bucketByMonth(
+  rows: ReadonlyArray<{ month: number | string | bigint | null; sumCents: number | string | bigint | null }>,
+): number[] {
+  const out = new Array<number>(12).fill(0);
+  for (const r of rows) {
+    if (r.month === null || r.month === undefined) continue;
+    const m = Number(r.month);
+    if (!Number.isFinite(m) || m < 1 || m > 12) continue;
+    const v = Number(r.sumCents ?? 0);
+    if (!Number.isFinite(v)) continue;
+    out[m - 1]! += v;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // KPI queries
 // ---------------------------------------------------------------------------
 
 /**
  * Load all KPI values in parallel.
+ *
+ * @param year  Optional Buchhaltungsjahr to scope cashflow + WGB to.
+ *              Defaults to the current Berlin year (year-switcher contract).
+ *              The non-cashflow KPIs (open auslagen, recent activity etc.)
+ *              are intentionally not year-scoped — they are "right now"
+ *              counts.
+ *
  * All money in integer cents; caller formats for display.
  */
-export async function loadDashboardKpis(): Promise<DashboardKpis> {
+export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
   const db = getDb();
-  const currentYear = berlinYear();
+  const currentYear = year ?? berlinYear();
+
+  // C3 LY same-period cutoff: for the *current* Berlin year we compare
+  // Jan→current-Berlin-month vs Jan→same-month-last-year. For *past* years
+  // we compare full Jan→Dec, so the cutoff is Dec.
+  const nowYear = berlinYear();
+  const ytdMonth =
+    currentYear < nowYear
+      ? 12
+      : parseInt(
+          new Intl.DateTimeFormat("en-US", {
+            timeZone: "Europe/Berlin",
+            month: "numeric",
+          }).format(new Date()),
+          10,
+        );
 
   const [
     openAuslagen,
@@ -97,6 +180,11 @@ export async function loadDashboardKpis(): Promise<DashboardKpis> {
     spendenYtd,
     activeMembers,
     wgbEinnahmen,
+    einnahmenMonthlyRows,
+    ausgabenMonthlyRows,
+    einnahmenLyRows,
+    ausgabenLyRows,
+    openInvoicesAgg,
   ] = await Promise.all([
     // 1. Open auslagen submissions (no decision yet)
     db
@@ -156,6 +244,77 @@ export async function loadDashboardKpis(): Promise<DashboardKpis> {
           isNull(income.supersedesId),
         ),
       ),
+
+    // 7. C3 — Einnahmen monthly for selected year (income table, grouped by month)
+    db
+      .select({
+        month: sql<number>`EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
+        sumCents: sum(income.betragCents),
+      })
+      .from(income)
+      .where(
+        and(
+          eq(income.yearOfBuchung, currentYear),
+          isNull(income.supersedesId),
+        ),
+      )
+      .groupBy(
+        sql`EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
+      ),
+
+    // 8. C3 — Ausgaben monthly for selected year
+    db
+      .select({
+        month: sql<number>`EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
+        sumCents: sum(expenses.betragCents),
+      })
+      .from(expenses)
+      .where(
+        and(
+          eq(expenses.yearOfBuchung, currentYear),
+          isNull(expenses.supersedesId),
+        ),
+      )
+      .groupBy(
+        sql`EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
+      ),
+
+    // 9. C3 — Einnahmen LY same-period YTD (Jan..ytdMonth of currentYear-1)
+    db
+      .select({ sumCents: sum(income.betragCents) })
+      .from(income)
+      .where(
+        and(
+          eq(income.yearOfBuchung, currentYear - 1),
+          isNull(income.supersedesId),
+          sql`EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin') <= ${ytdMonth}`,
+        ),
+      ),
+
+    // 10. C3 — Ausgaben LY same-period YTD
+    db
+      .select({ sumCents: sum(expenses.betragCents) })
+      .from(expenses)
+      .where(
+        and(
+          eq(expenses.yearOfBuchung, currentYear - 1),
+          isNull(expenses.supersedesId),
+          sql`EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin') <= ${ytdMonth}`,
+        ),
+      ),
+
+    // 11. C3 — Open invoices count (rechnungen with bezahlt_am IS NULL,
+    //         non-superseded, current selected year).
+    db
+      .select({ value: count() })
+      .from(invoices)
+      .where(
+        and(
+          isNull(invoices.bezahltAm),
+          isNull(invoices.supersedesId),
+          eq(invoices.yearOfBuchung, currentYear),
+        ),
+      ),
   ]);
 
   // § 64 Abs. 3 AO Besteuerungsfreigrenze for wirtschaftlicher Geschäftsbetrieb:
@@ -176,6 +335,12 @@ export async function loadDashboardKpis(): Promise<DashboardKpis> {
           ? "erhoeht"
           : "ok";
 
+  // C3 cashflow assembly
+  const einnahmenMonthlyCents = bucketByMonth(einnahmenMonthlyRows);
+  const ausgabenMonthlyCents = bucketByMonth(ausgabenMonthlyRows);
+  const einnahmenYtdCents = einnahmenMonthlyCents.reduce((a, b) => a + b, 0);
+  const ausgabenYtdCents = ausgabenMonthlyCents.reduce((a, b) => a + b, 0);
+
   return {
     openAuslagenCount: openAuslagen[0]?.value ?? 0,
     approvedNotErstattetCount: approvedNotErstattet[0]?.cnt ?? 0,
@@ -191,6 +356,17 @@ export async function loadDashboardKpis(): Promise<DashboardKpis> {
       freigrenzeCents: FREIGRENZE_CENTS,
       status: wgbStatus,
       year: currentYear,
+    },
+    cashflow: {
+      year: currentYear,
+      einnahmenYtdCents,
+      ausgabenYtdCents,
+      saldoCents: einnahmenYtdCents - ausgabenYtdCents,
+      einnahmenMonthlyCents,
+      ausgabenMonthlyCents,
+      einnahmenLyYtdCents: Number(einnahmenLyRows[0]?.sumCents ?? 0),
+      ausgabenLyYtdCents: Number(ausgabenLyRows[0]?.sumCents ?? 0),
+      openInvoicesCount: openInvoicesAgg[0]?.value ?? 0,
     },
   };
 }
