@@ -1,0 +1,264 @@
+/**
+ * @vitest-environment node
+ * @phase-c3
+ *
+ * Tests for the cashflow-overview extensions to `src/lib/server/domain/dashboard.ts`.
+ *
+ * Adds to the existing dashboard module:
+ *   - `loadDashboardKpis(year: number)` — accepts a year parameter (year-switcher contract)
+ *   - `cashflow: { einnahmenYtdCents, ausgabenYtdCents,
+ *       einnahmenMonthlyCents: number[12], ausgabenMonthlyCents: number[12],
+ *       einnahmenLyYtdCents, ausgabenLyYtdCents,
+ *       saldoCents, openInvoicesCount, year }`
+ *   - `computeLyDeltaPct(cur, prev)` pure helper (mirrors LargeKpiCard logic)
+ *   - `bucketByMonth(rows)` pure helper
+ *
+ * Most DB-bound tests live in e2e; here we mock the DB and test the
+ * shape + math.
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// --- DB mock ---------------------------------------------------------------
+// Drizzle queries are chained: .from(...).where(...).groupBy(...). We can't
+// fully fake the chain; instead we capture what the module asks for and
+// return a series of arrays per query.
+
+const queryResults: unknown[][] = [];
+let queryIdx = 0;
+
+function makeQueryChain() {
+  // Each leaf returns the next result.
+  const handler: ProxyHandler<object> = {
+    get(_t, prop) {
+      // `then` triggers when awaited; resolve with the next result.
+      if (prop === "then") {
+        return (resolve: (v: unknown) => void) => {
+          const res = queryResults[queryIdx++] ?? [];
+          resolve(res);
+        };
+      }
+      return () => new Proxy({}, handler);
+    },
+  };
+  return new Proxy({}, handler);
+}
+
+vi.mock("$lib/server/db/index.js", () => ({
+  getDb: () => ({
+    select: () => makeQueryChain(),
+  }),
+}));
+
+// Pass-through stubs for drizzle ops the module uses.
+vi.mock("drizzle-orm", () => ({
+  and: (...args: unknown[]) => ({ op: "and", args }),
+  count: (col?: unknown) => ({ op: "count", col }),
+  desc: (col: unknown) => ({ op: "desc", col }),
+  eq: (col: unknown, val: unknown) => ({ op: "eq", col, val }),
+  gte: (col: unknown, val: unknown) => ({ op: "gte", col, val }),
+  isNull: (col: unknown) => ({ op: "isNull", col }),
+  isNotNull: (col: unknown) => ({ op: "isNotNull", col }),
+  lt: (col: unknown, val: unknown) => ({ op: "lt", col, val }),
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({
+    op: "sql",
+    strings,
+    values,
+  }),
+  sum: (col: unknown) => ({ op: "sum", col }),
+}));
+
+// ---------------------------------------------------------------------------
+// pure helper tests
+// ---------------------------------------------------------------------------
+
+describe("computeLyDeltaPct", () => {
+  it("returns +50 for a 50% increase", async () => {
+    const { computeLyDeltaPct } = await import(
+      "$lib/server/domain/dashboard.js"
+    );
+    expect(computeLyDeltaPct(1500000, 1000000)).toBe(50);
+  });
+
+  it("returns -25 for a 25% decrease", async () => {
+    const { computeLyDeltaPct } = await import(
+      "$lib/server/domain/dashboard.js"
+    );
+    expect(computeLyDeltaPct(750000, 1000000)).toBe(-25);
+  });
+
+  it("returns null when previous is zero (avoid div-by-zero)", async () => {
+    const { computeLyDeltaPct } = await import(
+      "$lib/server/domain/dashboard.js"
+    );
+    expect(computeLyDeltaPct(1500000, 0)).toBeNull();
+  });
+
+  it("returns null when previous is negative (defensive)", async () => {
+    const { computeLyDeltaPct } = await import(
+      "$lib/server/domain/dashboard.js"
+    );
+    expect(computeLyDeltaPct(1500000, -100)).toBeNull();
+  });
+
+  it("returns 0 when values are equal", async () => {
+    const { computeLyDeltaPct } = await import(
+      "$lib/server/domain/dashboard.js"
+    );
+    expect(computeLyDeltaPct(1000, 1000)).toBe(0);
+  });
+
+  it("rounds to nearest integer", async () => {
+    const { computeLyDeltaPct } = await import(
+      "$lib/server/domain/dashboard.js"
+    );
+    // 1234/1000 → 23.4 → 23
+    expect(computeLyDeltaPct(1234, 1000)).toBe(23);
+  });
+});
+
+describe("bucketByMonth", () => {
+  it("places amounts in their 0-indexed month bucket", async () => {
+    const { bucketByMonth } = await import(
+      "$lib/server/domain/dashboard.js"
+    );
+    const rows = [
+      { month: 1, sumCents: 1000 }, // Jan → idx 0
+      { month: 3, sumCents: 3000 }, // Mar → idx 2
+      { month: 12, sumCents: 12000 }, // Dec → idx 11
+    ];
+    const result = bucketByMonth(rows);
+    expect(result.length).toBe(12);
+    expect(result[0]).toBe(1000);
+    expect(result[2]).toBe(3000);
+    expect(result[11]).toBe(12000);
+    // Empty months are zero.
+    expect(result[1]).toBe(0);
+    expect(result[5]).toBe(0);
+  });
+
+  it("returns array of 12 zeros when given no rows", async () => {
+    const { bucketByMonth } = await import(
+      "$lib/server/domain/dashboard.js"
+    );
+    const result = bucketByMonth([]);
+    expect(result.length).toBe(12);
+    expect(result.every((v) => v === 0)).toBe(true);
+  });
+
+  it("coerces bigint and string sums to number", async () => {
+    const { bucketByMonth } = await import(
+      "$lib/server/domain/dashboard.js"
+    );
+    const rows = [
+      { month: 1, sumCents: BigInt(5000) },
+      { month: 2, sumCents: "12345" },
+    ];
+    const result = bucketByMonth(rows);
+    expect(result[0]).toBe(5000);
+    expect(result[1]).toBe(12345);
+  });
+
+  it("sums duplicate months (defensive)", async () => {
+    const { bucketByMonth } = await import(
+      "$lib/server/domain/dashboard.js"
+    );
+    const rows = [
+      { month: 1, sumCents: 1000 },
+      { month: 1, sumCents: 500 },
+    ];
+    const result = bucketByMonth(rows);
+    expect(result[0]).toBe(1500);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadDashboardKpis(year) — mocked DB query order tests
+// ---------------------------------------------------------------------------
+
+describe("loadDashboardKpis(year)", () => {
+  beforeEach(() => {
+    queryIdx = 0;
+    queryResults.length = 0;
+  });
+
+  it("accepts a year argument and returns a cashflow block", async () => {
+    // dashboard.loadDashboardKpis issues a fixed sequence of selects. We
+    // supply harmless empty arrays / zero counts in order:
+    //
+    //   1. openAuslagen.count
+    //   2. approvedNotErstattet (count, sum)
+    //   3. openBeitragsAgg
+    //   4. spendenYtd
+    //   5. activeMembers
+    //   6. wgbEinnahmen
+    //   7. einnahmen monthly (current year)
+    //   8. ausgaben monthly (current year)
+    //   9. einnahmen LY YTD
+    //  10. ausgaben LY YTD
+    //  11. open invoices count
+    //  12. inbox count (== openAuslagen, but query for chip resolver)
+    //
+    // Each item is "the array the awaited drizzle query resolves to".
+    queryResults.push(
+      [{ value: 0 }], // 1
+      [{ cnt: 0, sumCents: 0 }], // 2
+      [{ rowCount: 0, memberCount: 0 }], // 3
+      [{ sumCents: 0 }], // 4
+      [{ value: 0 }], // 5
+      [{ sumCents: 0 }], // 6
+      [
+        { month: 1, sumCents: 1000 },
+        { month: 6, sumCents: 5000 },
+        { month: 12, sumCents: 9000 },
+      ], // 7 einnahmen monthly
+      [
+        { month: 1, sumCents: 500 },
+        { month: 6, sumCents: 2500 },
+        { month: 12, sumCents: 4500 },
+      ], // 8 ausgaben monthly
+      [{ sumCents: 12000 }], // 9 einnahmen LY YTD
+      [{ sumCents: 6000 }], // 10 ausgaben LY YTD
+      [{ value: 3 }], // 11 open invoices
+    );
+
+    const mod = await import("$lib/server/domain/dashboard.js");
+    const result = await mod.loadDashboardKpis(2024);
+
+    expect(result.cashflow.year).toBe(2024);
+    expect(result.cashflow.einnahmenYtdCents).toBe(15000); // 1000+5000+9000
+    expect(result.cashflow.ausgabenYtdCents).toBe(7500); // 500+2500+4500
+    expect(result.cashflow.einnahmenLyYtdCents).toBe(12000);
+    expect(result.cashflow.ausgabenLyYtdCents).toBe(6000);
+    expect(result.cashflow.saldoCents).toBe(15000 - 7500);
+    expect(result.cashflow.openInvoicesCount).toBe(3);
+    expect(result.cashflow.einnahmenMonthlyCents.length).toBe(12);
+    expect(result.cashflow.ausgabenMonthlyCents.length).toBe(12);
+    expect(result.cashflow.einnahmenMonthlyCents[0]).toBe(1000);
+    expect(result.cashflow.einnahmenMonthlyCents[5]).toBe(5000);
+    expect(result.cashflow.einnahmenMonthlyCents[11]).toBe(9000);
+  });
+
+  it("defaults to current Berlin year when no arg is given", async () => {
+    queryResults.push(
+      [{ value: 0 }],
+      [{ cnt: 0, sumCents: 0 }],
+      [{ rowCount: 0, memberCount: 0 }],
+      [{ sumCents: 0 }],
+      [{ value: 0 }],
+      [{ sumCents: 0 }],
+      [], // einnahmen monthly empty
+      [], // ausgaben monthly empty
+      [{ sumCents: 0 }],
+      [{ sumCents: 0 }],
+      [{ value: 0 }],
+    );
+
+    const mod = await import("$lib/server/domain/dashboard.js");
+    const result = await mod.loadDashboardKpis();
+    // Berlin year for "now" is computed inside the helper; we just check it
+    // returned a sensible 4-digit year and the call didn't throw.
+    expect(result.cashflow.year).toBeGreaterThanOrEqual(2024);
+    expect(result.cashflow.einnahmenMonthlyCents.length).toBe(12);
+  });
+});

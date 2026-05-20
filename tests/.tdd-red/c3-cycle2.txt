@@ -1,0 +1,20 @@
+C3 Cycle 2 — RED tests for dashboard.ts extensions
+
+Files:
+- tests/unit/dashboard-cashflow.test.ts
+
+Coverage (10 assertions):
+  • computeLyDeltaPct: +50% / -25% / null-on-zero / null-on-negative / 0 / rounds
+  • bucketByMonth: places into 0-indexed buckets / empty in / coerces bigint+string / sums dups
+  • loadDashboardKpis(year): returns cashflow block with monthly[12] + LY-YTD math
+  • loadDashboardKpis(): defaults to Berlin year
+
+Drives extension to src/lib/server/domain/dashboard.ts:
+  - Add `year?: number` arg to loadDashboardKpis
+  - Add `cashflow: { ... }` to DashboardKpis return shape
+  - Export `computeLyDeltaPct` + `bucketByMonth` pure helpers
+  - Add 5 new Drizzle queries (monthly income/expense groupBy month, LY YTD x2, open invoices)
+
+Findings traced:
+- VB-003: cashflow at a glance → einnahmen/ausgaben YTD + saldo + LY delta
+- JB-005: identical KPIs → distinct domain values (revenue vs expense vs open work)
