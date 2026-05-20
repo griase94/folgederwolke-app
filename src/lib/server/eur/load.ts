@@ -80,6 +80,16 @@ export interface ComposeEurWorkspaceInput {
   currentAusgaben: EurRow[];
   priorEinnahmen: EurRow[];
   priorAusgaben: EurRow[];
+  /**
+   * C1-H2 — Spenden + Mitgliedsbeiträge for the EÜR Einnahmen side
+   * (mirrors dashboard cashflow's 3-source union). Each row carries its own
+   * sphereSnapshot (donations are typically ideeller; member-beitrags are
+   * always ideeller). Optional so existing callers (tests) need not supply.
+   */
+  currentSpenden?: EurRow[];
+  currentBeitrags?: EurRow[];
+  priorSpenden?: EurRow[];
+  priorBeitrags?: EurRow[];
   monthlyRows: MonthlyRow[];
   preFlight: PreFlightInput;
   vereinName: string;
@@ -90,14 +100,30 @@ export interface ComposeEurWorkspaceInput {
 export function composeEurWorkspaceData(
   input: ComposeEurWorkspaceInput,
 ): EurWorkspaceData {
+  // Union income + donations + member_beitrags on the Einnahmen side.
+  // Donations + Mitgliedsbeiträge represent realized cashflow into the
+  // Verein and must appear in the EÜR (BMF Anlage EÜR Zeile 2 + 4 for
+  // ideeller). Without this union, ~60-80% of a typical Verein's ideelle
+  // Einnahmen would be silently dropped.
+  const currentEinnahmenUnion = [
+    ...input.currentEinnahmen,
+    ...(input.currentSpenden ?? []),
+    ...(input.currentBeitrags ?? []),
+  ];
+  const priorEinnahmenUnion = [
+    ...input.priorEinnahmen,
+    ...(input.priorSpenden ?? []),
+    ...(input.priorBeitrags ?? []),
+  ];
+
   const eur = computeEurYear(
     input.year,
-    input.currentEinnahmen,
+    currentEinnahmenUnion,
     input.currentAusgaben,
   );
   const priorEur = computeEurYear(
     input.priorYear,
-    input.priorEinnahmen,
+    priorEinnahmenUnion,
     input.priorAusgaben,
   );
 
@@ -286,14 +312,123 @@ export async function loadEurWorkspaceData(
   const priorEinnahmen = priorRows.filter((r) => r.art === "income").map(mkRow);
   const priorAusgaben = priorRows.filter((r) => r.art === "expense").map(mkRow);
 
+  // C1-H2 — Spenden + Mitgliedsbeiträge for the Einnahmen side.
+  // Mirrors the dashboard cashflow 3-source union; without this the EÜR would
+  // silently drop the bulk of a typical Verein's ideelle Einnahmen.
+  //
+  // - Donations: betrag_cents on the donations table, sphere_snapshot is
+  //   present (typically 'ideeller'). gebucht_am drives Buchungsjahr just
+  //   like income/expense (year_of_buchung is a GENERATED column).
+  // - MemberBeitrags: paid_cents is realized cashflow (gezahlt_am IS NOT NULL).
+  //   No sphereSnapshot column — Mitgliedsbeiträge are always 'ideeller' by
+  //   gemeinnützigkeitsrechtlicher Definition (§§ 51-68 AO). The
+  //   v_offene_beitraege view + Verein-Buchhaltung convention codifies this.
+  // Donations table has no bezeichnung column — synthesize from spender or
+  // kategorie name for display.
+  const donationRows = (await db.execute(sql`
+    SELECT business_id, gebucht_am, year_of_buchung,
+           betrag_cents,
+           COALESCE(spender_name, kategorie_name_snapshot, 'Spende') AS bezeichnung,
+           sphere_snapshot, kategorie_id, kategorie_name_snapshot
+      FROM donations
+     WHERE year_of_buchung IN (${year}, ${priorYear})
+       AND supersedes_id IS NULL
+  `)) as unknown as Array<{
+    business_id: string;
+    gebucht_am: Date;
+    year_of_buchung: number;
+    betrag_cents: bigint;
+    bezeichnung: string;
+    sphere_snapshot: string;
+    kategorie_id: string | null;
+    kategorie_name_snapshot: string;
+  }>;
+
+  const mkDonationRow = (r: (typeof donationRows)[number]): EurRow => ({
+    businessId: r.business_id,
+    gebuchtAm: r.gebucht_am,
+    betragCents: BigInt(r.betrag_cents),
+    sphereSnapshot: r.sphere_snapshot as Sphere,
+    kategorieId: r.kategorie_id,
+    kategorieNameSnapshot: r.kategorie_name_snapshot,
+    eurZeile: null,
+    anlageGemZeile: null,
+    bezeichnung: r.bezeichnung,
+    belegDriveFileId: null,
+    belegOriginalName: null,
+  });
+
+  const currentSpenden = donationRows
+    .filter((r) => r.year_of_buchung === year)
+    .map(mkDonationRow);
+  const priorSpenden = donationRows
+    .filter((r) => r.year_of_buchung === priorYear)
+    .map(mkDonationRow);
+
+  // member_beitrags: synthesize an ideeller EurRow per paid beitrag.
+  // year column is the explicit fiscal year (not a GENERATED column —
+  // beitrags are billed per fiscal year independent of when paid).
+  const beitragRows = (await db.execute(sql`
+    SELECT id::text AS business_id, gezahlt_am, year,
+           paid_cents AS betrag_cents,
+           'Mitgliedsbeitrag ' || year::text AS bezeichnung
+      FROM member_beitrags
+     WHERE year IN (${year}, ${priorYear})
+       AND gezahlt_am IS NOT NULL
+       AND paid_cents > 0
+  `)) as unknown as Array<{
+    business_id: string;
+    gezahlt_am: string;
+    year: number;
+    betrag_cents: bigint;
+    bezeichnung: string;
+  }>;
+
+  const mkBeitragRow = (r: (typeof beitragRows)[number]): EurRow => ({
+    businessId: r.business_id,
+    gebuchtAm: new Date(r.gezahlt_am),
+    betragCents: BigInt(r.betrag_cents),
+    sphereSnapshot: "ideeller",
+    kategorieId: null,
+    kategorieNameSnapshot: "Mitgliedsbeitrag",
+    eurZeile: null,
+    anlageGemZeile: null,
+    bezeichnung: r.bezeichnung,
+    belegDriveFileId: null,
+    belegOriginalName: null,
+  });
+
+  const currentBeitrags = beitragRows
+    .filter((r) => r.year === year)
+    .map(mkBeitragRow);
+  const priorBeitrags = beitragRows
+    .filter((r) => r.year === priorYear)
+    .map(mkBeitragRow);
+
   // 2. Monthly aggregation for sparkline (current year only). Same direct
-  //    base-table query for the same role-grants reason.
+  //    base-table query for the same role-grants reason. C1-H2 — extends
+  //    the union to donations + paid member-beitrags so the monthly
+  //    Überschuss-Trendlinie mirrors the EÜR totals.
   const monthlyRows = (await db.execute(sql`
     SELECT 'income' AS art,
            EXTRACT(MONTH FROM gebucht_am AT TIME ZONE 'Europe/Berlin')::int AS month,
            SUM(betrag_cents)::bigint AS sum_cents
       FROM income
      WHERE year_of_buchung = ${year}
+     GROUP BY month
+    UNION ALL
+    SELECT 'income' AS art,
+           EXTRACT(MONTH FROM gebucht_am AT TIME ZONE 'Europe/Berlin')::int AS month,
+           SUM(betrag_cents)::bigint AS sum_cents
+      FROM donations
+     WHERE year_of_buchung = ${year} AND supersedes_id IS NULL
+     GROUP BY month
+    UNION ALL
+    SELECT 'income' AS art,
+           EXTRACT(MONTH FROM gezahlt_am AT TIME ZONE 'Europe/Berlin')::int AS month,
+           SUM(paid_cents)::bigint AS sum_cents
+      FROM member_beitrags
+     WHERE year = ${year} AND gezahlt_am IS NOT NULL AND paid_cents > 0
      GROUP BY month
     UNION ALL
     SELECT 'expense' AS art,
@@ -316,33 +451,55 @@ export async function loadEurWorkspaceData(
   }));
 
   // 3. Pre-flight counters
-  const [uncatRes, missingBelegRes, draftInvRes, inboxRes] = await Promise.all([
-    db.execute<{ cnt: string }>(sql`
-      SELECT (
-        (SELECT count(*) FROM expenses WHERE year_of_buchung = ${year} AND kategorie_id IS NULL) +
-        (SELECT count(*) FROM income  WHERE year_of_buchung = ${year} AND kategorie_id IS NULL)
-      )::text AS cnt
-    `),
-    db.execute<{ cnt: string }>(sql`
-      SELECT count(*)::text AS cnt FROM expenses
-       WHERE year_of_buchung = ${year}
-         AND beleg_drive_file_id IS NULL
-    `),
-    db.execute<{ cnt: string }>(sql`
-      SELECT count(*)::text AS cnt FROM invoices
-       WHERE year_of_buchung = ${year}
-         AND pdf_status = 'not_generated'
-    `),
-    db.execute<{ cnt: string }>(sql`
-      SELECT count(*)::text AS cnt FROM auslagen_submissions
-       WHERE decided_at IS NULL
-    `),
-  ]);
+  // C1-H3 — Bescheinigungs-status gate: Spenden ≥ 300 € without
+  // bescheinigung_nr would force post-close re-allocation of
+  // Bescheinigungs-Nummern. Warning-level check.
+  const [uncatRes, missingBelegRes, draftInvRes, inboxRes, missingBescheinRes] =
+    await Promise.all([
+      db.execute<{ cnt: string }>(sql`
+        SELECT (
+          (SELECT count(*) FROM expenses WHERE year_of_buchung = ${year} AND kategorie_id IS NULL) +
+          (SELECT count(*) FROM income  WHERE year_of_buchung = ${year} AND kategorie_id IS NULL)
+        )::text AS cnt
+      `),
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM expenses
+         WHERE year_of_buchung = ${year}
+           AND beleg_drive_file_id IS NULL
+      `),
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM invoices
+         WHERE year_of_buchung = ${year}
+           AND pdf_status = 'not_generated'
+      `),
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM auslagen_submissions
+         WHERE decided_at IS NULL
+      `),
+      db.execute<{ cnt: string }>(sql`
+        SELECT count(*)::text AS cnt FROM donations
+         WHERE year_of_buchung = ${year}
+           AND betrag_cents >= 30000
+           AND bescheinigung_nr IS NULL
+           AND supersedes_id IS NULL
+      `),
+    ]);
 
   const uncategorizedCount = parseInt(uncatRes[0]?.cnt ?? "0", 10);
   const missingBelegCount = parseInt(missingBelegRes[0]?.cnt ?? "0", 10);
   const draftInvoiceCount = parseInt(draftInvRes[0]?.cnt ?? "0", 10);
   const auditInboxQueueCount = parseInt(inboxRes[0]?.cnt ?? "0", 10);
+  const missingBescheinigungenCount = parseInt(
+    missingBescheinRes[0]?.cnt ?? "0",
+    10,
+  );
+
+  // C1-H5 — Current Buchungsjahr (Europe/Berlin) so the pre-flight can
+  // block future-year Festschreibung.
+  const currentJahrRes = (await db.execute<{ jahr: number }>(sql`
+    SELECT year_for_booking(NOW())::int AS jahr
+  `)) as { jahr: number }[];
+  const currentBuchungsjahr = currentJahrRes[0]?.jahr ?? new Date().getFullYear();
 
   // 4. festgeschrieben_bis
   const festRes = (await db.execute<{ value: unknown }>(sql`
@@ -374,16 +531,24 @@ export async function loadEurWorkspaceData(
     currentAusgaben,
     priorEinnahmen,
     priorAusgaben,
+    currentSpenden,
+    currentBeitrags,
+    priorSpenden,
+    priorBeitrags,
     monthlyRows: monthlyForCompose,
     preFlight: {
       year,
       uncategorizedCount,
       missingBelegCount,
+      missingBescheinigungenCount,
       draftInvoiceCount,
       auditInboxQueueCount,
       festgeschriebenBis,
       totalIncomeRows: currentEinnahmen.length,
       totalExpenseRows: currentAusgaben.length,
+      totalDonationRows: currentSpenden.length,
+      totalBeitragRows: currentBeitrags.length,
+      currentBuchungsjahr,
     },
     vereinName: env.VEREIN_NAME || "Folge der Wolke e.V.",
     closed,

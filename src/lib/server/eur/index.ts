@@ -201,25 +201,51 @@ export interface PreFlightInput {
   year: number;
   uncategorizedCount: number;
   missingBelegCount: number;
+  /**
+   * C1-H3 — Count of Spenden ≥ 300 € (Kleinbetrag-Bescheinigung threshold per
+   * §50 Abs. 4 EStDV) without bescheinigung_nr yet. Warn-level: festschreibung
+   * still possible, but post-close re-allocation of Bescheinigungs-Nummern is
+   * painful so we surface it loudly.
+   *
+   * Optional (default 0) so existing callers without donations-aware loaders
+   * continue to pass.
+   */
+  missingBescheinigungenCount?: number;
   draftInvoiceCount: number;
   auditInboxQueueCount: number;
   /** From settings.festgeschrieben_bis — null when never set. */
   festgeschriebenBis: number | null;
   totalIncomeRows: number;
   totalExpenseRows: number;
+  /**
+   * C1-H2 / C1-H5 — Donations + paid Mitgliedsbeiträge row counts, used by the
+   * "year has at least one Buchung" blocker. Default 0.
+   */
+  totalDonationRows?: number;
+  totalBeitragRows?: number;
+  /**
+   * C1-H5 — Current Buchungsjahr (Europe/Berlin) for the future-year blocker.
+   * Default: the input.year itself (so the gate is a no-op for callers that
+   * don't supply this — backwards compatible).
+   */
+  currentBuchungsjahr?: number;
 }
 
 /**
- * Build the 5-item pre-flight checklist gating the Festschreibung button on
- * the Übersicht tab. Blockers prevent close; warnings show a yellow chip but
+ * Build the pre-flight checklist gating the Festschreibung button on the
+ * Übersicht tab. Blockers prevent close; warnings show a yellow chip but
  * canFestschreiben stays true.
  *
- * Item map:
- *   1. uncategorized  — block when > 0 (orphan EÜR rows can't be filed)
- *   2. missingBelege  — warn when > 0 (receipts can arrive after close)
- *   3. draftInvoices  — block when > 0 (drafts must be finalized first)
- *   4. auditInbox     — block when > 0 (queue items might affect EÜR)
- *   5. alreadyClosed  — block when festgeschriebenBis >= year
+ * Item map (after C1 cycle 2):
+ *   1. uncategorized       — block when > 0 (orphan EÜR rows can't be filed)
+ *   2. missingBelege       — warn when > 0 (receipts can arrive after close)
+ *   3. draftInvoices       — block when > 0 (drafts must be finalized first)
+ *   4. auditInbox          — block when > 0 (queue items might affect EÜR)
+ *   5. alreadyClosed       — block when festgeschriebenBis >= year
+ *   6. bescheinigungen     — warn when Spenden ≥ 300 € without Nr (C1-H3)
+ *   7. hasBuchungen        — block when zero rows across income + expense +
+ *                            donations + member_beitrags (C1-H5)
+ *   8. yearNotFuture       — block when year > currentBuchungsjahr (C1-H5)
  */
 export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
   const items: PreFlightItem[] = [];
@@ -320,6 +346,74 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
         input.festgeschriebenBis === null
           ? "Bisher kein Jahr festgeschrieben."
           : `Letztes festgeschriebenes Jahr: ${input.festgeschriebenBis}.`,
+    });
+  }
+
+  // 6. Bescheinigungs-status (C1-H3) — Spenden ≥ 300 € (Kleinbetrag-
+  //    Bescheinigung threshold per §50 Abs. 4 EStDV) without bescheinigung_nr
+  //    yet. Warn only — post-close re-allocation works but is painful.
+  const missingBescheinigungenCount = input.missingBescheinigungenCount ?? 0;
+  if (missingBescheinigungenCount > 0) {
+    items.push({
+      id: "bescheinigungen",
+      label: "Bescheinigungen für Spenden ≥ 300 €",
+      status: "warn",
+      detail: `${missingBescheinigungenCount} Spende${
+        missingBescheinigungenCount === 1 ? "" : "n"
+      } ≥ 300 € ohne Bescheinigungs-Nummer. Nach Festschreibung ist eine Neuvergabe der Nummern aufwendig — wir empfehlen, sie jetzt auszustellen.`,
+    });
+  } else {
+    items.push({
+      id: "bescheinigungen",
+      label: "Bescheinigungen für Spenden ≥ 300 €",
+      status: "pass",
+      detail:
+        "Alle Spenden ≥ 300 € haben eine Bescheinigungs-Nummer (§ 50 EStDV).",
+    });
+  }
+
+  // 7. Has Buchungen (C1-H5) — block if year is completely empty.
+  //    Empty fiscal years cannot be festgeschrieben (nothing to seal).
+  const totalRows =
+    input.totalIncomeRows +
+    input.totalExpenseRows +
+    (input.totalDonationRows ?? 0) +
+    (input.totalBeitragRows ?? 0);
+  if (totalRows === 0) {
+    items.push({
+      id: "hasBuchungen",
+      label: "Mindestens eine Buchung im Jahr",
+      status: "block",
+      detail: `Buchungsjahr ${input.year} enthält keine Buchungen. Festschreibung ist nur sinnvoll, wenn mindestens eine Einnahme, Ausgabe, Spende oder ein Mitgliedsbeitrag erfasst wurde.`,
+    });
+  } else {
+    items.push({
+      id: "hasBuchungen",
+      label: "Mindestens eine Buchung im Jahr",
+      status: "pass",
+      detail: `${totalRows} Buchung${
+        totalRows === 1 ? "" : "en"
+      } im Jahr ${input.year} erfasst.`,
+    });
+  }
+
+  // 8. Year not in future (C1-H5) — block when input.year > current
+  //    Buchungsjahr. Callers that don't supply currentBuchungsjahr default
+  //    to input.year so the gate is a no-op (backwards compatible).
+  const currentBuchungsjahr = input.currentBuchungsjahr ?? input.year;
+  if (input.year > currentBuchungsjahr) {
+    items.push({
+      id: "yearNotFuture",
+      label: "Jahr liegt nicht in der Zukunft",
+      status: "block",
+      detail: `Buchungsjahr ${input.year} liegt in der Zukunft (aktuelles Buchungsjahr: ${currentBuchungsjahr}). Festschreibung erst möglich, wenn das Jahr abgeschlossen ist.`,
+    });
+  } else {
+    items.push({
+      id: "yearNotFuture",
+      label: "Jahr liegt nicht in der Zukunft",
+      status: "pass",
+      detail: `Buchungsjahr ${input.year} ist bereits begonnen.`,
     });
   }
 

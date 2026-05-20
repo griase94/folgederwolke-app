@@ -237,11 +237,15 @@ describe("computePreFlight", () => {
       year: 2025,
       uncategorizedCount: 0,
       missingBelegCount: 0,
+      missingBescheinigungenCount: 0,
       draftInvoiceCount: 0,
       auditInboxQueueCount: 0,
       festgeschriebenBis: null,
       totalIncomeRows: 50,
       totalExpenseRows: 100,
+      totalDonationRows: 5,
+      totalBeitragRows: 3,
+      currentBuchungsjahr: 2025,
     };
   }
 
@@ -305,16 +309,77 @@ describe("computePreFlight", () => {
     expect(out.canFestschreiben).toBe(true);
   });
 
-  it("empty year (no rows) → warn (legal but odd) not block", () => {
+  // C1-H5 — empty year is now a HARD blocker (cycle-2 fix).
+  it("empty year (no rows) → hasBuchungen blocker", () => {
     const out = computePreFlight({
       ...happyInput(),
       totalIncomeRows: 0,
       totalExpenseRows: 0,
+      totalDonationRows: 0,
+      totalBeitragRows: 0,
     });
-    const item = out.items.find((i) => i.id === "uncategorized")!;
-    // uncategorized passes; we still want a warning about emptiness if exists
+    const item = out.items.find((i) => i.id === "hasBuchungen")!;
+    expect(item.status).toBe("block");
+    expect(out.canFestschreiben).toBe(false);
+  });
+
+  // C1-H5 — year with at least one donation or beitrag is sufficient
+  it("year with only donations → hasBuchungen passes", () => {
+    const out = computePreFlight({
+      ...happyInput(),
+      totalIncomeRows: 0,
+      totalExpenseRows: 0,
+      totalDonationRows: 3,
+      totalBeitragRows: 0,
+    });
+    const item = out.items.find((i) => i.id === "hasBuchungen")!;
     expect(item.status).toBe("pass");
+  });
+
+  // C1-H5 — future year is blocked
+  it("input.year > currentBuchungsjahr → yearNotFuture blocker", () => {
+    const out = computePreFlight({
+      ...happyInput(),
+      year: 2099,
+      currentBuchungsjahr: 2026,
+    });
+    const item = out.items.find((i) => i.id === "yearNotFuture")!;
+    expect(item.status).toBe("block");
+    expect(out.canFestschreiben).toBe(false);
+  });
+
+  // C1-H5 — current year is allowed (year === currentBuchungsjahr)
+  it("input.year === currentBuchungsjahr → yearNotFuture passes", () => {
+    const out = computePreFlight({
+      ...happyInput(),
+      year: 2026,
+      currentBuchungsjahr: 2026,
+    });
+    const item = out.items.find((i) => i.id === "yearNotFuture")!;
+    expect(item.status).toBe("pass");
+  });
+
+  // C1-H3 — Bescheinigungs-status warn
+  it("missingBescheinigungenCount > 0 → warn (not block)", () => {
+    const out = computePreFlight({
+      ...happyInput(),
+      missingBescheinigungenCount: 2,
+    });
+    const item = out.items.find((i) => i.id === "bescheinigungen")!;
+    expect(item.status).toBe("warn");
     expect(out.canFestschreiben).toBe(true);
+  });
+
+  it("missingBescheinigungenCount === 0 → pass", () => {
+    const out = computePreFlight({ ...happyInput() });
+    const item = out.items.find((i) => i.id === "bescheinigungen")!;
+    expect(item.status).toBe("pass");
+  });
+
+  it("citation §50 EStDV referenced in pass detail copy", () => {
+    const out = computePreFlight({ ...happyInput() });
+    const item = out.items.find((i) => i.id === "bescheinigungen")!;
+    expect(item.detail).toMatch(/EStDV/);
   });
 
   it("multiple blockers compound", () => {
