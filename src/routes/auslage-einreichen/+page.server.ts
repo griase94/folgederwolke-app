@@ -86,7 +86,9 @@ export const load: PageServerLoad = async ({ url }) => {
     sharePrefill = {
       bezeichnung: url.searchParams.get("title") ?? undefined,
       kommentar:
-        url.searchParams.get("text") ?? url.searchParams.get("url") ?? undefined,
+        url.searchParams.get("text") ??
+        url.searchParams.get("url") ??
+        undefined,
       fileNotice: url.searchParams.get("file") === "1",
     };
   }

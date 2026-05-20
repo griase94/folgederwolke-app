@@ -76,29 +76,27 @@
 	let externEmail = $state('');
 
 	// Editable form fields. `bezeichnung` and `kommentar` are seeded from
-	// props (PWA share_target M2 prefill) but MUST remain editable, so they
-	// can't be `$derived` (read-only). The Svelte 5 idiom for "prop-seeded
-	// editable state" is to declare an empty $state and copy the prop in
-	// via $effect.pre — capturing the initial value directly in $state(...)
-	// produces the `state_referenced_locally` warning because the rune
-	// stops tracking the prop after first read. See:
-	// https://svelte.dev/e/state_referenced_locally
-	let bezeichnung = $state('');
+	// props (PWA share_target M2 prefill) but MUST remain editable. In
+	// Svelte 5 the idiom for this is a *writable derived*: $derived returns
+	// the prop value, and the user's edits temporarily override it (same
+	// pattern as the official "optimistic UI" example in the $derived
+	// docs). Whenever the parent passes a new initial value the derived
+	// re-syncs; the user's edits before that point are intentionally
+	// discarded only on prop change (which in practice never happens — the
+	// share prefill is a one-shot navigation). Draft restore runs from
+	// onMount and writes through these bindings, so an in-progress draft
+	// still wins over a share prefill (matches the PWA M2 spec).
+	//
+	// Doing this with `let x = $state(initialX)` triggers
+	// `state_referenced_locally` (svelte/state-referenced-locally) because
+	// $state captures the value once and never re-syncs.
+	// Doing it with `$state + $effect` triggers svelte/prefer-writable-derived.
+	// $derived is the documented answer.
+	let bezeichnung = $derived(initialBezeichnung);
 	let betrag = $state('');
 	let rechnungsdatum = $state(new Date().toISOString().split('T')[0]!);
 	let wofuer = $state('');
-	let kommentar = $state('');
-
-	// Sync props → state on mount and whenever the parent passes new
-	// initial values. Draft restore (onMount → loadDraft → applyDraft)
-	// runs LATER and overwrites these values, so the user's in-progress
-	// work still wins over the share prefill (intentional, see PWA M2 spec).
-	$effect.pre(() => {
-		bezeichnung = initialBezeichnung;
-	});
-	$effect.pre(() => {
-		kommentar = initialKommentar;
-	});
+	let kommentar = $derived(initialKommentar);
 
 	let belegFile = $state<File | null>(null);
 	let datenschutzConsent = $state(false);

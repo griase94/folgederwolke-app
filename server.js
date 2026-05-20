@@ -104,11 +104,10 @@ function inferServerOrigin(req) {
     }
   }
   const protoHeader = req.headers["x-forwarded-proto"];
+  const socket = /** @type {{encrypted?: boolean}} */ (req.socket);
   const proto =
     (Array.isArray(protoHeader) ? protoHeader[0] : protoHeader) ||
-    (/** @type {{encrypted?: boolean}} */ (req.socket).encrypted
-      ? "https"
-      : "http");
+    (socket.encrypted ? "https" : "http");
   const hostHeader = req.headers["x-forwarded-host"] || req.headers.host || "";
   const host = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader;
   return `${proto}://${host}`;

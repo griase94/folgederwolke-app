@@ -176,9 +176,7 @@ describe("manifest.webmanifest — icons array (PM-002, PM-015)", () => {
 
   it("no SVG icon entries in the manifest (marble design is raster-only — stale FdW-text SVGs removed)", () => {
     const svgIcons = manifest.icons.filter(
-      (i) =>
-        i.type === "image/svg+xml" ||
-        i.src.toLowerCase().endsWith(".svg"),
+      (i) => i.type === "image/svg+xml" || i.src.toLowerCase().endsWith(".svg"),
     );
     expect(
       svgIcons,
