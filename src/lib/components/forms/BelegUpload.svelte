@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
-	import { compressImage } from '$lib/client/image-compress.js';
+	import { compressIfNeeded } from '$lib/client/file-compress.js';
 
 	interface Props {
 		file?: File | null;
@@ -18,10 +18,21 @@
 
 	let isDragging = $state(false);
 	let isCompressing = $state(false);
+	let compressProgress = $state<{ stage: 'image' | 'pdf'; current: number; total: number } | null>(
+		null
+	);
 	let uploadError = $state<string | null>(null);
 	let previewUrl = $state<string | null>(null);
 	let previewType = $state<'image' | 'pdf' | null>(null);
 	let blurred = $state(false);
+
+	const progressLabel = $derived(
+		compressProgress
+			? compressProgress.stage === 'pdf'
+				? `PDF wird komprimiert (Seite ${compressProgress.current} von ${compressProgress.total})…`
+				: 'Bild wird komprimiert…'
+			: 'Wird komprimiert…'
+	);
 
 	// Revoke previous object URL to prevent memory leaks
 	function revokePreview() {
@@ -34,9 +45,14 @@
 
 	async function handleFile(incoming: File) {
 		isCompressing = true;
+		compressProgress = null;
 		try {
 			uploadError = null;
-			const compressed = await compressImage(incoming);
+			const compressed = await compressIfNeeded(incoming, {
+				onProgress: (info) => {
+					compressProgress = info;
+				}
+			});
 			file = compressed;
 			revokePreview();
 			previewUrl = URL.createObjectURL(compressed);
@@ -48,6 +64,7 @@
 			return;
 		} finally {
 			isCompressing = false;
+			compressProgress = null;
 		}
 	}
 
@@ -173,7 +190,11 @@
 			<!-- Preview area -->
 			<div class="relative rounded-xl border p-3">
 				{#if isCompressing}
-					<div class="flex items-center gap-2 py-4 text-sm">
+					<div
+						class="flex items-center gap-2 py-4 text-sm"
+						role="status"
+						aria-live="polite"
+					>
 						<svg
 							class="text-muted-foreground h-4 w-4 animate-spin"
 							fill="none"
@@ -188,7 +209,7 @@
 								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
 							></path>
 						</svg>
-						Wird komprimiert…
+						{progressLabel}
 					</div>
 				{:else if previewType === 'image' && previewUrl}
 					<img
