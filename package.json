@@ -20,7 +20,8 @@
     "test:e2e": "playwright test",
     "dev:up": "bash scripts/dev-up.sh",
     "dev:reset": "docker compose down -v && bash scripts/dev-up.sh",
-    "db:console": "psql $DIRECT_DATABASE_URL"
+    "db:console": "psql $DIRECT_DATABASE_URL",
+    "files:reconcile": "tsx scripts/files-reconcile.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
