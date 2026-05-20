@@ -1,17 +1,26 @@
 #!/usr/bin/env bash
 # Spin up an isolated worktree for one cluster of the overnight run.
-# Usage: scripts/orchestrate/worktree-spinup.sh <c1|c2|…|c9>
+# Usage: scripts/orchestrate/worktree-spinup.sh [--dry-run] <c1|c2|…|c9>
 set -euo pipefail
 
 PORT_BASE_POSTGRES=5440
 PORT_BASE_VITE=5180
 
-if [ $# -lt 1 ]; then
-  echo "Usage: $0 <c1|c2|…|c9>" >&2
+DRY_RUN=0
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=1 ;;
+    *) ARGS+=("$arg") ;;
+  esac
+done
+
+if [ ${#ARGS[@]} -lt 1 ]; then
+  echo "Usage: $0 [--dry-run] <c1|c2|…|c9>" >&2
   exit 64
 fi
 
-CID="$1"
+CID="${ARGS[0]}"
 case "$CID" in
   c1) NAME="eur-redesign"   ;;
   c2) NAME="year-switcher"  ;;
@@ -34,11 +43,35 @@ WT="${ROOT}/.claude/worktrees/overnight-${CID}-${NAME}"
 BRANCH="overnight-2026-05-20/${CID}-${NAME}"
 COMPOSE_PROJECT="fdw-overnight-${CID}"
 STORAGE_ROOT="${ROOT}/.dev-data/overnight/${CID}-drive"
+BASE_REF="main"
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  cat <<EOF
+{
+  "dry_run": true,
+  "cluster": "${CID}",
+  "name": "${NAME}",
+  "worktree": "${WT}",
+  "branch": "${BRANCH}",
+  "base_ref": "${BASE_REF}",
+  "postgres_port": ${PG_PORT},
+  "vite_port": ${VITE_PORT},
+  "db_name": "${DB_NAME}",
+  "compose_project": "${COMPOSE_PROJECT}",
+  "storage_root": "${STORAGE_ROOT}",
+  "would_run": [
+    "mkdir -p $(dirname "$WT") ${STORAGE_ROOT}",
+    "git -C ${ROOT} worktree add -B ${BRANCH} ${WT} ${BASE_REF}"
+  ]
+}
+EOF
+  exit 0
+fi
 
 mkdir -p "$(dirname "$WT")" "$STORAGE_ROOT"
 
 if [ ! -d "$WT" ]; then
-  git -C "$ROOT" worktree add -B "$BRANCH" "$WT" "overnight-2026-05-20"
+  git -C "$ROOT" worktree add -B "$BRANCH" "$WT" "$BASE_REF"
 fi
 
 cat > "$WT/.env.test.local" <<EOF
