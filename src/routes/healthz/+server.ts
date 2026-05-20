@@ -20,10 +20,14 @@ async function checkDb(): Promise<"ok" | "fail"> {
 }
 
 async function checkDrive(): Promise<"ok" | "skip" | "fail"> {
-  if (!env.GOOGLE_OAUTH_REFRESH_TOKEN) return "skip";
+  // Phase 9: skip when SA credentials aren't configured. The Drive Files.get
+  // probe is preserved temporarily; Task 7+11 will replace it with a Sheets
+  // probe (the SA only has Sheets read scope now) or remove it entirely.
+  if (!env.googleServiceAccount) return "skip";
   try {
     const auth = getDriveAuth();
-    const driveClient = createDrive({ version: "v3", auth });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const driveClient = createDrive({ version: "v3", auth: auth as any });
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 5000);
     await driveClient.files.get({ fileId: env.TEMPLATE_DOC_ID, fields: "id" });

@@ -1,24 +1,36 @@
+/**
+ * Drive / Sheets auth — Phase 9 service-account path.
+ *
+ * Replaces the previous OAuth-as-Andy / refresh-token flow with a Google
+ * service account whose credentials live in env.googleServiceAccount
+ * (parsed from GOOGLE_SERVICE_ACCOUNT_KEY_JSON). The auth client is a
+ * lazy singleton — google-auth-library handles token caching + refresh.
+ *
+ * Scopes are read-only for spreadsheets; the SA does not write to Drive
+ * or Docs in Phase 9+. Belege live in Vercel Blob (see files/storage.ts).
+ */
+import { GoogleAuth } from "google-auth-library";
 import { env } from "$lib/server/env.js";
-import { OAuth2Client } from "google-auth-library";
 
-let _client: OAuth2Client | null = null;
+let _auth: GoogleAuth | null = null;
 
 /**
- * Returns a singleton OAuth2Client with the refresh token set.
- * google-auth-library auto-refreshes the access token on expiry.
- * Used by the Drive/Docs/Sheets clients and by /healthz.
+ * Returns a singleton GoogleAuth client built from the service-account
+ * credentials parsed by env.ts. Throws when GOOGLE_SERVICE_ACCOUNT_KEY_JSON
+ * is unset — callers in dev that don't need Drive should check
+ * env.googleServiceAccount first.
  */
-export function getDriveAuth(): OAuth2Client {
-  if (_client) return _client;
-
-  _client = new OAuth2Client(
-    env.GOOGLE_OAUTH_CLIENT_ID,
-    env.GOOGLE_OAUTH_CLIENT_SECRET,
-  );
-
-  _client.setCredentials({
-    refresh_token: env.GOOGLE_OAUTH_REFRESH_TOKEN,
+export function getDriveAuth(): GoogleAuth {
+  if (_auth) return _auth;
+  if (!env.googleServiceAccount) {
+    throw new Error("GOOGLE_SERVICE_ACCOUNT_KEY_JSON not configured");
+  }
+  _auth = new GoogleAuth({
+    credentials: {
+      client_email: env.googleServiceAccount.clientEmail,
+      private_key: env.googleServiceAccount.privateKeyPem,
+    },
+    scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
   });
-
-  return _client;
+  return _auth;
 }

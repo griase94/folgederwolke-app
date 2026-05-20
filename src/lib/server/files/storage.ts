@@ -58,26 +58,16 @@ const cached = new Map<StorageBackend, FileStorage>();
 export async function getFileStorage(
   backend?: StorageBackend,
 ): Promise<FileStorage> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const choice: StorageBackend =
-    backend ?? ((env as any).STORAGE_BACKEND as StorageBackend);
+  const choice: StorageBackend = backend ?? env.STORAGE_BACKEND;
   const hit = cached.get(choice);
   if (hit) return hit;
   let impl: FileStorage;
   if (choice === "blob") {
-    // @vite-ignore — ./vercel-blob-impl.ts is added in Phase 9 Task 3.
-    const blobPath = "./vercel-blob-impl.js";
-    const { VercelBlobFileStorage } = await import(/* @vite-ignore */ blobPath);
-    impl = new VercelBlobFileStorage({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      token: (env as any).BLOB_READ_WRITE_TOKEN,
-    });
+    const { VercelBlobFileStorage } = await import("./vercel-blob-impl.js");
+    impl = new VercelBlobFileStorage({ token: env.BLOB_READ_WRITE_TOKEN });
   } else {
     const { LocalFsFileStorage } = await import("./local-fs-impl.js");
-    impl = new LocalFsFileStorage({
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      root: (env as any).FILE_STORAGE_ROOT,
-    });
+    impl = new LocalFsFileStorage({ root: env.FILE_STORAGE_ROOT });
   }
   cached.set(choice, impl);
   return impl;
