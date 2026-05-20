@@ -471,6 +471,7 @@
 					id="rechnungsdatum"
 					name="rechnungsdatum_display"
 					type="date"
+					lang="de"
 					max={new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' })}
 					bind:value={rechnungsdatum}
 					oninput={triggerDraftSave}

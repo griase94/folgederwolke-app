@@ -23,6 +23,7 @@ const FILES = [
   "src/lib/components/admin/members/AddMemberDialog.svelte",
   "src/lib/components/admin/members/EditMemberDialog.svelte",
   "src/routes/app/transactions/neu/+page.svelte",
+  "src/lib/components/forms/AuslagenForm.svelte",
 ];
 
 describe('C9 UX-030 — every type="date" input has lang="de"', () => {
