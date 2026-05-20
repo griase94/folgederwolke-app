@@ -32,6 +32,46 @@ describe("redact", () => {
   it("redacts Neon production URLs", () => {
     expect(
       redact("DATABASE_URL=postgres://u:p@ep-x.eu-central-1.aws.neon.tech/db"),
-    ).toContain("[REDACTED-NEON]");
+    ).toMatch(/\[REDACTED-NEON/);
+  });
+  it("redacts FULL Neon URL including embedded user:password (B1)", () => {
+    const line =
+      "DATABASE_URL=postgres://neondb_owner:npg_real_password_xyz@ep-cool-foo-12345678.eu-central-1.aws.neon.tech/neondb";
+    const r = redact(line);
+    // The real password must NOT remain in the output.
+    expect(r).not.toContain("npg_real_password_xyz");
+    expect(r).not.toContain("neondb_owner");
+    expect(r).toContain("[REDACTED-NEON-URL]");
+  });
+  it("redacts credentials from any postgres:// URL while keeping host (B1)", () => {
+    const line =
+      "url=postgres://app_runtime:secretpw@db.internal/folgederwolke";
+    const r = redact(line);
+    expect(r).not.toContain("secretpw");
+    expect(r).not.toContain("app_runtime");
+    expect(r).toContain("[REDACTED-DB-CREDS]");
+    // host should still be visible so logs tell us which DB
+    expect(r).toContain("db.internal");
+  });
+  it("also handles postgresql:// scheme (B1)", () => {
+    const line =
+      "DATABASE_URL=postgresql://user:hunter2@some-host.example.com:5432/mydb";
+    const r = redact(line);
+    expect(r).not.toContain("hunter2");
+    expect(r).toContain("[REDACTED-DB-CREDS]");
+    expect(r).toContain("some-host.example.com");
+  });
+  it("redacts FULL JWT-style Bearer token, not just first segment (B1)", () => {
+    const line = "Authorization: Bearer aaa.bbb.ccc-base64stuff trailing-text";
+    const r = redact(line);
+    expect(r).not.toContain("bbb");
+    expect(r).not.toContain("ccc-base64stuff");
+    expect(r).toContain("Bearer [REDACTED]");
+  });
+  it("redacts ya29 OAuth tokens with dots in payload (B1)", () => {
+    const line = "token=ya29.aBcDe_fGhIjK.signaturePartXYZ";
+    const r = redact(line);
+    expect(r).not.toContain("signaturePartXYZ");
+    expect(r).toContain("[REDACTED-OAUTH]");
   });
 });
