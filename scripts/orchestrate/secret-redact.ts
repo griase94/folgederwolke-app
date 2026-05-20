@@ -17,12 +17,12 @@ const RULES: Rule[] = [
     replace: "$1[REDACTED-DB-CREDS]@$2",
   },
   // Bearer tokens — allow dots (JWT segments), dashes, underscores, base64-ish.
-  { pattern: /Bearer\s+[A-Za-z0-9_.\-]{6,}/g, replace: "Bearer [REDACTED]" },
+  { pattern: /Bearer\s+[A-Za-z0-9_.-]{6,}/g, replace: "Bearer [REDACTED]" },
   { pattern: /\bDE\d{20}\b/g, replace: "[REDACTED-IBAN]" },
   { pattern: /\bage1[a-z0-9]{10,}/g, replace: "[REDACTED-AGE]" },
   // ya29 OAuth tokens — allow dots in the payload/signature.
   {
-    pattern: /\bya29\.[A-Za-z0-9_.\-]{10,}/g,
+    pattern: /\bya29\.[A-Za-z0-9_.-]{10,}/g,
     replace: "[REDACTED-OAUTH]",
   },
   { pattern: /\bglpat-[A-Za-z0-9_-]{8,}/g, replace: "[REDACTED-PAT]" },
