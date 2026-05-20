@@ -99,6 +99,13 @@
       "when": 1779284553000,
       "tag": "0013_expenses_allow_aus_prefix",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1779291400000,
+      "tag": "0014_critical_hardening",
+      "breakpoints": true
     }
   ]
 }

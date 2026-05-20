@@ -21,6 +21,13 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   if (!locals.session?.user) {
     error(401, "Nicht angemeldet");
   }
+  // Defense-in-depth: SEPA pain.001 export is admin-only. Sign-in is gated by
+  // ADMIN_EMAILS today so all sessions are admin, but the role enum also
+  // allows `steuerberater` and `member_self_service` for future flows — only
+  // admin should be able to mint a SEPA file against the Vereinskonto.
+  if (locals.session.user.role !== "admin") {
+    error(403, "Nicht berechtigt");
+  }
 
   let body: { expenseIds?: unknown };
   try {
