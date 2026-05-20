@@ -16,6 +16,8 @@
 	}
 </script>
 
+<!-- eslint-disable svelte/no-navigation-without-resolve -->
+
 <div
 	data-testid="preflight-checklist"
 	data-can-festschreiben={preFlight.canFestschreiben}
