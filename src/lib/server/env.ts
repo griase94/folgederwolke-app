@@ -1,6 +1,81 @@
 import { env as dynEnv } from "$env/dynamic/private";
 import { z } from "zod";
 
+// ---------------------------------------------------------------------------
+// DE BLZ → BIC consistency check (cycle-2 expert review F2)
+// ---------------------------------------------------------------------------
+//
+// German IBANs encode the Bankleitzahl (BLZ) in positions 4..11 (0-indexed) of
+// the compact IBAN form. Every BLZ maps to a single bank, and that bank has a
+// stable BIC prefix (the first 8 chars — the 11-char form is the BIC + branch
+// code).
+//
+// This table is intentionally a small whitelist of BLZs we explicitly know,
+// not a Bundesbank-mirror. Adding rows is cheap (one entry per Verein
+// bank-account migration we'll ever do) and the check is conservative: for
+// BLZs not in the table, the assertion is a no-op. The goal is to catch the
+// SPECIFIC class of bug from PR #44 cycle-1 — where VEREIN_IBAN encodes
+// Sparkasse Mittelthüringen but VEREIN_BIC is for a completely unrelated bank
+// — without overengineering a full BLZ registry.
+//
+// Sources: Bundesbank Bankleitzahlendatei (public),
+// https://www.bundesbank.de/de/aufgaben/unbarer-zahlungsverkehr/serviceangebot/bankleitzahlen
+const KNOWN_DE_BLZ_TO_BIC8: Readonly<Record<string, string>> = Object.freeze({
+  "83065408": "HELADEF1", // Sparkasse Mittelthüringen (Erfurt)
+  "10050000": "BELADEBE", // Berliner Sparkasse / Landesbank Berlin
+  "10090000": "BEVODEBB", // Berliner Volksbank
+  "70150000": "SSKMDEMM", // Stadtsparkasse München
+});
+
+/**
+ * Extracts the 8-digit BLZ from a German IBAN (positions 4..11 of the
+ * compact form). Returns null for non-DE IBANs or malformed input.
+ */
+export function extractDeBlz(iban: string): string | null {
+  const compact = iban.replace(/\s+/g, "").toUpperCase();
+  if (!compact.startsWith("DE")) return null;
+  if (compact.length !== 22) return null;
+  const blz = compact.slice(4, 12);
+  if (!/^\d{8}$/.test(blz)) return null;
+  return blz;
+}
+
+/**
+ * Refuses to boot when VEREIN_IBAN encodes a German BLZ that contradicts
+ * VEREIN_BIC. Tolerant of empty values (build-time / dev) and of BLZs we
+ * don't have a mapping for. Exported for tests.
+ *
+ * Throws Error when (and only when) both values are present, the IBAN is a
+ * DE IBAN, the BLZ is in our whitelist, and the BIC's first 8 chars don't
+ * match the BLZ's expected BIC prefix.
+ */
+export function assertVereinBankConsistent(opts: {
+  iban: string;
+  bic: string;
+}): void {
+  const iban = (opts.iban ?? "").trim();
+  const bic = (opts.bic ?? "").trim().toUpperCase();
+  if (!iban || !bic) return; // dev / build-time tolerant
+
+  const blz = extractDeBlz(iban);
+  if (!blz) return; // non-DE or malformed IBAN — IBAN validation belongs elsewhere
+
+  const expectedBicPrefix = KNOWN_DE_BLZ_TO_BIC8[blz];
+  if (!expectedBicPrefix) return; // BLZ not in our table — advisory only
+
+  // BIC is 8 or 11 chars; the 8-char prefix is the bank+country+location.
+  const actualBicPrefix = bic.slice(0, 8);
+  if (actualBicPrefix !== expectedBicPrefix) {
+    throw new Error(
+      `VEREIN_IBAN/VEREIN_BIC mismatch: IBAN BLZ ${blz} maps to BIC prefix ` +
+        `'${expectedBicPrefix}' (Bundesbank Bankleitzahlendatei), but ` +
+        `VEREIN_BIC='${bic}' has prefix '${actualBicPrefix}'. ` +
+        `These are different banks — refusing to boot. ` +
+        `Fix either VEREIN_IBAN or VEREIN_BIC so they refer to the same bank.`,
+    );
+  }
+}
+
 const schema = z.object({
   // Database
   DATABASE_URL: z.string().default(""),
@@ -175,6 +250,18 @@ export function assertProductionEnvSafe(): void {
   if (isProd && !baseUrl) {
     throw new Error(
       "PUBLIC_BASE_URL (or ORIGIN) is required in production so magic-link URLs cannot be derived from an attacker-controlled Host header. See docs/reviews/2026-05-19-security-review.md CRIT-2.",
+    );
+  }
+
+  // Verein bank-data consistency (cycle-2 expert review F2). Always run —
+  // in dev a misconfigured pair is just as wrong as in prod, and the check
+  // is a no-op when either value is unset or the BLZ isn't in our table.
+  try {
+    assertVereinBankConsistent({ iban: env.VEREIN_IBAN, bic: env.VEREIN_BIC });
+  } catch (err) {
+    if (isProd) throw err;
+    console.warn(
+      `[env] ${err instanceof Error ? err.message : String(err)} — non-prod, continuing.`,
     );
   }
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { BeitragsReminderProps } from '../types.js';
+	import { buildEpc069Payload } from '../giro-qr.js';
 
 	let { vorname, nachname, jahr, betragCents, iban, bic, bank, empfaenger }: BeitragsReminderProps =
 		$props();
@@ -19,122 +20,139 @@
 
 	const fullName = $derived(nachname ? `${vorname} ${nachname}`.trim() : vorname);
 	const verwendungszweck = $derived(`Mitgliedsbeitrag ${jahr} ${fullName}`);
+
+	// EPC 069 SEPA Giro-QR payload — banking apps scan this to pre-fill the
+	// Überweisung. Rendered as a <pre> block until a QR-encoding lib is
+	// approved (PM-024, 2026-05-19).
+	const epcPayload = $derived(
+		buildEpc069Payload({
+			bic,
+			name: empfaenger,
+			iban,
+			amountCents: betragCents,
+			remittance: verwendungszweck
+		})
+	);
 </script>
 
+<!--
+  Beitrags-Reminder email.
+  Brand-strip pattern matches MagicLink.svelte (UI-031, 2026-05-19 §3.13).
+  Embeds an EPC 069 SEPA Giro-QR payload as text (PM-024) — once a
+  QR-encoding library is approved, swap the <pre> for an inline <img>.
+-->
 <table
 	role="presentation"
 	cellspacing="0"
 	cellpadding="0"
 	border="0"
 	width="100%"
-	style="background:#FCE7F3;"
+	style="background:#f8f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;"
 >
 	<tbody>
 		<tr>
-			<td align="center" style="padding:30px 16px;">
+			<td align="center" style="padding:40px 16px;">
 				<table
 					role="presentation"
 					cellspacing="0"
 					cellpadding="0"
 					border="0"
-					width="600"
-					style="max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;"
+					width="560"
+					style="max-width:560px;background:#ffffff;border-radius:16px;border:1px solid #f1e6ec;"
 				>
 					<tbody>
-						<!-- Header -->
+						<!-- Brand strip -->
 						<tr>
-							<td
-								style="background:#be185d;padding:30px 40px;"
-							>
+							<td style="background:#be185d;padding:18px 32px;border-radius:16px 16px 0 0;">
 								<p
-									style="margin:0;color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;"
+									style="margin:0;color:#ffffff;font-size:13px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;"
 								>
-									Folge der Wolke e.V.
-								</p>
-								<p style="margin:4px 0 0 0;color:#FBCFE8;font-size:13px;">
-									Ein Liebesbrief von den Finanz-Geschäftler:innen
+									Folge der Wolke
 								</p>
 							</td>
 						</tr>
 
 						<!-- Body -->
 						<tr>
-							<td style="padding:36px 40px;line-height:1.6;font-size:14px;">
-								<p style="margin:0 0 14px 0;font-size:16px;color:#be185d;">
-									<strong>Liebste:r {vorname},</strong>
-								</p>
-								<p style="margin:0 0 18px 0;">
-									Hallo! Kleine, sonnige Erinnerung — dein Mitgliedsbeitrag für
-									<strong>{jahr}</strong> ist noch offen. ☀️
-								</p>
-								<p style="margin:0 0 18px 0;">Hier alles auf einen Blick zum Überweisen:</p>
+							<td style="padding:36px 32px 8px 32px;line-height:1.55;font-size:15px;color:#1f2937;">
+								<h1
+									style="margin:0 0 16px 0;font-size:22px;font-weight:700;color:#111827;letter-spacing:-0.2px;"
+								>
+									Dein Vereinsbeitrag {jahr}
+								</h1>
 
-								<!-- Payment card (amber) -->
+								<p style="margin:0 0 18px 0;color:#374151;">
+									<strong>Liebste:r {vorname},</strong> kleine sonnige Erinnerung — dein
+									Mitgliedsbeitrag für <strong>{jahr}</strong> ist noch offen.
+								</p>
+
+								<!-- Payment card (monospace, copy-friendly per UI-031) -->
 								<table
 									role="presentation"
 									cellspacing="0"
 									cellpadding="0"
 									border="0"
 									width="100%"
-									style="background:#FEF3C7;border-radius:8px;margin:0 0 8px 0;"
+									style="background:#f9fafb;border:1px solid #f1e6ec;border-radius:12px;margin:0 0 14px 0;"
 								>
 									<tbody>
 										<tr>
-											<td style="padding:16px 22px;">
+											<td style="padding:16px 20px;">
 												<table
 													role="presentation"
 													cellspacing="0"
 													cellpadding="0"
 													border="0"
 													width="100%"
-													style="font-size:13px;"
+													style="font-size:13px;color:#374151;"
 												>
 													<tbody>
 														<tr>
 															<td
-																style="padding:6px 16px 6px 0;color:#92400E;width:170px;white-space:nowrap;vertical-align:top;"
+																style="padding:5px 0;color:#6b7280;width:170px;white-space:nowrap;vertical-align:top;"
 																>Empfänger</td
 															>
-															<td style="padding:6px 0;color:#451A03;font-weight:600;"
+															<td style="padding:5px 0;color:#111827;font-weight:600;"
 																>{empfaenger}</td
 															>
 														</tr>
 														<tr>
 															<td
-																style="padding:6px 16px 6px 0;color:#92400E;white-space:nowrap;vertical-align:top;"
+																style="padding:5px 0;color:#6b7280;white-space:nowrap;vertical-align:top;"
 																>IBAN</td
 															>
 															<td
-																style="padding:6px 0;color:#451A03;font-family:'SFMono-Regular',Menlo,Consolas,monospace;letter-spacing:0.3px;"
+																style="padding:5px 0;color:#111827;font-family:'SFMono-Regular',Menlo,Consolas,monospace;letter-spacing:0.3px;"
 																>{ibanReadable}</td
 															>
 														</tr>
 														<tr>
 															<td
-																style="padding:6px 16px 6px 0;color:#92400E;white-space:nowrap;vertical-align:top;"
+																style="padding:5px 0;color:#6b7280;white-space:nowrap;vertical-align:top;"
 																>BIC</td
 															>
-															<td style="padding:6px 0;color:#451A03;">
+															<td style="padding:5px 0;color:#111827;">
 																<span
 																	style="font-family:'SFMono-Regular',Menlo,Consolas,monospace;"
 																	>{bic}</span
 																>
-																<span style="color:#92400E;"> ({bank})</span>
+																<span style="color:#6b7280;"> ({bank})</span>
 															</td>
 														</tr>
 														<tr>
 															<td
-																style="padding:6px 16px 6px 0;color:#92400E;white-space:nowrap;vertical-align:top;"
+																style="padding:5px 0;color:#6b7280;white-space:nowrap;vertical-align:top;"
 																>Betrag</td
 															>
-															<td style="padding:6px 0;color:#451A03;font-weight:700;">{betragFmt}</td>
+															<td style="padding:5px 0;color:#111827;font-weight:700;">{betragFmt}</td>
 														</tr>
 														<tr>
 															<td
-																style="padding:6px 16px 6px 0;color:#92400E;white-space:nowrap;vertical-align:top;"
+																style="padding:5px 0;color:#6b7280;white-space:nowrap;vertical-align:top;"
 																>Verwendungszweck</td
 															>
-															<td style="padding:6px 0;color:#451A03;font-weight:600;"
+															<td
+																style="padding:5px 0;color:#111827;font-weight:600;font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:12px;"
 																>{verwendungszweck}</td
 															>
 														</tr>
@@ -145,23 +163,38 @@
 									</tbody>
 								</table>
 
-								<p style="margin:0 0 18px 0;font-size:12px;color:#92400E;">
-									<em
-										>Bitte den Verwendungszweck genau so übernehmen — sonst können wir die Zahlung
-										nicht zuordnen.</em
-									>
+								<p style="margin:0 0 18px 0;font-size:12px;color:#6b7280;font-style:italic;">
+									Bitte den Verwendungszweck genau so übernehmen — sonst können wir die Zahlung
+									nicht zuordnen.
 								</p>
-								<p style="margin:0 0 16px 0;">
+
+								<!-- EPC 069 Giro-QR payload (PM-024) -->
+								<p style="margin:0 0 8px 0;font-size:13px;color:#374151;">
+									<strong>SEPA-QR (Giro-Code):</strong> Banking-Apps scannen den Text direkt aus dem
+									QR-Code. Solange wir ihn noch nicht als Bild rendern, kannst du den Payload kopieren
+									oder über einen QR-Generator deiner Wahl scannen.
+								</p>
+								<pre
+									style="margin:0 0 22px 0;padding:14px 18px;background:#f9fafb;border:1px solid #f1e6ec;border-radius:10px;font-family:'SFMono-Regular',Menlo,Consolas,monospace;font-size:12px;color:#1f2937;white-space:pre;overflow-x:auto;">{epcPayload}</pre>
+
+								<p style="margin:0 0 18px 0;color:#374151;">
 									Mit deinem Beitrag finanzieren wir unser Folge der Wolke Wochenende, faire
-									Künstler:innen-Honorare und alles, was unsere Wolke sonst noch so trägt. Danke,
-									dass du dabei bist!
+									Künstler:innen-Honorare und alles, was unsere Wolke sonst noch so trägt.
 								</p>
-								<p style="margin:0 0 24px 0;">
+								<p style="margin:0 0 24px 0;color:#374151;">
 									Falls Geld dieses Jahr knapp ist: meld dich bei uns — wir können den Beitrag
-									aussetzen oder reduzieren. Niemand fliegt deshalb raus. 💛
+									aussetzen oder reduzieren. Niemand fliegt deshalb raus.
 								</p>
-								<p style="margin:0;font-size:15px;color:#be185d;">
-									Mit besten Grüßen 💋<br /><strong
+
+								<!-- Divider -->
+								<div
+									style="border-top:1px solid #f1e6ec;margin:8px 0 22px 0;font-size:1px;line-height:1px;"
+								>
+									&nbsp;
+								</div>
+
+								<p style="margin:0;font-size:13px;color:#6b7280;line-height:1.5;">
+									Mit besten Grüßen,<br /><strong style="color:#374151;"
 										>deine Folge der Wolke Finanz-Geschäftler:innen</strong
 									>
 								</p>
@@ -171,12 +204,11 @@
 						<!-- Footer -->
 						<tr>
 							<td
-								style="background:#FBCFE8;padding:18px 40px;text-align:center;font-size:11px;color:#831843;"
+								style="padding:24px 32px 28px 32px;text-align:center;font-size:11px;color:#9ca3af;line-height:1.6;border-top:1px solid #f1e6ec;"
 							>
-								Folge der Wolke e.V. · Westermühlstraße 6, 80469 München<br />
-								VR 211227 · Steuernummer 143/215/10028<br />
-								<br />
-								Du erhältst diese Mail als Mitglied von Folge der Wolke e.V.
+								<strong style="color:#6b7280;">Folge der Wolke e.V.</strong> · Westermühlstraße 6,
+								80469 München<br />
+								VR 211227 · Steuernummer 143/215/10028
 							</td>
 						</tr>
 					</tbody>

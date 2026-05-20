@@ -34,14 +34,31 @@ export const GET: RequestHandler = async ({ request }) => {
     });
   }
 
+  // Bank details come exclusively from env.VEREIN_* — no string-literal
+  // fallbacks. Mismatched IBAN/BIC fallbacks were the root cause of the
+  // cycle-2 review finding F2 (Sparkasse Mittelthüringen IBAN paired with
+  // a completely unrelated BIC). Empty env → empty payload → EPC builder
+  // refuses to emit a v001 payload without BIC (F1), which is the right
+  // failure mode: a misconfigured env should not silently send wrong data.
+  if (!env.VEREIN_IBAN || !env.VEREIN_BIC) {
+    console.error(
+      "[cron/beitragsreminder] VEREIN_IBAN/VEREIN_BIC unset — refusing to dispatch reminders with no bank data.",
+    );
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: "VEREIN_IBAN or VEREIN_BIC env vars are unset",
+      }),
+      { status: 500, headers: { "content-type": "application/json" } },
+    );
+  }
+
   try {
     const result = await dispatchBeitragsreminder({
-      // These bank details mirror the existing member detail page implementation.
-      // In a future phase, read from settings table (verein.iban etc.).
-      iban: env.VEREIN_IBAN || "DE25830654080006894453",
-      bic: env.VEREIN_BIC || "BELADEBEXXX",
-      bank: env.VEREIN_BANK || "Berliner Volksbank",
-      empfaenger: env.VEREIN_NAME || "Folge der Wolke e.V.",
+      iban: env.VEREIN_IBAN,
+      bic: env.VEREIN_BIC,
+      bank: env.VEREIN_BANK,
+      empfaenger: env.VEREIN_NAME,
     });
 
     console.info("[cron/beitragsreminder]", result);
