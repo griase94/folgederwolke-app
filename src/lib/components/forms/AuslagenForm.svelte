@@ -41,7 +41,11 @@
 	}
 
 	let {
-		action = '?/default',
+		// '' = post to the route's base URL → SvelteKit's default action.
+		// Was '?/default' which SvelteKit explicitly rejects as a reserved
+		// action name when the only registered action IS `default`. Caught
+		// by the 2026-05-19 Auslagen-tester agent as AT-001 (P0).
+		action = '',
 		members = [],
 		projects = [],
 		serverError = null,
