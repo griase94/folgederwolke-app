@@ -27,7 +27,11 @@ function extractCiGrep(ciYml: string): string[] {
 
 function extractDescribeTags(specSrc: string): string[] {
   const tags: string[] = [];
-  const re = /test\.describe\s*\(\s*["'`]([^"'`]+)["'`]/g;
+  // Accept plain test.describe(), .serial(), .only(), .skip(), .parallel(),
+  // and tolerate line-breaks between `test.describe` and the chained modifier
+  // (Prettier formats `test.describe.serial("...")` onto two lines when the
+  // title is long). The (?:\s*\.\w+)? bit handles both.
+  const re = /test\.describe(?:\s*\.\s*\w+)?\s*\(\s*["'`]([^"'`]+)["'`]/g;
   let m;
   while ((m = re.exec(specSrc)) !== null) {
     const title = m[1]!;

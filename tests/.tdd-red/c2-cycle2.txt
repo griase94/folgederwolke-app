@@ -1,0 +1,83 @@
+=== tests/unit/c2-list-available-years.test.ts ===
+/**
+ * C2 — cycle 2 — RED.
+ *
+ * Server-side helper that powers the year switcher dropdown:
+ *   - listAvailableYears() returns { year, closed }[] for every Buchungsjahr
+ *     present in income/expenses/donations/invoices, plus current year as a
+ *     fallback when the DB has no bookings yet. `closed` reflects
+ *     settings.festgeschrieben_bis (year <= bis === closed === locked).
+ *
+ * Resolves: JB-001 (yearly filters), JB-003 (festgeschrieben-bug: 0/null was
+ * being shown as "closed" on every year), JB-006 (`?year=…` ignored on
+ * dashboard — fixed when layout reads it), VB-002 (no year switching).
+ *
+ * Integration-style — uses the real test DB (matches the spec's refusal-pattern
+ * rule: no vi.mock for db/storage/mail).
+ */
+
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import postgres from "postgres";
+import { listAvailableYears } from "$lib/server/domain/years.js";
+import { currentBuchungsjahr } from "$lib/domain/year.js";
+
+const url = process.env.DIRECT_DATABASE_URL ?? process.env.DATABASE_URL ?? "";
+
+describe.skipIf(!url)("C2 listAvailableYears (JB-001/JB-003/JB-006/VB-002)", () => {
+  let sql: ReturnType<typeof postgres>;
+
+  beforeAll(() => {
+    sql = postgres(url, { prepare: false, max: 1 });
+  });
+
+  afterEach(async () => {
+    // Reset bookings + settings tampered with by the test rows
+    await sql`DELETE FROM expenses WHERE id LIKE 'c2test-%'`;
+    await sql`DELETE FROM income WHERE id LIKE 'c2test-%'`;
+    await sql`DELETE FROM donations WHERE id LIKE 'c2test-%'`;
+    await sql`DELETE FROM settings WHERE key = 'festgeschrieben_bis'`;
+  });
+
+  it("returns at least the current Buchungsjahr on an empty DB (JB-004 follow-up)", async () => {
+    const years = await listAvailableYears();
+    const current = currentBuchungsjahr();
+    const yearNumbers = years.map((y) => y.year);
+    expect(yearNumbers).toContain(current);
+  });
+
+  it("returns years sorted descending (newest first)", async () => {
+    const years = await listAvailableYears();
+    const ys = years.map((y) => y.year);
+    const sorted = [...ys].sort((a, b) => b - a);
+    expect(ys).toEqual(sorted);
+  });
+
+  it("never reports a year as closed when settings.festgeschrieben_bis is unset (JB-003)", async () => {
+    // Make sure there is no festgeschrieben_bis row.
+    await sql`DELETE FROM settings WHERE key = 'festgeschrieben_bis'`;
+    const years = await listAvailableYears();
+    for (const y of years) {
+      expect(y.closed, `year ${y.year} should not be closed`).toBe(false);
+    }
+  });
+
+  it("reports years <= settings.festgeschrieben_bis as closed (ADR-0006)", async () => {
+    await sql`
+      INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', '2024'::jsonb)
+      ON CONFLICT (key) DO UPDATE SET value = '2024'::jsonb
+    `;
+    const years = await listAvailableYears();
+    const yMap = new Map(years.map((y) => [y.year, y.closed]));
+    // current year must be open; 2024 (if present) must be closed.
+    const current = currentBuchungsjahr();
+    expect(yMap.get(current)).toBe(false);
+    // 2023 + 2024 are included for the gate check.
+    // listAvailableYears must surface every Buchungsjahr <= bis even if no
+    // bookings exist, so the switcher can show the closed entries with a
+    // lock icon.
+    expect(yMap.has(2024)).toBe(true);
+    expect(yMap.get(2024)).toBe(true);
+    expect(yMap.has(2023)).toBe(true);
+    expect(yMap.get(2023)).toBe(true);
+  });
+});

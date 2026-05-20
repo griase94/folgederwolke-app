@@ -1,0 +1,191 @@
+=== tests/e2e/c2-year-switcher.spec.ts ===
+/**
+ * C2 — cycle 5 — RED.
+ *
+ * End-to-end critical-path tests for the global year switcher (spec §707).
+ * Resolves: VB-002, JB-001, JB-006, UX-010, UI-009.
+ *
+ * The four mandatory test cases the cluster brief calls out:
+ *   1. Loads /app/transactions with no year param → defaults to current
+ *      Buchungsjahr.
+ *   2. Clicks the year switcher → URL becomes ?year=2024 → page re-renders
+ *      with 2024 data.
+ *   3. Hard-reloads → year persists (localStorage).
+ *   4. Closed year shows a lock icon. (We assert the icon; the DB trigger
+ *      side is covered in the listAvailableYears integration test.)
+ */
+
+import { expect, test } from "@playwright/test";
+import { randomBytes, createHash } from "node:crypto";
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+const TEST_ADMIN_EMAIL =
+  process.env["TEST_ADMIN_EMAIL"] ?? "admin@example.com";
+
+async function signIn(
+  page: import("@playwright/test").Page,
+  email: string = TEST_ADMIN_EMAIL,
+): Promise<void> {
+  const { default: postgres } = await import("postgres");
+  const client = postgres(process.env["DATABASE_URL"] ?? "", {
+    prepare: false,
+    max: 1,
+  });
+  const rawToken = randomBytes(32).toString("base64url");
+  const tokenHash = sha256(rawToken);
+  const expiresAt = new Date(Date.now() + 15 * 60_000);
+  await client`
+    INSERT INTO magic_links (token_hash, email_canonical, expires_at)
+    VALUES (${tokenHash}, ${email}, ${expiresAt})
+  `;
+  await client.end();
+  await page.goto(`/sign-in/verify?token=${rawToken}`);
+  const mismatch = page.locator("text=Ja, trotzdem fortfahren");
+  if (await mismatch.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await mismatch.click();
+  }
+  await Promise.all([
+    page.waitForURL(/\/app/, { timeout: 15_000 }),
+    page.click('button[type="submit"]'),
+  ]);
+}
+
+async function setFestgeschriebenBis(year: number) {
+  const { default: postgres } = await import("postgres");
+  const url =
+    process.env["DIRECT_DATABASE_URL"] ??
+    process.env["DATABASE_URL"] ??
+    "";
+  const client = postgres(url, { prepare: false, max: 1 });
+  await client`
+    INSERT INTO settings (key, value)
+    VALUES ('festgeschrieben_bis', ${year}::text::jsonb)
+    ON CONFLICT (key) DO UPDATE SET value = ${year}::text::jsonb
+  `;
+  await client.end();
+}
+
+async function clearFestgeschriebenBis() {
+  const { default: postgres } = await import("postgres");
+  const url =
+    process.env["DIRECT_DATABASE_URL"] ??
+    process.env["DATABASE_URL"] ??
+    "";
+  const client = postgres(url, { prepare: false, max: 1 });
+  await client`DELETE FROM settings WHERE key = 'festgeschrieben_bis'`;
+  await client.end();
+}
+
+test.describe("@phase-7.5 C2 year switcher (VB-002 / JB-001 / UI-009)", () => {
+  test.afterEach(async () => {
+    await clearFestgeschriebenBis();
+  });
+
+  test("defaults to current Buchungsjahr on first visit (UX-010)", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await signIn(page);
+
+    await page.goto("/app/transactions");
+    if (page.url().includes("/sign-in")) test.skip();
+
+    // The switcher is a radiogroup with aria-label="Buchungsjahr"
+    const group = page.getByRole("radiogroup", { name: "Buchungsjahr" });
+    await expect(group).toBeVisible();
+
+    // The selected radio is aria-checked=true. Pull its accessible name and
+    // assert it parses to a sensible current Buchungsjahr.
+    const checked = group.getByRole("radio", { checked: true });
+    const name = (await checked.getAttribute("aria-label")) ?? "";
+    const year = Number.parseInt(name.match(/\d{4}/)?.[0] ?? "0", 10);
+    const current = new Date().getUTCFullYear();
+    // Boundary safety: ±1 year window
+    expect(year).toBeGreaterThanOrEqual(current - 1);
+    expect(year).toBeLessThanOrEqual(current + 1);
+  });
+
+  test("clicking a year updates the URL with ?year= and survives reload (JB-001/JB-006)", async ({
+    page,
+  }) => {
+    // Pre-create a festgeschrieben_bis so the layout surfaces a 2024 entry.
+    await setFestgeschriebenBis(2024);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await signIn(page);
+
+    await page.goto("/app/transactions");
+    if (page.url().includes("/sign-in")) test.skip();
+
+    const group = page.getByRole("radiogroup", { name: "Buchungsjahr" });
+    await expect(group).toBeVisible();
+
+    const y2024 = group.getByRole("radio", { name: /2024.*festgeschrieben/i });
+    await expect(y2024).toBeVisible();
+    await y2024.click();
+
+    // URL must reflect ?year=2024
+    await expect(page).toHaveURL(/[?&]year=2024(?:&|$)/);
+
+    // Hard reload: cookies + localStorage persist, server re-renders
+    await page.reload();
+    await expect(page).toHaveURL(/[?&]year=2024(?:&|$)/);
+
+    const group2 = page.getByRole("radiogroup", { name: "Buchungsjahr" });
+    const checked = group2.getByRole("radio", { checked: true });
+    const checkedName = (await checked.getAttribute("aria-label")) ?? "";
+    expect(checkedName).toMatch(/2024/);
+  });
+
+  test("closed year shows lock icon (UI-009)", async ({ page }) => {
+    await setFestgeschriebenBis(2024);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await signIn(page);
+
+    await page.goto("/app/transactions");
+    if (page.url().includes("/sign-in")) test.skip();
+
+    // Lock icon for 2024 is rendered with data-testid=year-lock-2024
+    const lock = page.locator('[data-testid="year-lock-2024"]');
+    await expect(lock).toBeVisible();
+
+    // Open current year must NOT have a lock icon
+    const current = new Date().getFullYear();
+    const openLock = page.locator(`[data-testid="year-lock-${current}"]`);
+    await expect(openLock).toHaveCount(0);
+  });
+
+  test("year persists across reload via localStorage when URL is reset to /app", async ({
+    page,
+  }) => {
+    await setFestgeschriebenBis(2024);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await signIn(page);
+
+    // Land on transactions with ?year=2024
+    await page.goto("/app/transactions?year=2024");
+    if (page.url().includes("/sign-in")) test.skip();
+
+    // Confirm switcher saw the URL and selected 2024 (this also primes
+    // localStorage via the effect in Topbar)
+    const groupA = page.getByRole("radiogroup", { name: "Buchungsjahr" });
+    await expect(
+      groupA.getByRole("radio", { name: /2024.*festgeschrieben/i }),
+    ).toHaveAttribute("aria-checked", "true");
+
+    // Click to register the year (this calls persistYear)
+    const y2024 = groupA.getByRole("radio", {
+      name: /2024.*festgeschrieben/i,
+    });
+    // Click again to ensure persistYear runs (clicking the already-selected
+    // radio is a no-op for navigation but persistYear still fires)
+    await y2024.click({ force: true });
+
+    // Now navigate to /app with no ?year. The effect should restore to 2024.
+    await page.goto("/app/transactions");
+    await page.waitForURL(/[?&]year=2024(?:&|$)/, { timeout: 5000 });
+    expect(page.url()).toMatch(/[?&]year=2024(?:&|$)/);
+  });
+});

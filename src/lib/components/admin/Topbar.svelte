@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import { SvelteMap } from 'svelte/reactivity';
 	import UserMenu from './UserMenu.svelte';
+	import YearSwitcher, { type YearSwitcherOption } from './YearSwitcher.svelte';
 	import type { SessionUser } from '$lib/server/auth/index.js';
 	import InstallPrompt from '$lib/components/pwa/InstallPrompt.svelte';
 	import type { SearchResponse, SearchResult } from '../../../routes/api/search/+server.js';
@@ -12,6 +13,76 @@
 	}
 
 	let { user }: Props = $props();
+
+	// ── Year switcher (C2 — VB-002 / JB-001 / UX-010 / UI-009) ───────────────
+	//
+	// Data flows from /app/+layout.server.ts → $page.data. We read it
+	// reactively so route changes (including filter swaps via the switcher
+	// itself) update the rendered control without explicit prop threading.
+	//
+	// Persistence: the last-selected year is mirrored to localStorage so a
+	// returning user lands on their year even when they bookmark `/app`. The
+	// URL remains the source of truth for the current navigation.
+	const YEAR_LS_KEY = 'fdw.year.selected';
+
+	const yearData = $derived(() => {
+		const d = $page.data as Record<string, unknown>;
+		const availableYears = (d['availableYears'] ?? []) as YearSwitcherOption[];
+		const selectedYear = (d['selectedYear'] as number | undefined) ?? null;
+		const currentYear = (d['currentYear'] as number | undefined) ?? null;
+		return { availableYears, selectedYear, currentYear };
+	});
+
+	function persistYear(year: number) {
+		try {
+			localStorage.setItem(YEAR_LS_KEY, String(year));
+		} catch {
+			// Storage unavailable (Safari private mode etc.) — ignore.
+		}
+	}
+
+	function handleYearChange(year: number) {
+		persistYear(year);
+		// Mutate ?year= on the current path; preserve every other query param
+		// (search, filter, kind, …) so the user's view context survives.
+		const u = new URL($page.url);
+		u.searchParams.set('year', String(year));
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
+		goto(u.pathname + u.search, { keepFocus: true, noScroll: true });
+	}
+
+	// On first mount, if the URL has no ?year but localStorage has a value
+	// different from the server-derived default, swap it in. This is the
+	// "year persists across hard reload" behaviour the E2E asserts.
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		const hasUrlYear = $page.url.searchParams.has('year');
+		if (hasUrlYear) return;
+		let stored: string | null;
+		try {
+			stored = localStorage.getItem(YEAR_LS_KEY);
+		} catch {
+			return;
+		}
+		if (!stored) return;
+		const n = Number.parseInt(stored, 10);
+		const data = yearData();
+		if (!Number.isFinite(n)) return;
+		if (data.selectedYear === n) return;
+		// Only restore if the stored year is in availableYears — otherwise
+		// the user's stale localStorage value would silently land them on a
+		// year that doesn't exist.
+		const present = data.availableYears.some((y) => y.year === n);
+		if (!present) return;
+		const u = new URL($page.url);
+		u.searchParams.set('year', String(n));
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
+		goto(u.pathname + u.search, {
+			replaceState: true,
+			keepFocus: true,
+			noScroll: true
+		});
+	});
 
 	// ── Breadcrumbs ──────────────────────────────────────────────────────────
 	interface Crumb {
@@ -414,6 +485,17 @@
 			<path d="m21 21-4.35-4.35" />
 		</svg>
 	</button>
+
+	<!-- Year switcher (C2 — sticky in topbar) -->
+	{#if yearData().availableYears.length > 0 && yearData().selectedYear !== null}
+		<div class="fdw-year-switcher-wrap hidden sm:block" data-fdw="year-switcher-wrap">
+			<YearSwitcher
+				years={yearData().availableYears}
+				selected={yearData().selectedYear!}
+				onChange={handleYearChange}
+			/>
+		</div>
+	{/if}
 
 	<!-- Notification bell stub -->
 	<button

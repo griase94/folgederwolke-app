@@ -31,14 +31,25 @@ import {
   editSpende,
   isBescheinigungEnabled,
 } from "$lib/server/domain/spenden.js";
+import { currentBuchungsjahr, selectYearFromUrl } from "$lib/domain/year.js";
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ url }) => {
   const db = getDb();
+
+  // C2-3 cycle 2: scope donations to the selected Buchungsjahr so the
+  // Spenden tab follows the global year switcher (vereinsbuchhalter MED).
+  // Bescheinigungs-Listen are inherently year-scoped; showing all years
+  // by default was the wrong tax-correctness signal.
+  const selectedYear = selectYearFromUrl(
+    url.searchParams,
+    currentBuchungsjahr(),
+  );
 
   // Donation rows ----------------------------------------------------------
   const rows = await db
     .select()
     .from(donations)
+    .where(eq(donations.yearOfBuchung, selectedYear))
     .orderBy(desc(donations.gebuchtAm));
 
   // Kategorien (only kind='income' since Spenden are income-side) ---------
