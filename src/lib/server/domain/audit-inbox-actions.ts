@@ -32,20 +32,7 @@ import {
   type BezahltVon,
 } from "$lib/server/domain/auslagen.js";
 import { DATENSCHUTZ_VERSION } from "$lib/server/domain/datenschutz.js";
-
-// ---------------------------------------------------------------------------
-// Berlin year helper (copied from auslage-einreichen — avoids circular dep)
-// ---------------------------------------------------------------------------
-
-function berlinYear(now: Date = new Date()): number {
-  return parseInt(
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: "Europe/Berlin",
-      year: "numeric",
-    }).format(now),
-    10,
-  );
-}
+import { berlinYear } from "$lib/domain/year.js";
 
 // ---------------------------------------------------------------------------
 // manualImportSubmission

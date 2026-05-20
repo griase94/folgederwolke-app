@@ -43,8 +43,10 @@ const authHandle: Handle = async ({ event, resolve }) => {
     event.locals.session = null;
   }
 
-  // Protect /app/* routes
-  if (event.url.pathname.startsWith("/app")) {
+  // Protect /app and /app/* routes. Use exact-match-plus-slash rather than
+  // `startsWith("/app")` so paths like `/appendix`, `/app-onboarding` or
+  // `/applepay` are not accidentally caught by the auth gate.
+  if (event.url.pathname === "/app" || event.url.pathname.startsWith("/app/")) {
     if (!event.locals.session) {
       // PM-007: an Externe who installs the PWA from /auslage-einreichen
       // will have start_url=/app?source=pwa (per manifest.webmanifest).

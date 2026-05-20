@@ -6,6 +6,7 @@
 import { sql } from "drizzle-orm";
 import type { PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
+import { berlinYear } from "$lib/domain/year.js";
 
 export const load: PageServerLoad = async () => {
   const db = getDb();
@@ -25,7 +26,7 @@ export const load: PageServerLoad = async () => {
     ORDER BY year_of_buchung DESC
   `);
 
-  const currentYear = new Date().getFullYear();
+  const currentYear = berlinYear();
 
   // Always include current year even if no rows yet
   const yearSet = new Set(rows.map((r) => r.year));

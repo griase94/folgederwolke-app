@@ -201,6 +201,14 @@ export const actions: Actions = {
     if (!userId) {
       return fail(401, { action: "approve", error: "Nicht angemeldet" });
     }
+    // Defense-in-depth: only admin role may approve an Auslagen submission.
+    // Today only ADMIN_EMAILS-allowlisted users can sign in (so all sessions
+    // are admin), but the role enum already supports `steuerberater` and
+    // `member_self_service` for future flows — those roles must not be able
+    // to approve expenses to themselves or others.
+    if (locals.session?.user.role !== "admin") {
+      return fail(403, { action: "approve", error: "Nicht berechtigt" });
+    }
 
     const { ausId } = params;
     const parsed = parseBusinessId(ausId);
@@ -251,6 +259,10 @@ export const actions: Actions = {
     const userId = locals.session?.user.id;
     if (!userId) {
       return fail(401, { action: "reject", error: "Nicht angemeldet" });
+    }
+    // Defense-in-depth: only admin role may reject (see approve action above).
+    if (locals.session?.user.role !== "admin") {
+      return fail(403, { action: "reject", error: "Nicht berechtigt" });
     }
 
     const { ausId } = params;

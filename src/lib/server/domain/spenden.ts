@@ -33,20 +33,12 @@ import { projects } from "$lib/server/db/schema/projects.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { bus } from "$lib/server/events/index.js";
 import { env } from "$lib/server/env.js";
+import { berlinYear } from "$lib/domain/year.js";
 
-// ---------------------------------------------------------------------------
-// Berlin-year helper (mirrors audit-inbox-actions — avoids circular import)
-// ---------------------------------------------------------------------------
-
-export function berlinYear(now: Date = new Date()): number {
-  return parseInt(
-    new Intl.DateTimeFormat("en-US", {
-      timeZone: "Europe/Berlin",
-      year: "numeric",
-    }).format(now),
-    10,
-  );
-}
+// Re-exported so existing `import { berlinYear } from
+// "$lib/server/domain/spenden.js"` callers keep working. Canonical impl in
+// `$lib/domain/year.js` (ADR-0001).
+export { berlinYear };
 
 // ---------------------------------------------------------------------------
 // Bescheinigung gating

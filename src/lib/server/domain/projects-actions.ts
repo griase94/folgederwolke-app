@@ -16,6 +16,7 @@ import {
   validateEditProject,
 } from "$lib/server/domain/projects.js";
 import { bus } from "$lib/server/events/index.js";
+import { berlinYear } from "$lib/domain/year.js";
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -66,7 +67,8 @@ export async function addProject(
 
   const db = getDb();
   const { name, sphere_default, start_date, end_date, notes } = result.data;
-  const year = new Date().getFullYear();
+  // ADR-0001: Buchhaltungsjahr is Berlin-local, not UTC.
+  const year = berlinYear();
   const businessId = await allocateProjectBusinessId(year);
 
   const inserted = await db

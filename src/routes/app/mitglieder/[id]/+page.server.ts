@@ -27,6 +27,7 @@ import {
 } from "$lib/server/domain/members-actions.js";
 import { sendMail } from "$lib/server/mail/index.js";
 import { env } from "$lib/server/env.js";
+import { berlinYear } from "$lib/domain/year.js";
 
 // Default Beitrag rate in cents (69.69 €) — until Einstellungen tab in Phase 4.
 const DEFAULT_BEITRAG_CENTS = 6969n;
@@ -87,8 +88,8 @@ export const load: PageServerLoad = async ({ params }) => {
 
   const reminderSentRecently = (recentReminderRows[0]?.cnt ?? 0) > 0;
 
-  // ── Compute current year for default reminder target ─────────────────────
-  const currentYear = new Date().getFullYear();
+  // ── Compute current year for default reminder target (ADR-0001) ──────────
+  const currentYear = berlinYear();
 
   // ── Org constants for mail preview ───────────────────────────────────────
   const mailFrom = env.MAIL_FROM || "noreply@folgederwolke.de";

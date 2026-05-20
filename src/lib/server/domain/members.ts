@@ -11,6 +11,7 @@
 
 import { z } from "zod";
 import { validateIban, normalizeIban } from "$lib/server/domain/iban.js";
+import { berlinYear } from "$lib/domain/year.js";
 
 // Re-export shared client-safe items so callers that don't need browser
 // compatibility can import everything from one place.
@@ -128,13 +129,16 @@ export function validateEditMember(
 
 /**
  * Returns the 3-year window centered on `anchor`: [anchor-1, anchor, anchor+1].
- * Default anchor is the current calendar year.
+ * Default anchor is the current Berlin-local Buchhaltungsjahr (ADR-0001).
  *
  * C2-2: callers thread `?year=` through to anchor the matrix on the selected
  * Buchungsjahr instead of always showing currentYear ± 1.
  */
 export function beitragYearsRange(
-  anchor: number = new Date().getFullYear(),
+  // ADR-0001: Berlin-local default — using UTC `new Date().getFullYear()`
+  // would shift the matrix window by one year at the UTC↔Berlin midnight
+  // boundary.
+  anchor: number = berlinYear(),
 ): [number, number, number] {
   return [anchor - 1, anchor, anchor + 1];
 }

@@ -17,6 +17,7 @@ import { getDb } from "$lib/server/db/index.js";
 import { idCounters } from "$lib/server/db/schema/id_counters.js";
 import { formatBusinessId } from "$lib/domain/business-id.js";
 import type { BusinessIdPrefix } from "$lib/domain/business-id.js";
+import { berlinYear } from "$lib/domain/year.js";
 
 export type AllocatorKind = BusinessIdPrefix;
 
@@ -24,12 +25,15 @@ export type AllocatorKind = BusinessIdPrefix;
  * Allocates the next business ID for the given prefix kind + year.
  *
  * @param kind  - One of the BusinessIdPrefix values: 'A'|'AUS'|'E'|'S'|'B'|'P'|'FDW'
- * @param year  - Calendar year (defaults to current year)
+ * @param year  - Buchhaltungsjahr (defaults to the current Berlin-local year
+ *                per ADR-0001). Using UTC `getFullYear()` would mis-allocate
+ *                IDs during the ~1h window at the year boundary when Berlin
+ *                has rolled over but UTC has not (e.g. 23:30 UTC on Dec 31).
  * @returns     - Formatted business ID string e.g. "AUS-2026-007"
  */
 export async function allocateBusinessId(
   kind: AllocatorKind,
-  year: number = new Date().getFullYear(),
+  year: number = berlinYear(),
 ): Promise<string> {
   const db = getDb();
 
