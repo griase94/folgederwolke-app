@@ -3,7 +3,7 @@
  *
  * Verifies that the tax-correctness gates fire in the rendered UI:
  *   - AuslagenForm: submit disabled until Beleg + Rechnungsdatum filled
- *   - /transactions/neu kind=ausgabe: Beleg, Rechnungsdatum, Geldfluss-Datum
+ *   - /transactions/neu kind=ausgabe: Beleg, Rechnungsdatum, Abfluss-Datum
  *     are required at the HTML level (the `required` attribute blocks submit)
  *   - /transactions/neu kind=ausgabe: bezahlt_von defaults to 'verein'
  *
