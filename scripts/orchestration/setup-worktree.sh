@@ -16,7 +16,9 @@ WORKTREE_PORT=$((4173 + SLOT))
 if [ -d "$WORKTREE_PATH" ]; then
   echo "[setup-worktree] worktree already exists at $WORKTREE_PATH — skipping create"
 else
-  git worktree add -b "$BRANCH" "$WORKTREE_PATH" main
+  # Branch off origin/main (latest) — local main may be stale (other worktree)
+  git fetch origin main --quiet
+  git worktree add -b "$BRANCH" "$WORKTREE_PATH" origin/main
 fi
 
 cat > "$WORKTREE_PATH/.env.test.local" <<EOF
