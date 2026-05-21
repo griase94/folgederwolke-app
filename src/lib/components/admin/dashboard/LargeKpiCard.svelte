@@ -87,7 +87,10 @@
 	<div class="flex h-full flex-col gap-3 p-5">
 		<p class="text-sm font-medium text-muted-foreground">{label}</p>
 		<div class="flex items-baseline gap-3">
-			<span class="text-3xl font-semibold tracking-tight tabular-nums">
+			<span
+				data-testid="kpi-hero-value"
+				class="text-4xl font-semibold tracking-tight tabular-nums lg:text-5xl"
+			>
 				<Money valueInCents={valueInCents} forceSign="never" />
 			</span>
 			<span

@@ -3,6 +3,7 @@
 	import ChecklistSection from '$lib/components/admin/dashboard/ChecklistSection.svelte';
 	import RecentActivity from '$lib/components/admin/dashboard/RecentActivity.svelte';
 	import WGBWidget from '$lib/components/admin/dashboard/WGBWidget.svelte';
+	import BeitragsuebersichtWidget from '$lib/components/admin/dashboard/BeitragsuebersichtWidget.svelte';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
@@ -58,6 +59,18 @@
 			freigrenzeCents={data.wgb.freigrenzeCents}
 			status={data.wgb.status}
 			year={data.wgb.year}
+		/>
+	</div>
+
+	<!-- C4-DASH-lite: Beitragsübersicht widget (O-3/M-1) -->
+	<div class="mt-6">
+		<BeitragsuebersichtWidget
+			year={data.beitragsuebersicht.year}
+			memberCount={data.beitragsuebersicht.memberCount}
+			paidCents={data.beitragsuebersicht.paidCents}
+			offenCents={data.beitragsuebersicht.offenCents}
+			paidMemberCount={data.beitragsuebersicht.paidMemberCount}
+			openMemberCount={data.beitragsuebersicht.openMemberCount}
 		/>
 	</div>
 
