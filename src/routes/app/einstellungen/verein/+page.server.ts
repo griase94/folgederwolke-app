@@ -31,6 +31,7 @@ export const load: PageServerLoad = async () => {
            role::text AS role
       FROM members
      WHERE role IN ('vorstand','kassenwart','schriftfuehrer')
+       AND (austritts_datum IS NULL OR austritts_datum > current_date)
      ORDER BY nachname, vorname
   `)) as { id: string; name: string; role: string }[];
   return { stammdaten, members };

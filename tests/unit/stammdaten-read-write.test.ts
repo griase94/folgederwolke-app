@@ -95,4 +95,80 @@ describe.skipIf(!dbConfigured)("Stammdaten read/write", () => {
       sql`DELETE FROM members WHERE id = ${memberId}::uuid`,
     );
   });
+
+  it("rejects vorstandIds that include an ausgetretenes Mitglied (Blocker A)", async () => {
+    // Seed a vorstand member who has already left (austritts_datum in the past).
+    const db = getDb();
+    const rows = (await db.execute<{ id: string }>(sql`
+      INSERT INTO members (vorname, nachname, role, austritts_datum)
+      VALUES ('Ausgetreten', 'Vorstand', 'vorstand', current_date - interval '1 day')
+      RETURNING id::text
+    `)) as { id: string }[];
+    const memberId = rows[0]!.id;
+
+    const r = await writeStammdaten(
+      { vorstandIds: [memberId] },
+      "00000000-0000-0000-0000-000000000001",
+    );
+    // The member has role=vorstand but is austritted — writeStammdaten should
+    // treat them as non-existent (filtered out by austritts_datum check).
+    expect(r.ok).toBe(false);
+
+    await directDb.execute(
+      sql`DELETE FROM members WHERE id = ${memberId}::uuid`,
+    );
+  });
+
+  it("write empty string → reader returns env-fallback value with source:env-fallback (Blocker C)", async () => {
+    // First write a real value so there is a settings row.
+    const r1 = await writeStammdaten(
+      { name: "Echter Name e.V." },
+      "00000000-0000-0000-0000-000000000001",
+    );
+    expect(r1.ok).toBe(true);
+    const s1 = await readStammdaten();
+    expect(s1.name).toBe("Echter Name e.V.");
+    expect(s1.source.name).toBe("settings");
+
+    // Now write an empty string — should be a no-op (no upsert).
+    const r2 = await writeStammdaten(
+      { name: "" },
+      "00000000-0000-0000-0000-000000000001",
+    );
+    expect(r2.ok).toBe(true);
+
+    // The settings row from the first write must still be present — the
+    // empty-string write must NOT have overwritten it with "".
+    // (beforeEach deleted all verein.* rows, so the only source is our
+    // first write above.)
+    const s2 = await readStammdaten();
+    expect(s2.name).toBe("Echter Name e.V.");
+    expect(s2.source.name).toBe("settings");
+
+    // Second scenario: fresh DB (no prior write). Write "" → env-fallback.
+    await directDb.execute(sql`DELETE FROM settings WHERE key LIKE 'verein.%'`);
+    const r3 = await writeStammdaten(
+      { name: "" },
+      "00000000-0000-0000-0000-000000000001",
+    );
+    expect(r3.ok).toBe(true);
+    const s3 = await readStammdaten();
+    expect(s3.source.name).toBe("env-fallback");
+  });
+
+  it("rejects IBAN/BIC mismatch for known DE BLZ (Blocker B)", async () => {
+    // Deutsche Skatbank BLZ 83065408 → expected BIC prefix GENODEF1.
+    // Supplying a different BIC should be caught by assertVereinBankConsistent.
+    const skatbankIban = "DE86830654080004822200"; // valid MOD-97, BLZ=83065408
+    const wrongBic = "BELADEBEXXX"; // Berliner Sparkasse — wrong bank entirely
+
+    const r = await writeStammdaten(
+      { iban: skatbankIban, bic: wrongBic },
+      "00000000-0000-0000-0000-000000000001",
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error.toLowerCase()).toMatch(/iban|bic|mismatch|blz|bank/i);
+    }
+  });
 });

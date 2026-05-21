@@ -23,7 +23,7 @@
 
 import { sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
-import { env } from "$lib/server/env.js";
+import { env, assertVereinBankConsistent } from "$lib/server/env.js";
 import { validateIban } from "$lib/server/domain/iban.js";
 
 export type StammdatenSource = "settings" | "env-fallback";
@@ -213,6 +213,26 @@ export async function writeStammdaten(
     }
   }
 
+  // Blocker B: IBAN/BIC consistency check when both fields are present.
+  // assertVereinBankConsistent throws on known-BLZ mismatch; we catch and
+  // convert to a structured WriteResult so callers get { ok: false, error }.
+  if (
+    patch.iban !== undefined &&
+    patch.iban !== "" &&
+    patch.bic !== undefined &&
+    patch.bic !== ""
+  ) {
+    try {
+      assertVereinBankConsistent({ iban: patch.iban, bic: patch.bic });
+    } catch (err) {
+      return {
+        ok: false,
+        error:
+          err instanceof Error ? err.message : "IBAN/BIC stimmen nicht überein",
+      };
+    }
+  }
+
   if (patch.vorstandIds !== undefined) {
     if (!Array.isArray(patch.vorstandIds)) {
       return { ok: false, error: "vorstandIds muss ein Array sein" };
@@ -234,6 +254,7 @@ export async function writeStammdaten(
         SELECT id::text AS id, role::text AS role
           FROM members
          WHERE id = ANY(${pgArrayLiteral}::uuid[])
+           AND (austritts_datum IS NULL OR austritts_datum > current_date)
       `)) as { id: string; role: string }[];
 
       const byId = new Map(rows.map((r) => [r.id, r.role]));
@@ -261,21 +282,24 @@ export async function writeStammdaten(
     | { key: string; kind: "array"; value: string[] };
 
   const entries: Entry[] = [];
-  if (patch.name !== undefined)
+  // Blocker C: skip empty-string values — writing "" would permanently shadow
+  // the env fallback, making the reader return "" (source: "settings") instead
+  // of the VEREIN_* env value. An empty string means "no override; defer to env".
+  if (patch.name !== undefined && patch.name !== "")
     entries.push({ key: KEYS.name, kind: "string", value: patch.name });
-  if (patch.adresse !== undefined)
+  if (patch.adresse !== undefined && patch.adresse !== "")
     entries.push({ key: KEYS.adresse, kind: "string", value: patch.adresse });
-  if (patch.iban !== undefined)
+  if (patch.iban !== undefined && patch.iban !== "")
     entries.push({ key: KEYS.iban, kind: "string", value: patch.iban });
-  if (patch.bic !== undefined)
+  if (patch.bic !== undefined && patch.bic !== "")
     entries.push({ key: KEYS.bic, kind: "string", value: patch.bic });
-  if (patch.steuernummer !== undefined)
+  if (patch.steuernummer !== undefined && patch.steuernummer !== "")
     entries.push({
       key: KEYS.steuernummer,
       kind: "string",
       value: patch.steuernummer,
     });
-  if (patch.vr !== undefined)
+  if (patch.vr !== undefined && patch.vr !== "")
     entries.push({ key: KEYS.vr, kind: "string", value: patch.vr });
   if (patch.vorstandIds !== undefined)
     entries.push({
