@@ -21,6 +21,12 @@ async function checkDb(): Promise<"ok" | "fail"> {
 
 async function checkDrive(): Promise<"ok" | "skip" | "fail"> {
   if (!env.GOOGLE_OAUTH_REFRESH_TOKEN) return "skip";
+  // Skip cleanly when there's nothing to probe with — production has been
+  // reporting `drive: "fail"` because TEMPLATE_DOC_ID was unset in the
+  // Vercel env, which caused `files.get({fileId: ""})` to 400. That's a
+  // config gap, not a Drive outage, and surfacing it as "skip" makes it
+  // easy to distinguish from real OAuth/quota/network failures in logs.
+  if (!env.TEMPLATE_DOC_ID) return "skip";
   try {
     const auth = getDriveAuth();
     const driveClient = createDrive({ version: "v3", auth });
@@ -29,7 +35,13 @@ async function checkDrive(): Promise<"ok" | "skip" | "fail"> {
     await driveClient.files.get({ fileId: env.TEMPLATE_DOC_ID, fields: "id" });
     clearTimeout(timer);
     return "ok";
-  } catch {
+  } catch (err) {
+    // Log the actual error server-side so the cause of `fail` is debuggable
+    // from Vercel logs without leaking it to public callers of /healthz.
+    console.error(
+      "[healthz] Drive check failed:",
+      err instanceof Error ? err.message : String(err),
+    );
     return "fail";
   }
 }
@@ -37,10 +49,23 @@ async function checkDrive(): Promise<"ok" | "skip" | "fail"> {
 export const GET: RequestHandler = async () => {
   const [dbStatus, driveStatus] = await Promise.all([checkDb(), checkDrive()]);
 
+  // Vercel automatically injects `VERCEL_GIT_COMMIT_SHA` at runtime — prefer
+  // it over `env.COMMIT_SHA` because the latter defaults to the literal
+  // string `"dev"` in `env.ts:171`. Without this precedence order the
+  // fallback chain would always short-circuit to `"dev"` (since the default
+  // is truthy), and the post-deploy smoke workflow
+  // (`.github/workflows/post-deploy-smoke.yml`) — which compares the
+  // deployed git SHA against this field — would never match. Local dev
+  // (no Vercel env vars set) falls through to `env.COMMIT_SHA = "dev"`.
+  const sha =
+    process.env["VERCEL_GIT_COMMIT_SHA"]?.slice(0, 7) ||
+    env.COMMIT_SHA ||
+    "dev";
+
   const body = {
     db: dbStatus,
     drive: driveStatus,
-    sha: env.COMMIT_SHA || "dev",
+    sha,
     deployedAt: env.DEPLOYED_AT || null,
   };
 

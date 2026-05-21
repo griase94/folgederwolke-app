@@ -1,0 +1,90 @@
+name: post-deploy smoke
+
+# Validates that the production deploy actually serves the latest commit and
+# that `/healthz` reports `db: ok`. Vercel reports "Deployment has completed"
+# at the platform level even if a deploy ships broken runtime code (e.g. an
+# env-var misconfiguration that crashes on first request). This workflow is
+# the safety net that surfaces those failures in GitHub instead of letting
+# them sit silent.
+#
+# Trigger: GitHub `deployment_status` event, which Vercel fires once per
+# deployment with a `state` of `success`/`failure`/`error`. We only smoke
+# production deploys — preview deploys are visible to PR authors via the
+# Vercel comment bot already.
+#
+# Required environment:
+#   * env.SMOKE_BASE_URL — the production hostname (e.g.
+#     `https://folgederwolke-app.vercel.app`). Hard-coded below; bump here
+#     if the production alias ever changes.
+
+on:
+  deployment_status:
+
+permissions:
+  contents: read
+  deployments: read
+
+jobs:
+  smoke:
+    name: smoke /healthz
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Gate to Vercel + production + a successful platform-level deploy.
+    # `state == 'success'` is what Vercel reports when the build finished
+    # and the deployment is reachable. Preview/staging deploys carry
+    # `environment != 'Production'` and are skipped.
+    if: >
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment.environment == 'Production'
+    env:
+      SMOKE_BASE_URL: https://folgederwolke-app.vercel.app
+      EXPECTED_SHA: ${{ github.event.deployment.sha }}
+
+    steps:
+      - name: Wait for production alias to flip to new deployment
+        # Vercel reports `state=success` the moment the build finishes, but
+        # there is a brief window where the production alias is still
+        # serving the previous deployment from the edge cache. Poll
+        # `/healthz` (which returns the deployed `sha`) until it matches the
+        # expected commit, or fail after ~3 minutes.
+        env:
+          BASE_URL: ${{ env.SMOKE_BASE_URL }}
+          EXPECTED: ${{ env.EXPECTED_SHA }}
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 180 ))
+          actual=""
+          status=""
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            payload=$(curl -fsS --max-time 10 "${BASE_URL}/healthz" || true)
+            if [ -n "$payload" ]; then
+              actual=$(printf '%s' "$payload" | jq -r '.sha // ""' 2>/dev/null || true)
+              status=$(printf '%s' "$payload" | jq -r '.db  // ""' 2>/dev/null || true)
+              if [ "$actual" = "${EXPECTED:0:7}" ] || [ "$actual" = "$EXPECTED" ]; then
+                echo "match: alias serving ${EXPECTED:0:7} (db=$status)"
+                if [ "$status" != "ok" ]; then
+                  echo "::error::/healthz reports db=$status (expected ok)"
+                  exit 1
+                fi
+                exit 0
+              fi
+              echo "wait: alias serves '$actual', want '${EXPECTED:0:7}' (db=$status)"
+            else
+              echo "wait: /healthz did not respond"
+            fi
+            sleep 5
+          done
+          echo "::error::production alias did not flip to ${EXPECTED:0:7} within 180s (last seen sha=$actual, db=$status)"
+          exit 1
+
+      - name: Probe a representative public route
+        env:
+          BASE_URL: ${{ env.SMOKE_BASE_URL }}
+        run: |
+          set -euo pipefail
+          # /auslage-einreichen is the only unauthenticated full-render route
+          # we ship; if it returns non-2xx the app is functionally broken
+          # even if /healthz is happy. -L follows the root redirect.
+          code=$(curl -fsS -L -o /dev/null -w '%{http_code}' --max-time 15 "${BASE_URL}/auslage-einreichen")
+          echo "auslage-einreichen: $code"
+          test "$code" = "200"
