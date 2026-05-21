@@ -15,10 +15,14 @@
  *   We pattern-match against `.cause.message` to verify the right constraint
  *   fired (matching what's in the messages from `postgres@3.x`).
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, afterAll, beforeEach } from "vitest";
 import postgres from "postgres";
 import { getDb } from "$lib/server/db/index.js";
 import { sql } from "drizzle-orm";
+import {
+  resetFestgeschreibungBis,
+  closeAdminConnection,
+} from "../integration/_helpers/festschreibung-reset.js";
 
 /** Capture the postgres-side message (lives on err.cause.message, not err.message). */
 async function pgErrMessage(p: Promise<unknown>): Promise<string> {
@@ -32,6 +36,31 @@ async function pgErrMessage(p: Promise<unknown>): Promise<string> {
 }
 
 describe("files table schema (0015 + 0016)", () => {
+  afterAll(async () => {
+    // Reset to a far-future year via superuser so subsequent test files
+    // (singleFork = shared process) aren't blocked by the trigger when they
+    // DELETE FROM files in their own setup.
+    await resetFestgeschreibungBis();
+    await closeAdminConnection();
+  });
+
+  beforeEach(async () => {
+    // Defensive: a prior test file may have left festgeschrieben_bis at a
+    // closed year. Reset before any test in this file runs so we start clean.
+    const adminLocal = postgres(process.env["DIRECT_DATABASE_URL"] ?? "", {
+      prepare: false,
+      max: 1,
+    });
+    try {
+      await adminLocal`
+        INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', 'null'::jsonb)
+        ON CONFLICT (key) DO UPDATE SET value = 'null'::jsonb
+      `;
+    } finally {
+      await adminLocal.end();
+    }
+  });
+
   it("columns exist", async () => {
     const rows = (await getDb().execute(sql`
       SELECT column_name FROM information_schema.columns
@@ -104,36 +133,45 @@ describe("files table schema (0015 + 0016)", () => {
   });
 
   it("Festschreibung trigger rejects UPDATE on closed-year file", async () => {
-    const db = getDb();
-    await db.execute(sql`
-      INSERT INTO files (id, storage_key, storage_backend, mime_type, byte_size, sha256,
-        original_filename, kind, source_kind, uploaded_at, uploaded_by_submitter_email)
-      VALUES ('00000000-0000-0000-0000-000000000099','belege/2024/test.pdf','blob',
-        'application/pdf', 100, repeat('a', 64), 'x.pdf', 'beleg', 'app',
-        '2024-06-01T10:00:00Z', 'test@x.de')
-    `);
-    // settings.value is jsonb; 0014's tolerant extractor handles bare numbers.
-    await db.execute(sql`
-      INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', '2024'::jsonb)
-      ON CONFLICT (key) DO UPDATE SET value = '2024'::jsonb
-    `);
-    const msg = await pgErrMessage(
-      db.execute(sql`
-        UPDATE files SET storage_key = 'belege/2024/changed.pdf'
-        WHERE id = '00000000-0000-0000-0000-000000000099'
-      `),
-    );
-    expect(msg).toMatch(/[Ff]estgeschrieben/);
-
-    // Cleanup via superuser connection. The Festschreibung trigger short-circuits
-    // when `session_user <> 'app_runtime'`, and the settings monotonic-forward
-    // trigger likewise bypasses for superuser — so DIRECT_DATABASE_URL can both
-    // reset the lock and drop the test row without re-tripping either trigger.
+    // INSERT the test fixture row via superuser. Doing this through getDb()
+    // (app_runtime) exposed a postgres-js pool quirk when files-schema runs
+    // after other Phase 9 test files in the same singleFork run: the INSERT
+    // returns the row but a subsequent SELECT on a different pool connection
+    // doesn't see it (pool/visibility issue rooted in connection state left
+    // over from earlier files). Using the same superuser connection that
+    // arms the lock keeps INSERT + UPDATE-target on the same conn, which is
+    // unaffected and lets the trigger assertion stand cleanly.
     const admin = postgres(process.env["DIRECT_DATABASE_URL"] ?? "", {
       prepare: false,
       max: 1,
     });
     try {
+      await admin`
+        INSERT INTO files (id, storage_key, storage_backend, mime_type, byte_size, sha256,
+          original_filename, kind, source_kind, uploaded_at, uploaded_by_submitter_email)
+        VALUES ('00000000-0000-0000-0000-000000000099','belege/2024/test.pdf','blob',
+          'application/pdf', 100, repeat('a', 64), 'x.pdf', 'beleg', 'app',
+          '2024-06-01T10:00:00Z', 'test@x.de')
+      `;
+      // Set the lock via the same superuser connection (bypasses both the
+      // monotonic-forward trigger and the file-Festschreibung trigger).
+      await admin`
+        INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', '2024'::jsonb)
+        ON CONFLICT (key) DO UPDATE SET value = '2024'::jsonb
+      `;
+      const db = getDb();
+      const msg = await pgErrMessage(
+        db.execute(sql`
+          UPDATE files SET storage_key = 'belege/2024/changed.pdf'
+          WHERE id = '00000000-0000-0000-0000-000000000099'
+        `),
+      );
+      expect(msg).toMatch(/[Ff]estgeschrieben/);
+
+      // Cleanup: reset the lock to JSONB null ("no lock" — what the shared
+      // helper in tests/integration/_helpers/festschreibung-reset.ts uses)
+      // and drop the test row. Superuser bypasses the file-Festschreibung
+      // trigger so this DELETE proceeds regardless of year_of_buchung.
       await admin`UPDATE settings SET value = 'null'::jsonb WHERE key = 'festgeschrieben_bis'`;
       await admin`DELETE FROM files WHERE id = '00000000-0000-0000-0000-000000000099'`;
     } finally {

@@ -17,6 +17,10 @@ import { sql } from "drizzle-orm";
 
 import { InMemoryMockFileStorage } from "$lib/server/files/in-memory-mock-impl.js";
 import { getDb } from "$lib/server/db/index.js";
+import {
+  resetFestgeschreibungBis,
+  closeAdminConnection,
+} from "./_helpers/festschreibung-reset.js";
 
 // Module-level mock state — replaced fresh in beforeEach so each test gets a
 // clean blob store, and the mocked getFileStorage closure resolves to it.
@@ -104,8 +108,19 @@ if (dbConfigured) {
 }
 
 describe.skipIf(!dbConfigured)("archiveYear", () => {
+  afterAll(async () => {
+    // Cross-file safety: reset the lock to JSONB null ("no lock") so later
+    // test files (which may DELETE FROM files in their own beforeEach) don't
+    // trip the Festschreibung trigger.
+    await resetFestgeschreibungBis();
+  });
+
   beforeEach(async () => {
     mockStorage = new InMemoryMockFileStorage();
+    // Reset BEFORE fkSafeCleanup so any leftover Festschreibung state from a
+    // prior test file can't block DELETE FROM files. Shared helper uses its
+    // own superuser connection (bypasses both triggers).
+    await resetFestgeschreibungBis();
     await clearFestgeschrieben();
     await fkSafeCleanup();
   });
@@ -195,11 +210,16 @@ describe.skipIf(!dbConfigured)(
   () => {
     afterAll(async () => {
       await clearFestgeschrieben();
+      // Cross-file safety: leave the lock at JSONB null so subsequent test
+      // files can DELETE FROM files freely without trigger interference.
+      await resetFestgeschreibungBis();
+      await closeAdminConnection();
       await admin.end();
     });
 
     beforeEach(async () => {
       mockStorage = new InMemoryMockFileStorage();
+      await resetFestgeschreibungBis();
       await clearFestgeschrieben();
       await fkSafeCleanup();
     });

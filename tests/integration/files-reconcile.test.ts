@@ -9,10 +9,14 @@
  * Uses the in-memory mock storage backend (swapped in via vi.mock) so we never
  * touch the local-fs root and don't race with other integration tests.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { InMemoryMockFileStorage } from "$lib/server/files/in-memory-mock-impl.js";
 import { getDb } from "$lib/server/db/index.js";
 import { sql } from "drizzle-orm";
+import {
+  resetFestgeschreibungBis,
+  closeAdminConnection,
+} from "./_helpers/festschreibung-reset.js";
 
 let mockStorage: InMemoryMockFileStorage;
 vi.mock("$lib/server/files/storage", async (importOriginal) => {
@@ -44,7 +48,15 @@ async function fkSafeCleanup() {
 }
 
 describe.skipIf(!dbConfigured)("reconcile (48h age threshold)", () => {
+  afterAll(async () => {
+    await closeAdminConnection();
+  });
+
   beforeEach(async () => {
+    // Reset festgeschrieben_bis FIRST (via superuser, bypasses triggers) so the
+    // FK-safe cleanup's DELETE FROM files can't be blocked by leftover state
+    // from a prior test file (singleFork = state leaks across files).
+    await resetFestgeschreibungBis();
     mockStorage = new InMemoryMockFileStorage();
     await fkSafeCleanup();
   });

@@ -15,13 +15,17 @@
  *   drizzle-orm/postgres-js `db.execute(sql\`…\`)` returns rows as a
  *   plain array (not `{rows}`). All assertions read `arr[0].col` directly.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { ChaosFileStorage } from "$lib/server/files/chaos-impl.js";
 import { InMemoryMockFileStorage } from "$lib/server/files/in-memory-mock-impl.js";
 import { handleAuslageUpload } from "$lib/server/files/upload-pipeline.js";
 import { getDb } from "$lib/server/db/index.js";
 import { sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
+import {
+  resetFestgeschreibungBis,
+  closeAdminConnection,
+} from "./_helpers/festschreibung-reset.js";
 
 const PDF_HEAD = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // %PDF
 
@@ -33,7 +37,15 @@ async function rowCount(query: ReturnType<typeof sql>): Promise<number> {
 }
 
 describe("upload pipeline", () => {
+  afterAll(async () => {
+    await closeAdminConnection();
+  });
+
   beforeEach(async () => {
+    // Reset festgeschrieben_bis to JSONB null FIRST (via superuser, bypasses
+    // both triggers) so the DELETE FROM files below isn't blocked by leftover
+    // state from a prior test file (singleFork = state leaks across files).
+    await resetFestgeschreibungBis();
     // FK-safe cleanup: null FK refs in all four owner tables, then DELETE files.
     const db = getDb();
     await db.execute(

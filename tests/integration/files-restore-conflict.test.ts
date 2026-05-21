@@ -6,13 +6,25 @@
  * to flip `deleted_at` back to NULL when a newer active row already occupies
  * that hash, returning a German-language error for the admin UI.
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { restoreFile } from "$lib/server/files/restore.js";
 import { getDb } from "$lib/server/db/index.js";
 import { sql } from "drizzle-orm";
+import {
+  resetFestgeschreibungBis,
+  closeAdminConnection,
+} from "./_helpers/festschreibung-reset.js";
 
 describe("restoreFile sha256 conflict", () => {
+  afterAll(async () => {
+    await closeAdminConnection();
+  });
+
   beforeEach(async () => {
+    // Reset festgeschrieben_bis FIRST (via superuser, bypasses triggers) so
+    // the DELETE FROM files below isn't blocked by leftover state from a
+    // prior test file (singleFork = state leaks across files).
+    await resetFestgeschreibungBis();
     const db = getDb();
     // FK-safe selective cleanup: null FK refs in all four owner tables for our
     // fixture file IDs, then DELETE the fixture files themselves.
