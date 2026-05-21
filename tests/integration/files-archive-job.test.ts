@@ -20,6 +20,8 @@ import { getDb } from "$lib/server/db/index.js";
 import {
   resetFestgeschreibungBis,
   closeAdminConnection,
+  seedFileViaAdmin,
+  cleanupFilesViaAdmin,
 } from "./_helpers/festschreibung-reset.js";
 
 // Module-level mock state — replaced fresh in beforeEach so each test gets a
@@ -50,22 +52,10 @@ const DIRECT_DATABASE_URL = process.env["DIRECT_DATABASE_URL"] ?? "";
 const dbConfigured = DIRECT_DATABASE_URL.length > 0;
 
 async function fkSafeCleanup() {
-  const db = getDb();
-  await db.execute(
-    sql`UPDATE expenses              SET beleg_file_id = NULL WHERE beleg_file_id IS NOT NULL`,
-  );
-  await db.execute(
-    sql`UPDATE income                SET beleg_file_id = NULL WHERE beleg_file_id IS NOT NULL`,
-  );
-  await db.execute(
-    sql`UPDATE donations             SET beleg_file_id = NULL, bescheinigung_file_id = NULL WHERE beleg_file_id IS NOT NULL OR bescheinigung_file_id IS NOT NULL`,
-  );
-  await db.execute(
-    sql`UPDATE auslagen_submissions  SET beleg_file_id = NULL WHERE beleg_file_id IS NOT NULL`,
-  );
-  // Clear via admin so the file-Festschreibung trigger (if armed by leftover
-  // state) doesn't block the DELETE.
-  await admin`DELETE FROM files`;
+  // Superuser cleanup. Nulls FK refs in owner tables, then DELETEs files.
+  // Bypasses the festgeschrieben_bis trigger (session_user check) so leftover
+  // state from a prior describe-block can't block the wipe.
+  await cleanupFilesViaAdmin();
 }
 
 async function clearFestgeschrieben() {
@@ -82,16 +72,16 @@ async function seedFile(opts: {
   sha: string;
   uploadedAt?: string;
 }) {
-  const ts = opts.uploadedAt ?? "2025-06-01T10:00:00Z";
-  // INSERT via app_runtime; safe as long as festgeschrieben_bis is null or the
-  // year doesn't intersect.
-  await getDb().execute(sql`
-    INSERT INTO files (id, storage_key, storage_backend, mime_type, byte_size, sha256,
-      original_filename, kind, source_kind, uploaded_at, uploaded_by_submitter_email)
-    VALUES (${opts.id}, ${opts.storageKey}, 'blob', 'application/pdf',
-      100, ${opts.sha}, ${opts.id + ".pdf"}, 'beleg', 'app',
-      ${ts}::timestamptz, 's@x.de')
-  `);
+  // INSERT via the superuser helper — short-circuits both Festschreibung
+  // triggers so the seed never collides with a leftover lock from a prior test.
+  await seedFileViaAdmin({
+    id: opts.id,
+    storageKey: opts.storageKey,
+    sha256: opts.sha,
+    uploadedAt: opts.uploadedAt ?? "2025-06-01T10:00:00Z",
+    originalFilename: opts.id + ".pdf",
+    uploadedBySubmitterEmail: "s@x.de",
+  });
   // Seed the corresponding blob into the in-memory mock so storage.archive()
   // can move it without StorageNotFoundError.
   await mockStorage.upload({

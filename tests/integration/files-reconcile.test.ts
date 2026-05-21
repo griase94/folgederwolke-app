@@ -16,6 +16,8 @@ import { sql } from "drizzle-orm";
 import {
   resetFestgeschreibungBis,
   closeAdminConnection,
+  seedFileViaAdmin,
+  cleanupFilesViaAdmin,
 } from "./_helpers/festschreibung-reset.js";
 
 let mockStorage: InMemoryMockFileStorage;
@@ -31,20 +33,9 @@ const DIRECT_DATABASE_URL = process.env["DIRECT_DATABASE_URL"] ?? "";
 const dbConfigured = DIRECT_DATABASE_URL.length > 0;
 
 async function fkSafeCleanup() {
-  const db = getDb();
-  await db.execute(
-    sql`UPDATE expenses              SET beleg_file_id = NULL WHERE beleg_file_id IS NOT NULL`,
-  );
-  await db.execute(
-    sql`UPDATE income                SET beleg_file_id = NULL WHERE beleg_file_id IS NOT NULL`,
-  );
-  await db.execute(
-    sql`UPDATE donations             SET beleg_file_id = NULL, bescheinigung_file_id = NULL WHERE beleg_file_id IS NOT NULL OR bescheinigung_file_id IS NOT NULL`,
-  );
-  await db.execute(
-    sql`UPDATE auslagen_submissions  SET beleg_file_id = NULL WHERE beleg_file_id IS NOT NULL`,
-  );
-  await db.execute(sql`DELETE FROM files`);
+  // Superuser cleanup — bypasses the festgeschrieben_bis trigger so a leftover
+  // lock from a prior describe-block can't block DELETE FROM files.
+  await cleanupFilesViaAdmin();
 }
 
 describe.skipIf(!dbConfigured)("reconcile (48h age threshold)", () => {
@@ -85,12 +76,13 @@ describe.skipIf(!dbConfigured)("reconcile (48h age threshold)", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (mockStorage as any).store.get(`belege/2026/valid${i}.pdf`).uploadedAt =
         oldTime;
-      await getDb().execute(sql`
-        INSERT INTO files (id, storage_key, storage_backend, mime_type, byte_size, sha256,
-          original_filename, kind, source_kind, uploaded_by_submitter_email)
-        VALUES (gen_random_uuid(), ${`belege/2026/valid${i}.pdf`}, 'blob', 'application/pdf',
-          1, ${sha}, ${`v${i}.pdf`}, 'beleg', 'app', 'test@x.de')
-      `);
+      // Seed via superuser — bypasses both Festschreibung triggers.
+      await seedFileViaAdmin({
+        storageKey: `belege/2026/valid${i}.pdf`,
+        sha256: sha,
+        byteSize: 1,
+        originalFilename: `v${i}.pdf`,
+      });
     }
 
     const result = await reconcile();
@@ -108,22 +100,23 @@ describe.skipIf(!dbConfigured)("reconcile (48h age threshold)", () => {
         mimeType: "application/pdf",
         pathname: `belege/2026/ok${i}.pdf`,
       });
-      await getDb().execute(sql`
-        INSERT INTO files (id, storage_key, storage_backend, mime_type, byte_size, sha256,
-          original_filename, kind, source_kind, uploaded_by_submitter_email)
-        VALUES (gen_random_uuid(), ${`belege/2026/ok${i}.pdf`}, 'blob', 'application/pdf',
-          1, ${sha}, ${`o${i}.pdf`}, 'beleg', 'app', 'test@x.de')
-      `);
+      // Seed via superuser — bypasses both Festschreibung triggers.
+      await seedFileViaAdmin({
+        storageKey: `belege/2026/ok${i}.pdf`,
+        sha256: sha,
+        byteSize: 1,
+        originalFilename: `o${i}.pdf`,
+      });
     }
     // 2 DB rows with no matching blob.
     for (let i = 1; i <= 2; i++) {
       const sha = "d".repeat(63) + i;
-      await getDb().execute(sql`
-        INSERT INTO files (id, storage_key, storage_backend, mime_type, byte_size, sha256,
-          original_filename, kind, source_kind, uploaded_by_submitter_email)
-        VALUES (gen_random_uuid(), ${`belege/2026/missing${i}.pdf`}, 'blob', 'application/pdf',
-          1, ${sha}, ${`m${i}.pdf`}, 'beleg', 'app', 'test@x.de')
-      `);
+      await seedFileViaAdmin({
+        storageKey: `belege/2026/missing${i}.pdf`,
+        sha256: sha,
+        byteSize: 1,
+        originalFilename: `m${i}.pdf`,
+      });
     }
     const result = await reconcile();
     expect(result.brokenRefs).toBe(2);

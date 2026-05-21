@@ -25,6 +25,7 @@ import { createHash } from "node:crypto";
 import {
   resetFestgeschreibungBis,
   closeAdminConnection,
+  cleanupFilesViaAdmin,
 } from "./_helpers/festschreibung-reset.js";
 
 const PDF_HEAD = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // %PDF
@@ -46,22 +47,12 @@ describe("upload pipeline", () => {
     // both triggers) so the DELETE FROM files below isn't blocked by leftover
     // state from a prior test file (singleFork = state leaks across files).
     await resetFestgeschreibungBis();
-    // FK-safe cleanup: null FK refs in all four owner tables, then DELETE files.
-    const db = getDb();
-    await db.execute(
-      sql`UPDATE expenses              SET beleg_file_id = NULL WHERE beleg_file_id IS NOT NULL`,
-    );
-    await db.execute(
-      sql`UPDATE income                SET beleg_file_id = NULL WHERE beleg_file_id IS NOT NULL`,
-    );
-    await db.execute(
-      sql`UPDATE donations             SET beleg_file_id = NULL, bescheinigung_file_id = NULL WHERE beleg_file_id IS NOT NULL OR bescheinigung_file_id IS NOT NULL`,
-    );
-    await db.execute(
-      sql`UPDATE auslagen_submissions  SET beleg_file_id = NULL WHERE beleg_file_id IS NOT NULL`,
-    );
-    await db.execute(sql`DELETE FROM auslagen_submissions`);
-    await db.execute(sql`DELETE FROM files`);
+    // FK-safe cleanup via superuser — bypasses the festgeschrieben_bis trigger
+    // so a leftover lock from a prior describe-block can't block DELETE.
+    await cleanupFilesViaAdmin();
+    // auslagen_submissions has no FK INTO files (already nulled above) but the
+    // test itself creates submission rows we want to wipe.
+    await getDb().execute(sql`DELETE FROM auslagen_submissions`);
   });
 
   it("blob upload failure → no files row", async () => {
