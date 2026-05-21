@@ -575,12 +575,13 @@ export interface CreateExpenseInput {
   currency?: string;
   rechnungsdatum?: string | null;
   /**
-   * C2-TAX: Geldfluss-Datum (Abfluss) — required for kind=ausgabe per
-   * EÜR §11 EStG. Schema column is nullable while the rollout is in flight
-   * (additive migration 0018); the Zod + UI gates on the admin direct path
-   * make it effectively required for new app-mode entries.
+   * C2-TAX (cycle 2): Abfluss-Datum — required for kind=ausgabe per EÜR §11
+   * EStG. Maps to the existing `expenses.abfluss_datum` column (no new
+   * column added; the migration 0018 that introduced a parallel
+   * `geldfluss_datum` was reverted after julia-buchhaltung's review).
+   * Zod + UI on the admin direct path enforce this for new app-mode entries.
    */
-  geldflussDatum?: string | null;
+  abflussDatum?: string | null;
   kommentar?: string | null;
   kategorieId?: string | null;
   kategorieNameSnapshot: string;
@@ -646,7 +647,7 @@ export async function createExpense(
       currency: input.currency ?? "EUR",
       rechnungsdatum: input.rechnungsdatum ?? null,
       // C2-TAX: persist the cash-out date per EÜR §11 EStG.
-      geldflussDatum: input.geldflussDatum ?? null,
+      abflussDatum: input.abflussDatum ?? null,
       kommentar: input.kommentar ?? null,
       kategorieId: input.kategorieId ?? null,
       kategorieNameSnapshot: input.kategorieNameSnapshot,

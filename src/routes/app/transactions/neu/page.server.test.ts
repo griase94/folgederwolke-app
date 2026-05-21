@@ -287,9 +287,9 @@ describe("/app/transactions/neu — create action honors ADR-0008", () => {
       bezahltVonKind: "verein",
       bezahltVonDisplay: "Verein",
       projectId: BAR_POPUP_PROJECT_ID,
-      // C2-TAX: rechnungsdatum + geldfluss_datum + beleg are now required.
+      // C2-TAX: rechnungsdatum + abfluss_datum + beleg are now required.
       rechnungsdatum: "2026-05-01",
-      geldfluss_datum: "2026-05-02",
+      abfluss_datum: "2026-05-02",
       beleg: mkBelegFile(),
     });
 
@@ -317,9 +317,9 @@ describe("/app/transactions/neu — create action honors ADR-0008", () => {
       sphereSnapshot: "ideeller",
       bezahltVonKind: "verein",
       bezahltVonDisplay: "Verein",
-      // C2-TAX: rechnungsdatum + geldfluss_datum + beleg are now required.
+      // C2-TAX: rechnungsdatum + abfluss_datum + beleg are now required.
       rechnungsdatum: "2026-05-01",
-      geldfluss_datum: "2026-05-02",
+      abfluss_datum: "2026-05-02",
       beleg: mkBelegFile(),
     });
 

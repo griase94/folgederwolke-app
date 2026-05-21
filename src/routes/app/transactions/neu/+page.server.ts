@@ -154,11 +154,14 @@ const expenseSchema = baseSchema.extend({
   rechnungsdatum: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Rechnungsdatum erforderlich (YYYY-MM-DD)"),
-  // C2-TAX: newly required — distinct from Rechnungsdatum. The cash-out date
-  // is what drives Buchungsjahr-Zuordnung for EÜR.
-  geldfluss_datum: z
+  // C2-TAX: newly required — distinct from Rechnungsdatum. The cash-out
+  // (Abfluss) date is what drives Buchungsjahr-Zuordnung for EÜR §11 EStG.
+  // Persists into the existing `expenses.abfluss_datum` column; cycle 2
+  // replaces the originally-proposed parallel `geldfluss_datum` column
+  // (julia-buchhaltung flagged the duplicate).
+  abfluss_datum: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Geldfluss-Datum erforderlich (YYYY-MM-DD)"),
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Abfluss-Datum erforderlich (YYYY-MM-DD)"),
   // C2-TAX: default flips 'member' → 'verein' for the admin direct path
   // (the admin almost always enters Verein-paid expenses; Mitglied entries
   // come via the public Auslage form).
@@ -296,9 +299,9 @@ export const actions = {
         const businessId = await allocateBusinessId("A", year);
         const result = await createExpense({
           ...parsed.data,
-          // C2-TAX: persist Geldfluss-Datum (form field is snake_case; the
+          // C2-TAX: persist Abfluss-Datum (form field is snake_case; the
           // domain layer uses camelCase per Drizzle convention).
-          geldflussDatum: parsed.data.geldfluss_datum,
+          abflussDatum: parsed.data.abfluss_datum,
           belegFileId,
           sphereSnapshot,
           businessId,

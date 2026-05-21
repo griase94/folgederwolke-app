@@ -82,7 +82,7 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     await page.locator('input[type="number"]').first().fill("10");
     // Fill the date fields so only Beleg is missing.
     await page.getByLabel(/rechnungsdatum/i).fill("2026-05-01");
-    await page.getByLabel(/geldfluss-datum/i).fill("2026-05-02");
+    await page.getByLabel(/abfluss-datum/i).fill("2026-05-02");
     // Beleg deliberately left empty.
 
     // Native HTML5 required attribute on the file input prevents submission
@@ -92,7 +92,7 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     await expect(belegInput).toHaveAttribute("required", "");
   });
 
-  test("/transactions/neu kind=ausgabe Geldfluss-Datum is required", async ({
+  test("/transactions/neu kind=ausgabe Abfluss-Datum is required", async ({
     page,
   }) => {
     await signIn(page);
@@ -100,8 +100,8 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     await page.waitForLoadState("networkidle");
     if (page.url().includes("/sign-in")) test.skip();
 
-    const geldfluss = page.locator('input[name="geldfluss_datum"]');
-    await expect(geldfluss).toHaveAttribute("required", "");
+    const abfluss = page.locator('input[name="abfluss_datum"]');
+    await expect(abfluss).toHaveAttribute("required", "");
   });
 
   test("/transactions/neu kind=ausgabe bezahlt_von defaults to Verein", async ({

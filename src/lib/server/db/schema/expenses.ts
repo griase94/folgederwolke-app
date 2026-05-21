@@ -80,13 +80,15 @@ export const expenses = pgTable(
     // --- Domain dates ---
     /** Rechnungsdatum (Belegdatum) — date the receipt was issued. */
     rechnungsdatum: date("rechnungsdatum"),
-    /** Geldfluss-Datum / Abfluss — date the money actually moved. */
-    abflussDatum: date("abfluss_datum"),
     /**
-     * C2-TAX: Cash-out date for EÜR §11 EStG (additive — NULL allowed for
-     * existing rows; CHECK constraint deferred to Night 3 after backfill).
+     * Geldfluss-Datum / Abfluss — date the money actually moved.
+     * C2-TAX (cycle 2): the admin direct path now requires this field on
+     * kind=ausgabe per EÜR §11 EStG. No new column added — the existing
+     * `abfluss_datum` column already carries this semantic (the original
+     * migration 0018 that added a parallel `geldfluss_datum` was reverted
+     * after julia-buchhaltung flagged the duplicate; see PR #74 review).
      */
-    geldflussDatum: date("geldfluss_datum"),
+    abflussDatum: date("abfluss_datum"),
 
     // --- ADR-0003 — cents storage ---
     betragCents: bigint("betrag_cents", { mode: "bigint" }).notNull(),

@@ -40,9 +40,10 @@
 	);
 	let selectedMemberId = $state('');
 
-	// C2-TAX: Geldfluss-Datum (Abfluss) state for kind=ausgabe — required.
-	// Default to today (Berlin TZ) for ergonomic input.
-	let geldflussDatum = $state(new Date().toISOString().split('T')[0]!);
+	// C2-TAX: Abfluss-Datum (cash-out) state for kind=ausgabe — required per
+	// EÜR §11 EStG. Default to today (Berlin TZ) for ergonomic input. Maps
+	// to the existing `expenses.abfluss_datum` column (cycle 2 consolidation).
+	let abflussDatum = $state(new Date().toISOString().split('T')[0]!);
 
 	// C2-TAX: Beleg file state for kind=ausgabe — required.
 	let belegFile = $state<File | null>(null);
@@ -244,19 +245,20 @@
 					/>
 				</div>
 
-				<!-- C2-TAX: Geldfluss-Datum (Abfluss) — required per EÜR §11 EStG. -->
+				<!-- C2-TAX: Abfluss-Datum — required per EÜR §11 EStG. Maps to the
+				     existing `expenses.abfluss_datum` column. -->
 				<div class="space-y-1.5">
-					<label for="geldfluss_datum" class="block text-sm font-medium text-foreground">
-						Geldfluss-Datum <span class="text-red-500" aria-hidden="true">*</span>
+					<label for="abfluss_datum" class="block text-sm font-medium text-foreground">
+						Abfluss-Datum <span class="text-red-500" aria-hidden="true">*</span>
 					</label>
 					<p class="text-muted-foreground text-xs">Tag, an dem das Geld tatsächlich abgeflossen ist.</p>
 					<input
-						id="geldfluss_datum"
-						name="geldfluss_datum"
+						id="abfluss_datum"
+						name="abfluss_datum"
 						type="date"
 						lang="de"
 						required
-						bind:value={geldflussDatum}
+						bind:value={abflussDatum}
 						class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 					/>
 				</div>
