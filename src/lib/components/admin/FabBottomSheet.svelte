@@ -23,6 +23,7 @@
     the home indicator on devices that have one.
 -->
 <script lang="ts">
+	import { page } from '$app/stores';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import MinusIcon from '@lucide/svelte/icons/minus';
 	import PlusIcon from '@lucide/svelte/icons/plus';
@@ -40,10 +41,17 @@
 		tone: string;
 	};
 
+	// B-2 — gate the 4th "Externe Auslage einreichen" action behind
+	// $page.data.formEnabled. The /app layout server load exposes this from
+	// env.PUBLIC_FORM_ENABLED. When the public Auslagen form is off (Vercel
+	// env unset, or future maintenance window), the action disappears from
+	// the sheet so admins don't tap into the soft-fallback page.
+	const formEnabled = $derived(($page.data as { formEnabled?: boolean })?.formEnabled === true);
+
 	// C7-6 — distinct lucide icons per action. Ausgabe = Minus (money
 	// leaving), Einnahme = Plus (money arriving), Spende = HandCoins
 	// (giving), Auslage = FileText (form / receipt).
-	const ACTIONS: Action[] = [
+	const ACTIONS = $derived<Action[]>([
 		{
 			href: '/app/transactions/neu?kind=ausgabe',
 			label: 'Neue Ausgabe',
@@ -65,14 +73,18 @@
 			icon: HandCoinsIcon,
 			tone: 'bg-blue-50 text-blue-700'
 		},
-		{
-			href: '/auslage-einreichen',
-			label: 'Externe Auslage einreichen',
-			hint: 'Öffentliches Formular (IBAN, externe Person)',
-			icon: FileTextIcon,
-			tone: 'bg-amber-50 text-amber-800'
-		}
-	];
+		...(formEnabled
+			? [
+					{
+						href: '/auslage-einreichen',
+						label: 'Externe Auslage einreichen',
+						hint: 'Öffentliches Formular (IBAN, externe Person)',
+						icon: FileTextIcon,
+						tone: 'bg-amber-50 text-amber-800'
+					} as Action
+				]
+			: [])
+	]);
 
 	function onSelect(): void {
 		// Close the sheet — SvelteKit anchor navigation kicks in via the href.

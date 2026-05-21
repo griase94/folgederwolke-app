@@ -75,7 +75,17 @@ export interface SharePrefill {
 
 export const load: PageServerLoad = async ({ url }) => {
   if (!env.PUBLIC_FORM_ENABLED) {
-    throw error(404, "Das Formular ist momentan nicht verfügbar.");
+    // B-2 soft-fallback (was 404). Return 200 with formEnabled=false so the
+    // page renders a "Vorübergehend nicht verfügbar" message instead of a
+    // dead-end 404. Rationale: an accidental env-misconfiguration on Vercel
+    // (e.g. PUBLIC_FORM_ENABLED unset after a env rotation) should not lose
+    // share-target POSTs to the void or signal to outsiders that we're broken
+    // — it should signal "this is temporarily off, try again or write us".
+    // The POST action below still rejects with 404 so writes can't succeed.
+    return {
+      formEnabled: false as const,
+      sharePrefill: null,
+    };
   }
 
   // PWA share-target prefill (M2): when the browser POSTs a share to
@@ -95,7 +105,7 @@ export const load: PageServerLoad = async ({ url }) => {
     };
   }
 
-  return { formEnabled: true, sharePrefill };
+  return { formEnabled: true as const, sharePrefill };
 };
 
 // ---------------------------------------------------------------------------
@@ -138,12 +148,7 @@ function berlinYear(now: Date = new Date()): number {
 
 export const actions: Actions = {
   default: async ({ request, getClientAddress, url }) => {
-    // ── Gate ──────────────────────────────────────────────────────────────────
-    if (!isPublicFormEnabled()) {
-      throw error(404, "Das Formular ist momentan nicht verfügbar.");
-    }
-
-    // ── PWA share_target intercept (M2) ───────────────────────────────────────
+    // ── PWA share_target intercept (M2) — RUNS BEFORE GATE ────────────────────
     // manifest.webmanifest declares share_target POSTing multipart/form-data
     // to /auslage-einreichen?source=share with params title→bezeichnung_display,
     // text→kommentar_display, url→kommentar_url, files[0]→beleg. A normal
@@ -152,6 +157,14 @@ export const actions: Actions = {
     // fields. File attachments are NOT carried across the redirect (URL length
     // budget) — the user re-attaches the Beleg on the rendered form. A note
     // banner explains this.
+    //
+    // Intercept MUST run BEFORE the gate check (cycle-2 pwa-mobile review):
+    // when PUBLIC_FORM_ENABLED=false on Vercel, a phone-share-intent POST that
+    // hit `throw error(404)` here returned a 404 error page to the user. The
+    // redirect below sends them to GET /auslage-einreichen instead, where the
+    // gate check renders the soft-fallback message ("Vorübergehend nicht
+    // verfügbar — schreib uns: folgederwolke@gmail.com") — a real recovery
+    // path instead of a dead-end.
     if (url.searchParams.get("source") === "share") {
       let title = "";
       let text = "";
@@ -178,6 +191,11 @@ export const actions: Actions = {
       else if (urlField) params.set("text", urlField.slice(0, 500));
       if (hadFile) params.set("file", "1");
       throw redirect(303, `/auslage-einreichen?${params.toString()}`);
+    }
+
+    // ── Gate (runs AFTER share intercept so share POSTs land on GET fallback) ─
+    if (!isPublicFormEnabled()) {
+      throw error(404, "Das Formular ist momentan nicht verfügbar.");
     }
 
     const ip = getClientAddress();
