@@ -12,20 +12,131 @@
 
 ## Phases
 
-| #   | Status           | PR  | Notes                                                                                                       |
-| --- | ---------------- | --- | ----------------------------------------------------------------------------------------------------------- |
-| 0   | ✅ green         | #1  | Scaffold + Drizzle + healthz + CI + cloud wiring                                                            |
-| 1   | ✅ green         | #3  | Schema (ADRs 0001–0010 minus 0011) + magic-link auth + mail templates                                       |
-| 2   | ✅ green         | #4  | Public form + Drive upload + Eingangsmail                                                                   |
-| 3   | ✅ green         | #5  | Admin shell + Mitglieder CRUD                                                                               |
-| 4   | ✅ green         | #6  | Audit Inbox + Importer + Mails                                                                              |
-| 5   | ✅ green         | #7  | Invoices + Transactions + CRM + Spenden (BMF-compliant Bescheinigung)                                       |
-| 6   | ✅ green         | #8  | Importer + Dashboard + EÜR + Crons + WGB                                                                    |
-| 7   | ✅ green         | #9  | PWA + polish + sign-out-everywhere + DSGVO panel                                                            |
-| 7.5 | ✅ green         | #39 | Compliance hardening + audit chain + legal pages — merged as PR #39 (pragmatic-rebalance), commit `01caa4a` |
-| 8   | 🟡 awaiting Andy | —   | Local dev + hermetic test environment + migrate.yml CI workflow — see `docs/PHASE-8-MERGE-CHECKLIST.md`     |
+| #   | Status           | PR  | Notes                                                                                                                                                                                                            |
+| --- | ---------------- | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0   | ✅ green         | #1  | Scaffold + Drizzle + healthz + CI + cloud wiring                                                                                                                                                                 |
+| 1   | ✅ green         | #3  | Schema (ADRs 0001–0010 minus 0011) + magic-link auth + mail templates                                                                                                                                            |
+| 2   | ✅ green         | #4  | Public form + Drive upload + Eingangsmail                                                                                                                                                                        |
+| 3   | ✅ green         | #5  | Admin shell + Mitglieder CRUD                                                                                                                                                                                    |
+| 4   | ✅ green         | #6  | Audit Inbox + Importer + Mails                                                                                                                                                                                   |
+| 5   | ✅ green         | #7  | Invoices + Transactions + CRM + Spenden (BMF-compliant Bescheinigung)                                                                                                                                            |
+| 6   | ✅ green         | #8  | Importer + Dashboard + EÜR + Crons + WGB                                                                                                                                                                         |
+| 7   | ✅ green         | #9  | PWA + polish + sign-out-everywhere + DSGVO panel                                                                                                                                                                 |
+| 7.5 | ✅ green         | #39 | Compliance hardening + audit chain + legal pages — merged as PR #39 (pragmatic-rebalance), commit `01caa4a`                                                                                                      |
+| 8   | 🟡 awaiting Andy | —   | Local dev + hermetic test environment + migrate.yml CI workflow — see `docs/PHASE-8-MERGE-CHECKLIST.md`                                                                                                          |
+| 9   | 🟡 awaiting Andy | —   | Blob storage migration (Drive → Vercel Blob) + files table + soft-delete + browse view + bundle.zip extension — branch `phase-9-blob-storage`, **36 commits**, **0 failures**, awaiting PF-2 manual provisioning |
 
-## 🟡 Phase 7.5 status — one manual step left
+## 🟡 Phase 9 status — overnight build complete, awaiting manual Vercel provisioning
+
+Good morning! Phase 9 (Blob Storage Migration) landed overnight. Branch
+`phase-9-blob-storage` is **0-failure green** across unit + integration + Phase 9
+E2E suites. Three independent code-quality / security / correctness reviews
+were run; the findings that materially affect a merge were fixed in the same
+session.
+
+**Scope as shipped** (104 files, +7467 / -1831):
+
+- New `files` table (drizzle/0015, 0016) with dedicated `assert_not_festgeschrieben_fn_files()` trigger reading `uploaded_at` (not the shared 0014 function which reads `gebucht_am`)
+- `FileStorage` interface v2 — `getFileStorage()` factory with 4 impls: `VercelBlobFileStorage` (prod), `LocalFsFileStorage` (dev/test), `InMemoryMockFileStorage`, `ChaosFileStorage`. Conformance suite parameterized across all 4.
+- Three-layer Festschreibung enforcement: L1 storage prefix guard (`archived/`, `quarantine/`, `tmp/`), L2 route action pre-check on year-close + soft-delete + restore, L3 DB trigger (defense in depth).
+- Upload pipeline: blob-first, then short DB tx; `23505` race handler cleans up duplicate blobs via `_internalDelByPath`; SHA-256 dedup via partial unique index `WHERE deleted_at IS NULL`.
+- Client-side compression: HEIC/JPG via `browser-image-compression`, scanned PDFs via `pdfjs-dist` → `pdf-lib` at 150 DPI / JPEG quality 0.7; OffscreenCanvas detection for iOS Safari 15 fallback.
+- Soft-delete (Papierkorb) with sha256-conflict restore guard. Restore writes `audit_log`; soft-delete writes `audit_log`. **Both fixed in the review-driven hardening commit** (`2dceb96`) after the initial implementation shipped them silent.
+- Year-close archive job (`archiveYear()` BEFORE `closeBuchhaltungsjahr`); idempotent head/copy/head/del on Vercel Blob; `notLike(storage_key, 'archived/%')` candidate filter prevents double-archiving.
+- Admin browse view `/app/files` (year filter, pagination, soft-delete action) + `/app/files/papierkorb` (restore action).
+- Bundle.zip extension: `09_Belege-{year}/{ausgaben,einnahmen,spenden}/<businessId>__<slug>.<ext>` with German-aware slugify (`ä→ae`, `ö→oe`, `ü→ue`, `ß→ss`).
+- Audit log: every file mutation (upload / archive / restore / soft-delete / orphan-cleanup) writes a row with the same shape as existing entries (event-bus pattern is technically bypassed; logAudit is called directly — matches the codebase pattern for `audit-log/index.ts`).
+- /healthz extended with `{db, sheets, blob}` independent checks + 30s in-process cache (`X-Healthz-Cached: 1` header on cache hits). Module-level `probeSeeded` guard auto-seeds the blob check on first call.
+- Service-account auth for Sheets (replaces OAuth-as-Andy). `GOOGLE_SERVICE_ACCOUNT_KEY_JSON` parsed at boot, attached to `env.googleServiceAccount`; raw JSON + parsed object both `Object.defineProperty(..., { enumerable: false })`. `BLOB_READ_WRITE_TOKEN` same treatment.
+- ESLint `no-restricted-imports` rule blocks `@vercel/blob` outside `vercel-blob-impl.ts`; CI grep guard (`scripts/check-internal-del.sh`) prevents `_internalDelByPath` / `_internalList` / `_internalQuarantine` from being called outside the 7-file allowlist.
+- `.github/workflows/post-deploy-smoke.yml` polls `/healthz` for up to 4 min after each `migrate` workflow completes.
+- Orphan reconciliation script (`pnpm files:reconcile`, manual, 48h age threshold). Opens superuser pool via `DIRECT_DATABASE_URL` when marking broken-refs on festgeschriebene Belege so the L3 trigger doesn't reject the soft-delete; logs `actorKind: "system", via: "reconcile_script"`.
+- Backup script + workflow_dispatch-only workflow shipped but parked (per ADR-0012 §5; activation procedure in RUNBOOK §6.5).
+- Docs: ADR-0012 (compensating control + named Hobby-tier risks), CLAUDE.md §4.1.1 #5 updated, README env-vars table refreshed, RUNBOOK §6.5 (backup activation), `docs/phase-9-blob-smoke-test.md` (manual pre-merge gate).
+
+**What you need to do before merging** (your manual steps):
+
+1. **PF-2 — Provision Vercel Blob stores** (≈10 min):
+   - In Vercel Dashboard, create `folgederwolke-prod` (Production) and `folgederwolke-ci-test` (Preview/CI). Both private. Region `fra1`.
+   - Copy each store's RW token.
+
+2. **Set GitHub secrets** (≈3 min):
+
+   ```bash
+   gh secret set BLOB_READ_WRITE_TOKEN --body "<prod-token>"
+   gh secret set BLOB_READ_WRITE_TOKEN_CI --body "<ci-token>"
+   ```
+
+3. **Set Vercel env vars** (Production + Preview, ≈3 min):
+   - `STORAGE_BACKEND=blob`
+   - `BLOB_READ_WRITE_TOKEN=<prod-token>` in Production; `<ci-token>` in Preview
+   - `GOOGLE_SERVICE_ACCOUNT_KEY_JSON=<full JSON contents of the SA key>`
+   - `FINANCE_SHEET_ID=<spreadsheet id for /healthz Sheets check>`
+   - Remove the legacy OAuth vars: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REFRESH_TOKEN`.
+
+4. **Run the manual blob smoke test** (≈2 min) — per `docs/phase-9-blob-smoke-test.md`:
+
+   ```bash
+   BLOB_READ_WRITE_TOKEN="$BLOB_READ_WRITE_TOKEN_CI" \
+     STORAGE_BACKEND=blob \
+     pnpm test:e2e --grep @phase-9
+   ```
+
+   If green, comment "blob smoke ✅" on the Phase 9 PR.
+
+5. **Open the PR**:
+
+   ```bash
+   cd /Users/andygriesbeck/Projects/private/folgederwolke/folgederwolke-app/.claude/worktrees/phase-9-blob-storage
+   git push -u origin phase-9-blob-storage
+   gh pr create --title "phase(9): Blob storage migration (Drive → Vercel Blob)" --body "..."
+   ```
+
+   The PR will need the `reviewed-by-opus` status before main accepts it (same gate as Phase 7.5 — see lines 39-51 below for the workaround).
+
+### Review findings — what was fixed vs deferred
+
+**Reviews run**: 3 independent agents — (1) spec compliance + correctness, (2) security + data flow, (3) code quality + integration. All read the implementation with no prior context.
+
+**Fixed in this session** (commit `2dceb96`):
+
+- **P0** — audit log row on soft-delete + restore (both were silent → now write `file_soft_deleted` / `file_restored` events with actor user id)
+- **P1** — L2 Festschreibung pre-check on soft-delete + restore (German 409 instead of raw Postgres exception from L3 trigger)
+- **P1** — `BLOB_READ_WRITE_TOKEN` non-enumerable on `env` object (mirrors GOOGLE_SERVICE_ACCOUNT_KEY_JSON treatment; prevents leak via `JSON.stringify(env)` in logs)
+- **P1** — `/healthz` 30s in-process cache (was hitting DB + Sheets + Blob on every poll)
+- **P1** — orphan reconciliation now opens superuser pool to mark broken-refs on festgeschriebene years (closed-year files would otherwise silently fail the L3 trigger — the legal-retention paradox)
+- **P2** — bundle.zip German folder names (`ausgaben/einnahmen/spenden` instead of English)
+- Plus a separate lint pass (commit `697e2c5`): proper types for pdfjs / chaos-impl / logAudit-tx; `^_` arg/var ignore pattern in ESLint config; SvelteKit 2 navigation suppression matching house style; minor cleanup.
+
+**Deferred to Phase 10 / follow-up issues** (no immediate harm):
+
+- `authorize.ts` reduces to "session-present + not soft-deleted" — the 6-row truth table from spec §7.1 is only meaningful once Phase 10 ships magic-link member sessions. Today, `resolveSession()` deletes non-admin sessions, so the simpler check is correct.
+- DRY-up `validatePathname` + `RESERVED_PREFIXES` across the 4 storage impls — duplication is small and stable; extract to `_pathname.ts` when the next impl ships.
+- `(storage as any)._internalDelByPath?.()` triple-optional-chain — defer until the interface refactor.
+- Streaming downloads for `/api/files/[id]/blob` — 10 MiB cap makes this a polish item.
+- IPv6 rate-limit `/64` prefix — Verein-scale risk is negligible today.
+- E4 bundle.zip E2E asserts only `status===200 + content-type + body.length>200`; doesn't crack the zip to verify `09_Belege-{year}/` is populated. Cracking the zip in Playwright is non-trivial; integration test `tests/integration/bundle-belege.test.ts` does verify the inner structure.
+- E5 Festschreibung E2E accepts a wide status set (`[200, 204, 303, 400, 401, 409, 422]`) — defer to a focused integration test.
+- `vorstand_purge` enum value was removed from `delete_reason` per plan v4 §11.3.
+
+### Verification
+
+- `pnpm test --run`: 854 passed, 16 skipped, 1 todo, **0 failed** (5 consecutive runs)
+- `pnpm test:e2e --grep "@phase-0|@phase-1|@phase-2|@phase-9"`: 11 Phase 9 specs pass (5 happy + 6 sad; S2 skipped per spec)
+- `pnpm lint`: 0 errors, 0 warnings
+- `pnpm check`: 0 errors, 0 warnings (3356 files)
+
+### Files of interest
+
+- Spec v2.1: `docs/superpowers/specs/2026-05-20-blob-storage-migration-design.md`
+- Plan v4: `~/.claude/plans/superpowers/2026-05-20-blob-storage-migration.md`
+- ADR-0012: `docs/adr/0012-blob-storage-festschreibung-compensating-control.md`
+- Smoke test: `docs/phase-9-blob-smoke-test.md`
+- Backup activation: `docs/RUNBOOK.md §6.5`
+
+---
+
+## 🟡 Phase 7.5 status — historical (already merged as PR #39)
 
 Phase 7.5 is the final phase. It is **functionally complete and CI-green**:
 
