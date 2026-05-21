@@ -29,10 +29,12 @@
 {#if mimeType === 'application/pdf'}
 	<iframe {src} title={originalFilename} class="h-[80vh] w-full rounded border"></iframe>
 	<p class="mt-2 text-sm text-muted-foreground">
+		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 		PDF nicht sichtbar? <a href={src} download={originalFilename} class="text-primary hover:underline">Datei herunterladen</a>.
 	</p>
 {:else if mimeType.startsWith('image/')}
 	<img {src} alt={originalFilename} class="max-h-[80vh] w-auto rounded border" />
 {:else}
+	<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 	<a href={src} download={originalFilename} class="text-primary hover:underline">{originalFilename} herunterladen</a>
 {/if}

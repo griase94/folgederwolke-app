@@ -3,6 +3,7 @@
 </script>
 
 <svelte:head><title>Papierkorb · Dateien</title></svelte:head>
+<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 <a href="/app/files" class="text-sm underline">← Dateien</a>
 <h1 class="mb-4 mt-2 text-2xl font-bold">Papierkorb</h1>
 

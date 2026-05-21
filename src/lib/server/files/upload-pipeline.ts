@@ -170,11 +170,9 @@ export async function handleAuslageUpload(args: {
           thumbnailStorageKey: thumbnailUploaded ? thumbnailPathname : null,
           uploadedBySubmitterEmail: submitterEmail,
           sourceKind: "form",
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any);
+        });
         await logAudit(
           {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             action: "create",
             entityKind: "file",
             entityId: fileId,
@@ -185,9 +183,8 @@ export async function handleAuslageUpload(args: {
               byte_size: bytes.byteLength,
               pathname,
             },
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
           },
-          tx as any,
+          tx as unknown as Parameters<typeof logAudit>[1],
         );
       }
     });

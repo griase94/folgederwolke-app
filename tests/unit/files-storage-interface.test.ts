@@ -2,7 +2,6 @@ import { describe, it, expect, expectTypeOf } from "vitest";
 import type { FileStorage } from "$lib/server/files/storage";
 import { fileViewUrl, fileThumbnailUrl } from "$lib/server/files/storage";
 import {
-  StorageError,
   StorageNotFoundError,
   StorageDuplicateError,
   StorageImmutabilityError,

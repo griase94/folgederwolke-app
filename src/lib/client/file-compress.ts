@@ -1,9 +1,30 @@
 // Vite worker URL — use ?url suffix (NOT new URL trick which doesn't resolve node_modules assets)
-// @ts-ignore - Vite-specific worker URL import
 import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import * as pdfjs from "pdfjs-dist";
-(pdfjs as any).GlobalWorkerOptions.workerSrc = workerSrc;
+
+interface PdfWorkerHost {
+  GlobalWorkerOptions: { workerSrc: string };
+  getDocument: (args: { data: Uint8Array }) => {
+    promise: Promise<PdfDocument>;
+  };
+}
+interface PdfDocument {
+  numPages: number;
+  getPage(n: number): Promise<PdfPage>;
+  destroy(): Promise<void>;
+}
+interface PdfPage {
+  getTextContent(): Promise<{ items: Array<{ str?: string }> }>;
+  getViewport(opts: { scale: number }): { width: number; height: number };
+  render(args: {
+    canvasContext: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+    viewport: { width: number; height: number };
+  }): { promise: Promise<void> };
+  cleanup?: () => void;
+}
+
+const pdf = pdfjs as unknown as PdfWorkerHost;
+pdf.GlobalWorkerOptions.workerSrc = workerSrc;
 
 const COMPRESS_THRESHOLD = 1.5 * 1024 * 1024;
 const PDF_TEXT_RICH_THRESHOLD = 400;
@@ -65,16 +86,14 @@ async function compressPdfIfScan(
 ): Promise<File> {
   const { PDFDocument } = await import("pdf-lib");
   const buf = await file.arrayBuffer();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const srcDoc = await (pdfjs as any).getDocument({
+  const srcDoc: PdfDocument = await pdf.getDocument({
     data: new Uint8Array(buf),
   }).promise;
 
   const firstPage = await srcDoc.getPage(1);
   const firstText = await firstPage.getTextContent();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const firstTextLen = firstText.items.reduce(
-    (sum: number, it: any) => sum + (it.str?.length ?? 0),
+    (sum, it) => sum + (it.str?.length ?? 0),
     0,
   );
 
@@ -97,8 +116,7 @@ async function compressPdfIfScan(
     const viewport = page.getViewport({ scale: TARGET_DPI / 72 });
     const canvas = new OffscreenCanvas(viewport.width, viewport.height);
     const ctx = canvas.getContext("2d")!;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await page.render({ canvasContext: ctx as any, viewport }).promise;
+    await page.render({ canvasContext: ctx, viewport }).promise;
     const blob = await canvas.convertToBlob({
       type: "image/jpeg",
       quality: JPEG_QUALITY,
@@ -112,8 +130,7 @@ async function compressPdfIfScan(
       width: viewport.width,
       height: viewport.height,
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (page as any).cleanup?.();
+    page.cleanup?.();
   }
   await srcDoc.destroy();
   const bytes = await outDoc.save();

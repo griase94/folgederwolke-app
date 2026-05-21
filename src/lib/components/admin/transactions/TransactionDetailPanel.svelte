@@ -7,7 +7,6 @@
 		isFestgeschrieben: boolean;
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	let { detail, zahlungsarten: _za, isFestgeschrieben }: Props = $props();
 
 	function fmtEur(cents: number): string {

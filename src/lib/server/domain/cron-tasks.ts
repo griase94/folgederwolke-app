@@ -118,7 +118,7 @@ export async function retryFailedDriveUploads(
     )
     .limit(batchSize);
 
-  let succeeded = 0;
+  const succeeded = 0;
   let failed = 0;
 
   // FIXME(Phase 9 follow-up): retry-failed-uploads against Blob storage.

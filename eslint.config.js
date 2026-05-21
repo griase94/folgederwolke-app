@@ -19,6 +19,19 @@ export default [
         BeforeInstallPromptEvent: "readonly",
       },
     },
+    rules: {
+      // Allow intentionally-unused params/vars when prefixed with `_`.
+      // Phase 9 storage impls use this for interface-required args that a given
+      // backend doesn't need (e.g. _mimeType for LocalFs, _year for the mock).
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+    },
   },
   {
     files: ["**/*.svelte"],

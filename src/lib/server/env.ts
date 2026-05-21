@@ -239,6 +239,7 @@ if (rawEnv.GOOGLE_SERVICE_ACCOUNT_KEY_JSON) {
   } catch (e) {
     throw new Error(
       `Invalid GOOGLE_SERVICE_ACCOUNT_KEY_JSON: ${(e as Error).message}`,
+      { cause: e },
     );
   }
 }

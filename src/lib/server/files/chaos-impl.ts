@@ -44,14 +44,18 @@ export class ChaosFileStorage implements FileStorage {
     return this.inner.archive(p, y);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async _internalDelByPath(p: string) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (this.inner as any)._internalDelByPath?.(p);
+    const inner = this.inner as unknown as {
+      _internalDelByPath?: (p: string) => Promise<void>;
+    };
+    return inner._internalDelByPath?.(p);
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async _internalList(prefix?: string) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (this.inner as any)._internalList?.(prefix);
+    const inner = this.inner as unknown as {
+      _internalList?: (prefix?: string) => Promise<{
+        blobs: Array<{ pathname: string; uploadedAt: Date; size: number }>;
+      }>;
+    };
+    return inner._internalList?.(prefix);
   }
 }

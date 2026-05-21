@@ -23,7 +23,6 @@
 		zweckbindungText: string | null;
 	};
 
-	/* eslint-disable @typescript-eslint/no-unused-vars */
 	let {
 		open = $bindable(false),
 		spende,

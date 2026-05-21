@@ -15,7 +15,6 @@
 <script lang="ts">
 	import type { AufwandsspendenBestaetigungProps } from '../types.js';
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	let _props: AufwandsspendenBestaetigungProps = $props();
 </script>
 

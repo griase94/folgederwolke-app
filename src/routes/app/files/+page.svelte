@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { page as pageStore } from "$app/state";
+  import { SvelteURLSearchParams } from "svelte/reactivity";
 
   let { data } = $props();
 
@@ -10,11 +11,12 @@
     if (target.value) url.searchParams.set("year", target.value);
     else url.searchParams.delete("year");
     url.searchParams.delete("page");
+    // eslint-disable-next-line svelte/no-navigation-without-resolve
     goto(url.toString(), { keepFocus: true });
   }
 
   function pageUrl(p: number): string {
-    const params = new URLSearchParams();
+    const params = new SvelteURLSearchParams();
     if (data.year) params.set("year", String(data.year));
     params.set("page", String(p));
     return `?${params.toString()}`;
@@ -35,6 +37,7 @@
       {/each}
     </select>
   </label>
+  <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
   <a href="/app/files/papierkorb" class="text-sm underline">Papierkorb</a>
 </div>
 
@@ -43,6 +46,7 @@
 {:else}
   <ul class="space-y-2">
     {#each data.rows as row (row.id)}
+      {@const blobHref = `/api/files/${row.id}/blob`}
       <li class="flex items-center gap-4 rounded border p-3">
         <img
           src={`/api/files/${row.id}/thumbnail`}
@@ -60,17 +64,10 @@
           </div>
         </div>
         <div class="flex gap-2">
-          <a
-            href={`/api/files/${row.id}/blob`}
-            target="_blank"
-            rel="noopener"
-            class="text-sm underline">Vorschau</a
-          >
-          <a
-            href={`/api/files/${row.id}/blob`}
-            download
-            class="text-sm underline">Herunterladen</a
-          >
+          <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+          <a href={blobHref} target="_blank" rel="noopener" class="text-sm underline">Vorschau</a>
+          <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+          <a href={blobHref} download class="text-sm underline">Herunterladen</a>
           <form method="POST" action="?/softDelete" class="inline">
             <input type="hidden" name="fileId" value={row.id} />
             <button type="submit" class="text-sm text-red-600 underline"
@@ -84,11 +81,13 @@
 
   <div class="mt-4 flex justify-between">
     {#if data.page > 0}
+      <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
       <a href={pageUrl(data.page - 1)}>← Zurück</a>
     {:else}
       <span></span>
     {/if}
     {#if (data.page + 1) * data.pageSize < data.total}
+      <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
       <a href={pageUrl(data.page + 1)}>Weiter →</a>
     {/if}
   </div>

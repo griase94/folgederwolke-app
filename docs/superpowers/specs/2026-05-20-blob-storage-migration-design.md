@@ -96,6 +96,7 @@ Pathname IS the storage key. Format:
 ```
 
 Examples:
+
 - `belege/2026/01900a32-…f.pdf` — id = `files.id` (gen_random_uuid)
 - `belege/2026/01900a32-…f.thumb.webp` — generated thumbnail
 - `rechnungen/2026/R-2026-0007.pdf` — id = the entity's existing `business_id` (already produced by `id_counters` per ADR-0010)
@@ -104,6 +105,7 @@ Examples:
 - `quarantine/belege/2026/<original>.pdf` — orphan-reconciliation destination
 
 **Year derivation**:
+
 - For files **already linked** to an entity (Rechnungs-PDF regenerate, Bescheinigung): year derived from owning entity's `year_of_buchung` (per ADR-0001 `year_for_booking(gebucht_am)`).
 - For files in the upload-then-link path (public form): year derived from `year_for_booking(now())` at upload time. Re-archived later if the linked expense's `gebucht_am` resolves to a different year.
 
@@ -115,7 +117,11 @@ Examples:
 
 ```ts
 interface FileStorage {
-  upload(args: { buffer: Uint8Array; mimeType: string; pathname: string }): Promise<{ etag: string }>;
+  upload(args: {
+    buffer: Uint8Array;
+    mimeType: string;
+    pathname: string;
+  }): Promise<{ etag: string }>;
   download(pathname: string): Promise<Uint8Array>;
   downloadStream(pathname: string): Promise<ReadableStream>;
   archive(pathname: string, year: number): Promise<{ newPathname: string }>;
@@ -129,6 +135,7 @@ async function fileThumbnailUrl(fileId: string): Promise<string>; // returns `/a
 ```
 
 Notes:
+
 - `viewUrl` removed from the interface (it needs DB access; doesn't belong in a storage adapter)
 - `archive()` is the ONLY method that writes to `archived/*` paths. The vercel-blob-impl reserves the `archive()` method to call a **private** internal copy primitive that's not part of the interface — there is no `internal: true` flag or context-based bypass that any caller could trip. Upload/copy of `archived/*` paths from outside the archive method always throws.
 
@@ -144,11 +151,11 @@ Notes:
 
 ### 4.5 Three-layer Festschreibung enforcement (corrected)
 
-| Layer | Mechanism | What it blocks |
-|---|---|---|
-| L1 (storage impl) | `denyWritesToReservedPrefixes` in `vercel-blob-impl` | Any `put()` or `copy()` from public methods to `archived/`, `quarantine/`, or `tmp/` |
-| L2 (route action) | `await fetchFestgeschriebenBis()` check + `FestschreibungError` throw | Any user-facing mutation (upload, soft-delete, archive) targeting a year ≤ `festgeschrieben_bis` |
-| L3 (DB trigger) | Phase-7.5 row-level trigger, **extended in Phase 9** to include `files` | Any `UPDATE` or `DELETE` against a row with `festgeschrieben_at IS NOT NULL` (entity tables) OR against a `files` row whose `year_of_buchung` ≤ `settings.festgeschrieben_bis` |
+| Layer             | Mechanism                                                               | What it blocks                                                                                                                                                                 |
+| ----------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| L1 (storage impl) | `denyWritesToReservedPrefixes` in `vercel-blob-impl`                    | Any `put()` or `copy()` from public methods to `archived/`, `quarantine/`, or `tmp/`                                                                                           |
+| L2 (route action) | `await fetchFestgeschriebenBis()` check + `FestschreibungError` throw   | Any user-facing mutation (upload, soft-delete, archive) targeting a year ≤ `festgeschrieben_bis`                                                                               |
+| L3 (DB trigger)   | Phase-7.5 row-level trigger, **extended in Phase 9** to include `files` | Any `UPDATE` or `DELETE` against a row with `festgeschrieben_at IS NOT NULL` (entity tables) OR against a `files` row whose `year_of_buchung` ≤ `settings.festgeschrieben_bis` |
 
 L3 extension implementation: `files` gets a `year_of_buchung integer GENERATED ALWAYS AS (year_for_booking(uploaded_at)) STORED` column, and the existing `assert_not_festgeschrieben_fn()` trigger array is extended to include the `files` table. This way the existing trigger logic covers files without rewriting it.
 
@@ -179,6 +186,7 @@ Defense in depth: a single layer bypass doesn't compromise immutability.
 ```
 
 The archive job iterates one file at a time. Each file's commit boundary is atomic. Resumability:
+
 - Crash AFTER copy, BEFORE head verify → re-run: head(new) succeeds → skip copy, proceed to del + UPDATE
 - Crash AFTER head verify, BEFORE del → re-run: head(new) succeeds → skip copy, head(old) succeeds → del
 - Crash AFTER del, BEFORE UPDATE → re-run: head(new) succeeds, head(old) fails (gone) → skip both, do UPDATE+audit
@@ -381,28 +389,46 @@ export const GET: RequestHandler = async ({ params, locals }) => {
   await requireAuthenticated(locals);
   const file = await db.query.files.findFirst({ where: eq(files.id, fileId) });
   if (!file) {
-    audit_log({ event: 'file_read_denied', file_id: fileId, actor: locals.user.id, reason: 'not_found' });
-    return new Response('Not found', { status: 404 });
+    audit_log({
+      event: "file_read_denied",
+      file_id: fileId,
+      actor: locals.user.id,
+      reason: "not_found",
+    });
+    return new Response("Not found", { status: 404 });
   }
   if (file.deleted_at) {
-    audit_log({ event: 'file_read_denied', file_id: fileId, actor: locals.user.id, reason: 'soft_deleted' });
-    return new Response('Gone', { status: 410 });
+    audit_log({
+      event: "file_read_denied",
+      file_id: fileId,
+      actor: locals.user.id,
+      reason: "soft_deleted",
+    });
+    return new Response("Gone", { status: 410 });
   }
   const authResult = await authorizeFileAccess(locals.user, file);
   if (!authResult.allowed) {
-    audit_log({ event: 'file_read_denied', file_id: fileId, actor: locals.user.id, reason: authResult.reason });
-    return new Response('Forbidden', { status: 403 });
+    audit_log({
+      event: "file_read_denied",
+      file_id: fileId,
+      actor: locals.user.id,
+      reason: authResult.reason,
+    });
+    return new Response("Forbidden", { status: 403 });
   }
   const storage = await getFileStorage(file.storage_backend);
   const bytes = await storage.download(file.storage_key);
-  audit_log({ event: 'file_read', file_id: fileId, actor: locals.user.id });
+  audit_log({ event: "file_read", file_id: fileId, actor: locals.user.id });
   return new Response(bytes, {
     headers: {
-      'Content-Type': file.mime_type,
-      'Content-Disposition': formatContentDisposition('inline', file.original_filename),  // RFC 5987 encoded
-      'Cache-Control': 'private, no-store',  // never cache (was max-age=300 in v1 — corrected)
-      'X-Content-Type-Options': 'nosniff',
-      'Content-Security-Policy': "sandbox; default-src 'none'",  // sandbox PDF iframes
+      "Content-Type": file.mime_type,
+      "Content-Disposition": formatContentDisposition(
+        "inline",
+        file.original_filename,
+      ), // RFC 5987 encoded
+      "Cache-Control": "private, no-store", // never cache (was max-age=300 in v1 — corrected)
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "sandbox; default-src 'none'", // sandbox PDF iframes
     },
   });
 };
@@ -410,14 +436,14 @@ export const GET: RequestHandler = async ({ params, locals }) => {
 
 **`authorizeFileAccess(user, file)` truth table** (lives in `src/lib/server/files/authorize.ts`):
 
-| Scenario | Vorstand | Magic-link submitter (matches `uploaded_by_submitter_email`) | Vereinsmitglied (matches `uploaded_by_user_id`) | Other authenticated user |
-|---|---|---|---|---|
-| File with owner entity (e.g. expense), not deleted | allow | allow if also owns the OWNING entity (e.g. their auslagen_submission) | allow if owner of OWNING entity | deny |
-| File with multiple owner entities (sha256 dedup) | allow | allow if ANY of the owners' entities is theirs | allow if ANY of the owners' entities is theirs | deny |
-| Orphan file (no owner FK) | allow | deny | deny | deny |
-| File with soft-deleted OWNER entity but file itself active | allow | allow if was original submitter | allow if was original uploader | deny |
-| File belongs to Storno chain — original at archived/, Storno-correction at current | allow both | allow if submitted | allow if uploaded | deny |
-| Magic-link session valid but email no longer in users table | allow ONLY if Vorstand | deny (session no longer represents a Mitglied) | deny | deny |
+| Scenario                                                                           | Vorstand               | Magic-link submitter (matches `uploaded_by_submitter_email`)          | Vereinsmitglied (matches `uploaded_by_user_id`) | Other authenticated user |
+| ---------------------------------------------------------------------------------- | ---------------------- | --------------------------------------------------------------------- | ----------------------------------------------- | ------------------------ |
+| File with owner entity (e.g. expense), not deleted                                 | allow                  | allow if also owns the OWNING entity (e.g. their auslagen_submission) | allow if owner of OWNING entity                 | deny                     |
+| File with multiple owner entities (sha256 dedup)                                   | allow                  | allow if ANY of the owners' entities is theirs                        | allow if ANY of the owners' entities is theirs  | deny                     |
+| Orphan file (no owner FK)                                                          | allow                  | deny                                                                  | deny                                            | deny                     |
+| File with soft-deleted OWNER entity but file itself active                         | allow                  | allow if was original submitter                                       | allow if was original uploader                  | deny                     |
+| File belongs to Storno chain — original at archived/, Storno-correction at current | allow both             | allow if submitted                                                    | allow if uploaded                               | deny                     |
+| Magic-link session valid but email no longer in users table                        | allow ONLY if Vorstand | deny (session no longer represents a Mitglied)                        | deny                                            | deny                     |
 
 The `authorizeFileAccess` function returns `{ allowed: boolean; reason: string }` so the denial reason is auditable.
 
@@ -477,6 +503,7 @@ First-visit help banner explains: "Files-Ansicht zeigt alle Belege & PDFs quer d
 sha256-prefix search is hidden behind an "Erweiterte Suche" disclosure (not in the default toolbar).
 
 Per-row actions:
+
 - **Open owning entity** — links to expense / income / donation detail
 - **Vorschau** — opens FilePreview in a modal
 - **Herunterladen** — `<a download>` using the export-style filename
@@ -543,6 +570,7 @@ Same as v1 — OAuth-as-Andy → existing service account `fdw-automation@folge-
 Remove: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REFRESH_TOKEN`, `GOOGLE_SERVICE_ACCOUNT_KEY_FILE`.
 
 Add:
+
 - `GOOGLE_SERVICE_ACCOUNT_KEY_JSON` — validated as JSON with `client_email` + `private_key`. Parsed inside `env.ts`; the exported `env` object exposes only `{ clientEmail, getKeyForGoogleAuth() }`. Raw value marked non-enumerable so `JSON.stringify(env)` cannot leak.
 - `FINANCE_SHEET_ID` — for `/healthz` Sheets check and sheet-reader.
 - `BLOB_READ_WRITE_TOKEN` — Vercel Blob store token (Production only; Preview env points at `BLOB_READ_WRITE_TOKEN_CI`).
@@ -568,22 +596,23 @@ The no-data-loss guarantee depends on this section. Acceptance gate: every item 
 
 ### 10.1 Test layers
 
-| Layer | Tool | Coverage |
-|---|---|---|
-| Unit | Vitest | Pure helpers, schemas, key/filename builders, `formatContentDisposition`, `authorizeFileAccess` truth table |
-| Storage conformance | Vitest, parameterized | `FileStorage` interface contract vs. all impls |
-| Integration | Vitest + Postgres | DB + storage transactional behavior with `ChaosFileStorage` failure injection |
-| E2E | Playwright | Full user flows |
-| Property-based | `fast-check` | Path safety, authorization invariants |
-| Backup verification | CI smoke | Backup → restore round-trip with SHA verify on every blob |
-| Real-Blob integration | Gated CI (main only) | Conformance suite + 5-file smoke vs. live test Blob store |
-| Post-deploy smoke | GitHub workflow | After `migrate.yml` succeeds, curls `/healthz` + exercises a seed file via authenticated session |
+| Layer                 | Tool                  | Coverage                                                                                                    |
+| --------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Unit                  | Vitest                | Pure helpers, schemas, key/filename builders, `formatContentDisposition`, `authorizeFileAccess` truth table |
+| Storage conformance   | Vitest, parameterized | `FileStorage` interface contract vs. all impls                                                              |
+| Integration           | Vitest + Postgres     | DB + storage transactional behavior with `ChaosFileStorage` failure injection                               |
+| E2E                   | Playwright            | Full user flows                                                                                             |
+| Property-based        | `fast-check`          | Path safety, authorization invariants                                                                       |
+| Backup verification   | CI smoke              | Backup → restore round-trip with SHA verify on every blob                                                   |
+| Real-Blob integration | Gated CI (main only)  | Conformance suite + 5-file smoke vs. live test Blob store                                                   |
+| Post-deploy smoke     | GitHub workflow       | After `migrate.yml` succeeds, curls `/healthz` + exercises a seed file via authenticated session            |
 
 ### 10.2 Storage conformance suite (≥ 35 invariants)
 
 `src/lib/server/files/storage.conformance.test.ts` exports `runConformanceSuite(makeStorage)`. Invoked from `local-fs-impl.test.ts`, `in-memory-mock-impl.test.ts`, `vercel-blob-impl.test.ts` (gated on token).
 
 Covers (non-exhaustive):
+
 - Round-trip SHA-256 preserved for every supported MIME (pdf, jpeg, png, webp, heic, heif)
 - 1-byte file round-trip
 - 4.5MB-exactly file round-trip
@@ -604,6 +633,7 @@ Covers (non-exhaustive):
 ### 10.3 `ChaosFileStorage` failure injection
 
 Wrapper modes:
+
 - `failNextUpload(n)`, `failNextDownload(n)`, `failNextArchive(n)` — fail next N calls
 - `failAfterBytes(n)` — succeed for first n bytes, then fail (simulates network drop mid-stream)
 - `delay(ms)` — slow operations (test timeout scenarios)
@@ -612,6 +642,7 @@ Wrapper modes:
 - `failEveryN(n)` — intermittent failures
 
 Integration tests verify:
+
 - Upload fails → no `files` row, no `auslagen_submissions` row, no blob, no audit entry
 - Upload succeeds → DB commit fails → orphan exists, reconciliation quarantines within 24h
 - Archive copy fails → original intact, no broken refs
@@ -642,6 +673,7 @@ Integration tests verify:
 ### 10.6 E2E happy + sad paths (Playwright, `@phase-9` tag)
 
 Happy:
+
 - E1: Submit Auslage with PDF + image → inbox → categorize → preview iframe loads → download → SHA matches
 - E2: Regenerate Rechnungs-PDF → new files row → old soft-deleted with delete_reason='superseded' → preview shows new
 - E3: Browse `/app/files`, filter by year+kind+sphere, sha256 search, preview each
@@ -650,6 +682,7 @@ Happy:
 - E6: Bescheinigungs-PDF template change in 2027 does not modify the 2026 issued PDFs (new file_id created)
 
 Sad:
+
 - S1: Upload pre-compression >25MB → friendly German error, retry preserves form state
 - S2: Upload that compresses to >4.5MB → reject with retry guidance, form state preserved
 - S3: Corrupt PDF (bad header) → compression fallback uploads original, preview shows "Download to view"
@@ -860,6 +893,7 @@ See also: existing issues — #55 (Workspace for Nonprofits), #37 (env.ts COMMIT
 Incorporated findings from the 7-expert review (storage architect, security, DSGVO, DBA, frontend, QA, Steuerberater, SRE). Scope calibrated to a 20-person Verein per Andy: data secure + great UX + robust impl + nice workflows; enterprise compliance theater out.
 
 **Architecture changes**:
+
 - Upload pipeline inverted: blob first, then short DB TX (eliminates orphan window on lost-ACK)
 - Archive method made fully private inside impl (no flag-based bypass)
 - Archive job recovery semantics explicit per-phase
@@ -870,6 +904,7 @@ Incorporated findings from the 7-expert review (storage architect, security, DSG
 - File-row Festschreibung trigger via `year_of_buchung` generated column
 
 **Schema changes**:
+
 - `gen_random_uuid()` not `uuidv7()` (matches existing convention)
 - `bigint byte_size` with 5TB cap
 - `file_kind` enum (was text+CHECK); `source_kind` existing enum reused; `entity_kind` extended with `'file'`
@@ -883,6 +918,7 @@ Incorporated findings from the 7-expert review (storage architect, security, DSG
 - `thumbnail_storage_key` column added
 
 **Pipeline changes**:
+
 - Magic-byte MIME sniff via `file-type` npm
 - Compressed file size cap applies to app-generated PDFs too
 - File year derived from owning entity's `year_of_buchung` when possible
@@ -891,6 +927,7 @@ Incorporated findings from the 7-expert review (storage architect, security, DSG
 - Bescheinigungs-PDF bit-for-bit preservation invariant
 
 **Read pipeline changes**:
+
 - Cache-Control: private, no-store (was max-age=300)
 - CSP sandbox header on PDF proxy responses
 - Failed reads create `file_read_denied` audit entries
@@ -899,15 +936,18 @@ Incorporated findings from the 7-expert review (storage architect, security, DSG
 - iOS Safari PDF.js fallback
 
 **Browse + Export changes**:
+
 - `/app/files` URL-param filter persistence + empty state + onboarding copy
 - Export ZIP: sphere subfolders + `00-EUER-YYYY.pdf` + donor-PII-safe filenames (D-NNNN not D-NNNN-Donor)
 - Export idempotency (debounce double-click)
 
 **Drive auth refactor**:
+
 - `GOOGLE_SERVICE_ACCOUNT_KEY_JSON` parsed-on-read, non-enumerable
 - `/healthz` returns only `{db, sheets, blob}` — no Nachname, no SHA, 30s cache, no audit_log on blob check
 
 **Tests added**:
+
 - Year-boundary at Berlin midnight
 - `failAfterBytes(n)` chaos mode
 - Cross-year Storno round-trip
@@ -919,6 +959,7 @@ Incorporated findings from the 7-expert review (storage architect, security, DSG
 - ≥ 35 conformance invariants (was ~30)
 
 **Ops added**:
+
 - Automated post-deploy smoke workflow
 - Preview env separation from prod (explicit token + store)
 - Backup-RESTORE smoke proves restorability
