@@ -31,8 +31,21 @@
 	let incomeKategorieName = $state<string>(data.defaultIncomeKategorie ?? '');
 
 	// BezahltVon state (expense only)
-	let bezahltVonKind = $state<'verein' | 'member' | 'extern'>('member');
+	// C2-TAX: default flips 'member' → 'verein' for the admin direct ausgabe
+	// path (the public Auslage form is the right entry point for Mitglied-paid
+	// expenses; admin direct entry is almost always Verein-paid).
+	// svelte-ignore state_referenced_locally
+	let bezahltVonKind = $state<'verein' | 'member' | 'extern'>(
+		(data.initialType ?? 'expense') === 'expense' ? 'verein' : 'member'
+	);
 	let selectedMemberId = $state('');
+
+	// C2-TAX: Geldfluss-Datum (Abfluss) state for kind=ausgabe — required.
+	// Default to today (Berlin TZ) for ergonomic input.
+	let geldflussDatum = $state(new Date().toISOString().split('T')[0]!);
+
+	// C2-TAX: Beleg file state for kind=ausgabe — required.
+	let belegFile = $state<File | null>(null);
 
 	const selectedMember = $derived(
 		data.members.find((m) => m.id === selectedMemberId),
@@ -156,10 +169,13 @@
 		{/if}
 
 		<!-- ── Form ────────────────────────────────────────────────────────── -->
+		<!-- C2-TAX: enctype=multipart/form-data so the Beleg file field is parsed
+		     correctly server-side. -->
 		<form
 			bind:this={formEl}
 			method="POST"
 			action="?/create"
+			enctype="multipart/form-data"
 			use:enhance={() => {
 				submitting = true;
 				return async ({ update }) => {
@@ -214,15 +230,61 @@
 
 			<!-- Expense-specific fields -->
 			{#if selectedType === 'expense'}
-				<div>
-					<label for="rechnungsdatum" class="mb-1 block text-sm font-medium text-foreground">Rechnungsdatum</label>
+				<div class="space-y-1.5">
+					<label for="rechnungsdatum" class="block text-sm font-medium text-foreground">
+						Rechnungsdatum <span class="text-red-500" aria-hidden="true">*</span>
+					</label>
 					<input
 						id="rechnungsdatum"
 						name="rechnungsdatum"
 						type="date"
 						lang="de"
+						required
 						class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 					/>
+				</div>
+
+				<!-- C2-TAX: Geldfluss-Datum (Abfluss) — required per EÜR §11 EStG. -->
+				<div class="space-y-1.5">
+					<label for="geldfluss_datum" class="block text-sm font-medium text-foreground">
+						Geldfluss-Datum <span class="text-red-500" aria-hidden="true">*</span>
+					</label>
+					<p class="text-muted-foreground text-xs">Tag, an dem das Geld tatsächlich abgeflossen ist.</p>
+					<input
+						id="geldfluss_datum"
+						name="geldfluss_datum"
+						type="date"
+						lang="de"
+						required
+						bind:value={geldflussDatum}
+						class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+					/>
+				</div>
+
+				<!-- C2-TAX: Beleg upload — required for kind=ausgabe. The native
+				     file input is enough here (the public Auslage form uses the
+				     BelegUpload composite for client-side compress + preview; the
+				     admin direct path is faster without that overhead). -->
+				<div class="space-y-1.5">
+					<label for="beleg" class="block text-sm font-medium text-foreground">
+						Beleg <span class="text-red-500" aria-hidden="true">*</span>
+					</label>
+					<p class="text-muted-foreground text-xs">PDF, JPEG, PNG, HEIC, WebP — max. 10 MB.</p>
+					<input
+						id="beleg"
+						name="beleg"
+						type="file"
+						accept=".pdf,image/jpeg,image/png,image/heic,image/heif,image/webp"
+						required
+						onchange={(e) => {
+							const f = (e.currentTarget as HTMLInputElement).files?.[0] ?? null;
+							belegFile = f;
+						}}
+						class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+					/>
+					{#if belegFile}
+						<p class="text-muted-foreground text-xs">Ausgewählt: {belegFile.name}</p>
+					{/if}
 				</div>
 
 				<!-- BezahltVon -->
@@ -239,13 +301,21 @@
 										? 'bg-primary text-primary-foreground'
 										: 'bg-muted text-muted-foreground hover:text-foreground',
 								].join(' ')}
+								data-testid={`bezahlt-von-${k}`}
 							>
 								{l}
 							</button>
 						{/each}
 					</div>
 
-					<input type="hidden" name="bezahltVonKind" value={bezahltVonKind} />
+					<!-- C2-TAX: data-testid on the hidden input so e2e tests can read
+					     the active bezahltVonKind value programmatically. -->
+					<input
+						type="hidden"
+						name="bezahltVonKind"
+						value={bezahltVonKind}
+						data-testid="bezahlt-von-kind"
+					/>
 					<input type="hidden" name="bezahltVonDisplay" value={bezahltVonDisplay()} />
 
 					{#if bezahltVonKind === 'member'}
