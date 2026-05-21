@@ -39,11 +39,11 @@
 	</section>
 
 	<!-- ── Verein ───────────────────────────────────────────────────────────── -->
-	{#if data.verein.name}
-		<section aria-labelledby="section-verein" class="mb-10">
-			<h2 id="section-verein" class="mb-4 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-				Vereinsdaten (nur lesend)
-			</h2>
+	<section aria-labelledby="section-verein" class="mb-10">
+		<h2 id="section-verein" class="mb-4 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+			Vereinsdaten {data.verein.name ? '(nur lesend)' : ''}
+		</h2>
+		{#if data.verein.name}
 			<div class="rounded-xl border border-border bg-card divide-y divide-border">
 				{#each [
 					{ label: 'Name', value: data.verein.name },
@@ -63,8 +63,19 @@
 			<p class="mt-2 text-xs text-muted-foreground">
 				Vereinsdaten werden über Umgebungsvariablen (<code class="font-mono">VEREIN_*</code>) konfiguriert.
 			</p>
-		</section>
-	{/if}
+		{/if}
+		<div class="mt-3">
+			<!-- eslint-disable svelte/no-navigation-without-resolve -->
+			<a
+				href="/app/einstellungen/verein"
+				class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
+				data-testid="link-stammdaten"
+			>
+				Stammdaten bearbeiten →
+			</a>
+			<!-- eslint-enable svelte/no-navigation-without-resolve -->
+		</div>
+	</section>
 
 	<!-- ── Konfiguration ────────────────────────────────────────────────────── -->
 	<section aria-labelledby="section-konfig" class="mb-10">
