@@ -24,7 +24,7 @@ import {
 } from "$lib/server/domain/auslagen.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getFileStorage, type FileStorage } from "$lib/server/files/storage.js";
-import { handleAuslageUpload } from "$lib/server/files/upload-pipeline.js";
+import { runUploadPipeline } from "$lib/server/files/upload-pipeline.js";
 import { StorageError } from "$lib/server/files/errors.js";
 import { germanFileError } from "$lib/components/files/file-error-messages.js";
 import { bus } from "$lib/server/events/index.js";
@@ -264,16 +264,27 @@ export const actions: Actions = {
       (parsed as Record<string, unknown>).submissionNonce = nonceFromForm;
     }
 
-    if (belegFile instanceof File && belegFile.size > 0) {
-      // Pre-flight: cap file size BEFORE we read it into memory.
-      if (belegFile.size > MAX_BELEG_BYTES) {
-        return fail(413, {
-          error: `Beleg-Datei zu groß (max ${MAX_BELEG_BYTES / 1024 / 1024} MiB).`,
-        });
-      }
-      (parsed as Record<string, unknown>).beleg_name = belegFile.name;
-      (parsed as Record<string, unknown>).beleg_mime_type = belegFile.type;
+    // C2-TAX: a Beleg is now required for every Auslage submission (tax-
+    // correctness gate — EÜR §11 EStG requires the receipt). Pre-C2-TAX
+    // the action silently skipped Beleg upload when no file was attached;
+    // Zod would still pass because beleg_name / beleg_mime_type were
+    // optional. Both holes are closed: Zod requires the three fields,
+    // and here we fail loudly with field='beleg' so the form can surface
+    // the error inline.
+    if (!(belegFile instanceof File) || belegFile.size === 0) {
+      return fail(400, {
+        error: "Beleg-Datei ist erforderlich.",
+        errors: { beleg: ["Beleg-Datei ist erforderlich."] },
+      });
     }
+    // Pre-flight: cap file size BEFORE we read it into memory.
+    if (belegFile.size > MAX_BELEG_BYTES) {
+      return fail(413, {
+        error: `Beleg-Datei zu groß (max ${MAX_BELEG_BYTES / 1024 / 1024} MiB).`,
+      });
+    }
+    (parsed as Record<string, unknown>).beleg_name = belegFile.name;
+    (parsed as Record<string, unknown>).beleg_mime_type = belegFile.type;
 
     // ── 2. Server-side validation ─────────────────────────────────────────────
     const validation = validateAuslageInput(parsed);
@@ -355,11 +366,16 @@ export const actions: Actions = {
             ? (bv.email ?? null)
             : null;
       try {
-        const uploadResult = await handleAuslageUpload({
+        const uploadResult = await runUploadPipeline({
           bytes: new Uint8Array(belegBytes),
           claimedMime: belegSniffedMime,
           originalFilename: belegFilenameSafe,
+          // C2-TAX: identity routed per the generalized signature. The
+          // public form is form-mode (no logged-in user), so user_id is
+          // null and source_kind='form'.
           submitterEmail: submitterEmailForUpload ?? "anonymous@unknown",
+          actorUserId: null,
+          sourceKind: "form",
           storage: await fileStorage(),
         });
         belegFileId = uploadResult.fileId;

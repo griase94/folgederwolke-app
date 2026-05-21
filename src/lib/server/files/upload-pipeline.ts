@@ -83,15 +83,35 @@ function currentBookingYear(): number {
   );
 }
 
-export async function handleAuslageUpload(args: {
+/**
+ * C2-TAX — pipeline runner accepting the generalized identity + sourceKind.
+ * Exactly one of submitterEmail / actorUserId must be non-null; sourceKind
+ * propagates to files.source_kind per ADR-0010.
+ *
+ * Thin file-shaped wrapper (`handleAuslageUpload(file, params)` in
+ * `src/lib/server/files/handleAuslageUpload.ts`) is the preferred public
+ * entry point — callers should not invoke `runUploadPipeline` directly
+ * unless they already have the bytes + sniffed MIME in hand (e.g. legacy
+ * server actions that buffer the body for other reasons).
+ */
+export async function runUploadPipeline(args: {
   bytes: Uint8Array;
   claimedMime: string;
   originalFilename: string;
-  submitterEmail: string;
+  submitterEmail: string | null;
+  actorUserId: string | null;
+  sourceKind: "form" | "app";
   storage: FileStorage;
 }): Promise<AuslageUploadResult> {
-  const { bytes, claimedMime, originalFilename, submitterEmail, storage } =
-    args;
+  const {
+    bytes,
+    claimedMime,
+    originalFilename,
+    submitterEmail,
+    actorUserId,
+    sourceKind,
+    storage,
+  } = args;
 
   // ── Phase 0: synchronous validation ─────────────────────────────────────
   if (bytes.byteLength > HARD_REJECT_CAP) {
@@ -168,8 +188,11 @@ export async function handleAuslageUpload(args: {
           originalFilename,
           kind: "beleg",
           thumbnailStorageKey: thumbnailUploaded ? thumbnailPathname : null,
+          // C2-TAX — identity routed per the generalized signature:
+          // form-mode populates submitter_email, app-mode populates user_id.
           uploadedBySubmitterEmail: submitterEmail,
-          sourceKind: "form",
+          uploadedByUserId: actorUserId,
+          sourceKind,
         });
         await logAudit(
           {
