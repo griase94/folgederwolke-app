@@ -23,12 +23,18 @@ esac
 
 ADMIN_URL="${DIRECT_DATABASE_URL%/*}/postgres"
 
-# ALLOW_CONNECTIONS false will fail if DB doesn't exist yet — tolerate that
-psql "$ADMIN_URL" -c "ALTER DATABASE folgederwolke_test WITH ALLOW_CONNECTIONS false;" 2>/dev/null || true
-psql "$ADMIN_URL" -c "DROP DATABASE IF EXISTS folgederwolke_test WITH (FORCE);"
-psql "$ADMIN_URL" -c "CREATE DATABASE folgederwolke_test;"
+# Derive the test DB name from DIRECT_DATABASE_URL so slot-isolated worktrees
+# (.env.test.local overrides → folgederwolke_test_slotN) reset the correct
+# database, not the default folgederwolke_test. Strips optional ?query string.
+TEST_DB_NAME="${DIRECT_DATABASE_URL##*/}"
+TEST_DB_NAME="${TEST_DB_NAME%%\?*}"
 
-# Migrate and seed against the new test DB (env already points at folgederwolke_test)
+# ALLOW_CONNECTIONS false will fail if DB doesn't exist yet — tolerate that
+psql "$ADMIN_URL" -c "ALTER DATABASE \"$TEST_DB_NAME\" WITH ALLOW_CONNECTIONS false;" 2>/dev/null || true
+psql "$ADMIN_URL" -c "DROP DATABASE IF EXISTS \"$TEST_DB_NAME\" WITH (FORCE);"
+psql "$ADMIN_URL" -c "CREATE DATABASE \"$TEST_DB_NAME\";"
+
+# Migrate and seed against the new test DB (env already points at $TEST_DB_NAME)
 pnpm tsx scripts/migrate.ts
 pnpm tsx scripts/seed.ts
 

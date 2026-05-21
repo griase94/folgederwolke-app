@@ -1,7 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
 import { config as loadEnv } from "dotenv";
 
-// Load .env.test at config-load time so webServer.env can forward vars
+// Load .env.test at config-load time so webServer.env can forward vars.
+// Also load .env.test.local (gitignored, slot-isolated worktree overrides like
+// DATABASE_URL=…_slot1) with `override: true` so a per-worktree slot wins
+// over the default. Without this, test code reads the default DATABASE_URL
+// from .env.test while the webServer runs against the slot, and signIn()
+// inserts magic-link rows into the wrong DB.
 loadEnv({ path: ".env.test" });
 // Per-slot worktree isolation (Pre-Flight Task 0.9): if .env.test.local sets
 // PORT/ORIGIN/DATABASE_URL, load those on top so parallel worktrees don't
