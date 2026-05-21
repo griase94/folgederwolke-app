@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { mainNavItems, moreNavItems } from './nav-registry.js';
+	import UserMenu from './UserMenu.svelte';
 	import type { SessionUser } from '$lib/server/auth/index.js';
 
 	interface Props {
@@ -18,22 +19,6 @@
 		if (href === '/app') return current === '/app';
 		return current.startsWith(href);
 	}
-
-	function initials(u: SessionUser): string {
-		if (u.name) {
-			const parts = u.name.trim().split(/\s+/);
-			const first = parts[0] ?? '';
-			const last = parts.length >= 2 ? (parts[parts.length - 1] ?? '') : '';
-			if (parts.length >= 2 && first && last) {
-				return (first[0]! + last[0]!).toUpperCase();
-			}
-			return u.name.slice(0, 2).toUpperCase();
-		}
-		return u.email.slice(0, 2).toUpperCase();
-	}
-
-	const abbr = $derived(initials(user));
-	const displayName = $derived(user.name ?? user.email);
 
 	// Icon SVG paths by icon name
 	const ICONS: Record<string, string> = {
@@ -83,7 +68,7 @@
 
 	<!-- Main nav -->
 	<nav class="flex-1 overflow-y-auto px-2 py-3" aria-label="Hauptmenü">
-		<ul role="list" class="space-y-0.5">
+		<ul role="list" class="space-y-0.5" data-nav-group="main">
 			{#each mainNavItems as item (item.href)}
 				{@const active = isActive(item.href)}
 				<li>
@@ -152,7 +137,7 @@
 			{/if}
 
 			{#if moreOpen || collapsed}
-				<ul role="list" class="mt-1 space-y-0.5">
+				<ul role="list" class="mt-1 space-y-0.5" data-nav-group="more">
 					{#each moreNavItems as item (item.href)}
 						{@const active = isActive(item.href)}
 						<li>
@@ -195,33 +180,17 @@
 		</div>
 	</nav>
 
-	<!-- User avatar at bottom -->
+	<!--
+		User avatar at bottom — Zone-A 2026-05-21: now the trigger for
+		UserMenu (Einstellungen + Hilfe + Version + Abmelden). Clicking the
+		user card opens a dropdown to the right (collapsed sidebar uses the
+		icon-only variant).
+	-->
 	<div
 		class="shrink-0 border-t border-border p-3"
 		class:flex={collapsed}
 		class:justify-center={collapsed}
 	>
-		{#if collapsed}
-			<div
-				class="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
-				title={displayName}
-				aria-label={displayName}
-			>
-				{abbr}
-			</div>
-		{:else}
-			<div class="flex items-center gap-3">
-				<div
-					class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
-					aria-hidden="true"
-				>
-					{abbr}
-				</div>
-				<div class="min-w-0 flex-1">
-					<p class="truncate text-sm font-medium text-foreground">{displayName}</p>
-					<p class="truncate text-xs text-muted-foreground">{user.email}</p>
-				</div>
-			</div>
-		{/if}
+		<UserMenu {user} variant="sidebar" {collapsed} />
 	</div>
 </aside>
