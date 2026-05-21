@@ -445,7 +445,7 @@ If you must apply SQL to Neon outside of the normal migration flow:
 3. Manually register the migration in `__drizzle_migrations` (Step 3 above) so the next workflow run doesn't try to re-apply.
 4. Commit + push.
 
-## §6.4 Backup activation procedure (Phase 9)
+### 6.5 Backup activation procedure (Phase 9)
 
 Phase 9 ships the backup script + workflow as `workflow_dispatch`-only.
 To activate scheduled backups:
