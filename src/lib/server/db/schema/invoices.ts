@@ -103,6 +103,12 @@ export const invoices = pgTable(
     // --- Body ---
     bezeichnung: text("bezeichnung").notNull(),
     leistungsBeschreibung: text("leistungs_beschreibung"),
+    /**
+     * Free-text Leistungszeitraum (e.g. "Februar 2026", "21.-23.02.2026").
+     * Phase 10: rendered as a row in the Rechnung v2 meta block when set;
+     * the row collapses cleanly when null/empty.
+     */
+    leistungszeitraum: text("leistungszeitraum"),
 
     // --- Drive (Doc + PDF) per §6.3 ---
     driveDocId: text("drive_doc_id"),

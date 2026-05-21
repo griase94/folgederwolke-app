@@ -28,6 +28,13 @@ export const customers = pgTable(
     anrede: text("anrede"),
     /** Multi-line address block used verbatim in the invoice Doc template. */
     addressBlock: text("address_block"),
+    /**
+     * ISO 3166-1 alpha-2 country code. Default 'DE'.
+     * The Rechnung v2 renderer renders the Land line below PLZ Ort ONLY
+     * when this is not 'DE' (German customers don't get a redundant
+     * "Deutschland" line).
+     */
+    country: text("country").notNull().default("DE"),
     email: text("email"),
     notes: text("notes"),
     isFixture: boolean("is_fixture").notNull().default(false),

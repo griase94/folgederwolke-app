@@ -127,6 +127,13 @@
       "when": 1779700000000,
       "tag": "0017_c9_grant_v_eur_year_to_app_runtime",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1779900000000,
+      "tag": "0018_rechnung_redesign",
+      "breakpoints": true
     }
   ]
 }
