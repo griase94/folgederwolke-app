@@ -14,6 +14,10 @@ import { config as loadEnv } from "dotenv";
 
 export default function setup() {
   loadEnv({ path: ".env.test" });
+  // Per-slot worktree isolation (Pre-Flight Task 0.9): if .env.test.local sets
+  // DATABASE_URL=…_slotN, load it on top so unit tests connect to the same
+  // DB the reset script just initialised. Matches playwright.config.ts.
+  loadEnv({ path: ".env.test.local", override: true });
   console.log("[vitest-global-setup] resetting test DB...");
   execFileSync("bash", ["scripts/db/reset-test-db.sh"], { stdio: "inherit" });
 }

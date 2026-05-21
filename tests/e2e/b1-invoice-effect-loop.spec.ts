@@ -133,7 +133,10 @@ test.describe("@phase-9 B-1 InvoiceForm effect loop fix", () => {
     });
 
     // Click the sidebar "Übersicht" link
-    await page.getByRole("link", { name: /übersicht/i }).first().click();
+    await page
+      .getByRole("link", { name: /übersicht/i })
+      .first()
+      .click();
 
     // Wait briefly for the dialog handler to run / navigation to be cancelled.
     await page.waitForTimeout(300);
@@ -159,7 +162,10 @@ test.describe("@phase-9 B-1 InvoiceForm effect loop fix", () => {
       await d.dismiss();
     });
 
-    await page.getByRole("link", { name: /übersicht/i }).first().click();
+    await page
+      .getByRole("link", { name: /übersicht/i })
+      .first()
+      .click();
 
     await page.waitForTimeout(300);
 

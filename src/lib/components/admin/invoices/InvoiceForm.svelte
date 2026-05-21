@@ -13,7 +13,9 @@
        page can poll for completion.
 -->
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { enhance } from '$app/forms';
+	import { beforeNavigate } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import InvoiceLivePreview from './InvoiceLivePreview.svelte';
 
@@ -57,7 +59,14 @@
 	let leistungsBeschreibung = $state('');
 	let nettoEur = $state('');
 
+	// One-shot hydration of form state from props. The previous unconditional
+	// $effect (no guard) re-ran on every reactive update and overwrote whatever
+	// the user had typed back to `initial`. We hydrate exactly once on first
+	// run; subsequent `initial` changes are ignored unless the route remounts.
+	let hydrated = false;
 	$effect(() => {
+		if (hydrated) return;
+		hydrated = true;
 		customerId = initial.customerId;
 		kategorieId = initial.kategorieId;
 		projectId = initial.projectId;
@@ -70,6 +79,46 @@
 	});
 
 	let submitting = $state(false);
+
+	// ── beforeNavigate dirty-check (P1-B1) ────────────────────────────────
+	// Snapshot the form state once mounted; on subsequent attempts to leave
+	// the page, compare against current state and ask for confirmation if
+	// dirty. Skipped on form submit + leave-app (those have their own UX).
+	let pristineSnapshot = '';
+
+	function snapshotState(): string {
+		return JSON.stringify({
+			customerId,
+			kategorieId,
+			projectId,
+			rechnungsdatum,
+			leistungsDatum,
+			faelligkeitsDatum,
+			bezeichnung,
+			leistungsBeschreibung,
+			nettoEur
+		});
+	}
+
+	onMount(() => {
+		pristineSnapshot = snapshotState();
+	});
+
+	beforeNavigate(({ cancel, to, type }) => {
+		if (submitting) return;
+		// Skip on form-submit redirect and on tab-close / full reload — those
+		// have separate UX (beforeunload covers tab-close if we ever add it).
+		if (type === 'form' || type === 'leave') return;
+		// Same-URL anchor/query updates don't count as navigation-away.
+		if (to?.url.pathname === window.location.pathname) return;
+
+		if (snapshotState() === pristineSnapshot) return;
+
+		const confirmed = window.confirm(
+			'Änderungen gehen verloren. Trotzdem die Seite verlassen?'
+		);
+		if (!confirmed) cancel();
+	});
 
 	const selectedCustomer = $derived(customers.find((c) => c.id === customerId) ?? null);
 	const nettoCents = $derived(parseEur(nettoEur));

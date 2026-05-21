@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { enhance } from '$app/forms';
+	import { beforeNavigate } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { PageData, ActionData } from './$types.js';
 
@@ -64,6 +66,49 @@
 		zweckbetrieb: 'Zweckbetrieb',
 		wirtschaftlich: 'Wirtschaftlicher GB',
 	};
+
+	// ── beforeNavigate dirty-check (P1-B1) ────────────────────────────────
+	// Most fields on this page are uncontrolled native inputs (not bound to
+	// $state), so we snapshot at mount-time by serialising every input/
+	// textarea/select value inside the form, then compare against the same
+	// at navigate-away time. Cheap and covers all field types.
+	let formEl: HTMLFormElement | null = $state(null);
+	let pristineSnapshot = '';
+
+	function snapshotForm(): string {
+		if (!formEl) return '';
+		const parts: string[] = [];
+		const inputs = formEl.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+			'input, textarea, select',
+		);
+		inputs.forEach((el) => {
+			parts.push(`${el.name}=${el.value}`);
+		});
+		// Include reactive $state vars (button-driven, not in formEl as inputs)
+		parts.push(`__selectedType=${selectedType}`);
+		parts.push(`__bezahltVonKind=${bezahltVonKind}`);
+		return parts.join('|');
+	}
+
+	onMount(() => {
+		// Wait a tick for the form to mount fully (selectedType / fields render)
+		queueMicrotask(() => {
+			pristineSnapshot = snapshotForm();
+		});
+	});
+
+	beforeNavigate(({ cancel, to, type }) => {
+		if (submitting) return;
+		if (type === 'form' || type === 'leave') return;
+		if (to?.url.pathname === window.location.pathname) return;
+
+		if (snapshotForm() === pristineSnapshot) return;
+
+		const confirmed = window.confirm(
+			'Änderungen gehen verloren. Trotzdem die Seite verlassen?',
+		);
+		if (!confirmed) cancel();
+	});
 </script>
 
 <svelte:head>
@@ -112,6 +157,7 @@
 
 		<!-- ── Form ────────────────────────────────────────────────────────── -->
 		<form
+			bind:this={formEl}
 			method="POST"
 			action="?/create"
 			use:enhance={() => {

@@ -8,6 +8,8 @@
   debounce keeps key-press load on the server reasonable.
 -->
 <script lang="ts">
+	import { deserialize } from '$app/forms';
+
 	type PreviewInput = {
 		customerId: string;
 		customerName: string;
@@ -25,14 +27,19 @@
 
 	let html = $state('<div class="text-sm text-muted-foreground">Tippe Daten ein …</div>');
 	let loading = $state(false);
-	let timer: ReturnType<typeof setTimeout> | null = $state(null);
+	// Plain local variable — NOT reactive. Wrapping the debounce timer in
+	// $state caused effect_update_depth_exceeded: the $effect below assigns
+	// to `timer`, which the framework treated as a dependency update, which
+	// re-ran the effect, which re-assigned `timer`, ad infinitum. The timer
+	// is implementation detail, not UI state.
+	let timer: ReturnType<typeof setTimeout> | null = null;
 
 	async function refresh(): Promise<void> {
 		loading = true;
 		try {
 			const res = await fetch('/app/rechnungen/new?/preview', {
 				method: 'POST',
-				headers: { accept: 'application/json' },
+				headers: { accept: 'application/json', 'x-sveltekit-action': 'true' },
 				body: new URLSearchParams({
 					customerName: input.customerName,
 					customerAddressBlock: input.customerAddressBlock ?? '',
@@ -46,21 +53,13 @@
 				})
 			});
 			if (res.ok) {
-				const data = await res.json();
-				// SvelteKit wraps action responses in { type: 'success', data: {...} }
-				const payload = data?.data ?? data;
-				let parsed: unknown = payload;
-				if (typeof payload === 'string') {
-					try {
-						parsed = JSON.parse(payload);
-					} catch {
-						parsed = payload;
-					}
-				}
-				if (parsed && typeof parsed === 'object' && 'html' in parsed) {
-					html = String((parsed as { html: unknown }).html);
-				} else if (typeof parsed === 'string') {
-					html = parsed;
+				// SvelteKit form actions return devalue-serialized payloads.
+				// `deserialize` reverses the array-pointer format so we can read
+				// `.data.html`. Manual JSON.parse() would only see the outer
+				// array-pointer envelope and silently lose the HTML string.
+				const result = deserialize<{ html: string }, undefined>(await res.text());
+				if (result.type === 'success' && result.data?.html) {
+					html = result.data.html;
 				}
 			}
 		} catch (err) {
@@ -81,7 +80,7 @@
 	});
 </script>
 
-<div class="rounded-xl border border-border bg-muted/30 p-4">
+<div class="rounded-xl border border-border bg-muted/30 p-4" data-component="invoice-live-preview">
 	<div class="mb-3 flex items-center justify-between">
 		<h2 class="text-sm font-semibold text-foreground">Vorschau</h2>
 		{#if loading}
