@@ -9,7 +9,9 @@
  * $lib/domain/members.ts to avoid the server-module restriction in browser code.
  */
 
+import { sql } from "drizzle-orm";
 import { z } from "zod";
+import { getDb } from "$lib/server/db/index.js";
 import { validateIban, normalizeIban } from "$lib/server/domain/iban.js";
 import { berlinYear } from "$lib/domain/year.js";
 
@@ -19,6 +21,7 @@ export type {
   BeitragStatus,
   BeitragCell,
   MemberView,
+  MemberBeitragsTotals,
 } from "$lib/domain/members.js";
 export { beitragStatusFor } from "$lib/domain/members.js";
 
@@ -141,4 +144,73 @@ export function beitragYearsRange(
   anchor: number = berlinYear(),
 ): [number, number, number] {
   return [anchor - 1, anchor, anchor + 1];
+}
+
+// ---------------------------------------------------------------------------
+// C5-MEM-lite — Mitglieder-Matrix €-summen header aggregation
+// ---------------------------------------------------------------------------
+
+/**
+ * `MemberBeitragsTotals` is the per-year aggregate consumed by the Mitglieder-
+ * Matrix €-summen header. The type itself lives in `$lib/domain/members.ts`
+ * (client-safe) so Svelte components can `import type` it without pulling in
+ * a server module. It's also re-exported at the top of this file for callers
+ * that already import from the server module.
+ *
+ * Night-2 C5-MEM-full extends this aggregate with an `exemptCount` field —
+ * keep the field order stable and add new fields at the end.
+ */
+import type { MemberBeitragsTotals } from "$lib/domain/members.js";
+
+/**
+ * Aggregate Mitglieds-Beiträge for one Buchungsjahr, used by the Mitglieder-
+ * Matrix header line: `{N} Mitglieder · {X €} offen · {Y €} bezahlt`.
+ *
+ * Field semantics:
+ *   - `memberCount` — active members (austritts_datum IS NULL). Year-
+ *     independent so the header member count stays stable when the user
+ *     switches between years in the per-year tab switcher (the open/paid
+ *     sums vary per year).
+ *   - `paidCents`   — Σ paid_cents for `year`. Discriminator-free: a row
+ *     with paid_cents=3000, betrag_cents=6000 contributes 3000 to paidCents
+ *     AND 3000 to offenCents (partial payment).
+ *   - `offenCents`  — Σ GREATEST(betrag_cents - paid_cents, 0) for `year`.
+ *     The GREATEST clamp ensures overpayments don't subtract from offen.
+ *
+ * Matches the codebase-wide convention used by `v_offene_beitraege`,
+ * `dashboard.ts:221`, `cron-tasks.ts:244`, and `mitglieder/[id]/+page.server.ts:100`
+ * — discriminate by `paid_cents < betrag_cents`, not `gezahlt_am IS NULL`.
+ *
+ * Column names per `src/lib/server/db/schema/members.ts`:
+ *   `betrag_cents`, `paid_cents`, `gezahlt_am` (NOT `bezahlt_am`).
+ *
+ * Members without any `member_beitrags` row for `year` contribute 0 to both
+ * paid and offen — they're "not yet billed" rather than "owed".
+ *
+ * Returned cents values are plain `number` (cents fit comfortably in a JS
+ * safe integer for any plausible Vereinsbeitrag total). ADR-0003 — never
+ * stored as float.
+ */
+export async function memberBeitragsTotals(
+  year: number,
+): Promise<MemberBeitragsTotals> {
+  const db = getDb();
+  const rows = await db.execute<{
+    member_count: string;
+    paid_cents: string;
+    offen_cents: string;
+  }>(sql`
+    SELECT
+      (SELECT COUNT(*) FROM members WHERE austritts_datum IS NULL)::text AS member_count,
+      COALESCE(SUM(paid_cents), 0)::text                                  AS paid_cents,
+      COALESCE(SUM(GREATEST(betrag_cents - paid_cents, 0)), 0)::text     AS offen_cents
+    FROM member_beitrags
+    WHERE year = ${year}
+  `);
+  const row = rows[0];
+  return {
+    memberCount: Number(row?.member_count ?? 0),
+    paidCents: Number(row?.paid_cents ?? 0),
+    offenCents: Number(row?.offen_cents ?? 0),
+  };
 }

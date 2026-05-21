@@ -17,7 +17,11 @@ import { and, inArray } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
-import { beitragYearsRange } from "$lib/server/domain/members.js";
+import {
+  beitragYearsRange,
+  memberBeitragsTotals,
+  type MemberBeitragsTotals,
+} from "$lib/server/domain/members.js";
 import {
   addMember,
   editMember,
@@ -63,9 +67,21 @@ export const load: PageServerLoad = async ({ url }) => {
       b;
   }
 
+  // C5-MEM-lite — €-summen header for the Mitglieder-Matrix. Compute per-year
+  // totals in parallel so the year-tab switcher can render counts/sums for
+  // any year in the 3-year window without an extra fetch on the client.
+  const totalsArr = await Promise.all(
+    years.map((y) => memberBeitragsTotals(y)),
+  );
+  const totalsByYear: Record<number, MemberBeitragsTotals> = {};
+  years.forEach((y, i) => {
+    totalsByYear[y] = totalsArr[i] as MemberBeitragsTotals;
+  });
+
   return {
     view,
     years,
+    totalsByYear,
     members: allMembers.map((m) => ({
       id: m.id,
       vorname: m.vorname,
