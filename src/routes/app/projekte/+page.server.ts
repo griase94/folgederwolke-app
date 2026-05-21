@@ -39,6 +39,7 @@ export const load: PageServerLoad = async () => {
       startDate: p.startDate,
       endDate: p.endDate,
       notes: p.notes,
+      defaultCustomerId: p.defaultCustomerId,
       isFixture: p.isFixture,
       deletedAt: p.deletedAt?.toISOString() ?? null,
       createdAt: p.createdAt.toISOString(),
