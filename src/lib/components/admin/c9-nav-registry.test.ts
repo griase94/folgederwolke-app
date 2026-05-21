@@ -2,26 +2,45 @@
  * @phase-7.5 C9 — Sidebar diet + "Heute" → "Übersicht" rename.
  *
  * Resolves UX-001 (sidebar diet 9 → 5) and UX-040 (Heute → Übersicht).
+ *
+ * 2026-05-21 Zone-A — IA shift: Projekte + Jahresabschluss promoted to
+ * main group (6 entries); "Audit Inbox" renamed to "Belegprüfung";
+ * Kunden + Rechnungen demoted to "more"; Mitglieder retained in main.
  */
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { mainNavItems, navItems, type NavItem } from "./nav-registry.js";
 
-describe("C9 — sidebar diet (UX-001)", () => {
-  it("mainNavItems has exactly 5 entries (down from 9)", () => {
-    expect(mainNavItems.length).toBe(5);
+describe("Zone-A — IA shift (main group has 6 entries)", () => {
+  it("mainNavItems has exactly 6 entries", () => {
+    expect(mainNavItems.length).toBe(6);
   });
 
-  it("the 5 main entries are: Übersicht, Audit Inbox, Transaktionen, Mitglieder, Rechnungen", () => {
+  it("the 6 main entries are: Übersicht, Belegprüfung, Projekte, Transaktionen, Mitglieder, Jahresabschluss", () => {
+    const labels = mainNavItems.map((i) => i.label).sort();
+    expect(labels).toEqual(
+      [
+        "Übersicht",
+        "Belegprüfung",
+        "Projekte",
+        "Transaktionen",
+        "Mitglieder",
+        "Jahresabschluss",
+      ].sort(),
+    );
+  });
+
+  it("the main-group hrefs cover the IA-shift route set", () => {
     const hrefs = mainNavItems.map((i) => i.href).sort();
     expect(hrefs).toEqual(
       [
         "/app",
         "/app/inbox",
+        "/app/projekte",
         "/app/transactions",
         "/app/mitglieder",
-        "/app/rechnungen",
+        "/app/jahresabschluss",
       ].sort(),
     );
   });
@@ -31,12 +50,19 @@ describe("C9 — sidebar diet (UX-001)", () => {
     expect(hrefs).not.toContain("/app/sheet-resync");
   });
 
-  it("Projekte, Kunden, Jahresabschluss, Einstellungen are preserved (in more group)", () => {
+  it("Kunden, Rechnungen, Einstellungen, DSGVO are preserved (in more group)", () => {
     const hrefs = navItems.map((i: NavItem) => i.href);
-    expect(hrefs).toContain("/app/projekte");
     expect(hrefs).toContain("/app/kunden");
-    expect(hrefs).toContain("/app/jahresabschluss");
+    expect(hrefs).toContain("/app/rechnungen");
     expect(hrefs).toContain("/app/einstellungen");
+    expect(hrefs).toContain("/app/dsgvo");
+  });
+
+  it('the inbox route is labelled "Belegprüfung" (not "Audit Inbox")', () => {
+    const inbox = navItems.find((i) => i.href === "/app/inbox");
+    expect(inbox?.label).toBe("Belegprüfung");
+    const labels = navItems.map((i) => i.label);
+    expect(labels).not.toContain("Audit Inbox");
   });
 });
 
