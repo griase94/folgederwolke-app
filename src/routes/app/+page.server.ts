@@ -22,6 +22,7 @@ import {
 } from "$lib/server/domain/dashboard.js";
 import { getDb } from "$lib/server/db/index.js";
 import { sql } from "drizzle-orm";
+import { berlinYear } from "$lib/domain/year.js";
 
 /**
  * Read `settings.festgeschrieben_bis` for the C3-4 year-lock badge.
@@ -56,6 +57,53 @@ export const load: PageServerLoad = async ({ url }) => {
     fetchFestgeschriebenBis(),
   ]);
 
+  // C4-DASH-lite: load Beiträge totals for the dashboard widget (O-3/M-1).
+  // We inline the aggregation here; once C5-MEM-lite's `memberBeitragsTotals`
+  // helper lands, the post-Wave-1 integration test compares numbers and a
+  // follow-up swaps this block for the shared helper.
+  const beitragsYear = berlinYear();
+  const beitragsRows = await getDb().execute<{
+    member_count: string;
+    paid_count: string;
+    paid_cents: string;
+    open_count: string;
+    open_cents: string;
+  }>(sql`
+    SELECT
+      COUNT(DISTINCT member_id)::text                                                      AS member_count,
+      COUNT(DISTINCT CASE WHEN gezahlt_am IS NOT NULL THEN member_id END)::text            AS paid_count,
+      COALESCE(SUM(CASE WHEN gezahlt_am IS NOT NULL THEN paid_cents  ELSE 0 END), 0)::text AS paid_cents,
+      COUNT(DISTINCT CASE WHEN gezahlt_am IS NULL     THEN member_id END)::text            AS open_count,
+      COALESCE(SUM(CASE WHEN gezahlt_am IS NULL
+                        THEN GREATEST(betrag_cents - paid_cents, 0)
+                        ELSE 0 END), 0)::text                                              AS open_cents
+    FROM member_beitrags
+    WHERE year = ${beitragsYear}
+  `);
+  const br = (
+    beitragsRows as unknown as Array<{
+      member_count: string;
+      paid_count: string;
+      paid_cents: string;
+      open_count: string;
+      open_cents: string;
+    }>
+  )[0] ?? {
+    member_count: "0",
+    paid_count: "0",
+    paid_cents: "0",
+    open_count: "0",
+    open_cents: "0",
+  };
+  const beitragsuebersicht = {
+    year: beitragsYear,
+    memberCount: Number(br.member_count),
+    paidMemberCount: Number(br.paid_count),
+    paidCents: Number(br.paid_cents),
+    openMemberCount: Number(br.open_count),
+    offenCents: Number(br.open_cents),
+  };
+
   return {
     ...kpis,
     // Serialize BigInt → number for SvelteKit's JSON serializer.
@@ -69,5 +117,7 @@ export const load: PageServerLoad = async ({ url }) => {
     cashflow: kpis.cashflow,
     // C3-4 (cycle 2): year-lock signal for the cashflow header badge.
     festgeschriebenBis,
+    // C4-DASH-lite: BeitragsuebersichtWidget data.
+    beitragsuebersicht,
   };
 };
