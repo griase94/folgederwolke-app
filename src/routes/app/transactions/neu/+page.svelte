@@ -48,6 +48,11 @@
 	// C2-TAX: Beleg file state for kind=ausgabe — required.
 	let belegFile = $state<File | null>(null);
 
+	// C1-PRJ-A: project picker state. `?projectId=` from ProjectCtaRail
+	// deep-links land here pre-selected so the user doesn't re-pick.
+	// svelte-ignore state_referenced_locally
+	let projectId = $state<string>(data.prefillProjectId ?? '');
+
 	const selectedMember = $derived(
 		data.members.find((m) => m.id === selectedMemberId),
 	);
@@ -417,6 +422,27 @@
 						<span class="ml-1">(automatisch aus Kategorie)</span>
 					</p>
 					<input type="hidden" name="sphereSnapshot" value={activeSphere} />
+				</div>
+
+				<!-- C1-PRJ-A: project picker (optional). Pre-fills from the
+				     `?projectId=` URL param when launched from ProjectCtaRail
+				     (+Einnahme / +Ausgabe CTAs on the project detail hero). -->
+				<div>
+					<label for="projectId" class="mb-1 block text-sm font-medium text-foreground">
+						Projekt (optional)
+					</label>
+					<select
+						id="projectId"
+						name="projectId"
+						bind:value={projectId}
+						class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+						data-testid="transaction-project-picker"
+					>
+						<option value="">— Kein Projekt —</option>
+						{#each data.projects as p (p.id)}
+							<option value={p.id}>{p.name}</option>
+						{/each}
+					</select>
 				</div>
 			{/if}
 

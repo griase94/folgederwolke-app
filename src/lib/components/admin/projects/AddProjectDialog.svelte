@@ -7,9 +7,12 @@
 
 	let {
 		open = $bindable(false),
+		customers = [],
 		onSuccess
 	}: {
 		open: boolean;
+		/** C1-PRJ-A: customer list for the Default-Kunde combobox. */
+		customers?: Array<{ id: string; name: string }>;
 		onSuccess?: () => void;
 	} = $props();
 
@@ -99,6 +102,23 @@
 				{#if fieldError('sphere_default')}
 					<p class="text-xs text-destructive">{fieldError('sphere_default')}</p>
 				{/if}
+			</div>
+
+			<!-- C1-PRJ-A: Default-Kunde combobox. Used by
+			     /rechnungen/new?projectId=X to pre-fill the customer FK. -->
+			<div class="space-y-1">
+				<Label for="add-proj-default-customer">Standard-Kunde (optional)</Label>
+				<select
+					id="add-proj-default-customer"
+					name="default_customer_id"
+					class="border-input bg-background h-9 w-full rounded-lg border px-2.5 py-1 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
+					data-testid="project-default-customer"
+				>
+					<option value="">— Kein Standard-Kunde —</option>
+					{#each customers as c (c.id)}
+						<option value={c.id}>{c.name}</option>
+					{/each}
+				</select>
 			</div>
 
 			<div class="grid grid-cols-2 gap-3">

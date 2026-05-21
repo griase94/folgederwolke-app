@@ -36,7 +36,7 @@ import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { projects } from "$lib/server/db/schema/projects.js";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, isNull } from "drizzle-orm";
 import { parseKindFromUrl } from "$lib/domain/transaction-kind-url.js";
 import { handleAuslageUpload } from "$lib/server/files/handleAuslageUpload.js";
 
@@ -67,12 +67,25 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const initialType: "expense" | "income" | "donation" =
     parseKindFromUrl(url.searchParams.get("kind")) ?? "expense";
 
+  // C1-PRJ-A: `?projectId=` lets ProjectCtaRail (+Einnahme/+Ausgabe) deep-link
+  // into this form with the project preselected. Validated UUID upstream by
+  // the Zod schema in the action; here we just shape the value for the form.
+  const prefillProjectIdRaw = url.searchParams.get("projectId");
+  const prefillProjectId =
+    prefillProjectIdRaw &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      prefillProjectIdRaw,
+    )
+      ? prefillProjectIdRaw
+      : null;
+
   const [
     zahlungsarten,
     allMembers,
     expenseKategorien,
     incomeKategorien,
     recent,
+    allProjects,
   ] = await Promise.all([
     listZahlungsarten(),
     db
@@ -88,6 +101,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     listKategorieOptions("expense"),
     listKategorieOptions("income"),
     userId ? loadRecentKategorieUsage(userId) : Promise.resolve([]),
+    db
+      .select({ id: projects.id, name: projects.name })
+      .from(projects)
+      .where(isNull(projects.deletedAt))
+      .orderBy(projects.name),
   ]);
 
   // Pre-compute the no-project default for each kind so the form lands on a
@@ -113,6 +131,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     defaultExpenseKategorie,
     defaultIncomeKategorie,
     initialType,
+    // C1-PRJ-A: list of active projects + optional ?projectId= prefill.
+    projects: allProjects,
+    prefillProjectId,
   };
 };
 

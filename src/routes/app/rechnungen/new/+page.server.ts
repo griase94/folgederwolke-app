@@ -29,8 +29,36 @@ import { berlinYear } from "$lib/domain/year.js";
 // load
 // ---------------------------------------------------------------------------
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ url }) => {
   const db = getDb();
+
+  // C1-PRJ-A: deep-link from ProjectCtaRail (+Rechnung) carries
+  //   ?projectId=<uuid>&from=projekt
+  // We use the project's default_customer_id to pre-fill the customer FK,
+  // and the `from` token to drive the redirect-back-with-toast on save.
+  const projectIdParam = url.searchParams.get("projectId");
+  const fromParam = url.searchParams.get("from");
+  const fromSafe = fromParam === "projekt" ? "projekt" : null;
+  const isUuid = (s: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
+  let prefillProjectId: string | null = null;
+  let prefillCustomerId: string | null = null;
+  if (projectIdParam && isUuid(projectIdParam)) {
+    const projRow = await db
+      .select({
+        id: projects.id,
+        defaultCustomerId: projects.defaultCustomerId,
+      })
+      .from(projects)
+      .where(eq(projects.id, projectIdParam))
+      .limit(1);
+    const row = projRow[0];
+    if (row) {
+      prefillProjectId = row.id;
+      prefillCustomerId = row.defaultCustomerId;
+    }
+  }
 
   const [allCustomers, allProjects, incomeKategorien, counterRows] =
     await Promise.all([
@@ -78,6 +106,10 @@ export const load: PageServerLoad = async () => {
     kategorien: incomeKategorien,
     invoiceNumberPreview,
     today: new Date().toISOString().slice(0, 10),
+    // C1-PRJ-A: prefill + redirect-back-with-toast plumbing.
+    prefillProjectId,
+    prefillCustomerId,
+    from: fromSafe,
   };
 };
 
@@ -88,7 +120,7 @@ export const load: PageServerLoad = async () => {
 export const actions: Actions = {
   // Named `create` — SvelteKit forbids mixing default with named actions.
   // InvoiceForm posts to `?/create`.
-  create: async ({ request, locals }) => {
+  create: async ({ request, locals, url }) => {
     const actorUserId = locals.session?.user.id ?? null;
     const formData = await request.formData();
     const raw: Record<string, unknown> = {};
@@ -112,6 +144,26 @@ export const actions: Actions = {
         errors: result.errors,
         values: result.values ?? raw,
       });
+    }
+
+    // C1-PRJ-A: when launched from a project detail (?from=projekt with the
+    // project id still on the form's hidden projectId field), bounce back
+    // to the project detail page with a toast token in the URL.
+    const fromParam = url.searchParams.get("from");
+    const projectIdParam = url.searchParams.get("projectId");
+    if (
+      fromParam === "projekt" &&
+      projectIdParam &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        projectIdParam,
+      )
+    ) {
+      throw redirect(
+        303,
+        `/app/projekte/${projectIdParam}?toast=${encodeURIComponent(
+          JSON.stringify({ message: "Rechnung erstellt.", kind: "success" }),
+        )}`,
+      );
     }
 
     throw redirect(
