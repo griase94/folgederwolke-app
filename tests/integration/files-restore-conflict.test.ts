@@ -91,12 +91,13 @@ describe("restoreFile sha256 conflict", () => {
     await restoreFile(fileId, null);
 
     // 1. deleted_at cleared on the files row
-    const [row] = (await getDb().execute(sql`
+    const rows = (await getDb().execute(sql`
       SELECT deleted_at, delete_reason FROM files WHERE id = ${fileId}
     `)) as unknown as Array<{
       deleted_at: Date | null;
       delete_reason: string | null;
     }>;
+    const row = rows[0]!;
     expect(row.deleted_at).toBeNull();
     expect(row.delete_reason).toBeNull();
 
@@ -113,9 +114,10 @@ describe("restoreFile sha256 conflict", () => {
       payload: { event: string };
     }>;
     expect(audit).toHaveLength(1);
-    expect(audit[0].action).toBe("create");
-    expect(audit[0].entity_kind).toBe("file");
-    expect(audit[0].actor_user_id).toBeNull();
-    expect(audit[0].payload.event).toBe("file_restored");
+    const auditRow = audit[0]!;
+    expect(auditRow.action).toBe("create");
+    expect(auditRow.entity_kind).toBe("file");
+    expect(auditRow.actor_user_id).toBeNull();
+    expect(auditRow.payload.event).toBe("file_restored");
   });
 });

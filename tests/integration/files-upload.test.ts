@@ -108,10 +108,11 @@ describe("upload pipeline", () => {
       payload: { event: string; sha256: string };
     }>;
     expect(audit).toHaveLength(1);
-    expect(audit[0].action).toBe("create");
-    expect(audit[0].entity_kind).toBe("file");
-    expect(audit[0].payload.event).toBe("file_uploaded");
-    expect(audit[0].payload.sha256).toMatch(/^[0-9a-f]{64}$/);
+    const auditRow = audit[0]!;
+    expect(auditRow.action).toBe("create");
+    expect(auditRow.entity_kind).toBe("file");
+    expect(auditRow.payload.event).toBe("file_uploaded");
+    expect(auditRow.payload.sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("PARALLEL identical → exactly 1 files row", async () => {

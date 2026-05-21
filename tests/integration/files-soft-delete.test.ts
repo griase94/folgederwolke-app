@@ -64,12 +64,13 @@ describe("softDeleteFile", () => {
     await softDeleteFile({ fileId, actorUserId: null });
 
     // 1. files.deleted_at is now set; delete_reason='user_request'
-    const [row] = (await getDb().execute(sql`
+    const rows = (await getDb().execute(sql`
       SELECT deleted_at, delete_reason FROM files WHERE id = ${fileId}
     `)) as unknown as Array<{
       deleted_at: Date | null;
       delete_reason: string | null;
     }>;
+    const row = rows[0]!;
     expect(row.deleted_at).not.toBeNull();
     expect(row.delete_reason).toBe("user_request");
 
@@ -85,10 +86,11 @@ describe("softDeleteFile", () => {
       payload: { event: string; reason: string };
     }>;
     expect(audit).toHaveLength(1);
-    expect(audit[0].action).toBe("delete");
-    expect(audit[0].entity_kind).toBe("file");
-    expect(audit[0].payload.event).toBe("file_soft_deleted");
-    expect(audit[0].payload.reason).toBe("user_request");
+    const auditRow = audit[0]!;
+    expect(auditRow.action).toBe("delete");
+    expect(auditRow.entity_kind).toBe("file");
+    expect(auditRow.payload.event).toBe("file_soft_deleted");
+    expect(auditRow.payload.reason).toBe("user_request");
   });
 
   it("idempotent: second call on already-deleted file is a no-op (no second audit row)", async () => {
@@ -111,7 +113,7 @@ describe("softDeleteFile", () => {
       WHERE entity_id = ${fileId}
       AND payload->>'event' = 'file_soft_deleted'
     `)) as unknown as Array<{ c: number }>;
-    expect(audit[0].c).toBe(1);
+    expect(audit[0]!.c).toBe(1);
   });
 
   it("L2 Festschreibung pre-check: throws FestschreibungLockedError on closed year, writes NO audit_log row", async () => {
@@ -140,16 +142,16 @@ describe("softDeleteFile", () => {
     // is still null AND no audit_log row was written. The "no audit row"
     // assertion is the strict proof that L2 fires BEFORE the audit write
     // tx, not after.
-    const [row] = (await getDb().execute(sql`
+    const rows = (await getDb().execute(sql`
       SELECT deleted_at FROM files WHERE id = ${fileId}
     `)) as unknown as Array<{ deleted_at: Date | null }>;
-    expect(row.deleted_at).toBeNull();
+    expect(rows[0]!.deleted_at).toBeNull();
 
     const audit = (await getDb().execute(sql`
       SELECT count(*)::int AS c
       FROM audit_log
       WHERE entity_id = ${fileId}
     `)) as unknown as Array<{ c: number }>;
-    expect(audit[0].c).toBe(0);
+    expect(audit[0]!.c).toBe(0);
   });
 });
