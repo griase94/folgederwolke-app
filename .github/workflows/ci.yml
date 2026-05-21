@@ -57,6 +57,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Phase 9 — _internal* usage guard
+        run: bash scripts/check-internal-del.sh
+
       - name: Unit tests
         run: pnpm test --run
 

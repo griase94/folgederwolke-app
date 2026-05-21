@@ -1,0 +1,27 @@
+name: Post-Deploy Smoke
+on:
+  workflow_run:
+    workflows: ["migrate"]
+    types: [completed]
+jobs:
+  smoke:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Vercel deploy + check /healthz
+        run: |
+          for i in $(seq 1 24); do
+            STATUS=$(curl -s -o /tmp/h.json -w "%{http_code}" https://folgederwolke-app.vercel.app/healthz || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              cat /tmp/h.json
+              DB=$(jq -r .db /tmp/h.json)
+              BLOB=$(jq -r .blob /tmp/h.json)
+              if [ "$DB" = "ok" ] && [ "$BLOB" = "ok" ]; then
+                echo "Smoke: PASS"
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+          echo "Smoke: FAIL"
+          exit 1

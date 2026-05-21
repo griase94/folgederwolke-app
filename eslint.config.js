@@ -42,4 +42,28 @@ export default [
       "drizzle/",
     ],
   },
+  // Phase 9: restrict @vercel/blob imports to the one allowed adapter file.
+  // All other callers must go through the FileStorage interface
+  // (getFileStorage() from $lib/server/files/storage.js).
+  {
+    files: ["src/**/*.ts", "src/**/*.svelte"],
+    ignores: [
+      "src/lib/server/files/vercel-blob-impl.ts", // The one allowed file
+      "src/**/*.test.ts", // tests may import for mocks
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@vercel/blob",
+              message:
+                "Use FileStorage interface via getFileStorage() from '$lib/server/files/storage.js'",
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];
