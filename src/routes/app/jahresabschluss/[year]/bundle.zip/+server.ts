@@ -26,72 +26,13 @@ import {
 import { generateEurPdf } from "$lib/server/export/eur-pdf.js";
 import { loadEurAggregatesForPdf } from "$lib/server/eur/load.js";
 import { getFileStorage } from "$lib/server/files/storage.js";
+import { bundlePath, extFromMime } from "$lib/server/export/bundle-paths.js";
 import { env } from "$lib/server/env.js";
 
 // Phase 9 Task 18 — bundling many Belege can exceed Vercel's default 10s
 // Hobby timeout on Fluid Compute. Bumping to 60s gives even large years
 // plenty of headroom. (Has no effect outside of Vercel.)
 export const config = { maxDuration: 60 };
-
-/**
- * German-aware slugifier. Handles umlauts FIRST so they map to ae/oe/ue
- * (not stripped), then lowercases and collapses non-alphanumerics into
- * dashes. Capped at `maxLen` to keep bundle paths predictable.
- */
-function slugify(s: string, maxLen = 40): string {
-  return s
-    .replace(/[äÄ]/g, "ae")
-    .replace(/[öÖ]/g, "oe")
-    .replace(/[üÜ]/g, "ue")
-    .replace(/[ßẞ]/g, "ss")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, maxLen);
-}
-
-/**
- * Compute the in-bundle relative path for a Beleg attachment.
- * Layout (Phase 9 Task 18, spec v2.1 §7.4 — German folder names):
- *   ausgaben/{sphere}/{business_id}-{slug}.{ext}
- *   einnahmen/{sphere}/{business_id}-{slug}.{ext}
- *   spenden/{business_id}-{slug}.{ext}     (Spenden have no sphere subfolder)
- */
-function bundlePath(row: {
-  businessId: string;
-  ownerKind: "expense" | "income" | "donation";
-  sphere?: string | null;
-  bezeichnung?: string | null;
-  ext: string;
-}): string {
-  const slug = slugify(row.bezeichnung ?? "");
-  const sphereFolder = row.sphere ?? "ohne-sphaere";
-  const folderByKind: Record<typeof row.ownerKind, string> = {
-    expense: `ausgaben/${sphereFolder}`,
-    income: `einnahmen/${sphereFolder}`,
-    donation: "spenden",
-  };
-  const tail = slug ? `${row.businessId}-${slug}` : row.businessId;
-  return `${folderByKind[row.ownerKind]}/${tail}.${row.ext}`;
-}
-
-/**
- * Map a MIME type to a sensible file extension. Falls back to `bin`
- * if the type is unknown — better than stripping the extension entirely
- * because the Steuerberater can still open it manually.
- */
-function extFromMime(mime: string): string {
-  const map: Record<string, string> = {
-    "application/pdf": "pdf",
-    "image/jpeg": "jpg",
-    "image/jpg": "jpg",
-    "image/png": "png",
-    "image/heic": "heic",
-    "image/heif": "heif",
-    "image/webp": "webp",
-  };
-  return map[mime.toLowerCase()] ?? "bin";
-}
 
 interface DonationRow {
   business_id: string;
