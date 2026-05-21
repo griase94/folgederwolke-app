@@ -70,13 +70,11 @@ export const load: PageServerLoad = async ({ url }) => {
     open_cents: string;
   }>(sql`
     SELECT
-      COUNT(DISTINCT member_id)::text                                                      AS member_count,
-      COUNT(DISTINCT CASE WHEN gezahlt_am IS NOT NULL THEN member_id END)::text            AS paid_count,
-      COALESCE(SUM(CASE WHEN gezahlt_am IS NOT NULL THEN paid_cents  ELSE 0 END), 0)::text AS paid_cents,
-      COUNT(DISTINCT CASE WHEN gezahlt_am IS NULL     THEN member_id END)::text            AS open_count,
-      COALESCE(SUM(CASE WHEN gezahlt_am IS NULL
-                        THEN GREATEST(betrag_cents - paid_cents, 0)
-                        ELSE 0 END), 0)::text                                              AS open_cents
+      (SELECT COUNT(*) FROM members WHERE austritts_datum IS NULL)::text                  AS member_count,
+      COUNT(DISTINCT CASE WHEN paid_cents >= betrag_cents THEN member_id END)::text       AS paid_count,
+      COALESCE(SUM(paid_cents), 0)::text                                                  AS paid_cents,
+      COUNT(DISTINCT CASE WHEN paid_cents <  betrag_cents THEN member_id END)::text       AS open_count,
+      COALESCE(SUM(GREATEST(betrag_cents - paid_cents, 0)), 0)::text                      AS open_cents
     FROM member_beitrags
     WHERE year = ${beitragsYear}
   `);

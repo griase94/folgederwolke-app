@@ -24,7 +24,7 @@
 		paidCents,
 		offenCents,
 		paidMemberCount,
-		openMemberCount: _openMemberCount,
+		openMemberCount,
 	}: Props = $props();
 
 	const fmtEur = (c: number) =>
@@ -53,7 +53,8 @@
 	</p>
 	<p class="mt-1 text-xs text-muted-foreground tabular-nums">
 		<span data-testid="beitragsuebersicht-paid-count">{paidMemberCount}</span> von {memberCount}
-		bezahlt · <span data-testid="beitragsuebersicht-open">{fmtEur(offenCents)}</span> offen
+		bezahlt · <span data-testid="beitragsuebersicht-open-count">{openMemberCount}</span> offen
+		(<span data-testid="beitragsuebersicht-open">{fmtEur(offenCents)}</span>)
 	</p>
 	<div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted dark:bg-muted/40">
 		<div class="h-full bg-emerald-500 dark:bg-emerald-400" style="width: {paidPct}%"></div>

@@ -441,12 +441,19 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
   const FREIGRENZE_CENTS = 5_000_000; // 50.000 €, § 64 Abs. 3 AO (ab 2025)
   const wgbCents = Number(wgbEinnahmen[0]?.sumCents ?? 0);
   const wgbPct = wgbCents / FREIGRENZE_CENTS;
+  // Threshold tiers (C4-DASH-lite cycle 2 — vorstand-treasurer finding #4):
+  // For a <€25k Verein, the §64-Freigrenze (€50k) is structurally distant.
+  // 50% is the normal operating zone — flagging it as "erhoeht" is alarm
+  // fatigue. Tiers below match the cliff-warning model: ok up to 80%,
+  // erhoeht 80-95% (approaching), kritisch 95-100% (very close),
+  // ueberschritten >= 100%. The WGBWidget chip renders only on `ok`, so
+  // the dashboard now stays scannable until the warning is actionable.
   const wgbStatus: WgbStatus["status"] =
     wgbCents >= FREIGRENZE_CENTS
       ? "ueberschritten"
-      : wgbPct >= 0.8
+      : wgbPct >= 0.95
         ? "kritisch"
-        : wgbPct >= 0.5
+        : wgbPct >= 0.8
           ? "erhoeht"
           : "ok";
 
