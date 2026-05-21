@@ -21,6 +21,7 @@ export type {
   BeitragStatus,
   BeitragCell,
   MemberView,
+  MemberBeitragsTotals,
 } from "$lib/domain/members.js";
 export { beitragStatusFor } from "$lib/domain/members.js";
 
@@ -149,17 +150,17 @@ export function beitragYearsRange(
 // C5-MEM-lite — Mitglieder-Matrix €-summen header aggregation
 // ---------------------------------------------------------------------------
 
-export interface MemberBeitragsTotals {
-  /**
-   * Total members in the `members` table (year-independent in this shipment).
-   * Night-2 C5-MEM-full extends this with an `exemptCount` companion field.
-   */
-  memberCount: number;
-  /** SUM(betrag_cents) where gezahlt_am IS NOT NULL, for the given year. */
-  paidCents: number;
-  /** SUM(betrag_cents) where gezahlt_am IS NULL, for the given year. */
-  offenCents: number;
-}
+/**
+ * `MemberBeitragsTotals` is the per-year aggregate consumed by the Mitglieder-
+ * Matrix €-summen header. The type itself lives in `$lib/domain/members.ts`
+ * (client-safe) so Svelte components can `import type` it without pulling in
+ * a server module. It's also re-exported at the top of this file for callers
+ * that already import from the server module.
+ *
+ * Night-2 C5-MEM-full extends this aggregate with an `exemptCount` field —
+ * keep the field order stable and add new fields at the end.
+ */
+import type { MemberBeitragsTotals } from "$lib/domain/members.js";
 
 /**
  * Aggregate Mitglieds-Beiträge for one Buchungsjahr, used by the Mitglieder-

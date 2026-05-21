@@ -18,6 +18,21 @@ export type BeitragCell = {
   gezahltAm: string | null;
 } | null;
 
+/**
+ * C5-MEM-lite — €-summen aggregate for the Mitglieder-Matrix header line.
+ * Lives in the client-safe module so `MemberMatrix.svelte` can `import type`
+ * it without dragging a server module into the client bundle.
+ *
+ * Mirrored by the server helper `memberBeitragsTotals(year)` in
+ * `$lib/server/domain/members.ts` (re-exported from there for callers that
+ * already use the server module).
+ */
+export type MemberBeitragsTotals = {
+  memberCount: number;
+  paidCents: number;
+  offenCents: number;
+};
+
 export type MemberView = {
   id: string;
   vorname: string;
