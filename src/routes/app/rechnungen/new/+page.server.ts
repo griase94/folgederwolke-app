@@ -39,6 +39,7 @@ export const load: PageServerLoad = async () => {
           id: customers.id,
           name: customers.name,
           addressBlock: customers.addressBlock,
+          country: customers.country,
         })
         .from(customers)
         .where(isNull(customers.deletedAt))

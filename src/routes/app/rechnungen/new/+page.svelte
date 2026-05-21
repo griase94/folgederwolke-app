@@ -23,6 +23,7 @@
 		rechnungsdatum: values['rechnungsdatum'] ?? data.today,
 		leistungsDatum: values['leistungsDatum'] ?? '',
 		faelligkeitsDatum: values['faelligkeitsDatum'] ?? '',
+		leistungszeitraum: values['leistungszeitraum'] ?? '',
 		bezeichnung: values['bezeichnung'] ?? '',
 		leistungsBeschreibung: values['leistungsBeschreibung'] ?? '',
 		nettoEur: values['nettoEur'] ?? ''

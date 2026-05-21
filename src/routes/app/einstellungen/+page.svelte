@@ -1,8 +1,26 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
 	import EinstellungenSignOutEverywhereCard from '$lib/components/admin/EinstellungenSignOutEverywhereCard.svelte';
-	import type { PageData } from './$types.js';
+	import type { ActionData, PageData } from './$types.js';
 
-	let { data }: { data: PageData } = $props();
+	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	// Two-stage hydration: $state has to capture a primitive value, not a
+	// reactive reference. Initial value comes from server load; later updates
+	// (after form save → invalidate) refresh via the effect below.
+	let kassenwaertName = $state<string>('');
+	let hydrated = false;
+	$effect(() => {
+		if (hydrated) return;
+		hydrated = true;
+		kassenwaertName = data.kassenwaertName;
+	});
+	let saving = $state(false);
+	let saved = $state(false);
+	let error = $state<string | null>(null);
 </script>
 
 <svelte:head>
@@ -50,6 +68,8 @@
 					{ label: 'Steuernummer', value: data.verein.steuernummer },
 					{ label: 'Vereinsregister', value: data.verein.vr },
 					{ label: 'Adresse', value: data.verein.adresse },
+					{ label: 'Kontakt', value: data.verein.kontaktPerson },
+					{ label: 'Telefon', value: data.verein.contactPhone },
 					{ label: 'IBAN', value: data.verein.iban },
 					{ label: 'BIC', value: data.verein.bic },
 					{ label: 'Bank', value: data.verein.bank },
@@ -66,6 +86,60 @@
 		</section>
 	{/if}
 
+	<!-- ── Kassenwärt:in (Phase 10 — Rechnungs-Signatur) ──────────────────── -->
+	<section aria-labelledby="section-kassen" class="mb-10">
+		<h2 id="section-kassen" class="mb-4 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+			Kassenwärt:in
+		</h2>
+		<form
+			method="POST"
+			action="?/saveKassenwaertName"
+			use:enhance={() => {
+				saving = true;
+				saved = false;
+				error = null;
+				return async ({ result, update }) => {
+					saving = false;
+					if (result.type === 'failure') {
+						error = (result.data?.['error'] as string | undefined) ?? 'Speichern fehlgeschlagen';
+					} else if (result.type === 'success') {
+						saved = true;
+					}
+					await update();
+				};
+			}}
+			class="rounded-xl border border-border bg-card p-6 space-y-4"
+		>
+			<div class="space-y-1">
+				<Label for="kassenwaert-name">Name auf Rechnungen</Label>
+				<Input
+					id="kassenwaert-name"
+					name="kassenwaertName"
+					required
+					maxlength={200}
+					bind:value={kassenwaertName}
+					placeholder="z. B. Julia Schwarz"
+				/>
+				<p class="text-xs text-muted-foreground">
+					Erscheint als Unterschrift auf jeder Rechnung — kann ohne Deployment geändert werden.
+				</p>
+			</div>
+			{#if error}
+				<p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+			{/if}
+			{#if saved}
+				<p class="rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
+					Gespeichert.
+				</p>
+			{/if}
+			<div>
+				<Button type="submit" disabled={saving}>
+					{saving ? 'Wird gespeichert…' : 'Speichern'}
+				</Button>
+			</div>
+		</form>
+	</section>
+
 	<!-- ── Konfiguration ────────────────────────────────────────────────────── -->
 	<section aria-labelledby="section-konfig" class="mb-10">
 		<h2 id="section-konfig" class="mb-4 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
@@ -74,7 +148,6 @@
 		<div class="rounded-xl border border-border bg-card divide-y divide-border">
 			{#each [
 				{ label: 'Mail-Absender', value: data.mailFrom },
-				{ label: 'Template-Doc', value: data.templateDocId },
 			].filter(row => row.value) as row (row.label)}
 				<div class="flex flex-col gap-0.5 px-6 py-3 sm:flex-row sm:items-baseline sm:gap-4">
 					<dt class="w-36 shrink-0 text-xs font-medium text-muted-foreground">{row.label}</dt>
@@ -84,3 +157,6 @@
 		</div>
 	</section>
 </div>
+
+<!-- Keep `form` referenced so SvelteKit knows it's used. -->
+{#if form}{/if}

@@ -35,6 +35,7 @@ export const load: PageServerLoad = async () => {
       name: c.name,
       anrede: c.anrede,
       addressBlock: c.addressBlock,
+      country: c.country,
       email: c.email,
       notes: c.notes,
       isFixture: c.isFixture,

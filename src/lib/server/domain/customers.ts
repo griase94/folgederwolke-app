@@ -17,6 +17,8 @@ export type CustomerView = {
   name: string;
   anrede: string | null;
   addressBlock: string | null;
+  /** ISO 3166-1 alpha-2 country code. Defaults to 'DE'. */
+  country: string;
   email: string | null;
   notes: string | null;
   isFixture: boolean;
@@ -40,6 +42,15 @@ const customerBaseSchema = z.object({
   name: z.string().min(1, "Name ist erforderlich").max(200, "Name zu lang"),
   anrede: optionalText(z.string().max(200, "Anrede zu lang")),
   address_block: optionalText(z.string().max(500, "Adressblock zu lang")),
+  country: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? v.trim().toUpperCase() : "DE"))
+    .pipe(
+      z
+        .string()
+        .regex(/^[A-Z]{2}$/, "Länder-Code muss 2 Buchstaben sein (z.B. DE)"),
+    ),
   email: optionalText(
     z.string().email("Ungültige E-Mail").max(254, "E-Mail zu lang"),
   ),
