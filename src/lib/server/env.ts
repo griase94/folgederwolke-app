@@ -351,6 +351,18 @@ export function assertProductionEnvSafe(): void {
     );
   }
 
+  // CRON_SECRET unset → Vercel cron endpoints (/api/cron/*) return 401
+  // silently. The beitragsreminder job runs once/year (Jan 1) and a missed
+  // run wouldn't be noticed for 364 days. Warn loudly at startup instead;
+  // don't throw because the rest of the app is still functional and we
+  // shouldn't refuse to boot prod over a misconfiguration in scheduled
+  // jobs.
+  if (isProd && !env.CRON_SECRET && !process.env["CRON_SECRET"]) {
+    console.warn(
+      "[env] CRON_SECRET is empty in production — /api/cron/* will reject ALL incoming requests, including the legitimate Vercel scheduler. Set via Vercel project env and `gh secret set CRON_SECRET`.",
+    );
+  }
+
   // Verein bank-data consistency (cycle-2 expert review F2). Always run —
   // in dev a misconfigured pair is just as wrong as in prod, and the check
   // is a no-op when either value is unset or the BLZ isn't in our table.

@@ -100,7 +100,25 @@ export const GET: RequestHandler = async () => {
   }
 
   const state = await check();
-  const body = JSON.stringify(state);
+
+  // Vercel injects `VERCEL_GIT_COMMIT_SHA` at runtime — prefer it over
+  // `env.COMMIT_SHA` because the latter defaults to the literal string
+  // `"dev"` in `env.ts`. Without this precedence order the fallback chain
+  // would always short-circuit to `"dev"` (since the default is truthy),
+  // and the post-deploy smoke workflow — which compares the deployed git
+  // SHA against this field — would never match. Local dev (no Vercel env
+  // vars set) falls through to `env.COMMIT_SHA = "dev"`.
+  const sha =
+    process.env["VERCEL_GIT_COMMIT_SHA"]?.slice(0, 7) ||
+    env.COMMIT_SHA ||
+    "dev";
+
+  const body = JSON.stringify({
+    ...state,
+    sha,
+    deployedAt: env.DEPLOYED_AT || null,
+  });
+
   // Preserve existing always-200 contract so monitoring + existing E2E note()s
   // keep working. Health state is encoded in the JSON body's per-subsystem
   // fields ("ok"|"fail"), and operators read the body. Flipping the status

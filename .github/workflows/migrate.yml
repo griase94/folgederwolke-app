@@ -55,13 +55,11 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         if: env.DIRECT_DATABASE_URL != ''
-        with:
-          version: 10
 
       - uses: actions/setup-node@v4
         if: env.DIRECT_DATABASE_URL != ''
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "pnpm"
 
       - name: Install dependencies
