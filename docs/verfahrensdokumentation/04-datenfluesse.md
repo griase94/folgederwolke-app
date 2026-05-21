@@ -63,10 +63,10 @@ Templates: `magic_link`, `auslage_eingang`, `auslage_erstattet`, `auslage_abgele
 Admin → POST /app/rechnungen/:id/generieren
   → invoice_jobs INSERT (status=queued)
   → Vercel Cron (täglich 03:00 UTC) / on-demand Trigger
-  → Google Docs clone from TEMPLATE_DOC_ID
-  → Merge Rechnung-Daten
-  → Export as PDF → Drive upload
-  → invoices UPDATE (pdf_status=generated, pdf_drive_file_id)
+  → pdf-lib in-process rendering
+    (see src/lib/server/pdf/templates/rechnung-v2/)
+  → invoices UPDATE (pdf_status=generated, pdf_bytes)
+  → optional: Vercel Blob upload (best-effort convenience storage)
 ```
 
 ### 4.2.3 EÜR-Export

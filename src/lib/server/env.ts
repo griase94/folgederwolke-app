@@ -103,10 +103,9 @@ const schema = z.object({
    */
   GOOGLE_SERVICE_ACCOUNT_KEY_JSON: z.string().default(""),
 
-  // Drive — legacy fields kept for /healthz + einstellungen until Task 7+11
-  // delete the call sites (drive-impl.ts removal, healthz cleanup).
-  DRIVE_PARENT_FOLDER_ID: z.string().default(""),
-  TEMPLATE_DOC_ID: z.string().default(""),
+  // (Phase 10 removed DRIVE_PARENT_FOLDER_ID + TEMPLATE_DOC_ID — the
+  // Rechnung renderer is now in-process pdf-lib and never reads from
+  // Drive. The /healthz probe no longer pings Drive either.)
 
   // Sheets — legacy importer (Phase 6 one-shot cutover)
   /** Spreadsheet ID of the legacy PROD sheet (read via SA or fallback CSV upload). */
