@@ -113,6 +113,9 @@ async function submitAuslageWithPdf(
     bezeichnung: opts.bezeichnung,
     betragCents: opts.betragCents,
     currency: "EUR",
+    // C2-TAX: rechnungsdatum is now a required field on auslageInputSchema.
+    // Pre-C2-TAX fixtures omitted it; supply an ISO date so the gate passes.
+    rechnungsdatum: "2026-05-01",
     consent_text_version: DATENSCHUTZ_VERSION,
     // crypto.randomUUID() returns a UUIDv4 string — validateAuslageInput
     // rejects any other shape ("submissionNonce muss UUID v4 sein").

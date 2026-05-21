@@ -574,6 +574,14 @@ export interface CreateExpenseInput {
   betragCents: number;
   currency?: string;
   rechnungsdatum?: string | null;
+  /**
+   * C2-TAX (cycle 2): Abfluss-Datum — required for kind=ausgabe per EÜR §11
+   * EStG. Maps to the existing `expenses.abfluss_datum` column (no new
+   * column added; the migration 0018 that introduced a parallel
+   * `geldfluss_datum` was reverted after julia-buchhaltung's review).
+   * Zod + UI on the admin direct path enforce this for new app-mode entries.
+   */
+  abflussDatum?: string | null;
   kommentar?: string | null;
   kategorieId?: string | null;
   kategorieNameSnapshot: string;
@@ -585,6 +593,8 @@ export interface CreateExpenseInput {
   externIban?: string | null;
   externEmail?: string | null;
   projectId?: string | null;
+  /** C2-TAX: FK into the normalized `files` table for the attached Beleg. */
+  belegFileId?: string | null;
   actorUserId: string;
   businessId: string;
 }
@@ -636,6 +646,8 @@ export async function createExpense(
       betragCents: BigInt(input.betragCents),
       currency: input.currency ?? "EUR",
       rechnungsdatum: input.rechnungsdatum ?? null,
+      // C2-TAX: persist the cash-out date per EÜR §11 EStG.
+      abflussDatum: input.abflussDatum ?? null,
       kommentar: input.kommentar ?? null,
       kategorieId: input.kategorieId ?? null,
       kategorieNameSnapshot: input.kategorieNameSnapshot,
@@ -647,6 +659,8 @@ export async function createExpense(
       externIban: input.externIban ?? null,
       externEmail: input.externEmail ?? null,
       projectId: input.projectId ?? null,
+      // C2-TAX: FK into the normalized `files` table for the attached Beleg.
+      belegFileId: input.belegFileId ?? null,
       status: "geprueft",
       approvedAt: new Date(),
       approvedByUserId: input.actorUserId,

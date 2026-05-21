@@ -351,6 +351,14 @@
 					currency: 'EUR'
 				})
 	);
+
+	// C2-TAX: disable submit until the two tax-critical fields are filled.
+	// Mirrors the schema-level requireds (beleg + rechnungsdatum). The
+	// existing client-side validate() still runs on submit and surfaces
+	// detailed messages, but blocking the button is a clearer UX gate.
+	const submitDisabled = $derived(
+		isSubmitting || !belegFile || !rechnungsdatum
+	);
 </script>
 
 <form
@@ -496,19 +504,31 @@
 			</div>
 
 			<!-- Rechnungsdatum -->
+			<!-- C2-TAX: required per EÜR §11 EStG — surface the * marker and
+			     wire aria-invalid + role=alert error rendering. -->
 			<div class="flex flex-col gap-1.5">
-				<Label for="rechnungsdatum">Rechnungsdatum</Label>
+				<Label for="rechnungsdatum">
+					Rechnungsdatum <span aria-hidden="true">*</span>
+				</Label>
 				<p class="text-muted-foreground text-xs">Datum vom Beleg.</p>
 				<Input
 					id="rechnungsdatum"
 					name="rechnungsdatum_display"
 					type="date"
 					lang="de"
+					required
 					max={new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' })}
 					bind:value={rechnungsdatum}
 					oninput={triggerDraftSave}
 					onblur={() => markBlurred('rechnungsdatum')}
+					aria-invalid={!!getError('rechnungsdatum')}
+					aria-describedby={getError('rechnungsdatum') ? 'err-rechnungsdatum' : undefined}
 				/>
+				{#if getError('rechnungsdatum')}
+					<p id="err-rechnungsdatum" class="text-destructive text-xs" role="alert">
+						{getError('rechnungsdatum')}
+					</p>
+				{/if}
 			</div>
 
 			<!-- Kommentar -->
@@ -533,9 +553,12 @@
 	</Card>
 
 	<!-- ── Section 3: Beleg ──────────────────────────────────────────────────── -->
+	<!-- C2-TAX: pass aria-invalid through when the server / client validation
+	     reports a beleg-field error. -->
 	<BelegUpload
 		bind:file={belegFile}
 		errors={fieldErrors}
+		aria-invalid={Boolean(fieldErrors.beleg && fieldErrors.beleg.length > 0)}
 		onchange={triggerDraftSave}
 		onfile={(f) => {
 			belegFile = f;
@@ -602,8 +625,9 @@
 				type="submit"
 				class="w-full"
 				size="lg"
-				disabled={isSubmitting}
+				disabled={submitDisabled}
 				aria-busy={isSubmitting}
+				data-testid="auslage-submit"
 			>
 				{#if isSubmitting}
 					<svg

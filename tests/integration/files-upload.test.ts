@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { ChaosFileStorage } from "$lib/server/files/chaos-impl.js";
 import { InMemoryMockFileStorage } from "$lib/server/files/in-memory-mock-impl.js";
-import { handleAuslageUpload } from "$lib/server/files/upload-pipeline.js";
+import { runUploadPipeline } from "$lib/server/files/upload-pipeline.js";
 import { getDb } from "$lib/server/db/index.js";
 import { sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
@@ -61,11 +61,13 @@ describe("upload pipeline", () => {
     chaos.failNextUpload(1);
     const bytes = new Uint8Array([...PDF_HEAD, ...new Array(100).fill(0)]);
     await expect(
-      handleAuslageUpload({
+      runUploadPipeline({
         bytes,
         claimedMime: "application/pdf",
         originalFilename: "t.pdf",
         submitterEmail: "a@b.de",
+        actorUserId: null,
+        sourceKind: "form",
         storage: chaos,
       }),
     ).rejects.toThrow(/CHAOS/);
@@ -75,18 +77,22 @@ describe("upload pipeline", () => {
   it("sequential identical → same fileId, dedupHit on 2nd", async () => {
     const inner = new InMemoryMockFileStorage();
     const bytes = new Uint8Array([...PDF_HEAD, ...new Array(100).fill(0)]);
-    const r1 = await handleAuslageUpload({
+    const r1 = await runUploadPipeline({
       bytes,
       claimedMime: "application/pdf",
       originalFilename: "t1.pdf",
       submitterEmail: "a@b.de",
+      actorUserId: null,
+      sourceKind: "form",
       storage: inner,
     });
-    const r2 = await handleAuslageUpload({
+    const r2 = await runUploadPipeline({
       bytes,
       claimedMime: "application/pdf",
       originalFilename: "t2.pdf",
       submitterEmail: "a@b.de",
+      actorUserId: null,
+      sourceKind: "form",
       storage: inner,
     });
     expect(r1.dedupHit).toBe(false);
@@ -119,18 +125,22 @@ describe("upload pipeline", () => {
     const inner = new InMemoryMockFileStorage();
     const bytes = new Uint8Array([...PDF_HEAD, ...new Array(100).fill(0)]);
     const [r1, r2] = await Promise.all([
-      handleAuslageUpload({
+      runUploadPipeline({
         bytes,
         claimedMime: "application/pdf",
         originalFilename: "a.pdf",
         submitterEmail: "x@y.de",
+        actorUserId: null,
+        sourceKind: "form",
         storage: inner,
       }),
-      handleAuslageUpload({
+      runUploadPipeline({
         bytes,
         claimedMime: "application/pdf",
         originalFilename: "b.pdf",
         submitterEmail: "x@y.de",
+        actorUserId: null,
+        sourceKind: "form",
         storage: inner,
       }),
     ]);
@@ -158,11 +168,13 @@ describe("upload pipeline", () => {
       ...new Array(100).fill(0),
     ]);
     await expect(
-      handleAuslageUpload({
+      runUploadPipeline({
         bytes: png,
         claimedMime: "application/pdf",
         originalFilename: "fake.pdf",
         submitterEmail: "x@y.de",
+        actorUserId: null,
+        sourceKind: "form",
         storage: inner,
       }),
     ).rejects.toThrow(/MIME/);
@@ -173,11 +185,13 @@ describe("upload pipeline", () => {
     const big = new Uint8Array(5 * 1024 * 1024);
     big.set(PDF_HEAD, 0);
     await expect(
-      handleAuslageUpload({
+      runUploadPipeline({
         bytes: big,
         claimedMime: "application/pdf",
         originalFilename: "big.pdf",
         submitterEmail: "x@y.de",
+        actorUserId: null,
+        sourceKind: "form",
         storage: inner,
       }),
     ).rejects.toThrow(/4\.5MB|too large/i);
@@ -215,11 +229,13 @@ describe("upload pipeline", () => {
       0x00,
       ...new Array(100).fill(0),
     ]);
-    const r = await handleAuslageUpload({
+    const r = await runUploadPipeline({
       bytes: jpeg,
       claimedMime: "image/jpeg",
       originalFilename: "x.jpg",
       submitterEmail: "a@b.de",
+      actorUserId: null,
+      sourceKind: "form",
       storage: inner,
     });
     expect(r.fileId).toBeTruthy();
@@ -257,11 +273,13 @@ describe("upload pipeline", () => {
       0x63,
       ...new Array(200).fill(0),
     ]);
-    const r = await handleAuslageUpload({
+    const r = await runUploadPipeline({
       bytes: heic,
       claimedMime: "image/heic",
       originalFilename: "x.heic",
       submitterEmail: "a@b.de",
+      actorUserId: null,
+      sourceKind: "form",
       storage: inner,
     });
     expect(r.fileId).toBeTruthy();
