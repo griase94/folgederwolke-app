@@ -22,7 +22,6 @@
 
 	let importSheetOpen = $state(false);
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	async function onImportSuccess(_ausId: string): Promise<void> {
 		await invalidateAll();
 	}

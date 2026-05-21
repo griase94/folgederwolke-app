@@ -1,61 +1,87 @@
 /**
- * FileStorage interface — §4.1.1 #5.
+ * FileStorage interface v2 — §4.1.1 #5, Phase 9.
  *
- * Abstracts file operations so callers are not coupled to the Drive
- * implementation. A test double or future S3 adapter can implement this
- * interface without changing call sites.
+ * Pathname-addressed file storage. Callers compute a stable pathname
+ * (e.g. `belege/2026/03/<file-id>.pdf`) and pass it through upload /
+ * download / archive. The backend returns an etag for cache invalidation
+ * but never invents its own id — the canonical id lives in the `files`
+ * table.
+ *
+ * Backends:
+ *  - `blob`     → Vercel Blob (prod, default)
+ *  - `local-fs` → on-disk under FILE_STORAGE_ROOT (dev + test)
+ *
+ * Errors are surfaced as StorageError subclasses from `./errors.ts`.
  */
-
-export interface FileStorage {
-  /**
-   * Upload a file and return a stable id and public view URL.
-   * Must be idempotent: calling with the same idempotencyKey twice returns
-   * the same { id, viewUrl } without creating a duplicate.
-   */
-  upload(opts: {
-    buffer: Uint8Array;
-    mimeType: string;
-    name: string;
-    /** Stable caller-supplied key — safe chars only: [A-Za-z0-9_:-] */
-    idempotencyKey: string;
-  }): Promise<{ id: string; viewUrl: string }>;
-
-  /** Download the raw bytes of a file by its storage id. */
-  download(id: string): Promise<Uint8Array>;
-
-  /**
-   * Move a file into a named archive folder.
-   * Used to organise processed Belege into year/category subfolders.
-   * Creates the folder if it does not exist.
-   */
-  archive(id: string, folderName: string): Promise<void>;
-
-  /** Permanently delete a file by its storage id. */
-  delete(id: string): Promise<void>;
-}
-
-// ---------------------------------------------------------------------------
-// Factory — selects the FileStorage implementation based on
-// env.STORAGE_BACKEND. The choice is cached per process; STORAGE_BACKEND is
-// not expected to change at runtime.
-//
-// Defaults to "drive" (production safety) — "local-fs" must be opted in
-// explicitly via env.
-// ---------------------------------------------------------------------------
 
 import { env } from "$lib/server/env.js";
 
-let cached: FileStorage | undefined;
+export interface FileStorage {
+  /**
+   * Upload bytes to `pathname`. Returns an etag that callers can persist
+   * for cache invalidation. Throws StorageDuplicateError if a non-archive
+   * path is already occupied and the backend refuses to overwrite.
+   */
+  upload(args: {
+    buffer: Uint8Array;
+    mimeType: string;
+    pathname: string;
+  }): Promise<{ etag: string }>;
 
-export async function getFileStorage(): Promise<FileStorage> {
-  if (cached) return cached;
-  if (env.STORAGE_BACKEND === "local-fs") {
-    const { LocalFsFileStorage } = await import("./local-fs-impl.js");
-    cached = new LocalFsFileStorage({ root: env.FILE_STORAGE_ROOT });
+  /** Read the raw bytes at `pathname`. Throws StorageNotFoundError. */
+  download(pathname: string): Promise<Uint8Array>;
+
+  /**
+   * Stream the bytes at `pathname`. Preferred for downloads that may be
+   * larger than a few megabytes — avoids buffering the full file in
+   * memory.
+   */
+  downloadStream(pathname: string): Promise<ReadableStream>;
+
+  /**
+   * Move the file at `pathname` into the archive folder for `year`. The
+   * archive folder is write-once: archived paths cannot be overwritten
+   * (StorageImmutabilityError) per Festschreibung (ADR-0006/0012).
+   */
+  archive(pathname: string, year: number): Promise<{ newPathname: string }>;
+}
+
+export type StorageBackend = "blob" | "local-fs";
+
+// ---------------------------------------------------------------------------
+// Factory — selects the FileStorage implementation based on
+// env.STORAGE_BACKEND. The choice is cached per process per backend.
+// ---------------------------------------------------------------------------
+
+const cached = new Map<StorageBackend, FileStorage>();
+
+export async function getFileStorage(
+  backend?: StorageBackend,
+): Promise<FileStorage> {
+  const choice: StorageBackend = backend ?? env.STORAGE_BACKEND;
+  const hit = cached.get(choice);
+  if (hit) return hit;
+  let impl: FileStorage;
+  if (choice === "blob") {
+    const { VercelBlobFileStorage } = await import("./vercel-blob-impl.js");
+    impl = new VercelBlobFileStorage({ token: env.BLOB_READ_WRITE_TOKEN });
   } else {
-    // Drive (default).
-    const { driveFileStorage } = await import("./drive-impl.js");
-    cached = driveFileStorage;
+    const { LocalFsFileStorage } = await import("./local-fs-impl.js");
+    impl = new LocalFsFileStorage({ root: env.FILE_STORAGE_ROOT });
   }
-  return cached;
+  cached.set(choice, impl);
+  return impl;
+}
+
+// ---------------------------------------------------------------------------
+// View-URL helpers — single source of truth for the /api/files/<id>/...
+// URL shape used by SSR loaders, server actions, and audit log entries.
+// ---------------------------------------------------------------------------
+
+export function fileViewUrl(fileId: string): string {
+  return `/api/files/${fileId}/blob`;
+}
+
+export function fileThumbnailUrl(fileId: string): string {
+  return `/api/files/${fileId}/thumbnail`;
 }

@@ -1,11 +1,11 @@
 name: post-deploy smoke
 
 # Validates that the production deploy actually serves the latest commit and
-# that `/healthz` reports `db: ok`. Vercel reports "Deployment has completed"
-# at the platform level even if a deploy ships broken runtime code (e.g. an
-# env-var misconfiguration that crashes on first request). This workflow is
-# the safety net that surfaces those failures in GitHub instead of letting
-# them sit silent.
+# that `/healthz` reports `db: ok` and `blob: ok`. Vercel reports "Deployment
+# has completed" at the platform level even if a deploy ships broken runtime
+# code (e.g. an env-var misconfiguration that crashes on first request). This
+# workflow is the safety net that surfaces those failures in GitHub instead
+# of letting them sit silent.
 #
 # Trigger: GitHub `deployment_status` event, which Vercel fires once per
 # deployment with a `state` of `success`/`failure`/`error`. We only smoke
@@ -47,6 +47,11 @@ jobs:
         # serving the previous deployment from the edge cache. Poll
         # `/healthz` (which returns the deployed `sha`) until it matches the
         # expected commit, or fail after ~3 minutes.
+        #
+        # Phase 9: also assert `blob: ok` — the new Vercel Blob backend is
+        # part of the runtime contract; if the BLOB_READ_WRITE_TOKEN env var
+        # is missing or the store is unreachable, /healthz reports `blob:
+        # fail` and we want to surface that as a deploy failure.
         env:
           BASE_URL: ${{ env.SMOKE_BASE_URL }}
           EXPECTED: ${{ env.EXPECTED_SHA }}
@@ -54,27 +59,33 @@ jobs:
           set -euo pipefail
           deadline=$(( $(date +%s) + 180 ))
           actual=""
-          status=""
+          db_status=""
+          blob_status=""
           while [ "$(date +%s)" -lt "$deadline" ]; do
             payload=$(curl -fsS --max-time 10 "${BASE_URL}/healthz" || true)
             if [ -n "$payload" ]; then
-              actual=$(printf '%s' "$payload" | jq -r '.sha // ""' 2>/dev/null || true)
-              status=$(printf '%s' "$payload" | jq -r '.db  // ""' 2>/dev/null || true)
+              actual=$(printf '%s' "$payload"      | jq -r '.sha  // ""' 2>/dev/null || true)
+              db_status=$(printf '%s' "$payload"   | jq -r '.db   // ""' 2>/dev/null || true)
+              blob_status=$(printf '%s' "$payload" | jq -r '.blob // ""' 2>/dev/null || true)
               if [ "$actual" = "${EXPECTED:0:7}" ] || [ "$actual" = "$EXPECTED" ]; then
-                echo "match: alias serving ${EXPECTED:0:7} (db=$status)"
-                if [ "$status" != "ok" ]; then
-                  echo "::error::/healthz reports db=$status (expected ok)"
+                echo "match: alias serving ${EXPECTED:0:7} (db=$db_status blob=$blob_status)"
+                if [ "$db_status" != "ok" ]; then
+                  echo "::error::/healthz reports db=$db_status (expected ok)"
+                  exit 1
+                fi
+                if [ "$blob_status" != "ok" ] && [ -n "$blob_status" ]; then
+                  echo "::error::/healthz reports blob=$blob_status (expected ok)"
                   exit 1
                 fi
                 exit 0
               fi
-              echo "wait: alias serves '$actual', want '${EXPECTED:0:7}' (db=$status)"
+              echo "wait: alias serves '$actual', want '${EXPECTED:0:7}' (db=$db_status blob=$blob_status)"
             else
               echo "wait: /healthz did not respond"
             fi
             sleep 5
           done
-          echo "::error::production alias did not flip to ${EXPECTED:0:7} within 180s (last seen sha=$actual, db=$status)"
+          echo "::error::production alias did not flip to ${EXPECTED:0:7} within 180s (last seen sha=$actual, db=$db_status, blob=$blob_status)"
           exit 1
 
       - name: Probe a representative public route

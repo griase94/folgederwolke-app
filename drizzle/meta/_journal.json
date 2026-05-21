@@ -106,6 +106,20 @@
       "when": 1779291400000,
       "tag": "0014_critical_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1779550000000,
+      "tag": "0015_entity_kind_add_file",
+      "breakpoints": false
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1779550100000,
+      "tag": "0016_files_table",
+      "breakpoints": true
     }
   ]
 }

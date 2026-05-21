@@ -444,3 +444,18 @@ If you must apply SQL to Neon outside of the normal migration flow:
 2. **IMMEDIATELY** add the corresponding migration file to `drizzle/` and journal entry to `drizzle/meta/_journal.json`.
 3. Manually register the migration in `__drizzle_migrations` (Step 3 above) so the next workflow run doesn't try to re-apply.
 4. Commit + push.
+
+### 6.5 Backup activation procedure (Phase 9)
+
+Phase 9 ships the backup script + workflow as `workflow_dispatch`-only.
+To activate scheduled backups:
+
+1. Provision destination — recommended: Hetzner Storage Box (~€3.20/mo, 1TB,
+   EU/DE, SSH/SFTP-browsable).
+2. Generate SSH keypair on the destination, add public key to the GH org.
+3. `gh secret set BACKUP_DEST --body "sftp://u123@u123.your-storagebox.de:23/files-backup"`
+4. `gh secret set BACKUP_SSH_PRIVATE_KEY --body "$(cat ~/.ssh/storagebox)"`
+5. Uncomment the `schedule:` block in `.github/workflows/files-backup.yml`.
+6. First run: `gh workflow run "Files Backup"`.
+7. Verify destination has the expected files + `manifest.csv`.
+8. Document the rotation cadence (annual) in RUNBOOK §1.

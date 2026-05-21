@@ -49,6 +49,7 @@ import {
   sphereEnum,
   statusEnum,
 } from "./enums.js";
+import { files } from "./files.js";
 import { kategorien } from "./kategorien.js";
 import { members } from "./members.js";
 import { projects } from "./projects.js";
@@ -135,6 +136,10 @@ export const expenses = pgTable(
     // --- Beleg (file storage) ---
     belegDriveFileId: text("beleg_drive_file_id"),
     belegOriginalName: text("beleg_original_name"),
+    // --- Phase 9: FK to normalized `files` table (Drive → Blob migration) ---
+    belegFileId: uuid("beleg_file_id").references(() => files.id, {
+      onDelete: "restrict",
+    }),
 
     // --- Workflow status (Inbox → Geprüft → Erstattet) ---
     status: statusEnum("status").notNull().default("zu_pruefen"),

@@ -30,6 +30,13 @@ export interface InboxSubmissionView {
   reviewedAt: string | null;
   /** Drive file ID for the Beleg, or null if none. */
   belegDriveFileId: string | null;
+  /**
+   * Phase 9: FK into normalized `files` table. Either this or
+   * `belegDriveFileId` should be non-null when the submission carries a Beleg.
+   * The inbox list uses `hasBeleg = belegDriveFileId !== null || belegFileId !== null`
+   * to render the "has-Beleg" icon.
+   */
+  belegFileId: string | null;
   /** Original filename of the Beleg. */
   belegOriginalName: string | null;
   /** Optional project id link — currently null on submissions but reserved. */
@@ -59,11 +66,26 @@ export interface InboxSubmissionDetailView extends InboxSubmissionView {
   /** ISO timestamp of submitter consent. */
   submitterIpPrefix: string | null;
   /**
-   * Pre-built Drive viewLink URL for embedding in the Beleg preview.
-   * Constructed as `https://drive.google.com/file/d/{fileId}/view` so it works
-   * regardless of whether the Drive API scope is currently authorised.
+   * Legacy Drive view-URL for pre-Phase-9 submissions. Phase 9 submissions
+   * use `belegFileId` (FK into the `files` table) and render via
+   * `/api/files/{fileId}/blob` through `FilePreview`. Always null in the
+   * current code path — kept on the type for backwards compatibility until
+   * the legacy `belegDriveFileId` column is dropped in PR2.
+   *
+   * FIXME(Phase 9 follow-up: backfill drive→blob) — remove this field
+   * alongside `belegDriveFileId` once the schema migration lands.
    */
   belegViewLink: string | null;
+  /**
+   * Phase 9: FK into the normalized `files` table. Non-null for submissions
+   * uploaded after the Phase 9 cutover. When set, the detail page renders
+   * the blob via `/api/files/{belegFileId}/blob` via the FilePreview component.
+   */
+  belegFileId: string | null;
+  /** MIME type from the `files` row (only when `belegFileId` is set). */
+  belegMimeType: string | null;
+  /** Original filename from the `files` row (only when `belegFileId` is set). */
+  belegOriginalFilename: string | null;
   /** Member context block — populated only when bezahlt_von_kind = 'member'. */
   memberContext: {
     id: string;

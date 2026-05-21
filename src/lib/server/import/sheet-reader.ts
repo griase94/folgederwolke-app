@@ -21,11 +21,9 @@
  * imported state.
  */
 
-import { promises as fs } from "node:fs";
 import { createHash } from "node:crypto";
-import { JWT } from "google-auth-library";
-import { sheets as googleSheets } from "@googleapis/sheets";
 import { env } from "$lib/server/env.js";
+import { getSheetsClient } from "$lib/server/drive/sheets-client.js";
 import { parseCsv } from "./csv-parser.js";
 
 // ---------------------------------------------------------------------------
@@ -94,55 +92,27 @@ const TAB_ALIASES: Record<LegacyTabName, string[]> = {
 export interface ServiceAccountAvailability {
   available: boolean;
   reason: string;
-  /** Path that was probed (for logging). */
+  /** Source identifier for logging — "env:GOOGLE_SERVICE_ACCOUNT_KEY_JSON" when set. */
   path: string | null;
 }
 
 /**
- * Probes whether the SA file exists, is readable, parses as JSON, and has a
- * valid email + key. Does NOT make a network call — that happens in
- * readViaServiceAccount(). This is cheap enough to call from a page load.
+ * Probes whether env.googleServiceAccount is populated (i.e.
+ * GOOGLE_SERVICE_ACCOUNT_KEY_JSON parsed successfully at load time). Does
+ * NOT make a network call — that happens in readViaServiceAccount(). Cheap
+ * enough to call from a page load.
  */
 export async function checkServiceAccountAvailability(): Promise<ServiceAccountAvailability> {
-  const explicit = env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE?.trim();
-  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
-  const candidates = [
-    explicit,
-    home ? `${home}/secrets/folgederwolke-service-account.json` : "",
-  ].filter((p): p is string => !!p);
-
-  for (const path of candidates) {
-    try {
-      const raw = await fs.readFile(path, "utf8");
-      const parsed = JSON.parse(raw) as {
-        client_email?: string;
-        private_key?: string;
-      };
-      if (!parsed.client_email || !parsed.private_key) {
-        return {
-          available: false,
-          reason: `SA file at ${path} missing client_email or private_key`,
-          path,
-        };
-      }
-      return {
-        available: true,
-        reason: `SA file readable at ${path}`,
-        path,
-      };
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
-      return {
-        available: false,
-        reason: `SA file probe failed for ${path}: ${(err as Error).message}`,
-        path,
-      };
-    }
+  if (env.googleServiceAccount) {
+    return {
+      available: true,
+      reason: "service-account credentials present in env",
+      path: "env:GOOGLE_SERVICE_ACCOUNT_KEY_JSON",
+    };
   }
-
   return {
     available: false,
-    reason: "No service-account key file found",
+    reason: "GOOGLE_SERVICE_ACCOUNT_KEY_JSON is not set",
     path: null,
   };
 }
@@ -166,25 +136,13 @@ export async function readViaServiceAccount(): Promise<LegacySheet> {
   }
 
   const avail = await checkServiceAccountAvailability();
-  if (!avail.available || !avail.path) {
+  if (!avail.available) {
     throw new Error(
-      `readViaServiceAccount: SA file unavailable — ${avail.reason}`,
+      `readViaServiceAccount: SA credentials unavailable — ${avail.reason}`,
     );
   }
 
-  const raw = await fs.readFile(avail.path, "utf8");
-  const parsed = JSON.parse(raw) as {
-    client_email: string;
-    private_key: string;
-  };
-
-  const auth = new JWT({
-    email: parsed.client_email,
-    key: parsed.private_key,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
-  });
-
-  const api = googleSheets({ version: "v4", auth });
+  const api = getSheetsClient();
 
   const tabs: Partial<Record<LegacyTabName, LegacyTab>> = {};
   const hashInput: string[] = [];

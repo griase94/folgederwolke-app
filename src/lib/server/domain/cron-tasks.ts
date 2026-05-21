@@ -118,31 +118,19 @@ export async function retryFailedDriveUploads(
     )
     .limit(batchSize);
 
-  let succeeded = 0;
+  const succeeded = 0;
   let failed = 0;
 
+  // FIXME(Phase 9 follow-up): retry-failed-uploads against Blob storage.
+  // The retry path mirrors `runInvoiceJob` above; once the invoice domain is
+  // migrated to a deterministic pathname + `files` row, this loop should call
+  // the same upload helper rather than the raw FileStorage.upload(). For now
+  // it's a structural no-op: we still iterate so the result shape is
+  // unchanged, but we don't attempt a real upload.
+  void resolved;
   for (const row of rows) {
     if (!row.pdfBytes) continue;
-    try {
-      const result = await resolved.upload({
-        buffer: row.pdfBytes as unknown as Uint8Array,
-        mimeType: "application/pdf",
-        name: `rechnung-${row.businessId}.pdf`,
-        idempotencyKey: `invoice-pdf:${row.id}`,
-      });
-      await db
-        .update(invoices)
-        .set({
-          driveStatus: "uploaded",
-          drivePdfFileId: result.id,
-          updatedAt: new Date(),
-        })
-        .where(eq(invoices.id, row.id));
-      succeeded++;
-    } catch {
-      // best-effort; leave driveStatus as 'failed'
-      failed++;
-    }
+    failed++;
   }
 
   return { attempted: rows.length, succeeded, failed };

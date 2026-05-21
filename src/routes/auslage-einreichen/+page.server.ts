@@ -14,7 +14,6 @@
  */
 
 import { error, fail, redirect } from "@sveltejs/kit";
-import { randomUUID } from "node:crypto";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
@@ -25,6 +24,9 @@ import {
 } from "$lib/server/domain/auslagen.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getFileStorage, type FileStorage } from "$lib/server/files/storage.js";
+import { handleAuslageUpload } from "$lib/server/files/upload-pipeline.js";
+import { StorageError } from "$lib/server/files/errors.js";
+import { germanFileError } from "$lib/components/files/file-error-messages.js";
 import { bus } from "$lib/server/events/index.js";
 import { checkAndRecord, RateLimitError } from "$lib/server/auth/rate-limit.js";
 import {
@@ -317,31 +319,54 @@ export const actions: Actions = {
     const year = berlinYear();
     const ausId = await allocateBusinessId("AUS", year);
 
-    // ── 4. Drive upload (BEFORE DB insert — Drive→DB ordering) ────────────────
-    // Use the client-supplied submissionNonce as idempotency key so retries
-    // de-dup at the Drive level. Generate a fallback if missing.
-    const submissionNonce = input.submissionNonce ?? randomUUID();
-    const idempotencyKey = `${ausId}:${submissionNonce}`;
-
-    let driveFileId: string | null = null;
+    // ── 4. Upload pipeline (BEFORE DB insert — storage→DB ordering) ──────────
+    // Blob upload happens FIRST, then a short DB tx registers the `files` row
+    // and writes the audit-log entry on the same connection. Concurrent
+    // identical uploads (same sha256) are handled by the pipeline's
+    // unique_violation retry path — see src/lib/server/files/upload-pipeline.ts.
+    //
+    // `belegFileId` is the FK into the new normalized `files` table; the
+    // legacy `belegDriveFileId` column stays NULL on new submissions and is
+    // dropped in Phase 9 Task 17.
+    let belegFileId: string | null = null;
     if (belegBytes && belegSniffedMime) {
+      const submitterEmailForUpload =
+        bv.kind === "extern"
+          ? bv.email
+          : bv.kind === "member"
+            ? (bv.email ?? null)
+            : null;
       try {
-        const result = await (
-          await fileStorage()
-        ).upload({
-          buffer: new Uint8Array(belegBytes),
-          mimeType: belegSniffedMime,
-          name: `${ausId}_${belegFilenameSafe}`,
-          idempotencyKey,
+        const uploadResult = await handleAuslageUpload({
+          bytes: new Uint8Array(belegBytes),
+          claimedMime: belegSniffedMime,
+          originalFilename: belegFilenameSafe,
+          submitterEmail: submitterEmailForUpload ?? "anonymous@unknown",
+          storage: await fileStorage(),
         });
-        driveFileId = result.id;
-      } catch (driveErr) {
+        belegFileId = uploadResult.fileId;
+      } catch (uploadErr) {
+        if (uploadErr instanceof StorageError) {
+          console.warn(
+            `[auslage-einreichen] upload failed (${uploadErr.code}):`,
+            uploadErr.message,
+          );
+          const status =
+            uploadErr.code === "STORAGE_INVALID" ||
+            uploadErr.code === "STORAGE_DUPLICATE"
+              ? 422
+              : 502;
+          return fail(status, {
+            error: germanFileError(uploadErr.code),
+            errors: { beleg: [germanFileError(uploadErr.code)] },
+          });
+        }
         console.error(
-          `[auslage-einreichen] Drive upload failed for ${ausId}:`,
-          driveErr,
+          `[auslage-einreichen] unexpected upload error:`,
+          uploadErr,
         );
-        return fail(502, {
-          error: "Beleg-Upload fehlgeschlagen. Bitte erneut versuchen.",
+        return fail(500, {
+          error: germanFileError("UNKNOWN"),
         });
       }
     }
@@ -366,7 +391,8 @@ export const actions: Actions = {
           externIban: bv.kind === "extern" ? bv.iban : null,
           externEmail: bv.kind === "extern" ? bv.email : null,
           bezahltVonDisplay: composeBezahltVonDisplay(bv),
-          belegDriveFileId: driveFileId,
+          belegDriveFileId: null,
+          belegFileId,
           belegOriginalName: belegFile instanceof File ? belegFile.name : null,
           submitterIpPrefix: ipPrefixVal,
           submitterUaHash: hashString(ua),
@@ -381,18 +407,9 @@ export const actions: Actions = {
         `[auslage-einreichen] DB insert failed for ${ausId}:`,
         dbErr,
       );
-      // Roll back the orphan uploaded file (best effort).
-      if (driveFileId) {
-        try {
-          const storage = await fileStorage();
-          await storage.delete(driveFileId);
-        } catch (rollbackErr) {
-          console.warn(
-            `[auslage-einreichen] rollback delete failed for ${driveFileId}:`,
-            rollbackErr,
-          );
-        }
-      }
+      // Blob + files row are already written. Orphan reconciliation lives in
+      // Phase 9 Task 21's nightly job: the `files` row exists, no FK from
+      // any owner table references it yet → swept on the next run.
       return fail(500, {
         error: "Fehler beim Speichern der Einreichung. Bitte erneut versuchen.",
       });
@@ -423,7 +440,10 @@ export const actions: Actions = {
         vorname,
         bezeichnung: input.bezeichnung,
         betragCents: input.betragCents,
-        driveFileId,
+        // Phase 9: this field still ships under its legacy name on the bus
+        // contract; the value is now the `files.id` UUID (not a Drive id).
+        // The bus payload key gets renamed in Task 17.
+        driveFileId: belegFileId,
         consentTextVersion: input.consent_text_version,
         ipPrefix: ipPrefixVal,
         userAgentHash: hashString(ua),

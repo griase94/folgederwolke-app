@@ -84,28 +84,35 @@ const schema = z.object({
   // Auth
   SESSION_SECRET: z.string().default(""),
 
-  // Google OAuth
-  GOOGLE_OAUTH_CLIENT_ID: z.string().default(""),
-  GOOGLE_OAUTH_CLIENT_SECRET: z.string().default(""),
-  GOOGLE_OAUTH_REFRESH_TOKEN: z.string().default(""),
-
-  // File storage backend selection
-  /** "drive" | "local-fs" — defaults to drive (prod). */
-  STORAGE_BACKEND: z.enum(["drive", "local-fs"]).default("drive"),
+  // File storage backend selection (Phase 9 — Vercel Blob is the prod backend)
+  /** "blob" | "local-fs" — defaults to blob (prod). */
+  STORAGE_BACKEND: z.enum(["blob", "local-fs"]).default("blob"),
+  /** Vercel Blob read-write token. Required in production when STORAGE_BACKEND=blob. */
+  BLOB_READ_WRITE_TOKEN: z.string().default(""),
   /** Filesystem root used when STORAGE_BACKEND=local-fs. */
-  FILE_STORAGE_ROOT: z.string().default("./.dev-data/drive"),
+  FILE_STORAGE_ROOT: z.string().default("./.dev-data/files-test"),
   /** Filesystem root used when MAIL_PROVIDER=dev-eml. */
   MAIL_EML_ROOT: z.string().default("./.dev-data/mail"),
 
-  // Drive
+  // Drive / Sheets — service account auth (Phase 9 cutover from OAuth-as-Andy)
+  /**
+   * Full JSON contents of the Google service-account key file. Parsed at
+   * load time into `env.googleServiceAccount`; the raw string is kept
+   * non-enumerable on the exported env object so `JSON.stringify(env)`
+   * (logs, error dumps) cannot leak the private key.
+   */
+  GOOGLE_SERVICE_ACCOUNT_KEY_JSON: z.string().default(""),
+
+  // Drive — legacy fields kept for /healthz + einstellungen until Task 7+11
+  // delete the call sites (drive-impl.ts removal, healthz cleanup).
   DRIVE_PARENT_FOLDER_ID: z.string().default(""),
   TEMPLATE_DOC_ID: z.string().default(""),
 
   // Sheets — legacy importer (Phase 6 one-shot cutover)
   /** Spreadsheet ID of the legacy PROD sheet (read via SA or fallback CSV upload). */
   LIVE_SHEET_ID: z.string().default(""),
-  /** Absolute path to service-account JSON. When set + readable, importer uses SA-read path. */
-  GOOGLE_SERVICE_ACCOUNT_KEY_FILE: z.string().default(""),
+  /** Spreadsheet ID of the ongoing finance sheet (Phase 9+). */
+  FINANCE_SHEET_ID: z.string().default(""),
 
   // Admin
   ADMIN_EMAILS: z.string().default(""),
@@ -174,6 +181,17 @@ const schema = z.object({
 
 export type Env = z.infer<typeof schema>;
 
+/**
+ * Parsed service-account credentials extracted from
+ * GOOGLE_SERVICE_ACCOUNT_KEY_JSON. `null` when the var is unset (dev/test
+ * without Drive). Kept separate from the raw JSON string so callers
+ * destructure named fields instead of re-parsing.
+ */
+export interface ParsedServiceAccount {
+  clientEmail: string;
+  privateKeyPem: string;
+}
+
 // Lazy, defensive load — never throws on import.
 // Build-time SSR / prerender sees an empty env; that's OK.
 // Runtime callers can `requireEnv("DATABASE_URL")` to fail loudly if missing.
@@ -190,7 +208,77 @@ function loadEnv(): Env {
   return schema.parse({});
 }
 
-export const env = loadEnv();
+const rawEnv = loadEnv();
+
+// ---------------------------------------------------------------------------
+// Service-account JSON parsing — Phase 9 cutover from OAuth-as-Andy.
+//
+// The raw JSON literal contains the private key, and any unintended
+// JSON.stringify(env) call (log line, error report, telemetry) would dump
+// it. We parse it into a structured object exposed at env.googleServiceAccount
+// and re-define GOOGLE_SERVICE_ACCOUNT_KEY_JSON as a non-enumerable own
+// property so it's invisible to JSON.stringify / for-in / Object.keys, but
+// still readable by callers that explicitly reach for it
+// (env.GOOGLE_SERVICE_ACCOUNT_KEY_JSON).
+// ---------------------------------------------------------------------------
+
+let parsedSa: ParsedServiceAccount | null = null;
+if (rawEnv.GOOGLE_SERVICE_ACCOUNT_KEY_JSON) {
+  try {
+    const j = JSON.parse(rawEnv.GOOGLE_SERVICE_ACCOUNT_KEY_JSON) as {
+      client_email?: unknown;
+      private_key?: unknown;
+    };
+    if (
+      typeof j.client_email !== "string" ||
+      typeof j.private_key !== "string"
+    ) {
+      throw new Error("missing client_email or private_key");
+    }
+    parsedSa = { clientEmail: j.client_email, privateKeyPem: j.private_key };
+  } catch (e) {
+    throw new Error(
+      `Invalid GOOGLE_SERVICE_ACCOUNT_KEY_JSON: ${(e as Error).message}`,
+      { cause: e },
+    );
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const envWithSafety: any = { ...rawEnv };
+// Hide the raw JSON literal AND the parsed credentials from JSON.stringify /
+// Object.keys / for-in, but keep both accessible via direct property read.
+// This is the safety net for accidental log dumps of `env`: any property
+// containing private-key material is invisible to JSON serialization.
+delete envWithSafety.GOOGLE_SERVICE_ACCOUNT_KEY_JSON;
+Object.defineProperty(envWithSafety, "GOOGLE_SERVICE_ACCOUNT_KEY_JSON", {
+  enumerable: false,
+  configurable: false,
+  writable: false,
+  value: rawEnv.GOOGLE_SERVICE_ACCOUNT_KEY_JSON,
+});
+Object.defineProperty(envWithSafety, "googleServiceAccount", {
+  enumerable: false,
+  configurable: false,
+  writable: false,
+  value: parsedSa,
+});
+// Phase 9 review-2 P1: the Vercel Blob read-write token is bearer-credential
+// material — anyone holding it can read/write/delete blobs. Apply the same
+// non-enumerable shield as GOOGLE_SERVICE_ACCOUNT_KEY_JSON so `JSON.stringify(env)`,
+// `for…in`, and `Object.keys(env)` cannot leak it via accidental log dumps.
+// Direct reads via `env.BLOB_READ_WRITE_TOKEN` continue to work.
+delete envWithSafety.BLOB_READ_WRITE_TOKEN;
+Object.defineProperty(envWithSafety, "BLOB_READ_WRITE_TOKEN", {
+  enumerable: false,
+  configurable: false,
+  writable: false,
+  value: rawEnv.BLOB_READ_WRITE_TOKEN,
+});
+
+export const env = envWithSafety as Env & {
+  googleServiceAccount: ParsedServiceAccount | null;
+};
 
 export function requireEnv<K extends keyof Env>(key: K): NonNullable<Env[K]> {
   const v = env[key];
@@ -231,6 +319,16 @@ export function assertProductionEnvSafe(): void {
     if (env.STORAGE_BACKEND === "local-fs") {
       throw new Error(
         "STORAGE_BACKEND=local-fs is dev-only — Vercel filesystem is ephemeral",
+      );
+    }
+    if (env.STORAGE_BACKEND === "blob" && !env.BLOB_READ_WRITE_TOKEN) {
+      throw new Error(
+        "BLOB_READ_WRITE_TOKEN is required when STORAGE_BACKEND=blob in production",
+      );
+    }
+    if (!env.googleServiceAccount) {
+      throw new Error(
+        "GOOGLE_SERVICE_ACCOUNT_KEY_JSON is required in production (Drive/Sheets auth)",
       );
     }
   }

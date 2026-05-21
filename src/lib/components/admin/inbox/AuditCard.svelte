@@ -17,6 +17,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import BelegPreview from './BelegPreview.svelte';
+	import FilePreview from '$lib/components/files/FilePreview.svelte';
 	import RejectDialog from './RejectDialog.svelte';
 	import AufwandsspendeStubModal from './AufwandsspendeStubModal.svelte';
 	import type { InboxSubmissionDetailView } from '$lib/domain/inbox.js';
@@ -64,12 +65,27 @@
 	aria-label="Einreichung {submission.ausId}"
 >
 	<!-- ── Beleg preview (left column) ──────────────────────────────────────── -->
+	<!--
+	  Phase 9: prefer FilePreview when the submission has a normalized `files`
+	  row (belegFileId). Fall back to the legacy Drive-backed BelegPreview for
+	  pre-cutover submissions that only have belegDriveFileId. Once Phase 9
+	  Task 17 drops belegDriveFileId, the BelegPreview branch (and the
+	  component itself) becomes dead code and can be deleted.
+	-->
 	<div class="flex min-h-[28rem] flex-col">
-		<BelegPreview
-			driveFileId={submission.belegDriveFileId}
-			viewLink={submission.belegViewLink}
-			originalName={submission.belegOriginalName}
-		/>
+		{#if submission.belegFileId && submission.belegMimeType && submission.belegOriginalFilename}
+			<FilePreview
+				fileId={submission.belegFileId}
+				mimeType={submission.belegMimeType}
+				originalFilename={submission.belegOriginalFilename}
+			/>
+		{:else}
+			<BelegPreview
+				driveFileId={submission.belegDriveFileId}
+				viewLink={submission.belegViewLink}
+				originalName={submission.belegOriginalName}
+			/>
+		{/if}
 	</div>
 
 	<!-- ── Metadata + actions (right column) ────────────────────────────────── -->

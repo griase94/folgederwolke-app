@@ -55,6 +55,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Phase 9 — _internal* usage guard
+        run: bash scripts/check-internal-del.sh
+
       - name: Unit tests
         run: pnpm test --run
 
@@ -64,9 +67,7 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
-      GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
-      GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-      GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
+      GOOGLE_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY_JSON }}
       SMTP_HOST: ${{ secrets.SMTP_HOST }}
       SMTP_PORT: ${{ secrets.SMTP_PORT }}
       SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -131,9 +132,11 @@ jobs:
           PGPASSWORD: postgres
         run: psql -h localhost -p 15432 -U postgres -c "CREATE DATABASE folgederwolke_dev;"
 
-      - name: E2E tests (cumulative phase-0|phase-1|phase-2)
+      - name: E2E tests (cumulative phase-0|phase-1|phase-2|phase-9)
         # Cumulative grep: each phase adds its tag — @phase-0|@phase-1|...|@phase-N
-        run: pnpm test:e2e --grep '@phase-0|@phase-1|@phase-2'
+        # Phase 9 added (skipping phases 3-8 until their suites are green —
+        # the grep widens as those phases are triaged).
+        run: pnpm test:e2e --grep '@phase-0|@phase-1|@phase-2|@phase-9'
 
   backup-restore-smoke:
     name: backup-restore-smoke

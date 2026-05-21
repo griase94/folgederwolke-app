@@ -21,6 +21,7 @@ import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
+import { files } from "$lib/server/db/schema/files.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { zahlungsarten } from "$lib/server/db/schema/zahlungsarten.js";
 import { parseBusinessId } from "$lib/domain/business-id.js";
@@ -79,6 +80,20 @@ export const load: PageServerLoad = async ({ params, locals }) => {
       .where(eq(expenses.id, s.approvedExpenseId))
       .limit(1);
     linkedExpense = expRows[0] ?? null;
+  }
+
+  // ── Fetch the linked `files` row (Phase 9) for mime_type + original_filename.
+  //    Only set when Phase 9 upload pipeline ran; legacy uploads will
+  //    leave belegFileId null and fall back to BelegPreview's "nicht
+  //    verfügbar" placeholder.
+  let fileRow: typeof files.$inferSelect | null = null;
+  if (s.belegFileId) {
+    const fileRows = await db
+      .select()
+      .from(files)
+      .where(eq(files.id, s.belegFileId))
+      .limit(1);
+    fileRow = fileRows[0] ?? null;
   }
 
   // ── Fetch active zahlungsarten for the mark-erstattet form (Phase 5 reuse) ─
@@ -148,12 +163,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     consentTextVersion: s.consentTextVersion,
     consentGivenAt: s.consentGivenAt.toISOString(),
     submitterIpPrefix: s.submitterIpPrefix ?? null,
-    // Use the canonical Drive view URL — works without an API call and
-    // gracefully falls back to Drive's own login screen if the file is
-    // restricted (BelegPreview handles the iframe failure path).
-    belegViewLink: s.belegDriveFileId
-      ? `https://drive.google.com/file/d/${s.belegDriveFileId}/view`
-      : null,
+    // Phase 9: external Drive viewLink retired. Legacy submissions with
+    // only `belegDriveFileId` render the BelegPreview placeholder; Phase-9
+    // submissions go through FilePreview against `/api/files/{id}/blob`.
+    // FIXME(Phase 9 follow-up: backfill drive→blob) — drop this field
+    // alongside `belegDriveFileId` once PR2 removes the legacy column.
+    belegViewLink: null,
+    // Phase 9 blob-backed Beleg (FilePreview renders this via /api/files/.../blob).
+    belegFileId: s.belegFileId ?? null,
+    belegMimeType: fileRow?.mimeType ?? null,
+    belegOriginalFilename: fileRow?.originalFilename ?? null,
     memberContext: row.memberId
       ? {
           id: row.memberId,

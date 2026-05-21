@@ -392,29 +392,19 @@ export async function runInvoiceJob(
       })
       .where(eq(invoices.id, job.invoiceId));
 
-    let driveStatus: "uploaded" | "failed" | "pending" | "skipped" = "pending";
-    let drivePdfFileId: string | null = null;
-    if (storage !== null) {
-      try {
-        const idempotencyKey = `invoice-pdf:${job.invoiceId}`;
-        const result = await storage.upload({
-          buffer: bytes,
-          mimeType: "application/pdf",
-          name: suggestedFilename,
-          idempotencyKey,
-        });
-        drivePdfFileId = result.id;
-        driveStatus = "uploaded";
-      } catch (driveErr) {
-        console.error(
-          `[invoice.runInvoiceJob] Drive upload failed for invoice ${job.invoiceId}:`,
-          driveErr,
-        );
-        driveStatus = "failed";
-      }
-    } else {
-      driveStatus = "skipped";
-    }
+    // FIXME(Phase 9 follow-up): invoice PDF upload to Blob storage.
+    // The old Drive path used { name, idempotencyKey } and returned { id }.
+    // The new FileStorage interface is pathname-addressed and returns { etag };
+    // wiring the invoice domain to compute a deterministic pathname (e.g.
+    // `rechnungen/<year>/<rechnungsnummer>.pdf`) and to persist a row in the
+    // `files` table is deferred to a follow-up. For now we mark the upload
+    // as skipped so the rest of the job (DB row update, status transition)
+    // keeps working.
+    void storage;
+    void suggestedFilename;
+    const driveStatus: "uploaded" | "failed" | "pending" | "skipped" =
+      "skipped";
+    const drivePdfFileId: string | null = null;
 
     await db
       .update(invoices)
