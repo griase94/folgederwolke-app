@@ -263,6 +263,18 @@ Object.defineProperty(envWithSafety, "googleServiceAccount", {
   writable: false,
   value: parsedSa,
 });
+// Phase 9 review-2 P1: the Vercel Blob read-write token is bearer-credential
+// material — anyone holding it can read/write/delete blobs. Apply the same
+// non-enumerable shield as GOOGLE_SERVICE_ACCOUNT_KEY_JSON so `JSON.stringify(env)`,
+// `for…in`, and `Object.keys(env)` cannot leak it via accidental log dumps.
+// Direct reads via `env.BLOB_READ_WRITE_TOKEN` continue to work.
+delete envWithSafety.BLOB_READ_WRITE_TOKEN;
+Object.defineProperty(envWithSafety, "BLOB_READ_WRITE_TOKEN", {
+  enumerable: false,
+  configurable: false,
+  writable: false,
+  value: rawEnv.BLOB_READ_WRITE_TOKEN,
+});
 
 export const env = envWithSafety as Env & {
   googleServiceAccount: ParsedServiceAccount | null;

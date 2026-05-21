@@ -15,6 +15,19 @@ interface HealthState {
 // is polled aggressively (UptimeRobot, monitoring, DDoS).
 let probeSeeded = false;
 
+// Phase 9 review-1 P1: cache the assembled health response so frequent
+// monitoring polls (UptimeRobot, internal probes) don't cause one DB + one
+// Sheets RPC + one Blob download per second. 30s TTL is short enough that
+// real outages surface within a useful SLA, long enough to absorb high-fanout
+// monitoring without piling work onto Fluid Compute.
+interface CachedResult {
+  body: string;
+  status: number;
+  at: number;
+}
+let lastResult: CachedResult | null = null;
+const TTL_MS = 30_000;
+
 async function check(): Promise<HealthState> {
   const db = await getDb()
     .execute(sql`SELECT 1`)
@@ -74,8 +87,29 @@ async function check(): Promise<HealthState> {
 }
 
 export const GET: RequestHandler = async () => {
-  return new Response(JSON.stringify(await check()), {
-    status: 200,
+  const now = Date.now();
+  if (lastResult && now - lastResult.at < TTL_MS) {
+    return new Response(lastResult.body, {
+      status: lastResult.status,
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+        "X-Healthz-Cached": "1",
+      },
+    });
+  }
+
+  const state = await check();
+  const body = JSON.stringify(state);
+  // Preserve existing always-200 contract so monitoring + existing E2E note()s
+  // keep working. Health state is encoded in the JSON body's per-subsystem
+  // fields ("ok"|"fail"), and operators read the body. Flipping the status
+  // code on subsystem failures would be a separate semantic change.
+  const status = 200;
+  lastResult = { body, status, at: now };
+
+  return new Response(body, {
+    status,
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": "no-store",

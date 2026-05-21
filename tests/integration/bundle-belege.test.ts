@@ -41,11 +41,11 @@ describe("bundle.zip — 09_Belege-{year}/", () => {
 
     const belegAttachments: BelegAttachment[] = [
       {
-        bundlePath: "expenses/ideeller/A-2026-0001-test.pdf",
+        bundlePath: "ausgaben/ideeller/A-2026-0001-test.pdf",
         bytes: bytes1,
       },
       {
-        bundlePath: "income/zweckbetrieb/I-2026-0001-test.pdf",
+        bundlePath: "einnahmen/zweckbetrieb/I-2026-0001-test.pdf",
         bytes: bytes2,
       },
     ];
@@ -63,22 +63,22 @@ describe("bundle.zip — 09_Belege-{year}/", () => {
 
     const zip = await JSZip.loadAsync(buf);
     expect(
-      zip.file("09_Belege-2026/expenses/ideeller/A-2026-0001-test.pdf"),
+      zip.file("09_Belege-2026/ausgaben/ideeller/A-2026-0001-test.pdf"),
     ).not.toBeNull();
     expect(
-      zip.file("09_Belege-2026/income/zweckbetrieb/I-2026-0001-test.pdf"),
+      zip.file("09_Belege-2026/einnahmen/zweckbetrieb/I-2026-0001-test.pdf"),
     ).not.toBeNull();
 
     const file1Bytes = new Uint8Array(
       await zip
-        .file("09_Belege-2026/expenses/ideeller/A-2026-0001-test.pdf")!
+        .file("09_Belege-2026/ausgaben/ideeller/A-2026-0001-test.pdf")!
         .async("uint8array"),
     );
     expect(file1Bytes).toEqual(bytes1);
 
     const file2Bytes = new Uint8Array(
       await zip
-        .file("09_Belege-2026/income/zweckbetrieb/I-2026-0001-test.pdf")!
+        .file("09_Belege-2026/einnahmen/zweckbetrieb/I-2026-0001-test.pdf")!
         .async("uint8array"),
     );
     expect(file2Bytes).toEqual(bytes2);

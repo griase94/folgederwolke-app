@@ -11,7 +11,10 @@
 import type { PageServerLoad, Actions } from "./$types.js";
 import { redirect, fail } from "@sveltejs/kit";
 import { getDb } from "$lib/server/db/index.js";
-import { restoreFile } from "$lib/server/files/restore.js";
+import {
+  restoreFile,
+  FestschreibungLockedError,
+} from "$lib/server/files/restore.js";
 import { sql } from "drizzle-orm";
 
 interface TrashRow {
@@ -36,16 +39,23 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 export const actions: Actions = {
   restore: async ({ request, locals }) => {
-    if (!locals.session?.user) return fail(401, { error: "Not authenticated" });
+    const user = locals.session?.user;
+    if (!user) return fail(401, { error: "Not authenticated" });
     const fd = await request.formData();
     const fileId = fd.get("fileId")?.toString();
     if (!fileId) return fail(400, { error: "Missing fileId" });
     try {
-      await restoreFile(fileId);
+      await restoreFile(fileId, user.id);
       return { success: true };
     } catch (e) {
       const msg =
         e instanceof Error ? e.message : "Wiederherstellung fehlgeschlagen";
+      // Festschreibung-locked is conceptually 409 too; we treat both alike,
+      // but keeping the branch explicit makes future telemetry / log
+      // separation trivial.
+      if (e instanceof FestschreibungLockedError) {
+        return fail(409, { error: msg });
+      }
       return fail(409, { error: msg });
     }
   },

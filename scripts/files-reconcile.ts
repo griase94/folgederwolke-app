@@ -16,8 +16,24 @@
  *
  * Run manually via `pnpm files:reconcile`. Not scheduled (no nightly cron
  * in Phase 9 — calibrated to Verein scale).
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * Phase 9 review-1 P1 — broken-ref marking via superuser connection.
+ *
+ * The L3 Festschreibung trigger (`assert_not_festgeschrieben_fn_files`) has
+ * a `session_user = 'app_runtime'` gate. App-runtime UPDATEs against rows
+ * whose `year_of_buchung <= settings.festgeschrieben_bis` are rejected by
+ * design — but reconciliation needs to flag genuinely-missing blobs even
+ * when they're in a closed year (operators need a faithful broken-refs
+ * inventory; the retention obligation MATTERS most on festgeschriebene
+ * Jahre). We open a separate superuser connection via DIRECT_DATABASE_URL
+ * for the soft-delete UPDATE; the trigger short-circuits and the row is
+ * marked as expected. The action is audit-logged with the `via` field set
+ * so any retrospective audit shows clearly which bypass path was used.
+ * ───────────────────────────────────────────────────────────────────────────
  */
-import { eq, isNull } from "drizzle-orm";
+import { isNull } from "drizzle-orm";
+import postgres from "postgres";
 
 import { logAudit } from "$lib/server/audit-log/index.js";
 import { getDb } from "$lib/server/db/index.js";
@@ -76,24 +92,50 @@ export async function reconcile(): Promise<{
   }
 
   // Broken refs: DB rows with no matching blob.
+  //
+  // The UPDATE goes through a superuser connection so it bypasses the
+  // app_runtime-gated Festschreibung trigger. Without this, broken refs in
+  // closed years would silently fail to be marked — exactly the rows where
+  // the retention obligation matters most.
   const blobKeys = new Set(blobs.map((b) => b.pathname));
   const brokenRefs = dbRows.filter((r) => !blobKeys.has(r.storageKey));
-  for (const r of brokenRefs) {
-    await db
-      .update(files)
-      .set({ deletedAt: new Date(), deleteReason: "blob_missing" })
-      .where(eq(files.id, r.id));
-    await logAudit({
-      action: "delete",
-      entityKind: "file",
-      entityId: r.id,
-      actorUserId: null,
-      actorKind: "system",
-      payload: {
-        event: "file_broken_reference",
-        storage_key: r.storageKey,
-      },
-    });
+
+  let superuser: ReturnType<typeof postgres> | null = null;
+  if (brokenRefs.length > 0) {
+    const url = process.env["DIRECT_DATABASE_URL"];
+    if (!url) {
+      throw new Error(
+        "DIRECT_DATABASE_URL is required to mark broken refs (superuser bypass of Festschreibung trigger).",
+      );
+    }
+    superuser = postgres(url, { prepare: false, max: 1 });
+  }
+
+  try {
+    for (const r of brokenRefs) {
+      // superuser is guaranteed non-null inside this loop (brokenRefs.length > 0).
+      await superuser!`
+        UPDATE files
+           SET deleted_at = now(),
+               delete_reason = 'blob_missing'
+         WHERE id = ${r.id}
+      `;
+      await logAudit({
+        action: "delete",
+        entityKind: "file",
+        entityId: r.id,
+        actorUserId: null,
+        actorKind: "system",
+        payload: {
+          event: "file_marked_blob_missing",
+          via: "reconcile_script",
+          reason: "broken_ref_on_festgeschriebenes_jahr",
+          storage_key: r.storageKey,
+        },
+      });
+    }
+  } finally {
+    if (superuser) await superuser.end();
   }
 
   return {

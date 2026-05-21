@@ -52,7 +52,7 @@ export interface MemberBeitragRow {
 /**
  * Phase 9 Task 18 — One Beleg file (PDF/image) to embed under
  * `09_Belege-{year}/`. `bundlePath` is the in-bundle relative path
- * (e.g. `expenses/ideeller/A-2026-0001-bueromaterial.pdf`); the route
+ * (e.g. `ausgaben/ideeller/A-2026-0001-bueromaterial.pdf`); the route
  * computes it from the source row's ownerKind, sphere, business_id,
  * and (slugified) bezeichnung.
  */
@@ -179,7 +179,7 @@ export async function buildJahresabschlussBundle(
 
   // 09 — Beleg files (Phase 9 Task 18). Sphere-aware folder layout under
   // `09_Belege-{year}/`. Each attachment's `bundlePath` is a pre-computed
-  // relative path (e.g. `expenses/ideeller/A-2026-0001-slug.pdf`); the
+  // relative path (e.g. `ausgaben/ideeller/A-2026-0001-slug.pdf`); the
   // route is responsible for slug normalization + sphere bucketing.
   if (input.belegAttachments && input.belegAttachments.length > 0) {
     const folder = zip.folder(`09_Belege-${year}`);

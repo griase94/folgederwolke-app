@@ -52,10 +52,10 @@ function slugify(s: string, maxLen = 40): string {
 
 /**
  * Compute the in-bundle relative path for a Beleg attachment.
- * Layout (Phase 9 Task 18):
- *   expenses/{sphere}/{business_id}-{slug}.{ext}
- *   income/{sphere}/{business_id}-{slug}.{ext}
- *   donations/{business_id}-{slug}.{ext}   (donations have no sphere subfolder)
+ * Layout (Phase 9 Task 18, spec v2.1 §7.4 — German folder names):
+ *   ausgaben/{sphere}/{business_id}-{slug}.{ext}
+ *   einnahmen/{sphere}/{business_id}-{slug}.{ext}
+ *   spenden/{business_id}-{slug}.{ext}     (Spenden have no sphere subfolder)
  */
 function bundlePath(row: {
   businessId: string;
@@ -67,9 +67,9 @@ function bundlePath(row: {
   const slug = slugify(row.bezeichnung ?? "");
   const sphereFolder = row.sphere ?? "ohne-sphaere";
   const folderByKind: Record<typeof row.ownerKind, string> = {
-    expense: `expenses/${sphereFolder}`,
-    income: `income/${sphereFolder}`,
-    donation: "donations",
+    expense: `ausgaben/${sphereFolder}`,
+    income: `einnahmen/${sphereFolder}`,
+    donation: "spenden",
   };
   const tail = slug ? `${row.businessId}-${slug}` : row.businessId;
   return `${folderByKind[row.ownerKind]}/${tail}.${row.ext}`;
