@@ -3,6 +3,13 @@ import { config as loadEnv } from "dotenv";
 
 // Load .env.test at config-load time so webServer.env can forward vars
 loadEnv({ path: ".env.test" });
+// Per-slot worktree isolation (Pre-Flight Task 0.9): if .env.test.local sets
+// PORT/ORIGIN/DATABASE_URL, load those on top so parallel worktrees don't
+// collide on shared docker port 15432 + webserver 4173.
+loadEnv({ path: ".env.test.local", override: true });
+
+const PORT = process.env["PORT"] ?? "4173";
+const ORIGIN = process.env["ORIGIN"] ?? `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -13,7 +20,7 @@ export default defineConfig({
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "html",
   globalSetup: "./tests/playwright-global-setup.ts",
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL: `http://127.0.0.1:${PORT}`,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
@@ -29,25 +36,25 @@ export default defineConfig({
     // share_target POST so SvelteKit's CSRF check doesn't drop legitimate
     // Android intents. See server.js header comment for the safety argument.
     command: "node server.js",
-    port: 4173,
+    port: Number(PORT),
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,
     stdout: "pipe",
     stderr: "pipe",
     env: {
-      // .env.test is loaded by dotenv at the top of this file; we forward
+      // .env.test + .env.test.local loaded by dotenv at top; we forward
       // process.env into the spawned node server so it sees all the vars
-      // the SvelteKit app reads via $env/dynamic/private. Explicit overrides
-      // for the dev-server-specific port/host/origin follow.
+      // the SvelteKit app reads via $env/dynamic/private. Per-slot
+      // PORT/ORIGIN overrides come from .env.test.local in parallel worktrees.
       ...process.env,
-      PORT: "4173",
+      PORT,
       HOST: "127.0.0.1",
       // ORIGIN: SvelteKit adapter-node's CSRF check rejects form POSTs whose
       // Origin header doesn't match url.origin. Without this, adapter-node
       // defaults to https:// (parse_origin guesses from PROTOCOL_HEADER ||
       // 'https'), making url.origin = 'https://127.0.0.1:4173', while the
       // browser sends 'http://127.0.0.1:4173' → 403. Set ORIGIN explicitly.
-      ORIGIN: "http://127.0.0.1:4173",
+      ORIGIN,
     },
   },
 });

@@ -36,3 +36,4 @@ vite.config.ts.timestamp-*
 # …but DO version the agent feedback memories so they survive across sessions
 !.claude/memory/
 !.claude/memory/**
+.env*.local
