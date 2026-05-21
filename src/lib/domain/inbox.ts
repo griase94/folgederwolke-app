@@ -66,12 +66,14 @@ export interface InboxSubmissionDetailView extends InboxSubmissionView {
   /** ISO timestamp of submitter consent. */
   submitterIpPrefix: string | null;
   /**
-   * Pre-built Drive viewLink URL for embedding in the Beleg preview.
-   * Constructed as `https://drive.google.com/file/d/{fileId}/view` so it works
-   * regardless of whether the Drive API scope is currently authorised.
+   * Legacy Drive view-URL for pre-Phase-9 submissions. Phase 9 submissions
+   * use `belegFileId` (FK into the `files` table) and render via
+   * `/api/files/{fileId}/blob` through `FilePreview`. Always null in the
+   * current code path — kept on the type for backwards compatibility until
+   * the legacy `belegDriveFileId` column is dropped in PR2.
    *
-   * Legacy: only set for pre-Phase-9 submissions that uploaded to Drive.
-   * Phase 9 submissions use `belegFileId` (FK into the `files` table) instead.
+   * FIXME(Phase 9 follow-up: backfill drive→blob) — remove this field
+   * alongside `belegDriveFileId` once the schema migration lands.
    */
   belegViewLink: string | null;
   /**

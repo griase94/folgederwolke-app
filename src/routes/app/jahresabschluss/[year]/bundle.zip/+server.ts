@@ -196,6 +196,12 @@ export const GET: RequestHandler = async ({ params }) => {
       betragCents: r.betragCents,
       sphereSnapshot: r.sphereSnapshot,
       kategorieNameSnapshot: r.kategorieNameSnapshot,
+      // FIXME(Phase 9 follow-up: backfill drive→blob) — wire belegFileId
+      // through `loadEurAggregatesForPdf` so the bundle's Beleg-Link column
+      // gets `/api/files/{id}/blob` URLs. Today the loader only projects
+      // `belegDriveFileId`; once that column is dropped (PR2), we backfill
+      // by joining `expenses.beleg_file_id` instead.
+      belegFileId: null,
       belegDriveFileId: r.belegDriveFileId,
       belegOriginalName: r.belegOriginalName,
       bundlePath: null,

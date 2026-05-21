@@ -83,8 +83,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   }
 
   // ── Fetch the linked `files` row (Phase 9) for mime_type + original_filename.
-  //    Only set when Phase 9 upload pipeline ran; legacy Drive uploads will
-  //    leave belegFileId null and fall back to BelegPreview.
+  //    Only set when Phase 9 upload pipeline ran; legacy uploads will
+  //    leave belegFileId null and fall back to BelegPreview's "nicht
+  //    verfügbar" placeholder.
   let fileRow: typeof files.$inferSelect | null = null;
   if (s.belegFileId) {
     const fileRows = await db
@@ -162,12 +163,12 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     consentTextVersion: s.consentTextVersion,
     consentGivenAt: s.consentGivenAt.toISOString(),
     submitterIpPrefix: s.submitterIpPrefix ?? null,
-    // Use the canonical Drive view URL — works without an API call and
-    // gracefully falls back to Drive's own login screen if the file is
-    // restricted (BelegPreview handles the iframe failure path).
-    belegViewLink: s.belegDriveFileId
-      ? `https://drive.google.com/file/d/${s.belegDriveFileId}/view`
-      : null,
+    // Phase 9: external Drive viewLink retired. Legacy submissions with
+    // only `belegDriveFileId` render the BelegPreview placeholder; Phase-9
+    // submissions go through FilePreview against `/api/files/{id}/blob`.
+    // FIXME(Phase 9 follow-up: backfill drive→blob) — drop this field
+    // alongside `belegDriveFileId` once PR2 removes the legacy column.
+    belegViewLink: null,
     // Phase 9 blob-backed Beleg (FilePreview renders this via /api/files/.../blob).
     belegFileId: s.belegFileId ?? null,
     belegMimeType: fileRow?.mimeType ?? null,
