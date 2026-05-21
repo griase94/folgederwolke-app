@@ -3,6 +3,15 @@
 	 * TransactionEditForm — pre-Festschreibung inline edit.
 	 * Save (no mail) + Save+Notify (marks erstattet + fires ErstattungsMail).
 	 * Post-Festschreibung: read-only (enforced server-side; UI hides form).
+	 *
+	 * C3-DISC consistency note:
+	 *   The "Speichern und Mitglied benachrichtigen" path posts to
+	 *   `?/save-and-notify`, which calls `markExpenseErstattet` in
+	 *   `audit-inbox-actions.ts`. The quick "Bezahlt markieren" kebab on
+	 *   `TransactionRow` posts to `?/markAsPaid`, which calls
+	 *   `markExpenseAsPaid` in `transactions.ts`. Both helpers gate on
+	 *   festschreibung and set `erstattet_am` + `status='erstattet'` — the
+	 *   only difference is whether ErstattungsMail is dispatched.
 	 */
 	import type { TransactionDetail, ZahlungsartOption } from '$lib/server/domain/transactions.js';
 	import { enhance } from '$app/forms';
