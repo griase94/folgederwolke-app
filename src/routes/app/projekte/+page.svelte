@@ -82,8 +82,17 @@
 	</div>
 
 	<!-- List -->
-	<ProjectList projects={filteredProjects} onEdit={openEdit} onAdd={() => (addOpen = true)} />
+	<ProjectList
+		projects={filteredProjects}
+		financialsMap={data.financialsMap}
+		onEdit={openEdit}
+		onAdd={() => (addOpen = true)}
+	/>
 </div>
 
-<AddProjectDialog bind:open={addOpen} />
-<EditProjectDialog bind:open={editOpen} project={editProject} />
+<AddProjectDialog bind:open={addOpen} customers={data.customers} />
+<EditProjectDialog
+	bind:open={editOpen}
+	project={editProject}
+	customers={data.customers}
+/>

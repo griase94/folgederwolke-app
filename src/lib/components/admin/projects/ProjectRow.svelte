@@ -1,11 +1,18 @@
 <script lang="ts">
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import SaldoPill from './SaldoPill.svelte';
 	import type { ProjectView } from '$lib/server/domain/projects.js';
 
 	let {
 		project,
+		saldoCents = 0,
 		onEdit
-	}: { project: ProjectView; onEdit: (p: ProjectView) => void } = $props();
+	}: {
+		project: ProjectView;
+		/** C1-PRJ-A: drives the green/red saldo pill next to the name. */
+		saldoCents?: number;
+		onEdit: (p: ProjectView) => void;
+	} = $props();
 
 	let dropdownOpen = $state(false);
 
@@ -26,6 +33,8 @@
 
 <div
 	class="group flex items-center gap-4 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md {isArchived ? 'opacity-60' : ''}"
+	data-testid="project-row"
+	data-project-id={project.id}
 >
 	<!-- Icon -->
 	<div
@@ -39,10 +48,13 @@
 
 	<!-- Name + meta -->
 	<div class="min-w-0 flex-1">
-		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-		<a href="/app/projekte/{project.id}" class="block truncate font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-			{project.name}
-		</a>
+		<div class="flex flex-wrap items-center gap-2">
+			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+			<a href="/app/projekte/{project.id}" class="block truncate font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+				{project.name}
+			</a>
+			<SaldoPill {saldoCents} />
+		</div>
 		<div class="flex flex-wrap items-center gap-2 mt-0.5">
 			<span class="text-xs text-muted-foreground font-mono">{project.businessId}</span>
 			{#if project.sphereDefault}

@@ -22,6 +22,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { customers } from "./customers.js";
 import { sphereEnum } from "./enums.js";
 
 export const projects = pgTable(
@@ -36,6 +37,15 @@ export const projects = pgTable(
     startDate: date("start_date"),
     endDate: date("end_date"),
     notes: text("notes"),
+    /**
+     * C1-PRJ-A: optional canonical Kunde for this Projekt. When the user
+     * launches /rechnungen/new?projectId=X from the project detail, the
+     * customer FK is pre-filled with this id. NULL allowed.
+     */
+    defaultCustomerId: uuid("default_customer_id").references(
+      () => customers.id,
+      { onDelete: "set null" },
+    ),
     isFixture: boolean("is_fixture").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -48,5 +58,8 @@ export const projects = pgTable(
   (t) => ({
     businessIdUq: uniqueIndex("projects_business_id_uq").on(t.businessId),
     nameIdx: index("projects_name_idx").on(t.name),
+    defaultCustomerIdIdx: index("projects_default_customer_id_idx").on(
+      t.defaultCustomerId,
+    ),
   }),
 );

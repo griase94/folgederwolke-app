@@ -66,7 +66,14 @@ export async function addProject(
   }
 
   const db = getDb();
-  const { name, sphere_default, start_date, end_date, notes } = result.data;
+  const {
+    name,
+    sphere_default,
+    start_date,
+    end_date,
+    notes,
+    default_customer_id,
+  } = result.data;
   // ADR-0001: Buchhaltungsjahr is Berlin-local, not UTC.
   const year = berlinYear();
   const businessId = await allocateProjectBusinessId(year);
@@ -87,6 +94,7 @@ export async function addProject(
       startDate: start_date ?? null,
       endDate: end_date ?? null,
       notes: notes ?? null,
+      defaultCustomerId: default_customer_id ?? null,
     })
     .returning({ id: projects.id });
 
@@ -115,7 +123,15 @@ export async function editProject(
   }
 
   const db = getDb();
-  const { id, name, sphere_default, start_date, end_date, notes } = result.data;
+  const {
+    id,
+    name,
+    sphere_default,
+    start_date,
+    end_date,
+    notes,
+    default_customer_id,
+  } = result.data;
 
   await db
     .update(projects)
@@ -132,6 +148,7 @@ export async function editProject(
       startDate: start_date ?? null,
       endDate: end_date ?? null,
       notes: notes ?? null,
+      defaultCustomerId: default_customer_id ?? null,
       updatedAt: new Date(),
     })
     .where(eq(projects.id, id));
