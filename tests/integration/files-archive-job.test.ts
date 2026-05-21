@@ -116,13 +116,15 @@ describe.skipIf(!dbConfigured)("archiveYear", () => {
   });
 
   it("archives_unarchived_files_for_year", async () => {
+    const id1 = "00000000-0000-0000-0000-000000000001";
+    const id2 = "00000000-0000-0000-0000-000000000002";
     await seedFile({
-      id: "00000000-0000-0000-0000-000000000001",
+      id: id1,
       storageKey: "belege/2025/x1.pdf",
       sha: SHA(1),
     });
     await seedFile({
-      id: "00000000-0000-0000-0000-000000000002",
+      id: id2,
       storageKey: "belege/2025/x2.pdf",
       sha: SHA(2),
     });
@@ -135,13 +137,38 @@ describe.skipIf(!dbConfigured)("archiveYear", () => {
     const rows = (await getDb().execute(sql`
       SELECT storage_key
         FROM files
-       WHERE id IN ('00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002')
+       WHERE id IN (${id1}, ${id2})
        ORDER BY storage_key
     `)) as unknown as Array<{ storage_key: string }>;
     expect(rows.map((row) => row.storage_key)).toEqual([
       "archived/belege/2025/x1.pdf",
       "archived/belege/2025/x2.pdf",
     ]);
+
+    // Audit-log: one file_archived row per archived file. Filter strictly
+    // by the seeded entity_ids to avoid leaks from prior test files
+    // (singleFork mode shares the DB across files in a run).
+    // Phase 9 expert-audit gap closure: ADR-0012 §audit-log.
+    const audit = (await getDb().execute(sql`
+      SELECT action, entity_kind, entity_id, payload
+      FROM audit_log
+      WHERE entity_id IN (${id1}, ${id2})
+      AND payload->>'event' = 'file_archived'
+      ORDER BY entity_id
+    `)) as unknown as Array<{
+      action: string;
+      entity_kind: string;
+      entity_id: string;
+      payload: { event: string; oldKey: string; newKey: string };
+    }>;
+    expect(audit).toHaveLength(2);
+    for (const row of audit) {
+      expect(row.action).toBe("festschreibung");
+      expect(row.entity_kind).toBe("file");
+      expect(row.payload.event).toBe("file_archived");
+      expect(row.payload.oldKey).toMatch(/^belege\/2025\//);
+      expect(row.payload.newKey).toMatch(/^archived\/belege\/2025\//);
+    }
   });
 
   it("archives_idempotently_when_dest_already_exists", async () => {
