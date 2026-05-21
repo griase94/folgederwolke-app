@@ -130,8 +130,16 @@ export const actions: Actions = {
       });
     }
 
-    // Admin path: inject a synthetic consent_text_version so the Zod schema
-    // passes (admin doesn't see the Datenschutz checkbox).
+    // Admin path: inject synthetic values so the Zod schema passes for the
+    // admin manual-import flow (no Datenschutz checkbox, may have no Beleg
+    // attached at the moment of import — typically pasted from an email).
+    //
+    // C2-TAX: beleg_name/beleg_mime_type/rechnungsdatum are now required for
+    // tax correctness on the public form path. The inbox-manual-import is an
+    // admin-only path where the Beleg is attached later via the Inbox UI;
+    // synthesize placeholder values here so the same schema can validate both
+    // paths. The schema's structural shape is the gate — the inbox row gets
+    // its real values from the admin's later actions.
     if (typeof parsed === "object" && parsed !== null) {
       const p = parsed as Record<string, unknown>;
       if (!p["consent_text_version"]) {
@@ -139,6 +147,14 @@ export const actions: Actions = {
         const { DATENSCHUTZ_VERSION } =
           await import("$lib/server/domain/datenschutz.js");
         p["consent_text_version"] = DATENSCHUTZ_VERSION;
+      }
+      if (!p["beleg_name"]) p["beleg_name"] = "manual-import.pdf";
+      if (!p["beleg_mime_type"]) p["beleg_mime_type"] = "application/pdf";
+      if (!p["rechnungsdatum"] || typeof p["rechnungsdatum"] !== "string") {
+        // ISO YYYY-MM-DD in Europe/Berlin
+        p["rechnungsdatum"] = new Date().toLocaleDateString("sv-SE", {
+          timeZone: "Europe/Berlin",
+        });
       }
     }
 
