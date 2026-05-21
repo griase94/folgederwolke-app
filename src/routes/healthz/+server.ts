@@ -37,10 +37,21 @@ async function checkDrive(): Promise<"ok" | "skip" | "fail"> {
 export const GET: RequestHandler = async () => {
   const [dbStatus, driveStatus] = await Promise.all([checkDb(), checkDrive()]);
 
+  // Vercel automatically injects `VERCEL_GIT_COMMIT_SHA` at runtime. The
+  // project's manual `COMMIT_SHA` env var (legacy) wins if set so dev/test
+  // can pin a known value, but production previously always reported "dev"
+  // because `COMMIT_SHA` was never wired in the Vercel project. The
+  // post-deploy smoke workflow (`.github/workflows/post-deploy-smoke.yml`)
+  // depends on this field matching the deployed git SHA.
+  const sha =
+    env.COMMIT_SHA ||
+    process.env["VERCEL_GIT_COMMIT_SHA"]?.slice(0, 7) ||
+    "dev";
+
   const body = {
     db: dbStatus,
     drive: driveStatus,
-    sha: env.COMMIT_SHA || "dev",
+    sha,
     deployedAt: env.DEPLOYED_AT || null,
   };
 
