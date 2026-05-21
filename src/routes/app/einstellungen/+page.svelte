@@ -83,4 +83,28 @@
 			{/each}
 		</div>
 	</section>
+
+	<!-- ── Backup-Export ────────────────────────────────────────────────────── -->
+	<!-- eslint-disable svelte/no-navigation-without-resolve -->
+	<section aria-labelledby="section-backup-export" class="mb-10">
+		<h2 id="section-backup-export" class="mb-4 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+			Backup-Export
+		</h2>
+		<div class="rounded-xl border border-border bg-card p-6 dark:border-border/60 dark:bg-card/40">
+			<p class="mb-3 text-sm text-muted-foreground">
+				Komplettes Daten-Backup als ZIP (CSV pro Tabelle).
+				<strong>Diese ZIP ist KEIN Ersatz für den jahresabschluss-bundle.zip</strong>
+				— sie ist ein technischer Lese-Abzug ohne Festschreibungs-Signatur. Für
+				die Steuerberater-Übergabe nutze den Jahresabschluss-Export.
+			</p>
+			<a
+				href="/app/einstellungen/backup-export"
+				class="inline-flex items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted"
+				data-testid="backup-export-button"
+			>
+				ZIP herunterladen
+			</a>
+		</div>
+	</section>
+	<!-- eslint-enable svelte/no-navigation-without-resolve -->
 </div>
