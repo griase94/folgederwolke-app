@@ -75,4 +75,26 @@ describe("DateField (de-DE primitive)", () => {
     const input = getByTestId("datefield-input") as HTMLInputElement;
     expect(input.disabled).toBe(true);
   });
+
+  it("has inputmode=decimal for Android numeric keypad with decimal key", () => {
+    const { getByTestId } = render(DateField, {
+      props: { value: "", name: "test_date" },
+    });
+    const input = getByTestId("datefield-input") as HTMLInputElement;
+    expect(input.getAttribute("inputmode")).toBe("decimal");
+  });
+
+  it("accepts single-digit day and month (1.5.2026 -> 2026-05-01)", async () => {
+    const { getByTestId, container } = render(DateField, {
+      props: { value: "", name: "test_date" },
+    });
+    const input = getByTestId("datefield-input") as HTMLInputElement;
+    await fireEvent.input(input, { target: { value: "1.5.2026" } });
+    await fireEvent.blur(input);
+    const hidden = container.querySelector(
+      'input[name="test_date"]',
+    ) as HTMLInputElement;
+    expect(hidden.value).toBe("2026-05-01");
+    expect(input.getAttribute("aria-invalid")).not.toBe("true");
+  });
 });

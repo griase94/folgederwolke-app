@@ -44,6 +44,13 @@
 	import { CalendarDate, parseDate } from "@internationalized/date";
 	import { cn } from "$lib/utils.js";
 
+	const baseInputClass =
+		"dark:bg-input/30 border-input focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 disabled:bg-input/50 dark:disabled:bg-input/80 h-8 rounded-lg border bg-transparent px-2.5 py-1 text-base transition-colors focus-visible:ring-3 aria-invalid:ring-3 md:text-sm placeholder:text-muted-foreground w-full min-w-0 outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50";
+	// HTML pattern for single-or-double digit day/month + 4-digit year.
+	// Assigned to a variable to avoid Svelte misreading the curly-brace
+	// quantifier syntax ({1,2}) as a template expression.
+	const inputPattern = String.raw`\d{1,2}\.\d{1,2}\.\d{4}`;
+
 	let {
 		value = "",
 		name,
@@ -72,7 +79,7 @@
 	}
 
 	function displayToIso(display: string): string | null {
-		const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(display.trim());
+		const m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(display.trim());
 		if (!m) return null;
 		const [, dd, mm, yyyy] = m;
 		const day = Number(dd);
@@ -161,10 +168,10 @@
 <div class="relative" data-slot="date-field">
 	<input
 		type="text"
-		inputmode="numeric"
+		inputmode="decimal"
 		autocomplete="off"
 		placeholder="TT.MM.JJJJ"
-		pattern="\d{2}\.\d{2}\.\d{4}"
+		pattern={inputPattern}
 		bind:value={displayValue}
 		onblur={onBlur}
 		{disabled}
@@ -174,11 +181,7 @@
 		aria-describedby={ariaDescribedBy}
 		data-testid="datefield-input"
 		data-component="date-field"
-		class={cn(
-			"border-input bg-background focus-visible:ring-ring dark:border-input/60 dark:bg-background/60 w-full rounded-md border px-3 py-2 text-sm tabular-nums focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
-			ariaInvalid && "border-destructive focus-visible:ring-destructive/40",
-			className,
-		)}
+		class={cn(baseInputClass, "tabular-nums", className)}
 	/>
 	<input type="hidden" {name} value={isoValue} />
 </div>
