@@ -1,17 +1,13 @@
 /**
  * Phase 10 — Rechnung v2 image asset loading.
  *
- * Loads the brand PNGs (logo + 4 footer icons) via SvelteKit `read()`. See
- * fonts.ts for the rationale (static-import URLs are traceable by
- * @vercel/nft; dynamic `readFile(join(...))` is not).
- *
- * Bytes are memoised per-process. Each PDF render embeds them per-document
- * because pdf-lib PDFImage instances are tied to a specific PDFDocument.
+ * Loads the brand PNGs (logo + 4 footer icons) once per process. See
+ * fonts.ts for the dual-path rationale (SvelteKit `read()` first, plain
+ * filesystem fallback for tests / scripts).
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { read } from "$app/server";
 
 import logoUrl from "./assets/logo-cloud.png?url";
 import iconHouseUrl from "./assets/icon-house.png?url";
@@ -40,16 +36,26 @@ const URL_TO_FILENAME: Record<string, string> = {
   [iconPersonUrl]: "icon-person.png",
 };
 
-async function readAsset(url: string): Promise<Uint8Array> {
+async function tryReadViaSvelteKit(url: string): Promise<Uint8Array | null> {
   try {
-    const res = read(url);
+    const mod = (await import("$app/server")) as {
+      read?: (asset: string) => Response;
+    };
+    if (!mod.read) return null;
+    const res = mod.read(url);
     const buf = await res.arrayBuffer();
     return new Uint8Array(buf);
   } catch {
-    const filename = URL_TO_FILENAME[url] ?? url.split("/").pop() ?? "";
-    const bytes = await readFile(join(ASSETS, filename));
-    return new Uint8Array(bytes);
+    return null;
   }
+}
+
+async function readAsset(url: string): Promise<Uint8Array> {
+  const viaKit = await tryReadViaSvelteKit(url);
+  if (viaKit) return viaKit;
+  const filename = URL_TO_FILENAME[url] ?? url.split("/").pop() ?? "";
+  const bytes = await readFile(join(ASSETS, filename));
+  return new Uint8Array(bytes);
 }
 
 export async function loadAssetBytes(): Promise<RechnungAssetBytes> {
