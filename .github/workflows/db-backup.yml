@@ -31,6 +31,42 @@ jobs:
     timeout-minutes: 20
 
     steps:
+      # ── 0. Pre-flight: required secrets configured? ────────────────────────
+      # Fail fast and visibly if the backup target secrets are missing. Without
+      # this guard the workflow runs pg_dump for ~5s, fails with a cryptic
+      # "connection to socket /var/run/postgresql/.s.PGSQL.5432 failed" (because
+      # DATABASE_URL is empty and pg_dump falls back to the local socket), and
+      # leaves the operator hunting through logs to figure out which secret
+      # they forgot to set. This step makes the gap obvious in the run summary.
+      - name: Verify required secrets
+        env:
+          DATABASE_URL_BACKUP: ${{ secrets.DATABASE_URL_BACKUP }}
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          BACKUP_REPO: ${{ secrets.BACKUP_REPO }}
+          BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
+        run: |
+          missing=()
+          [ -z "${DATABASE_URL_BACKUP}"  ] && missing+=("DATABASE_URL_BACKUP")
+          [ -z "${BACKUP_AGE_RECIPIENT}" ] && missing+=("BACKUP_AGE_RECIPIENT")
+          [ -z "${BACKUP_REPO}"          ] && missing+=("BACKUP_REPO")
+          [ -z "${BACKUP_TOKEN}"         ] && missing+=("BACKUP_TOKEN")
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Required secrets missing — backup CANNOT run: ${missing[*]}"
+            {
+              echo "## Backup did NOT run"
+              echo ""
+              echo "The following repository secrets are unset:"
+              for s in "${missing[@]}"; do
+                echo "- \`$s\`"
+              done
+              echo ""
+              echo "Set via: \`gh secret set <NAME> --body '<value>'\`. See"
+              echo ".github/workflows/db-backup.yml header for what each holds."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "All required secrets are set — proceeding with backup."
+
       # ── 1. Install tools ───────────────────────────────────────────────────
       - name: Install PostgreSQL client + age
         run: |
@@ -65,15 +101,10 @@ jobs:
         env:
           BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
         run: |
-          if [ -z "${BACKUP_AGE_RECIPIENT}" ]; then
-            echo "WARNING: BACKUP_AGE_RECIPIENT not set — storing unencrypted dump (dev/test only)"
-            cp "${DUMP_FILE}" "${ENCRYPTED_FILE}"
-          else
-            age --recipient "${BACKUP_AGE_RECIPIENT}" \
-                --output "${ENCRYPTED_FILE}" \
-                "${DUMP_FILE}"
-            echo "Encryption complete: ${ENCRYPTED_FILE}"
-          fi
+          age --recipient "${BACKUP_AGE_RECIPIENT}" \
+              --output "${ENCRYPTED_FILE}" \
+              "${DUMP_FILE}"
+          echo "Encryption complete: ${ENCRYPTED_FILE}"
           # Remove plaintext dump immediately after encryption
           rm -f "${DUMP_FILE}"
 
@@ -83,11 +114,6 @@ jobs:
           BACKUP_REPO: ${{ secrets.BACKUP_REPO }}
           BACKUP_TOKEN: ${{ secrets.BACKUP_TOKEN }}
         run: |
-          if [ -z "${BACKUP_REPO}" ] || [ -z "${BACKUP_TOKEN}" ]; then
-            echo "BACKUP_REPO or BACKUP_TOKEN not set — skipping GitHub push"
-            exit 0
-          fi
-
           git clone \
             --depth=1 \
             "https://x-access-token:${BACKUP_TOKEN}@github.com/${BACKUP_REPO}.git" \
