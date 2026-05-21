@@ -9,7 +9,9 @@
  * $lib/domain/members.ts to avoid the server-module restriction in browser code.
  */
 
+import { sql } from "drizzle-orm";
 import { z } from "zod";
+import { getDb } from "$lib/server/db/index.js";
 import { validateIban, normalizeIban } from "$lib/server/domain/iban.js";
 import { berlinYear } from "$lib/domain/year.js";
 
@@ -141,4 +143,65 @@ export function beitragYearsRange(
   anchor: number = berlinYear(),
 ): [number, number, number] {
   return [anchor - 1, anchor, anchor + 1];
+}
+
+// ---------------------------------------------------------------------------
+// C5-MEM-lite — Mitglieder-Matrix €-summen header aggregation
+// ---------------------------------------------------------------------------
+
+export interface MemberBeitragsTotals {
+  /**
+   * Total members in the `members` table (year-independent in this shipment).
+   * Night-2 C5-MEM-full extends this with an `exemptCount` companion field.
+   */
+  memberCount: number;
+  /** SUM(betrag_cents) where gezahlt_am IS NOT NULL, for the given year. */
+  paidCents: number;
+  /** SUM(betrag_cents) where gezahlt_am IS NULL, for the given year. */
+  offenCents: number;
+}
+
+/**
+ * Aggregate Mitglieds-Beiträge for one Buchungsjahr, used by the Mitglieder-
+ * Matrix header line: `{N} Mitglieder · {X €} offen · {Y €} bezahlt`.
+ *
+ * Field semantics:
+ *   - `memberCount` — total rows in the `members` table. Year-independent so
+ *     the header member count stays stable when the user switches between
+ *     years in the per-year tab switcher (the open/paid sums vary per year).
+ *   - `paidCents`   — Σ betrag_cents WHERE gezahlt_am IS NOT NULL for `year`.
+ *   - `offenCents`  — Σ betrag_cents WHERE gezahlt_am IS NULL     for `year`.
+ *
+ * Column names per `src/lib/server/db/schema/members.ts`:
+ *   `betrag_cents`, `paid_cents`, `gezahlt_am` (NOT `bezahlt_am`).
+ *
+ * Members without any `member_beitrags` row for `year` contribute 0 to both
+ * paid and offen — they're "not yet billed" rather than "owed".
+ *
+ * Returned cents values are plain `number` (cents fit comfortably in a JS
+ * safe integer for any plausible Vereinsbeitrag total). ADR-0003 — never
+ * stored as float.
+ */
+export async function memberBeitragsTotals(
+  year: number,
+): Promise<MemberBeitragsTotals> {
+  const db = getDb();
+  const rows = await db.execute<{
+    member_count: string;
+    paid_cents: string;
+    offen_cents: string;
+  }>(sql`
+    SELECT
+      (SELECT COUNT(*) FROM members)::text AS member_count,
+      COALESCE(SUM(CASE WHEN gezahlt_am IS NOT NULL THEN betrag_cents ELSE 0 END), 0)::text AS paid_cents,
+      COALESCE(SUM(CASE WHEN gezahlt_am IS NULL     THEN betrag_cents ELSE 0 END), 0)::text AS offen_cents
+    FROM member_beitrags
+    WHERE year = ${year}
+  `);
+  const row = rows[0];
+  return {
+    memberCount: Number(row?.member_count ?? 0),
+    paidCents: Number(row?.paid_cents ?? 0),
+    offenCents: Number(row?.offen_cents ?? 0),
+  };
 }
