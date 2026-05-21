@@ -39,6 +39,10 @@ describe("MobileTabBar — FAB", () => {
     expect(fab.getAttribute("aria-expanded")).toBe("false");
     await fireEvent.click(fab);
     expect(fab.getAttribute("aria-expanded")).toBe("true");
+    // Close the sheet at end of test so bits-ui body-scroll-lock teardown
+    // fires while jsdom's document is still alive — otherwise vitest's
+    // late timer flush hits `document is not defined`.
+    await fireEvent.keyDown(document.body, { key: "Escape" });
   });
 
   it("nav has safe-area-inset-bottom padding so home indicator is respected", () => {

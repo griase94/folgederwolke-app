@@ -7,14 +7,28 @@
  *
  * Adding a new admin route: add one entry here, nothing else to edit.
  *
- * ── Sidebar diet (C9, UX-001) ───────────────────────────────────────────────
- * The sidebar's "main" group is intentionally trimmed to **5 entries** — the
- * ones a Kassenwartin reaches multiple times per session: Übersicht, Audit
- * Inbox, Transaktionen, Mitglieder, Rechnungen. Everything else (Projekte,
- * Kunden, Jahresabschluss, Einstellungen, DSGVO, Dev/Mails) lives in the
- * collapsible "Mehr" section. The legacy `/app/sheet-resync` importer is
- * intentionally NOT in the registry — it remains reachable by URL for
- * one-time admin tasks but isn't a navigation target.
+ * ── IA shift (Zone-A, 2026-05-21) ───────────────────────────────────────────
+ * The sidebar's "main" group lists 6 first-class destinations:
+ *   Übersicht, Belegprüfung, Projekte, Transaktionen, Mitglieder,
+ *   Jahresabschluss.
+ *
+ * - "Belegprüfung" replaces the legacy "Audit Inbox" label (the underlying
+ *   route is still /app/inbox).
+ * - "Projekte" is promoted from "more" → main (Kassenwartin reaches it
+ *   multiple times per session).
+ * - "Jahresabschluss" is promoted from "more" → main (Julia + Vorstand
+ *   reviews both flagged daily-need).
+ * - "Rechnungen" and "Kunden" demote to "more" — they are reached only
+ *   from project / customer detail pages once IA shift is in effect.
+ *
+ * Mobile bottom tab bar shows mobileTab !== undefined entries — currently
+ * Übersicht / Projekte / Transaktionen / Belegprüfung — plus a "Mehr"
+ * trigger that opens MoreSheet for the remaining destinations.
+ *
+ * The legacy `/app/sheet-resync` importer is intentionally NOT in this
+ * registry: it remains reachable by URL for one-time admin tasks but is
+ * hidden from sidebar + mobile tab bar. Andy confirmed migration done on
+ * 2026-05-21.
  */
 
 export interface NavItem {
@@ -38,7 +52,7 @@ export interface NavItem {
 }
 
 export const navItems: NavItem[] = [
-  // ── Main group (5 entries — see "Sidebar diet" note above) ────────────────
+  // ── Main group (6 entries — IA shift Zone-A 2026-05-21) ──────────────────
   {
     label: "Übersicht",
     href: "/app",
@@ -47,9 +61,18 @@ export const navItems: NavItem[] = [
     group: "main",
   },
   {
-    label: "Audit Inbox",
+    // Renamed Audit Inbox → Belegprüfung (auslagen-tester report finding)
+    label: "Belegprüfung",
     href: "/app/inbox",
     icon: "Inbox",
+    mobileTab: 4,
+    group: "main",
+  },
+  {
+    // Promoted to main (Projekte first-class IA shift)
+    label: "Projekte",
+    href: "/app/projekte",
+    icon: "FolderOpen",
     mobileTab: 2,
     group: "main",
   },
@@ -64,32 +87,26 @@ export const navItems: NavItem[] = [
     label: "Mitglieder",
     href: "/app/mitglieder",
     icon: "Users",
-    mobileTab: 4,
     group: "main",
   },
+  {
+    // Promoted to main (julia + vorstand both flagged need)
+    label: "Jahresabschluss",
+    href: "/app/jahresabschluss",
+    icon: "BookOpen",
+    group: "main",
+  },
+  // ── More group ───────────────────────────────────────────────────────────
   {
     label: "Rechnungen",
     href: "/app/rechnungen",
     icon: "FileText",
-    group: "main",
-  },
-  // ── More group ────────────────────────────────────────────────────────────
-  {
-    label: "Projekte",
-    href: "/app/projekte",
-    icon: "FolderOpen",
     group: "more",
   },
   {
     label: "Kunden",
     href: "/app/kunden",
     icon: "Building2",
-    group: "more",
-  },
-  {
-    label: "Jahresabschluss",
-    href: "/app/jahresabschluss",
-    icon: "BookOpen",
     group: "more",
   },
   {
