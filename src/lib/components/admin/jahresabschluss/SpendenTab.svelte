@@ -28,6 +28,9 @@
 			totalCents: number;
 		};
 		bescheinigungEnabled: boolean;
+		// C9-JUL-lite — hide CTAs ("Spende erfassen") on festgeschriebene Jahre.
+		// Derived from settings.festgeschrieben_bis via the layout loader.
+		closed?: boolean;
 	}
 
 	const STATUS_CHIP: Record<BescheinigungStatus, string> = {
@@ -43,7 +46,13 @@
 	import { EmptyState } from '$lib/components/ui/empty-state/index.js';
 	import { formatMoney } from '$lib/components/ui/money/index.js';
 
-	let { year, rows, totals, bescheinigungEnabled }: SpendenTabProps = $props();
+	let {
+		year,
+		rows,
+		totals,
+		bescheinigungEnabled,
+		closed = false
+	}: SpendenTabProps = $props();
 
 	function formatDate(iso: string | null): string {
 		if (!iso) return '—';
@@ -95,12 +104,16 @@
 	{#if rows.length === 0}
 		<EmptyState
 			title={`Keine Spenden im Buchungsjahr ${year}`}
-			description="Sobald Spenden eingegangen sind, erscheinen sie hier zur Bescheinigungs-Verwaltung."
+			description={closed
+				? `Das Buchungsjahr ${year} ist festgeschrieben. Es können keine Spenden mehr erfasst werden.`
+				: 'Sobald Spenden eingegangen sind, erscheinen sie hier zur Bescheinigungs-Verwaltung.'}
 		>
 			{#snippet cta()}
-				<Button href={`/app/transactions/spenden?year=${year}`}>
-					Spende erfassen
-				</Button>
+				{#if !closed}
+					<Button href={`/app/transactions/spenden?year=${year}`}>
+						Spende erfassen
+					</Button>
+				{/if}
 			{/snippet}
 		</EmptyState>
 	{:else}

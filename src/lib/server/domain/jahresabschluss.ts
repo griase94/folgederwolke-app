@@ -47,19 +47,54 @@ export async function closeBuchhaltungsjahr(
 }
 
 /**
- * Check whether a year is already fully festgeschrieben.
- * A year is considered closed when no rows for that year have a null
- * festgeschrieben_at across expenses, income, donations, and invoices.
+ * Check whether `year` is "closed" — i.e. covered by the
+ * `settings.festgeschrieben_bis` timestamp.
+ *
+ * Pre-refactor (C9-JUL-lite, ADR-0006) this counted rows with
+ * `festgeschrieben_at IS NULL`, which silently returned `true` for any
+ * year that had no bookings at all (zero rows match zero "open" rows).
+ * That false-positive hid the "Erste Buchung anlegen" CTA on a never-used
+ * 2025 in production. The authoritative signal is
+ * `settings.festgeschrieben_bis` — the date up to which the year is locked.
+ *
+ * `opts.festgeschriebenBis` may be injected by the caller to avoid a
+ * round-trip when the value is already in scope (e.g. layout data).
+ * `null` is allowed and means "never closed". The value may be either a
+ * Date, an epoch-millisecond number, or a year integer (1900..9999) —
+ * normalised to the year integer internally.
  */
-export async function isYearClosed(year: number): Promise<boolean> {
-  const db = getDb();
-  const result = await db.execute<{ open_count: string }>(sql`
-    SELECT (
-      (SELECT count(*) FROM expenses WHERE year_of_buchung = ${year} AND festgeschrieben_at IS NULL) +
-      (SELECT count(*) FROM income  WHERE year_of_buchung = ${year} AND festgeschrieben_at IS NULL) +
-      (SELECT count(*) FROM donations WHERE year_of_buchung = ${year} AND festgeschrieben_at IS NULL)
-    ) AS open_count
-  `);
-  const openCount = Number(result[0]?.open_count ?? 0);
-  return openCount === 0;
+export async function isYearClosed(
+  year: number,
+  opts?: { festgeschriebenBis?: Date | number | null },
+): Promise<boolean> {
+  let fgbValue: Date | number | null | undefined = opts?.festgeschriebenBis;
+  if (fgbValue === undefined) {
+    const db = getDb();
+    const rows = (await db.execute(
+      sql`SELECT value FROM settings WHERE key = 'festgeschrieben_bis'`,
+    )) as { value: unknown }[];
+    const v = rows[0]?.value;
+    if (typeof v === "number" && Number.isFinite(v)) fgbValue = v;
+    else if (typeof v === "string") {
+      const parsed = Number(v.replace(/^"|"$/g, ""));
+      fgbValue = Number.isFinite(parsed) ? parsed : null;
+    } else fgbValue = null;
+  }
+  if (fgbValue == null) return false;
+  // festgeschriebenBis may be a Date, an epoch year (number 2024), or
+  // year-end epoch milliseconds. Normalise to the year integer.
+  let closedThroughYear: number;
+  if (fgbValue instanceof Date) {
+    closedThroughYear = fgbValue.getUTCFullYear();
+  } else if (typeof fgbValue === "number") {
+    // Heuristic: small numbers (1900..9999) are years; larger numbers are
+    // millisecond timestamps. Both forms appear in the codebase historically.
+    closedThroughYear =
+      fgbValue >= 1900 && fgbValue <= 9999
+        ? fgbValue
+        : new Date(fgbValue).getUTCFullYear();
+  } else {
+    return false;
+  }
+  return year <= closedThroughYear;
 }

@@ -9,6 +9,10 @@
 		filters: BuchungslisteFilters;
 		rows: BuchungslisteRow[];
 		allRowsCount: number;
+		// C9-JUL-lite — hide CTAs ("Erste Buchung anlegen") on festgeschriebene
+		// Jahre. The flag derives from settings.festgeschrieben_bis via
+		// `isYearClosed(year, { festgeschriebenBis })` in the layout loader.
+		closed?: boolean;
 	}
 
 	const SPHERE_LABELS: Record<string, string> = {
@@ -37,7 +41,13 @@
 	import { EmptyState } from '$lib/components/ui/empty-state/index.js';
 	import { formatMoney } from '$lib/components/ui/money/index.js';
 
-	let { year, filters, rows, allRowsCount }: BuchungslisteTabProps = $props();
+	let {
+		year,
+		filters,
+		rows,
+		allRowsCount,
+		closed = false
+	}: BuchungslisteTabProps = $props();
 
 	// C1-M4 — distinguish "no rows because filters are too tight" from
 	// "no rows because the year is empty". If no filters are active AND the
@@ -200,12 +210,16 @@
 			<EmptyState
 				data-testid="buchungsliste-empty-new-year"
 				title={`Noch keine Buchungen für ${year}`}
-				description="Lege die erste Einnahme, Ausgabe oder Spende für dieses Buchungsjahr an."
+				description={closed
+					? `Das Buchungsjahr ${year} ist festgeschrieben. Es können keine Buchungen mehr angelegt werden.`
+					: 'Lege die erste Einnahme, Ausgabe oder Spende für dieses Buchungsjahr an.'}
 			>
 				{#snippet cta()}
-					<Button href="/app/transactions/neu" variant="default">
-						Erste Buchung anlegen
-					</Button>
+					{#if !closed}
+						<Button href="/app/transactions/neu" variant="default">
+							Erste Buchung anlegen
+						</Button>
+					{/if}
 				{/snippet}
 			</EmptyState>
 		{/if}

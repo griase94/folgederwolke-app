@@ -690,11 +690,15 @@ export async function loadEurWorkspaceData(
   }
 
   // 5. Spenden count + festgeschrieben/closed
+  //
+  // C9-JUL-lite: inject the already-loaded festgeschriebenBis so isYearClosed
+  // can derive the closed state from settings without a second round-trip.
+  // Passing `null` (when no value is set) means "never closed".
   const [spendenRes, closed] = await Promise.all([
     db.execute<{ cnt: string }>(sql`
       SELECT count(*)::text AS cnt FROM donations WHERE year_of_buchung = ${year}
     `),
-    isYearClosed(year),
+    isYearClosed(year, { festgeschriebenBis }),
   ]);
   const spendenCount = parseInt(spendenRes[0]?.cnt ?? "0", 10);
 
