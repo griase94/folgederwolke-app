@@ -37,15 +37,17 @@ async function checkDrive(): Promise<"ok" | "skip" | "fail"> {
 export const GET: RequestHandler = async () => {
   const [dbStatus, driveStatus] = await Promise.all([checkDb(), checkDrive()]);
 
-  // Vercel automatically injects `VERCEL_GIT_COMMIT_SHA` at runtime. The
-  // project's manual `COMMIT_SHA` env var (legacy) wins if set so dev/test
-  // can pin a known value, but production previously always reported "dev"
-  // because `COMMIT_SHA` was never wired in the Vercel project. The
-  // post-deploy smoke workflow (`.github/workflows/post-deploy-smoke.yml`)
-  // depends on this field matching the deployed git SHA.
+  // Vercel automatically injects `VERCEL_GIT_COMMIT_SHA` at runtime — prefer
+  // it over `env.COMMIT_SHA` because the latter defaults to the literal
+  // string `"dev"` in `env.ts:171`. Without this precedence order the
+  // fallback chain would always short-circuit to `"dev"` (since the default
+  // is truthy), and the post-deploy smoke workflow
+  // (`.github/workflows/post-deploy-smoke.yml`) — which compares the
+  // deployed git SHA against this field — would never match. Local dev
+  // (no Vercel env vars set) falls through to `env.COMMIT_SHA = "dev"`.
   const sha =
-    env.COMMIT_SHA ||
     process.env["VERCEL_GIT_COMMIT_SHA"]?.slice(0, 7) ||
+    env.COMMIT_SHA ||
     "dev";
 
   const body = {

@@ -46,13 +46,13 @@ jobs:
         # there is a brief window where the production alias is still
         # serving the previous deployment from the edge cache. Poll
         # `/healthz` (which returns the deployed `sha`) until it matches the
-        # expected commit, or fail after ~2 minutes.
+        # expected commit, or fail after ~3 minutes.
         env:
           BASE_URL: ${{ env.SMOKE_BASE_URL }}
           EXPECTED: ${{ env.EXPECTED_SHA }}
         run: |
           set -euo pipefail
-          deadline=$(( $(date +%s) + 120 ))
+          deadline=$(( $(date +%s) + 180 ))
           actual=""
           status=""
           while [ "$(date +%s)" -lt "$deadline" ]; do
@@ -74,7 +74,7 @@ jobs:
             fi
             sleep 5
           done
-          echo "::error::production alias did not flip to ${EXPECTED:0:7} within 120s (last seen sha=$actual, db=$status)"
+          echo "::error::production alias did not flip to ${EXPECTED:0:7} within 180s (last seen sha=$actual, db=$status)"
           exit 1
 
       - name: Probe a representative public route
