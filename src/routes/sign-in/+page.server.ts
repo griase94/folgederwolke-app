@@ -1,10 +1,35 @@
 /**
+ * GET  /sign-in — surfaces an optional context banner via `?reason=` (B-2).
  * POST /sign-in — issues a magic link (or no-ops for non-admin emails).
  * Always returns { ok: true, message: "Schau in dein Postfach 💌" } (anti-enumeration).
  */
 
 import { fail, type Actions } from "@sveltejs/kit";
+import type { PageServerLoad } from "./$types.js";
 import { issueMagicLink, RateLimitError } from "$lib/server/auth/index.js";
+
+// B-2 — whitelist of `?reason=` values we render banners for. Anything else
+// (including unset, empty, or attacker-supplied querystring values) renders
+// no banner — never echo arbitrary querystring values into HTML.
+const KNOWN_REASONS = new Set([
+  "signed-out",
+  "public-form-coming-soon",
+  "not-authorised",
+] as const);
+
+export type SignInReason =
+  | "signed-out"
+  | "public-form-coming-soon"
+  | "not-authorised";
+
+export const load: PageServerLoad = ({ url }) => {
+  const raw = url.searchParams.get("reason");
+  const reason: SignInReason | null =
+    raw && (KNOWN_REASONS as Set<string>).has(raw)
+      ? (raw as SignInReason)
+      : null;
+  return { reason };
+};
 
 export const actions: Actions = {
   default: async ({ request, url, cookies, getClientAddress }) => {

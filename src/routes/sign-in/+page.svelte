@@ -3,8 +3,35 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import type { PageData } from './$types.js';
 
-	let { form }: { form: { ok?: boolean; message?: string; error?: string } | null } = $props();
+	// B-2 — `data.reason` is whitelist-validated on the server (load fn);
+	// the page only renders banner copy for values it knows about, and
+	// never echoes raw querystring into HTML.
+	let {
+		form,
+		data
+	}: {
+		form: { ok?: boolean; message?: string; error?: string } | null;
+		data: PageData;
+	} = $props();
+
+	const REASON_BANNERS = {
+		'signed-out': {
+			kind: 'info' as const,
+			text: 'Du wurdest abgemeldet.'
+		},
+		'public-form-coming-soon': {
+			kind: 'info' as const,
+			text: 'Das öffentliche Formular ist momentan nicht aktiv.'
+		},
+		'not-authorised': {
+			kind: 'warn' as const,
+			text: 'Dein Account hat keinen Zugriff auf diese Seite.'
+		}
+	} as const;
+
+	const banner = $derived(data.reason ? REASON_BANNERS[data.reason] : null);
 
 	let pending = $state(false);
 </script>
@@ -21,6 +48,24 @@
 				Gib deine E-Mail-Adresse ein. Du erhältst einen Anmelde-Link.
 			</p>
 		</div>
+
+		{#if banner}
+			<div
+				class:rounded-md={true}
+				class:border={true}
+				class:px-4={true}
+				class:py-3={true}
+				class:text-sm={true}
+				class={banner.kind === 'warn'
+					? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100'
+					: 'border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-700 dark:bg-sky-900/40 dark:text-sky-100'}
+				role={banner.kind === 'warn' ? 'alert' : 'status'}
+				data-testid="sign-in-reason-banner"
+				data-reason={data.reason}
+			>
+				{banner.text}
+			</div>
+		{/if}
 
 		{#if form?.ok}
 			<div

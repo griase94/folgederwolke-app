@@ -4,11 +4,38 @@
  * The mobile FAB opens a bottom sheet with 4 quick-add actions.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { render, cleanup, screen } from "@testing-library/svelte";
+
+// $app/stores — FabBottomSheet (B-2) reads $page.data.formEnabled to gate
+// the 4th "Externe Auslage einreichen" action. We back the mock with a
+// writable so individual tests can flip formEnabled before render().
+// Because vitest hoists vi.mock() above imports, the writable has to be
+// constructed via vi.hoisted() so it exists when the mock factory runs.
+const { _pageStore } = await vi.hoisted(async () => {
+  const { writable: _writable } = await import("svelte/store");
+  return {
+    _pageStore: _writable<{ url: URL; data: { formEnabled: boolean } }>({
+      url: new URL("http://localhost/app"),
+      data: { formEnabled: true },
+    }),
+  };
+});
+vi.mock("$app/stores", () => ({
+  page: _pageStore,
+}));
+
 import FabBottomSheetTest from "./FabBottomSheet.test.svelte";
 
 afterEach(() => cleanup());
+
+beforeEach(() => {
+  // Reset $page.data.formEnabled to the default (true) before every test.
+  _pageStore.set({
+    url: new URL("http://localhost/app"),
+    data: { formEnabled: true },
+  });
+});
 
 describe("FabBottomSheet", () => {
   it("renders all four quick-add actions when open=true", () => {
@@ -99,5 +126,42 @@ describe("FabBottomSheet", () => {
 
     // 4 menu items, 4 distinct icon DOM signatures.
     expect(iconSignatures.size).toBe(4);
+  });
+
+  // ─── B-2 — Externe-Auslage form gate (PUBLIC_FORM_ENABLED) ────────
+  it("hides the Externe Auslage action when $page.data.formEnabled is false (B-2)", () => {
+    _pageStore.set({
+      url: new URL("http://localhost/app"),
+      data: { formEnabled: false },
+    });
+    render(FabBottomSheetTest, { props: { open: true } });
+
+    // The first three actions still render
+    expect(
+      screen.getByRole("menuitem", { name: /Neue Ausgabe/i }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: /Neue Einnahme/i }),
+    ).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /Neue Spende/i })).toBeTruthy();
+    // Externe Auslage is gone
+    expect(
+      screen.queryByRole("menuitem", { name: /Externe Auslage einreichen/i }),
+    ).toBeFalsy();
+    // 3 menu items total — not 4
+    expect(screen.getAllByRole("menuitem").length).toBe(3);
+  });
+
+  it("shows the Externe Auslage action when $page.data.formEnabled is true (B-2)", () => {
+    _pageStore.set({
+      url: new URL("http://localhost/app"),
+      data: { formEnabled: true },
+    });
+    render(FabBottomSheetTest, { props: { open: true } });
+
+    expect(
+      screen.getByRole("menuitem", { name: /Externe Auslage einreichen/i }),
+    ).toBeTruthy();
+    expect(screen.getAllByRole("menuitem").length).toBe(4);
   });
 });

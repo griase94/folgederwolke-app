@@ -21,20 +21,23 @@ test.describe("@phase-9 prod-build smoke", () => {
   test("GET /auslage-einreichen returns 200 with form rendered", async ({
     page,
   }) => {
-    // RED-BASELINE GATE: B-2 cluster makes this pass + REMOVES this skip.
-    // Default-skipped so preflight PR merges; B-2 sets B2_LANDED=1 locally
-    // when validating, and the skip line is deleted in B-2's PR diff.
-    test.skip(
-      process.env["B2_LANDED"] !== "1",
-      "B-2 will green this test + remove this skip (smoke-prod-build red baseline)",
-    );
     const r = await page.goto("/auslage-einreichen");
     expect(r?.status()).toBe(200);
     // formEnabled=true is reflected by the form being rendered (not the
-    // soft-fallback message). B-2 makes this pass.
+    // soft-fallback message). B-2 green: load returns formEnabled=true and
+    // the form renders. The "Bezeichnung" field is the bezeichnung input
+    // (German UI label is "Was war's?").
     await expect(
-      page.getByRole("textbox", { name: /bezeichnung/i }),
+      page.getByRole("textbox", { name: /was war's/i }),
     ).toBeVisible();
+    // And the submit button is visible (canonical form-rendered signal).
+    await expect(
+      page.getByRole("button", { name: /Auslage einreichen/i }),
+    ).toBeVisible();
+    // And the soft-fallback message is NOT rendered.
+    await expect(
+      page.getByTestId("auslage-form-disabled-fallback"),
+    ).toHaveCount(0);
   });
 
   test("GET /datenschutz returns 200", async ({ request }) => {

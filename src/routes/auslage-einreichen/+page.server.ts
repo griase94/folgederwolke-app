@@ -75,7 +75,17 @@ export interface SharePrefill {
 
 export const load: PageServerLoad = async ({ url }) => {
   if (!env.PUBLIC_FORM_ENABLED) {
-    throw error(404, "Das Formular ist momentan nicht verfügbar.");
+    // B-2 soft-fallback (was 404). Return 200 with formEnabled=false so the
+    // page renders a "Vorübergehend nicht verfügbar" message instead of a
+    // dead-end 404. Rationale: an accidental env-misconfiguration on Vercel
+    // (e.g. PUBLIC_FORM_ENABLED unset after a env rotation) should not lose
+    // share-target POSTs to the void or signal to outsiders that we're broken
+    // — it should signal "this is temporarily off, try again or write us".
+    // The POST action below still rejects with 404 so writes can't succeed.
+    return {
+      formEnabled: false as const,
+      sharePrefill: null,
+    };
   }
 
   // PWA share-target prefill (M2): when the browser POSTs a share to
@@ -95,7 +105,7 @@ export const load: PageServerLoad = async ({ url }) => {
     };
   }
 
-  return { formEnabled: true, sharePrefill };
+  return { formEnabled: true as const, sharePrefill };
 };
 
 // ---------------------------------------------------------------------------
