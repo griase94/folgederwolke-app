@@ -13,12 +13,14 @@ import { issueMagicLink, RateLimitError } from "$lib/server/auth/index.js";
 // no banner — never echo arbitrary querystring values into HTML.
 const KNOWN_REASONS = new Set([
   "signed-out",
+  "signed-out-everywhere",
   "public-form-coming-soon",
   "not-authorised",
 ] as const);
 
 export type SignInReason =
   | "signed-out"
+  | "signed-out-everywhere"
   | "public-form-coming-soon"
   | "not-authorised";
 

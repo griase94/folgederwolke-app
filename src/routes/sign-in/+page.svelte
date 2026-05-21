@@ -21,6 +21,10 @@
 			kind: 'info' as const,
 			text: 'Du wurdest abgemeldet.'
 		},
+		'signed-out-everywhere': {
+			kind: 'info' as const,
+			text: 'Du wurdest auf allen Geräten abgemeldet.'
+		},
 		'public-form-coming-soon': {
 			kind: 'info' as const,
 			text: 'Das öffentliche Formular ist momentan nicht aktiv.'
