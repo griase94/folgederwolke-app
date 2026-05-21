@@ -82,6 +82,11 @@ export const expenses = pgTable(
     rechnungsdatum: date("rechnungsdatum"),
     /** Geldfluss-Datum / Abfluss — date the money actually moved. */
     abflussDatum: date("abfluss_datum"),
+    /**
+     * C2-TAX: Cash-out date for EÜR §11 EStG (additive — NULL allowed for
+     * existing rows; CHECK constraint deferred to Night 3 after backfill).
+     */
+    geldflussDatum: date("geldfluss_datum"),
 
     // --- ADR-0003 — cents storage ---
     betragCents: bigint("betrag_cents", { mode: "bigint" }).notNull(),
