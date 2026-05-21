@@ -8,6 +8,8 @@
  */
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { restoreFile } from "$lib/server/files/restore.js";
+import { getDb } from "$lib/server/db/index.js";
+import { sql } from "drizzle-orm";
 import {
   resetFestgeschreibungBis,
   closeAdminConnection,
@@ -60,5 +62,62 @@ describe("restoreFile sha256 conflict", () => {
     await expect(
       restoreFile("00000000-0000-0000-0000-000000000001"),
     ).rejects.toThrow(/bereits aktiv/);
+  });
+
+  it("happy path: restore flips deleted_at and writes file_restored audit_log", async () => {
+    // Phase 9 expert-audit gap closure: ADR-0012 §audit-log says every state
+    // change writes an audit_log row. This test catches a regression where
+    // logAudit is removed/misrouted from restoreFile() — the row would still
+    // be successfully restored, but the audit trail would silently disappear.
+    // actor_user_id has an FK to users; we don't need a real user for this
+    // test (restoreFile accepts null). The audit_log row still proves the
+    // logAudit call happens — it just won't be attributable to a specific
+    // person, which is fine for system-initiated restores.
+    const fileId = "00000000-0000-0000-0000-0000000000a1";
+    const sha = "b".repeat(64);
+    await seedFileViaAdmin({
+      id: fileId,
+      storageKey: "belege/2026/restore-me.pdf",
+      sha256: sha,
+      originalFilename: "restore-me.pdf",
+      sourceKind: "form",
+      uploadedBySubmitterEmail: "s@x.de",
+    });
+    await updateFileViaAdmin(fileId, {
+      deletedAt: "2026-02-01T10:00:00Z",
+      deleteReason: "user_request",
+    });
+
+    await restoreFile(fileId, null);
+
+    // 1. deleted_at cleared on the files row
+    const rows = (await getDb().execute(sql`
+      SELECT deleted_at, delete_reason FROM files WHERE id = ${fileId}
+    `)) as unknown as Array<{
+      deleted_at: Date | null;
+      delete_reason: string | null;
+    }>;
+    const row = rows[0]!;
+    expect(row.deleted_at).toBeNull();
+    expect(row.delete_reason).toBeNull();
+
+    // 2. audit_log row exists with correct actor + payload
+    const audit = (await getDb().execute(sql`
+      SELECT action, entity_kind, actor_user_id, payload
+      FROM audit_log
+      WHERE entity_id = ${fileId}
+      AND payload->>'event' = 'file_restored'
+    `)) as unknown as Array<{
+      action: string;
+      entity_kind: string;
+      actor_user_id: string | null;
+      payload: { event: string };
+    }>;
+    expect(audit).toHaveLength(1);
+    const auditRow = audit[0]!;
+    expect(auditRow.action).toBe("create");
+    expect(auditRow.entity_kind).toBe("file");
+    expect(auditRow.actor_user_id).toBeNull();
+    expect(auditRow.payload.event).toBe("file_restored");
   });
 });

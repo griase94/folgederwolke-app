@@ -92,6 +92,27 @@ describe("upload pipeline", () => {
     expect(r1.dedupHit).toBe(false);
     expect(r2.dedupHit).toBe(true);
     expect(r2.fileId).toBe(r1.fileId);
+
+    // Audit-log: file_uploaded event written exactly once (first upload).
+    // Phase 9 expert-audit gap closure: ADR-0012 §audit-log says the audit
+    // log is the source of truth for what was uploaded — must verify the
+    // row exists with the right entity_kind + payload.event + sha256.
+    const audit = (await getDb().execute(sql`
+      SELECT action, entity_kind, payload
+      FROM audit_log
+      WHERE entity_id = ${r1.fileId}
+      AND payload->>'event' = 'file_uploaded'
+    `)) as unknown as Array<{
+      action: string;
+      entity_kind: string;
+      payload: { event: string; sha256: string };
+    }>;
+    expect(audit).toHaveLength(1);
+    const auditRow = audit[0]!;
+    expect(auditRow.action).toBe("create");
+    expect(auditRow.entity_kind).toBe("file");
+    expect(auditRow.payload.event).toBe("file_uploaded");
+    expect(auditRow.payload.sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("PARALLEL identical → exactly 1 files row", async () => {

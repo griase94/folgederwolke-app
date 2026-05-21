@@ -21,77 +21,17 @@ import {
   type BescheinigungAttachment,
   type AuditLogSliceRow,
   type MemberBeitragRow,
-  type BelegAttachment,
 } from "$lib/server/export/bundle.js";
 import { generateEurPdf } from "$lib/server/export/eur-pdf.js";
 import { loadEurAggregatesForPdf } from "$lib/server/eur/load.js";
 import { getFileStorage } from "$lib/server/files/storage.js";
+import { assembleBelegAttachments } from "$lib/server/export/beleg-attachments.js";
 import { env } from "$lib/server/env.js";
 
 // Phase 9 Task 18 — bundling many Belege can exceed Vercel's default 10s
 // Hobby timeout on Fluid Compute. Bumping to 60s gives even large years
 // plenty of headroom. (Has no effect outside of Vercel.)
 export const config = { maxDuration: 60 };
-
-/**
- * German-aware slugifier. Handles umlauts FIRST so they map to ae/oe/ue
- * (not stripped), then lowercases and collapses non-alphanumerics into
- * dashes. Capped at `maxLen` to keep bundle paths predictable.
- */
-function slugify(s: string, maxLen = 40): string {
-  return s
-    .replace(/[äÄ]/g, "ae")
-    .replace(/[öÖ]/g, "oe")
-    .replace(/[üÜ]/g, "ue")
-    .replace(/[ßẞ]/g, "ss")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, maxLen);
-}
-
-/**
- * Compute the in-bundle relative path for a Beleg attachment.
- * Layout (Phase 9 Task 18, spec v2.1 §7.4 — German folder names):
- *   ausgaben/{sphere}/{business_id}-{slug}.{ext}
- *   einnahmen/{sphere}/{business_id}-{slug}.{ext}
- *   spenden/{business_id}-{slug}.{ext}     (Spenden have no sphere subfolder)
- */
-function bundlePath(row: {
-  businessId: string;
-  ownerKind: "expense" | "income" | "donation";
-  sphere?: string | null;
-  bezeichnung?: string | null;
-  ext: string;
-}): string {
-  const slug = slugify(row.bezeichnung ?? "");
-  const sphereFolder = row.sphere ?? "ohne-sphaere";
-  const folderByKind: Record<typeof row.ownerKind, string> = {
-    expense: `ausgaben/${sphereFolder}`,
-    income: `einnahmen/${sphereFolder}`,
-    donation: "spenden",
-  };
-  const tail = slug ? `${row.businessId}-${slug}` : row.businessId;
-  return `${folderByKind[row.ownerKind]}/${tail}.${row.ext}`;
-}
-
-/**
- * Map a MIME type to a sensible file extension. Falls back to `bin`
- * if the type is unknown — better than stripping the extension entirely
- * because the Steuerberater can still open it manually.
- */
-function extFromMime(mime: string): string {
-  const map: Record<string, string> = {
-    "application/pdf": "pdf",
-    "image/jpeg": "jpg",
-    "image/jpg": "jpg",
-    "image/png": "png",
-    "image/heic": "heic",
-    "image/heif": "heif",
-    "image/webp": "webp",
-  };
-  return map[mime.toLowerCase()] ?? "bin";
-}
 
 interface DonationRow {
   business_id: string;
@@ -302,102 +242,13 @@ export const GET: RequestHandler = async ({ params }) => {
     gezahltAm: r.gezahlt_am,
   }));
 
-  // Phase 9 Task 18 — Beleg attachments.
-  //
-  // Query every file linked to an expense / income / donation in this
-  // year via beleg_file_id. We join all three owner tables in a single
-  // round-trip; per row exactly one owner column is non-null because the
-  // app enforces a 1:1 mapping (the trigger from migration 0015 won't
-  // permit a file to be referenced from more than one entity in the
-  // same year). Soft-deleted files are excluded; archived files are
-  // included (their storage_key is at `archived/...` and
-  // storage.download() resolves any pathname).
-  //
-  // NOTE: Rechnungen are deferred (Phase 9 scope intentionally excludes
-  // them — invoice attachments will be added in a follow-up phase).
-  const belegRows = (await db.execute(sql`
-    SELECT
-      f.id                   AS file_id,
-      f.storage_key          AS storage_key,
-      f.mime_type            AS mime_type,
-      f.original_filename    AS original_filename,
-      e.business_id          AS expense_business_id,
-      COALESCE(e.sphere_override, e.sphere_snapshot) AS expense_sphere,
-      e.bezeichnung          AS expense_bezeichnung,
-      i.business_id          AS income_business_id,
-      i.sphere_snapshot      AS income_sphere,
-      i.bezeichnung          AS income_bezeichnung,
-      d.business_id          AS donation_business_id,
-      COALESCE(d.spender_name, d.kategorie_name_snapshot) AS donation_bezeichnung
-    FROM files f
-    LEFT JOIN expenses  e ON e.beleg_file_id = f.id AND e.year_of_buchung = ${year}
-    LEFT JOIN income    i ON i.beleg_file_id = f.id AND i.year_of_buchung = ${year}
-    LEFT JOIN donations d ON d.beleg_file_id = f.id AND d.year_of_buchung = ${year}
-    WHERE f.year_of_buchung = ${year}
-      AND f.deleted_at IS NULL
-      AND (e.id IS NOT NULL OR i.id IS NOT NULL OR d.id IS NOT NULL)
-  `)) as unknown as Array<{
-    file_id: string;
-    storage_key: string;
-    mime_type: string;
-    original_filename: string;
-    expense_business_id: string | null;
-    expense_sphere: string | null;
-    expense_bezeichnung: string | null;
-    income_business_id: string | null;
-    income_sphere: string | null;
-    income_bezeichnung: string | null;
-    donation_business_id: string | null;
-    donation_bezeichnung: string | null;
-  }>;
-
-  const belegAttachments: BelegAttachment[] = [];
-  // Map<business_id, bundlePath> so the Beleg-Index CSV can reference the
-  // in-bundle location alongside (or instead of) the legacy Drive link.
-  const bundlePathByBusinessId = new Map<string, string>();
-
-  for (const r of belegRows) {
-    let ownerKind: "expense" | "income" | "donation";
-    let businessId: string;
-    let sphere: string | null;
-    let bezeichnung: string | null;
-    if (r.expense_business_id) {
-      ownerKind = "expense";
-      businessId = r.expense_business_id;
-      sphere = r.expense_sphere;
-      bezeichnung = r.expense_bezeichnung;
-    } else if (r.income_business_id) {
-      ownerKind = "income";
-      businessId = r.income_business_id;
-      sphere = r.income_sphere;
-      bezeichnung = r.income_bezeichnung;
-    } else if (r.donation_business_id) {
-      ownerKind = "donation";
-      businessId = r.donation_business_id;
-      sphere = null;
-      bezeichnung = r.donation_bezeichnung;
-    } else {
-      // Shouldn't happen given the WHERE clause, but skip defensively.
-      continue;
-    }
-    const ext = extFromMime(r.mime_type);
-    const path = bundlePath({
-      businessId,
-      ownerKind,
-      sphere,
-      bezeichnung,
-      ext,
-    });
-    try {
-      const bytes = await storage.download(r.storage_key);
-      belegAttachments.push({ bundlePath: path, bytes });
-      bundlePathByBusinessId.set(businessId, path);
-    } catch (e) {
-      console.warn(
-        `bundle: failed to fetch Beleg for ${ownerKind} ${businessId} (file ${r.file_id}): ${String(e)}`,
-      );
-    }
-  }
+  // Phase 9 Task 18 — Beleg attachments. See `assembleBelegAttachments`
+  // for the SQL + ownerKind dispatch + bundlePath/extFromMime mapping;
+  // extracted so the integration suite can exercise it against the real
+  // DB without going through the route. Rechnungen remain deferred
+  // (Phase 9 scope intentionally excludes them).
+  const { attachments: belegAttachments, bundlePathByBusinessId } =
+    await assembleBelegAttachments({ year, db, storage });
 
   // Backfill bundlePath into the Beleg-Index rows so the CSV references
   // the in-bundle location for embedded files.

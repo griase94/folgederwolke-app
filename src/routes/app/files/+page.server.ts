@@ -16,30 +16,12 @@
 import type { PageServerLoad, Actions } from "./$types.js";
 import { redirect, fail } from "@sveltejs/kit";
 import { getDb } from "$lib/server/db/index.js";
-import { files } from "$lib/server/db/schema/files.js";
-import { eq, sql } from "drizzle-orm";
-import { logAudit } from "$lib/server/audit-log/index.js";
-
-/**
- * Read `settings.festgeschrieben_bis` (JSONB). Returns null when unset.
- * Mirrors the helpers in members-actions / audit-inbox-actions — kept local
- * so the files route doesn't pull in unrelated domain code.
- */
-async function fetchFestgeschriebenBis(): Promise<number | null> {
-  const db = getDb();
-  const rows = (await db.execute(
-    sql`SELECT value FROM settings WHERE key = 'festgeschrieben_bis'`,
-  )) as unknown as Array<{ value: unknown }>;
-  const row = rows[0];
-  if (!row) return null;
-  const v = row.value;
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (typeof v === "string") {
-    const parsed = Number(v.replace(/^"|"$/g, ""));
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
+import { sql } from "drizzle-orm";
+import {
+  softDeleteFile,
+  FileNotFoundError,
+} from "$lib/server/files/soft-delete.js";
+import { FestschreibungLockedError } from "$lib/server/files/restore.js";
 
 const PAGE_SIZE = 50;
 
@@ -135,41 +117,17 @@ export const actions: Actions = {
     const fileId = fd.get("fileId")?.toString();
     if (!fileId) return fail(400, { error: "Missing fileId" });
 
-    const db = getDb();
-
-    // L2 Festschreibung pre-check (ADR-0012 §L2): friendly German error
-    // before the L3 DB trigger surfaces a raw Postgres exception.
-    const file = await db.query.files.findFirst({
-      where: eq(files.id, fileId),
-    });
-    if (!file) return fail(404, { error: "Datei nicht gefunden" });
-    const fileYear = file.yearOfBuchung;
-    const festYear = await fetchFestgeschriebenBis();
-    if (fileYear !== null && festYear !== null && fileYear <= festYear) {
-      return fail(409, {
-        error: "Buchungsjahr ist festgeschrieben – Löschen nicht möglich.",
-      });
+    try {
+      await softDeleteFile({ fileId, actorUserId: user.id });
+      return { success: true };
+    } catch (e) {
+      if (e instanceof FileNotFoundError) {
+        return fail(404, { error: e.message });
+      }
+      if (e instanceof FestschreibungLockedError) {
+        return fail(409, { error: e.message });
+      }
+      throw e;
     }
-
-    await db.transaction(async (tx) => {
-      await tx
-        .update(files)
-        .set({ deletedAt: new Date(), deleteReason: "user_request" })
-        .where(eq(files.id, fileId));
-      await logAudit(
-        {
-          action: "delete",
-          entityKind: "file",
-          entityId: fileId,
-          actorUserId: user.id,
-          payload: {
-            event: "file_soft_deleted",
-            reason: "user_request",
-          },
-        },
-        tx as unknown as Parameters<typeof logAudit>[1],
-      );
-    });
-    return { success: true };
   },
 };
