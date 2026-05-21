@@ -22,7 +22,9 @@ GoBD Tz. 58/61 accepts software-enforced immutability when documented + tested. 
 
 ### 2. Soft-delete model
 
-`files.deleted_at` is the only delete path reachable from app code. The only blob-level `del()` calls live inside (a) `archive()` after SHA verify, and (b) `upload-pipeline.ts` dedup-cleanup after the unique-violation race. Both grep-guarded in CI (`scripts/check-internal-del.sh`).
+`files.deleted_at` is the only delete path reachable from app code. The only blob-level `del()` calls live inside (a) `archive()` after the three-phase head→copy→head→del sequence verifies the destination object's size matches the source, and (b) `upload-pipeline.ts` dedup-cleanup after the unique-violation race. Both grep-guarded in CI (`scripts/check-internal-del.sh`).
+
+`archive()` performs a size-equality check (not a sha256 round-trip) before the source delete — Vercel Blob writes are atomic per object (a copy either succeeds fully or does not appear at the destination), so size-equality is proportionate to detect partial-copy state. A sha256 verify would double archive-time blob downloads with no additional safety guarantee at this scale.
 
 ### 3. Orphan reconciliation as manual script
 

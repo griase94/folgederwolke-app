@@ -134,7 +134,6 @@ export const actions: Actions = {
     const fd = await request.formData();
     const fileId = fd.get("fileId")?.toString();
     if (!fileId) return fail(400, { error: "Missing fileId" });
-    const reason = fd.get("reason")?.toString() || "user_request";
 
     const db = getDb();
 
@@ -165,7 +164,7 @@ export const actions: Actions = {
           actorUserId: user.id,
           payload: {
             event: "file_soft_deleted",
-            reason,
+            reason: "user_request",
           },
         },
         tx as unknown as Parameters<typeof logAudit>[1],
