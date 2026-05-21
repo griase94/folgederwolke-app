@@ -154,6 +154,14 @@ const schema = z.object({
   VEREIN_BIC: z.string().default(""),
   /** Verein Bankname (display). */
   VEREIN_BANK: z.string().default(""),
+  /**
+   * Verein Kontakt-Person — displayed in the Rechnung v2 footer column 1
+   * ("℅ <name>"). Stable across Kassenwärtin rotation so it lives in env,
+   * not settings.
+   */
+  VEREIN_KONTAKT_PERSON: z.string().default(""),
+  /** Verein contact phone — displayed in Rechnung v2 footer column 2. */
+  VEREIN_CONTACT_PHONE: z.string().default(""),
 
   // Spenden — Zuwendungsbestätigung (Bescheinigung) Pflichtfelder.
   // ZUWENDUNGSBESTAETIGUNG_ENABLED is derived 'auto' from BESCHEID_TYP +

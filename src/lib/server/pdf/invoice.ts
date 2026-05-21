@@ -33,6 +33,9 @@ export interface InvoiceRenderInput {
   leistungsDatum: string | null;
   /** Fälligkeitsdatum — optional. */
   faelligkeitsDatum: string | null;
+  /** Phase 10 — free-text Leistungszeitraum (e.g. "Februar 2026").
+   *  Renders as a row in the meta block; collapses when null/empty. */
+  leistungszeitraum?: string | null;
 
   /** Verein issuing the invoice. */
   verein: {
@@ -45,6 +48,12 @@ export interface InvoiceRenderInput {
     iban?: string;
     bic?: string;
     bank?: string;
+    /** Phase 10 — footer-col-1 contact person ("℅ <name>"). */
+    kontaktPerson?: string;
+    /** Phase 10 — footer-col-2 contact phone. */
+    contactPhone?: string;
+    /** Phase 10 — footer-col-2 contact email (reuses env.MAIL_FROM). */
+    contactEmail?: string;
   };
 
   /** Customer block. */
@@ -53,6 +62,8 @@ export interface InvoiceRenderInput {
     name: string;
     /** Multi-line address (snapshot). */
     addressBlock: string | null;
+    /** Phase 10 — ISO 3166-1 alpha-2; renderer hides Land line for 'DE'. */
+    country?: string;
   };
 
   /** Headline title shown above the line items (e.g. "Auftritt 12.05.2026"). */
@@ -71,6 +82,9 @@ export interface InvoiceRenderInput {
 
   /** Footer note. v1 always says §19 UStG (Kleinunternehmer). */
   footerNote: string;
+
+  /** Phase 10 — Kassenwärt:in name from settings (default "Julia Schwarz"). */
+  kassenwaertName?: string;
 }
 
 /** Output of a render call — raw PDF bytes + media metadata. */

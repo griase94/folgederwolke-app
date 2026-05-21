@@ -87,14 +87,18 @@ describe("@phase-5 PdfLibInvoiceRenderer", () => {
   });
 
   it("renders the live HTML preview with German formatting", () => {
+    // Phase 10: preview mirrors the v2 PDF layout — Leistungszeitraum
+    // replaces the Phase-5 Leistungsdatum / Fälligkeitsdatum rows.
     const html = renderInvoicePreviewHtml({
       bezeichnung: "Auftritt 12.05.2026",
       leistungsBeschreibung: "Beschreibung",
       rechnungsdatum: "2026-05-19",
       leistungsDatum: null,
       faelligkeitsDatum: "2026-06-12",
+      leistungszeitraum: "Mai 2026",
       customerName: "Kulturbuero",
       customerAddressBlock: "Beispielstrasse 12",
+      customerCountry: "DE",
       nettoCents: 12345,
       ustCents: 0,
       bruttoCents: 12345,
@@ -109,11 +113,10 @@ describe("@phase-5 PdfLibInvoiceRenderer", () => {
     });
     expect(html).toContain("FDW-2026-007");
     expect(html).toContain("Kulturbuero");
-    // 12345 cents = 123,45 €
     expect(html).toMatch(/123,45/);
     expect(html).toContain("19.05.2026");
-    expect(html).toContain("12.06.2026");
-    expect(html).toContain("Rechnung");
+    expect(html).toContain("Mai 2026");
+    expect(html).toContain("RECHNUNG");
   });
 
   it("preview HTML escapes user input", () => {

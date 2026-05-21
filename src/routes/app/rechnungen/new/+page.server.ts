@@ -129,10 +129,12 @@ export const actions: Actions = {
     };
     const customerName = v("customerName");
     const customerAddressBlock = v("customerAddressBlock") || null;
+    const customerCountry = v("customerCountry") || "DE";
     const rechnungsdatum =
       v("rechnungsdatum") || new Date().toISOString().slice(0, 10);
     const leistungsDatum = v("leistungsDatum") || null;
     const faelligkeitsDatum = v("faelligkeitsDatum") || null;
+    const leistungszeitraum = v("leistungszeitraum") || null;
     const bezeichnung = v("bezeichnung");
     const leistungsBeschreibung = v("leistungsBeschreibung") || null;
     const currency = v("currency") || "EUR";
@@ -163,8 +165,10 @@ export const actions: Actions = {
       rechnungsdatum,
       leistungsDatum,
       faelligkeitsDatum,
+      leistungszeitraum,
       customerName,
       customerAddressBlock,
+      customerCountry,
       nettoCents,
       ustCents,
       bruttoCents,
