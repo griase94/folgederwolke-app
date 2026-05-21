@@ -33,26 +33,44 @@ import { env } from "$lib/server/env.js";
  *
  * `income` + `expenses` are the two transaction tables in this codebase
  * (no unified `transactions` table; see drizzle schema).
+ *
+ * Buchhaltung-completeness additions (cycle 2):
+ * - `member_beitrags` — Beitragspositionen per member per year (in members.ts)
+ * - `donations` — separate donations table (donations.ts)
+ * - `kategorien` — Buchungskategorien for income/expense rows (kategorien.ts)
+ * - `audit_log` — Änderungshistorie / GoBD-adjacent (audit_log.ts)
  */
 const TABLES = [
   "members",
+  "member_beitrags",
   "projects",
   "customers",
   "income",
   "expenses",
   "invoices",
   "auslagen_submissions",
+  "donations",
+  "kategorien",
   "settings",
   "files",
+  "audit_log",
 ] as const;
 
 type RowObj = Record<string, unknown>;
+
+/**
+ * Separator used in all exported CSV files.
+ * Semicolon is the de-DE list separator expected by LibreOffice Calc and
+ * Excel (German locale) when opening a .csv file directly. This avoids the
+ * need for the import wizard in the most common user scenario.
+ */
+const CSV_SEP = ";";
 
 function csvEscape(v: unknown): string {
   if (v === null || v === undefined) return "";
   const s = typeof v === "object" ? JSON.stringify(v) : String(v);
   if (
-    s.includes(",") ||
+    s.includes(CSV_SEP) ||
     s.includes('"') ||
     s.includes("\n") ||
     s.includes("\r")
@@ -65,9 +83,9 @@ function csvEscape(v: unknown): string {
 function rowsToCsv(rows: RowObj[]): string {
   if (rows.length === 0) return "";
   const cols = Object.keys(rows[0]!);
-  const lines = [cols.join(",")];
+  const lines = [cols.join(CSV_SEP)];
   for (const row of rows) {
-    lines.push(cols.map((c) => csvEscape(row[c])).join(","));
+    lines.push(cols.map((c) => csvEscape(row[c])).join(CSV_SEP));
   }
   return lines.join("\n") + "\n";
 }
@@ -126,6 +144,12 @@ export async function buildBackupZip(): Promise<Uint8Array> {
         "Komplettes Daten-Backup als CSV. **NICHT ein Ersatz für die Festschreibungs-bundle.zip**",
         "— für die Steuerberater-Übergabe nutze stattdessen",
         "`/jahresabschluss/<year>/export/files.zip` (enthält Belege als PDF/JPG plus Signatur).",
+        "",
+        "## CSV-Format",
+        "",
+        "Alle CSV-Dateien verwenden **Semikolon (`;`) als Trennzeichen** (de-DE-Konvention).",
+        "LibreOffice Calc und Excel (deutsche Locale) erkennen das Trennzeichen beim",
+        "direkten Öffnen automatisch. Zeichensatz: UTF-8.",
         "",
         "## Inhalt",
         "",

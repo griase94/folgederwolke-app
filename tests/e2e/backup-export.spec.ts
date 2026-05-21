@@ -51,14 +51,18 @@ async function signInAsAdmin(page: Page): Promise<void> {
 
 const EXPECTED_FILES = [
   "members.csv",
+  "member_beitrags.csv",
   "projects.csv",
   "customers.csv",
   "income.csv",
   "expenses.csv",
   "invoices.csv",
   "auslagen_submissions.csv",
+  "donations.csv",
+  "kategorien.csv",
   "settings.csv",
   "files.csv",
+  "audit_log.csv",
   "manifest.json",
   "README.md",
 ] as const;
