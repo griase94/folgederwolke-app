@@ -23,7 +23,7 @@ import {
 import fontkit from "@pdf-lib/fontkit";
 import { loadFontBytes } from "./fonts.js";
 import { loadAssetBytes } from "./assets.js";
-import { BRAND_ROSA, BRAND_ROSA_SOFT, BODY, WHITE } from "./colors.js";
+import { BRAND_ROSA, BRAND_ROSA_DEEP, BODY, WHITE } from "./colors.js";
 
 // Geometry
 const MM = 72 / 25.4;
@@ -44,7 +44,9 @@ const SIZE_META_LABEL = 10;
 const SIZE_META_VALUE = 10;
 const SIZE_SECTION_TITLE = 11;
 const SIZE_BODY = 10;
-const SIZE_TABLE_HEADER = 10;
+// Design review: header + Gesamtsumme labels render at 11pt in reference,
+// one step above the 10pt body — restores hierarchy + makes rosa bands "heavier".
+const SIZE_TABLE_HEADER = 11;
 const SIZE_TABLE_CELL = 10;
 const SIZE_FOOTER = 8;
 
@@ -71,7 +73,8 @@ export interface RechnungV2Input {
   };
   rechnungsnummer: string;
   rechnungsdatum: string;
-  leistungszeitraum: string | null;
+  /** Required per § 14 Abs. 4 Nr. 6 UStG. Use "Leistungsdatum entspricht Rechnungsdatum" when service date = invoice date. */
+  leistungszeitraum: string;
   bezeichnung: string;
   leistungsBeschreibung: string | null;
   nettoCents: number;
@@ -234,7 +237,9 @@ export async function renderRechnungV2(
     color: BRAND_ROSA,
   });
 
-  const subtitleBoldY = wordmarkBaselineY - 4.5 * MM;
+  // Design review: pull the bold subtitle up so it tucks under the wordmark's
+  // descenders — magazine-cover feel, was 4.5mm "safe gap" before.
+  const subtitleBoldY = wordmarkBaselineY - 2.5 * MM;
   page.drawText(`${input.verein.name} - ${input.verein.adresseSingleLine}`, {
     x: MARGIN_LEFT,
     y: subtitleBoldY,
@@ -269,10 +274,15 @@ export async function renderRechnungV2(
   );
 
   // 2. Address block + meta block
-  const addressTopY = PAGE_H - MARGIN_TOP - 53 * MM;
+  // Design review: tightened from -53mm to -39mm — removes 13.4mm of dead air
+  // above the customer block to match the reference's confident proportion
+  // (italic baseline → customer name ≈ 8.5mm gap, was 22mm).
+  const addressTopY = PAGE_H - MARGIN_TOP - 39 * MM;
   const addressLeftX = MARGIN_LEFT;
   const addressMaxW = 80 * MM;
-  const addressLineH = 5 * MM;
+  // Design review: 5mm was too generous for 10pt — German postal addresses
+  // render tighter (1.13 line-height ≈ 4mm).
+  const addressLineH = 4 * MM;
 
   const customerLines: string[] = [];
   customerLines.push(input.customer.name);
@@ -281,8 +291,12 @@ export async function renderRechnungV2(
     .map((l) => l.trim())
     .filter(Boolean);
   customerLines.push(...blockLines);
+  // UPU recommendation: foreign destination country in UPPERCASE on the last
+  // address line (and country line only present when country !== DE).
   if (input.customer.country && input.customer.country.toUpperCase() !== "DE") {
-    customerLines.push(countryLabelForAlpha2(input.customer.country));
+    customerLines.push(
+      countryLabelForAlpha2(input.customer.country).toUpperCase(),
+    );
   }
 
   let addressY = addressTopY;
@@ -298,16 +312,25 @@ export async function renderRechnungV2(
     addressY -= addressLineH;
   }
 
-  // Meta block
-  const metaRightX = PAGE_W - MARGIN_RIGHT;
-  const metaLabelLeftX = MARGIN_LEFT + 95 * MM;
-  const metaTopY = addressTopY;
+  // Meta block — two fixed anchors (design review):
+  //   - Labels right-aligned to a "colon column" (clean right edge)
+  //   - Values left-aligned 4mm to the right of that column (clean left edge)
+  // Replaces the per-row floating geometry that produced 3 different gutters.
+  const metaColonRightX = PAGE_W - MARGIN_RIGHT - 32 * MM;
+  const metaValueLeftX = metaColonRightX + 4 * MM;
+  // Optical bottom-align label baseline with customer-name baseline. Reference
+  // has the label 0.6mm below the customer name (bold tracking pulls the
+  // visual baseline up); compensate.
+  const metaTopY = addressTopY - 0.6 * MM;
   const metaRowH = 5 * MM;
 
   const metaRows: Array<{ label: string; value: string }> = [
     { label: "Rechnung Nr.:", value: input.rechnungsnummer },
     { label: "Rechnungsdatum:", value: formatDE(input.rechnungsdatum) },
   ];
+  // Leistungszeitraum is mandatory per § 14 Abs. 4 Nr. 6 UStG — but defensively
+  // collapse the row at render time so a stale older invoice doesn't crash.
+  // Form + DB constraints (Task: legal-fixes) enforce non-null at create time.
   if (input.leistungszeitraum && input.leistungszeitraum.trim().length > 0) {
     metaRows.push({
       label: "Leistungszeitraum:",
@@ -318,18 +341,15 @@ export async function renderRechnungV2(
   let metaY = metaTopY;
   for (const row of metaRows) {
     const labelW = bold.widthOfTextAtSize(row.label, SIZE_META_LABEL);
-    const valueW = regular.widthOfTextAtSize(row.value, SIZE_META_VALUE);
-    const valueX = metaRightX - valueW;
-    const labelX = Math.max(metaLabelLeftX, valueX - 8 * MM - labelW);
     page.drawText(row.label, {
-      x: labelX,
+      x: metaColonRightX - labelW,
       y: metaY,
       size: SIZE_META_LABEL,
       font: bold,
       color: BODY,
     });
     page.drawText(row.value, {
-      x: valueX,
+      x: metaValueLeftX,
       y: metaY,
       size: SIZE_META_VALUE,
       font: regular,
@@ -370,11 +390,14 @@ export async function renderRechnungV2(
   );
 
   // 5. Table
+  // Design review: column proportions rebalanced — Pos slightly wider (14 vs
+  // 12) for "1." centering, Menge narrower (18 vs 22), Preis wider (30 vs 27)
+  // to fit "1.234,56 €" with thousands separator.
   const tableX = MARGIN_LEFT;
   const tableW = CONTENT_W;
-  const colPosW = 12 * MM;
-  const colMengeW = 22 * MM;
-  const colPreisW = 27 * MM;
+  const colPosW = 14 * MM;
+  const colMengeW = 18 * MM;
+  const colPreisW = 30 * MM;
   const colBeschrW = tableW - colPosW - colMengeW - colPreisW;
   const colPosX = tableX;
   const colBeschrX = colPosX + colPosW;
@@ -385,8 +408,11 @@ export async function renderRechnungV2(
   const tableTopY = bodyY - 10 * MM;
   const headerH = 7 * MM;
 
-  drawRect(page, tableX, tableTopY - headerH, tableW, headerH, BRAND_ROSA);
-  const headerTextY = tableTopY - headerH + 2.2 * MM;
+  // Design review: BRAND_ROSA_DEEP (not BRAND_ROSA) for fills under WHITE text
+  // — gives ≥3.5:1 contrast so the headers actually read.
+  drawRect(page, tableX, tableTopY - headerH, tableW, headerH, BRAND_ROSA_DEEP);
+  // Design review: 2.5mm padTop centers 11pt cap inside 7mm band (was 2.2).
+  const headerTextY = tableTopY - headerH + 2.5 * MM;
   page.drawText("Pos.", {
     x: colPosX + 2 * MM,
     y: headerTextY,
@@ -449,17 +475,21 @@ export async function renderRechnungV2(
   const dataRowH = Math.max(8 * MM, cellPadTop * 2 + lineH * totalDataLines);
   const dataBottomY = dataTopY - dataRowH;
 
+  // Design review: top-align Pos/Menge/Preis to the FIRST Beschreibung line
+  // (was vertically centered — floated mid-cell on multi-line rows).
+  const cellTopBaselineY = dataTopY - cellPadTop - SIZE_TABLE_CELL * 0.8;
+
   const posText = "1.";
   const posW = regular.widthOfTextAtSize(posText, SIZE_TABLE_CELL);
   page.drawText(posText, {
     x: colPosX + (colPosW - posW) / 2,
-    y: dataBottomY + dataRowH / 2 - SIZE_TABLE_CELL / 3,
+    y: cellTopBaselineY,
     size: SIZE_TABLE_CELL,
     font: regular,
     color: BODY,
   });
 
-  let bY = dataTopY - cellPadTop - SIZE_TABLE_CELL * 0.8;
+  let bY = cellTopBaselineY;
   for (const line of wrappedBez) {
     page.drawText(line, {
       x: colBeschrX + cellPadX,
@@ -485,7 +515,7 @@ export async function renderRechnungV2(
   const mengeW = regular.widthOfTextAtSize(mengeText, SIZE_TABLE_CELL);
   page.drawText(mengeText, {
     x: colMengeX + colMengeW - mengeW - cellPadX,
-    y: dataBottomY + dataRowH / 2 - SIZE_TABLE_CELL / 3,
+    y: cellTopBaselineY,
     size: SIZE_TABLE_CELL,
     font: regular,
     color: BODY,
@@ -495,31 +525,30 @@ export async function renderRechnungV2(
   const preisW = regular.widthOfTextAtSize(preisText, SIZE_TABLE_CELL);
   page.drawText(preisText, {
     x: colPreisRightX - preisW - cellPadX,
-    y: dataBottomY + dataRowH / 2 - SIZE_TABLE_CELL / 3,
+    y: cellTopBaselineY,
     size: SIZE_TABLE_CELL,
     font: regular,
     color: BODY,
   });
 
-  // Soft-rosa divider line under the data row.
-  page.drawRectangle({
-    x: tableX,
-    y: dataBottomY - 0.15 * MM,
-    width: tableW,
-    height: 0.3 * MM,
-    color: BRAND_ROSA_SOFT,
-  });
+  // Design review: drop the 0.3mm soft-rosa hairline between data row and
+  // Gesamtsumme — the color change between cells provides the divider.
 
-  // Gesamtsumme row
+  // Gesamtsumme row — Design review:
+  //   - LABEL cell on BRAND_ROSA (was BRAND_ROSA_SOFT — white text was unreadable)
+  //   - VALUE cell on BRAND_ROSA_DEEP (was BRAND_ROSA — value pops as "result")
+  //   - No gap between data row and sum row (continuous block)
   const sumRowH = 7 * MM;
-  const sumTopY = dataBottomY - 0.3 * MM;
+  const sumTopY = dataBottomY;
   const sumBottomY = sumTopY - sumRowH;
   const sumLeftW = colPosW + colBeschrW + colMengeW;
-  drawRect(page, tableX, sumBottomY, sumLeftW, sumRowH, BRAND_ROSA_SOFT);
-  drawRect(page, colPreisX, sumBottomY, colPreisW, sumRowH, BRAND_ROSA);
+  drawRect(page, tableX, sumBottomY, sumLeftW, sumRowH, BRAND_ROSA);
+  drawRect(page, colPreisX, sumBottomY, colPreisW, sumRowH, BRAND_ROSA_DEEP);
   const sumLabel = "Gesamtsumme";
   const sumLabelW = bold.widthOfTextAtSize(sumLabel, SIZE_TABLE_HEADER);
-  const sumLabelY = sumBottomY + sumRowH / 2 - SIZE_TABLE_HEADER / 3;
+  // Design review: optical-center factor 0.35 (was 1/3 = 0.33) — undershoots
+  // for 11pt; 0.35 sits the cap perfectly mid-cell.
+  const sumLabelY = sumBottomY + sumRowH / 2 - SIZE_TABLE_HEADER * 0.35;
   page.drawText(sumLabel, {
     x: tableX + sumLeftW - sumLabelW - cellPadX,
     y: sumLabelY,
@@ -537,6 +566,13 @@ export async function renderRechnungV2(
   });
 
   // 6. Body paragraphs after table
+  // Design review: rebuild rhythm on a consistent 7mm body baseline,
+  // with a 12mm closing-block break before "Mit freundlichen Grüßen",
+  // and tight signature stack (5.5mm + 4.5mm). Reference template uses
+  // ~8mm body leading + ~13.5mm closing break.
+  const BODY_LEADING = 7 * MM;
+  const CLOSING_BREAK = 12 * MM;
+
   let p = sumBottomY - 9 * MM;
   page.drawText("Gemäß § 19 UStG wird keine Umsatzsteuer ausgewiesen.", {
     x: MARGIN_LEFT,
@@ -545,7 +581,7 @@ export async function renderRechnungV2(
     font: italic,
     color: BODY,
   });
-  p -= 7 * MM;
+  p -= BODY_LEADING;
   page.drawText(
     "Zahlungsbedingungen: Zahlung innerhalb von 14 Tagen ab Rechnungseingang ohne Abzüge.",
     {
@@ -556,7 +592,7 @@ export async function renderRechnungV2(
       color: BODY,
     },
   );
-  p -= 5 * MM;
+  p -= BODY_LEADING;
   page.drawText(
     "Bei Rückfragen stehe ich selbstverständlich jederzeit gerne zur Verfügung.",
     {
@@ -567,7 +603,7 @@ export async function renderRechnungV2(
       color: BODY,
     },
   );
-  p -= 9 * MM;
+  p -= CLOSING_BREAK;
   page.drawText("Mit freundlichen Grüßen", {
     x: MARGIN_LEFT,
     y: p,
@@ -575,7 +611,7 @@ export async function renderRechnungV2(
     font: regular,
     color: BODY,
   });
-  p -= 8 * MM;
+  p -= 5.5 * MM;
   page.drawText(input.kassenwaertName, {
     x: MARGIN_LEFT,
     y: p,
@@ -612,7 +648,8 @@ export async function renderRechnungV2(
   const iconBoxH = 11 * MM;
   const iconBottomY = footerBottomY + 18 * MM;
   const colTextBaseY = footerBottomY + 13 * MM;
-  const colTextLineH = 3.8 * MM;
+  // Design review: 3.4mm matches reference footer leading (was 3.8 — too loose).
+  const colTextLineH = 3.4 * MM;
 
   const colCenters = [
     MARGIN_LEFT + colSpacing * 0.5,

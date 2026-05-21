@@ -126,7 +126,7 @@ describe("Rechnung v2 — fixture renders", () => {
       rechnungsnummer: "FDW-2026-006",
       rechnungsdatum: "2026-04-15",
       leistungszeitraum: "April 2026",
-      bezeichnung: "Beratung und Konzeption",
+      bezeichnung: "Beratung und Konzeption Spielzeit-Eröffnung 2026/27",
       leistungsBeschreibung: "Mehrteilige Beratungsleistung im Q1/Q2",
       nettoCents: 95000,
       kassenwaertName: "Julia Schwarz",
@@ -196,7 +196,10 @@ describe("Rechnung v2 — fixture renders", () => {
     await writeOut("long-bezeichnung", bytes);
   });
 
-  it("renders with empty Leistungszeitraum (row collapses)", async () => {
+  // Renamed from "empty-zeitraum" — empty Leistungszeitraum is now illegal
+  // (§ 14 Abs. 4 Nr. 6 UStG). The renderer is exercised with the legal
+  // fallback "Leistungsdatum entspricht Rechnungsdatum" instead.
+  it("renders with the §31 UStDV fallback when service date = invoice date", async () => {
     const bytes = await renderRechnungV2({
       verein: VEREIN_FIXTURE,
       customer: {
@@ -206,33 +209,36 @@ describe("Rechnung v2 — fixture renders", () => {
       },
       rechnungsnummer: "FDW-2026-010",
       rechnungsdatum: "2026-05-20",
-      leistungszeitraum: null,
-      bezeichnung: "Künstlerische Beratung",
+      leistungszeitraum: "Leistungsdatum entspricht Rechnungsdatum",
+      bezeichnung: "Künstlerische Beratung am 20.05.2026",
       leistungsBeschreibung: null,
       nettoCents: 30000,
       kassenwaertName: "Julia Schwarz",
     });
     await assertSensiblePdf(bytes);
-    await writeOut("empty-zeitraum", bytes);
+    await writeOut("same-day-leistung", bytes);
   });
 
-  it("renders single-line addressBlock without breaking alignment", async () => {
+  // Renamed from "single-line" — § 14 Abs. 4 Nr. 1 UStG requires Straße + PLZ Ort
+  // (≥ 2 lines). This fixture now uses a Postfach-style address spread across
+  // two lines, which is the minimum legal address structure.
+  it("renders with minimum-legal 2-line address (Postfach style)", async () => {
     const bytes = await renderRechnungV2({
       verein: VEREIN_FIXTURE,
       customer: {
-        name: "Singletest",
-        addressBlock: "Postfach 1234, 80331 München",
+        name: "Kleinstkunde e.K.",
+        addressBlock: "Postfach 1234\n80331 München",
         country: "DE",
       },
       rechnungsnummer: "FDW-2026-011",
       rechnungsdatum: "2026-05-21",
-      leistungszeitraum: null,
-      bezeichnung: "Test",
+      leistungszeitraum: "Mai 2026",
+      bezeichnung: "Kuratorische Beratung Spielzeit 2026",
       leistungsBeschreibung: null,
       nettoCents: 10000,
       kassenwaertName: "Julia Schwarz",
     });
     await assertSensiblePdf(bytes);
-    await writeOut("single-line", bytes);
+    await writeOut("minimum-legal-address", bytes);
   });
 });

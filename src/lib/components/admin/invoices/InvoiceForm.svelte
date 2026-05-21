@@ -227,17 +227,19 @@
 		</div>
 
 		<div>
-			<label for="leistungszeitraum" class="mb-1 block text-sm font-medium">Leistungszeitraum (optional)</label>
+			<label for="leistungszeitraum" class="mb-1 block text-sm font-medium">Leistungszeitraum <span class="text-destructive">*</span></label>
 			<input
 				type="text"
 				id="leistungszeitraum"
 				name="leistungszeitraum"
 				bind:value={leistungszeitraum}
+				minlength="3"
 				maxlength="200"
+				required
 				placeholder="z. B. Februar 2026"
 				class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 			/>
-			<p class="mt-1 text-xs text-muted-foreground">Freitext — erscheint im Rechnungs-Kopf neben Datum und Nr.</p>
+			<p class="mt-1 text-xs text-muted-foreground">Pflichtfeld nach § 14 Abs. 4 Nr. 6 UStG. Freitext — z.&nbsp;B. „Februar 2026", „21.02.2026" oder „Leistungsdatum entspricht Rechnungsdatum".</p>
 		</div>
 
 		<div>

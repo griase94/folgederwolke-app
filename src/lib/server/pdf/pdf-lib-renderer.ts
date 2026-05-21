@@ -15,7 +15,7 @@ import type {
   InvoiceRenderInput,
   InvoiceRenderOutput,
 } from "./invoice.js";
-import { renderRechnungV2 } from "./templates/rechnung-v2/index.js";
+import { renderRechnungV2, formatDE } from "./templates/rechnung-v2/index.js";
 
 function adresseLines(adresse: string): { line1: string; line2: string } {
   const lines = (adresse ?? "")
@@ -59,7 +59,13 @@ export class PdfLibInvoiceRenderer implements InvoicePdfRenderer {
       },
       rechnungsnummer: input.invoiceNumber,
       rechnungsdatum: input.rechnungsdatum,
-      leistungszeitraum: input.leistungszeitraum ?? null,
+      // § 14 Abs. 4 Nr. 6 UStG fallback when neither leistungszeitraum nor
+      // leistungsDatum is set on a legacy/snapshot input.
+      leistungszeitraum:
+        input.leistungszeitraum ??
+        (input.leistungsDatum
+          ? formatDE(input.leistungsDatum)
+          : "Leistungsdatum entspricht Rechnungsdatum"),
       bezeichnung: input.bezeichnung,
       leistungsBeschreibung: input.leistungsBeschreibung ?? null,
       nettoCents: input.nettoCents,

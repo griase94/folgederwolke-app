@@ -116,21 +116,32 @@ export const createInvoiceSchema = z
       .optional()
       .or(z.literal(""))
       .transform((v) => (v ? v : null)),
+    // § 14 Abs. 4 Nr. 5 UStG + BFH V R 28/15: Bezeichnung muss die Leistung
+    // eindeutig identifizieren. Min 5 chars + reject generic placeholders.
     bezeichnung: z
       .string()
-      .min(3, "Bezeichnung muss mindestens 3 Zeichen haben")
-      .max(200, "Bezeichnung zu lang"),
+      .min(5, "Bezeichnung muss mindestens 5 Zeichen haben")
+      .max(200, "Bezeichnung zu lang")
+      .refine(
+        (v) =>
+          !/^(leistung|beratung|spende|dienstleistung|sonstiges|service|arbeit|honorar|rechnung)\s*$/i.test(
+            v.trim(),
+          ),
+        "Bezeichnung zu generisch — bitte die Leistung konkret benennen (z.B. mit Datum, Veranstaltungsname)",
+      ),
     leistungsBeschreibung: z
       .string()
       .max(2000, "Leistungsbeschreibung zu lang")
       .optional()
       .or(z.literal("")),
+    // Leistungszeitraum is MANDATORY per § 14 Abs. 4 Nr. 6 UStG. Empty
+    // string would produce a non-compliant invoice. Reject at the form/Zod
+    // boundary so the renderer can rely on a non-empty value.
     leistungszeitraum: z
       .string()
+      .min(3, "Leistungszeitraum ist Pflicht (§ 14 Abs. 4 Nr. 6 UStG)")
       .max(200, "Leistungszeitraum zu lang")
-      .optional()
-      .or(z.literal(""))
-      .transform((v) => (v && v.trim() ? v.trim() : null)),
+      .transform((v) => v.trim()),
     nettoCents: z.coerce
       .number()
       .int("Betrag muss ganzzahlig in Cent sein")
@@ -290,7 +301,7 @@ export async function createInvoice(
         leistungsBeschreibung: input.leistungsBeschreibung
           ? input.leistungsBeschreibung
           : null,
-        leistungszeitraum: input.leistungszeitraum ?? null,
+        leistungszeitraum: input.leistungszeitraum,
         pdfStatus: "queued",
         driveStatus: "pending",
         createdByUserId: actorUserId,
@@ -507,7 +518,7 @@ async function loadRenderInput(invoiceId: string): Promise<InvoiceRenderInput> {
     rechnungsdatum: inv.rechnungsdatum,
     leistungsDatum: inv.leistungsDatum ?? null,
     faelligkeitsDatum: inv.faelligkeitsDatum ?? null,
-    leistungszeitraum: inv.leistungszeitraum ?? null,
+    leistungszeitraum: inv.leistungszeitraum,
     verein: {
       name: env.VEREIN_NAME || "Folge der Wolke e.V.",
       adresse: env.VEREIN_ADRESSE || "Westermuehlstrasse 6\n80469 Muenchen",
