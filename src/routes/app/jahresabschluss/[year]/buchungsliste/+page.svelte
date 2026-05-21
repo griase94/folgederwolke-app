@@ -10,4 +10,5 @@
 	filters={data.filters}
 	rows={data.rows}
 	allRowsCount={data.allRowsCount}
+	closed={data.closed}
 />

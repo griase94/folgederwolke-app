@@ -10,4 +10,5 @@
 	rows={data.rows}
 	totals={data.totals}
 	bescheinigungEnabled={data.bescheinigungEnabled}
+	closed={data.closed}
 />
