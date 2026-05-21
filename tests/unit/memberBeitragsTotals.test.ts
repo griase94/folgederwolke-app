@@ -17,7 +17,7 @@
  *   - `gezahlt_am`   (date paid, nullable — NOT bezahlt_am)
  */
 
-import { describe, expect, it, beforeEach, afterAll } from "vitest";
+import { describe, expect, it, beforeAll, beforeEach, afterAll } from "vitest";
 import postgres from "postgres";
 import { memberBeitragsTotals } from "$lib/server/domain/members";
 
@@ -32,13 +32,38 @@ const SEED_YEAR = 2025;
 
 describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
   let sql: ReturnType<typeof postgres>;
+  // Number of fixture-seeded members already in the DB (austritts_datum
+  // IS NULL) when this file starts. Captured once in beforeAll so each
+  // test can assert deltas against it, instead of absolute counts that
+  // would couple to the global seed shape. The seed currently ships 5
+  // active fixture members but we don't hard-code that — read it.
+  let baselineActiveCount = 0;
+
+  beforeAll(async () => {
+    // Capture the active-member baseline so memberCount assertions can
+    // express deltas instead of absolutes.
+    const probe = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
+    try {
+      const rows = await probe<{ c: string }[]>`
+        SELECT COUNT(*)::text AS c FROM members WHERE austritts_datum IS NULL
+      `;
+      baselineActiveCount = Number(rows[0]?.c ?? 0);
+    } finally {
+      await probe.end();
+    }
+  });
 
   beforeEach(async () => {
     sql = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
-    // P1-B8 fix: explicit INSERTs replace the prior comment placeholder.
-    // member_beitrags references members(id) ON DELETE CASCADE, so the
-    // TRUNCATE … CASCADE cleans both tables in one shot.
-    await sql`TRUNCATE members, member_beitrags RESTART IDENTITY CASCADE`;
+    // Scoped cleanup: only delete OUR three test members (m1/m2/m3). Don't
+    // TRUNCATE — the c1-eur-pdf-union + c1-eur-union-roundtrip tests
+    // require fixture members from the global seed to still exist.
+    // member_beitrags ON DELETE CASCADE removes related rows automatically.
+    await sql`DELETE FROM members WHERE id IN (${m1}, ${m2}, ${m3})`;
+    // Wipe ALL beitrags for SEED_YEAR so sum assertions count only the
+    // beitrags this beforeEach inserts. c1-eur tests use different years
+    // (2028 / 2031) so they're unaffected.
+    await sql`DELETE FROM member_beitrags WHERE year = ${SEED_YEAR}`;
     await sql`
       INSERT INTO members (id, vorname, nachname, email, role)
       VALUES
@@ -58,10 +83,11 @@ describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
   });
 
   afterAll(async () => {
-    // Final cleanup so subsequent test files don't see our fake members.
+    // Scoped cleanup so subsequent test files still see the global seed's
+    // fixture members. Only the three rows we inserted leave with us.
     const cleanup = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
     try {
-      await cleanup`TRUNCATE members, member_beitrags RESTART IDENTITY CASCADE`;
+      await cleanup`DELETE FROM members WHERE id IN (${m1}, ${m2}, ${m3})`;
     } finally {
       await cleanup.end();
     }
@@ -71,7 +97,9 @@ describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
     const totals = await memberBeitragsTotals(SEED_YEAR);
     // memberCount = active members (austritts_datum IS NULL). Cycle-2 fix:
     // discriminator is now paid_cents < betrag_cents, not gezahlt_am IS NULL.
-    expect(totals.memberCount).toBe(3);
+    // We add 3 test members, none with austritts_datum, so the count grows
+    // by exactly 3 from the seeded baseline.
+    expect(totals.memberCount).toBe(baselineActiveCount + 3);
     expect(totals.paidCents).toBe(6000); // 60,00 €
     expect(totals.offenCents).toBe(6000); // 60,00 €
   });
@@ -98,8 +126,9 @@ describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
     // GREATEST(betrag_cents - paid_cents, 0) (3000).
     const mut = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
     try {
-      // Wipe existing member_beitrags so the single partial row is the only fact.
-      await mut`TRUNCATE member_beitrags RESTART IDENTITY CASCADE`;
+      // Wipe SEED_YEAR beitrags so only our partial row contributes.
+      // (year-scoped to keep other tests' fixtures intact.)
+      await mut`DELETE FROM member_beitrags WHERE year = ${SEED_YEAR}`;
       await mut`
         INSERT INTO member_beitrags (member_id, year, betrag_cents, paid_cents, gezahlt_am)
         VALUES (${m1}, ${SEED_YEAR}, 6000, 3000, NULL)
@@ -115,7 +144,7 @@ describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
   it("handles overpayment: paid_cents=7000, betrag_cents=6000 → 70 € paid + 0 € offen (GREATEST clamp)", async () => {
     const mut = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
     try {
-      await mut`TRUNCATE member_beitrags RESTART IDENTITY CASCADE`;
+      await mut`DELETE FROM member_beitrags WHERE year = ${SEED_YEAR}`;
       await mut`
         INSERT INTO member_beitrags (member_id, year, betrag_cents, paid_cents, gezahlt_am)
         VALUES (${m1}, ${SEED_YEAR}, 6000, 7000, ${`${SEED_YEAR}-05-01`})
@@ -134,7 +163,7 @@ describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
     // semantic recognises full payment via paid_cents >= betrag_cents.
     const mut = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
     try {
-      await mut`TRUNCATE member_beitrags RESTART IDENTITY CASCADE`;
+      await mut`DELETE FROM member_beitrags WHERE year = ${SEED_YEAR}`;
       await mut`
         INSERT INTO member_beitrags (member_id, year, betrag_cents, paid_cents, gezahlt_am)
         VALUES (${m1}, ${SEED_YEAR}, 6000, 6000, NULL)
@@ -158,6 +187,7 @@ describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
       await mut.end();
     }
     const totals = await memberBeitragsTotals(SEED_YEAR);
-    expect(totals.memberCount).toBe(2);
+    // baseline + 2 active test members (m1, m2; m3 just became inactive).
+    expect(totals.memberCount).toBe(baselineActiveCount + 2);
   });
 });
