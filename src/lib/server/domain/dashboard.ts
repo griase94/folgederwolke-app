@@ -534,8 +534,12 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
 // Recent activity feed
 // ---------------------------------------------------------------------------
 
-/** Friendly label builder for audit log actions */
-function buildActivityLabel(
+/**
+ * Friendly label builder for audit log actions.
+ *
+ * Exported for the C4-DASH-lite unit test (entityLabels.session = "Sitzung").
+ */
+export function buildActivityLabel(
   action: string,
   entityKind: string,
   entityBusinessId: string | null,
@@ -555,6 +559,7 @@ function buildActivityLabel(
     kategorie: "Kategorie",
     settings: "Einstellungen",
     zahlungsart: "Zahlungsart",
+    session: "Sitzung",
   };
 
   const actionLabels: Record<string, string> = {
