@@ -38,16 +38,27 @@ Buchungsjahr assignment. Never use `new Date().getFullYear()`.
 Every income/expense row carries a `sphere` enum value (`ideeller`, `vermoegen`,
 `zweckbetrieb`, `wirtschaftlich`). Never infer sphere from category alone.
 
-### 5. FileStorage interface — not drive client directly
+### 5. FileStorage interface — not Blob/Drive client directly (Phase 9)
 
 Callers upload/download/archive files via `getFileStorage()` from
 `src/lib/server/files/storage.ts` (`FileStorage` interface). Never import
-`drive-impl.ts` or `local-fs-impl.ts` directly.
+`vercel-blob-impl.ts` or `local-fs-impl.ts` directly. Never import
+`@vercel/blob` outside the impl file (enforced by ESLint
+`no-restricted-imports`).
 
-The active implementation is selected by the `STORAGE_BACKEND` env var:
+`fileViewUrl(fileId)` and `fileThumbnailUrl(fileId)` are exported from
+`storage.ts` (route URL builders, no DB lookup).
 
-- `drive` (default, prod) → `src/lib/server/files/drive-impl.ts`
-- `local-fs` (dev + test) → `src/lib/server/files/local-fs-impl.ts`, writes to `FILE_STORAGE_ROOT`
+The active implementation is selected by `STORAGE_BACKEND` env var:
+
+- `blob` (default, prod) → Vercel Blob private store in `fra1`
+- `local-fs` (dev + test) → `LocalFsFileStorage` writing to `FILE_STORAGE_ROOT`
+
+Soft-delete is the only delete mechanism reachable from app code (set
+`files.deleted_at` + `delete_reason`). The only `blob.del()` calls live
+inside (a) `archive()` after SHA-verify, and (b) the upload pipeline's
+dedup-cleanup helper. ESLint guards `@vercel/blob` imports; CI grep
+(`scripts/check-internal-del.sh`) guards `_internalDelByPath` callsites.
 
 ### 6. Audit log is append-only (ADR-0004)
 
@@ -112,6 +123,7 @@ run `ALTER ROLE app_runtime WITH LOGIN PASSWORD 'app_runtime'` (and the same for
 | 0008 | Project sphere override                | Accepted             |
 | 0009 | Auth threat model                      | Accepted             |
 | 0010 | Importer business_id deduplication     | Accepted             |
+| 0012 | Blob storage festschreibung control    | Accepted (Phase 9)   |
 
 ---
 
