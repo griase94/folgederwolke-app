@@ -167,11 +167,19 @@ import type { MemberBeitragsTotals } from "$lib/domain/members.js";
  * Matrix header line: `{N} Mitglieder · {X €} offen · {Y €} bezahlt`.
  *
  * Field semantics:
- *   - `memberCount` — total rows in the `members` table. Year-independent so
- *     the header member count stays stable when the user switches between
- *     years in the per-year tab switcher (the open/paid sums vary per year).
- *   - `paidCents`   — Σ betrag_cents WHERE gezahlt_am IS NOT NULL for `year`.
- *   - `offenCents`  — Σ betrag_cents WHERE gezahlt_am IS NULL     for `year`.
+ *   - `memberCount` — active members (austritts_datum IS NULL). Year-
+ *     independent so the header member count stays stable when the user
+ *     switches between years in the per-year tab switcher (the open/paid
+ *     sums vary per year).
+ *   - `paidCents`   — Σ paid_cents for `year`. Discriminator-free: a row
+ *     with paid_cents=3000, betrag_cents=6000 contributes 3000 to paidCents
+ *     AND 3000 to offenCents (partial payment).
+ *   - `offenCents`  — Σ GREATEST(betrag_cents - paid_cents, 0) for `year`.
+ *     The GREATEST clamp ensures overpayments don't subtract from offen.
+ *
+ * Matches the codebase-wide convention used by `v_offene_beitraege`,
+ * `dashboard.ts:221`, `cron-tasks.ts:244`, and `mitglieder/[id]/+page.server.ts:100`
+ * — discriminate by `paid_cents < betrag_cents`, not `gezahlt_am IS NULL`.
  *
  * Column names per `src/lib/server/db/schema/members.ts`:
  *   `betrag_cents`, `paid_cents`, `gezahlt_am` (NOT `bezahlt_am`).
@@ -193,9 +201,9 @@ export async function memberBeitragsTotals(
     offen_cents: string;
   }>(sql`
     SELECT
-      (SELECT COUNT(*) FROM members)::text AS member_count,
-      COALESCE(SUM(CASE WHEN gezahlt_am IS NOT NULL THEN betrag_cents ELSE 0 END), 0)::text AS paid_cents,
-      COALESCE(SUM(CASE WHEN gezahlt_am IS NULL     THEN betrag_cents ELSE 0 END), 0)::text AS offen_cents
+      (SELECT COUNT(*) FROM members WHERE austritts_datum IS NULL)::text AS member_count,
+      COALESCE(SUM(paid_cents), 0)::text                                  AS paid_cents,
+      COALESCE(SUM(GREATEST(betrag_cents - paid_cents, 0)), 0)::text     AS offen_cents
     FROM member_beitrags
     WHERE year = ${year}
   `);

@@ -69,7 +69,8 @@ describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
 
   it("returns memberCount + paidCents + offenCents from member_beitrags table", async () => {
     const totals = await memberBeitragsTotals(SEED_YEAR);
-    // memberCount = total members in members table (3) — NOT only billed.
+    // memberCount = active members (austritts_datum IS NULL). Cycle-2 fix:
+    // discriminator is now paid_cents < betrag_cents, not gezahlt_am IS NULL.
     expect(totals.memberCount).toBe(3);
     expect(totals.paidCents).toBe(6000); // 60,00 €
     expect(totals.offenCents).toBe(6000); // 60,00 €
@@ -88,5 +89,75 @@ describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
     }
     const totals = await memberBeitragsTotals(SEED_YEAR);
     expect(totals.paidCents).toBe(12000);
+  });
+
+  it("handles partial payments: paid_cents=3000, betrag_cents=6000 → 30 € paid + 30 € offen", async () => {
+    // Cycle-2 finding (vorstand + julia): the OLD discriminator
+    // (gezahlt_am IS NULL) would misclassify this row as 60 € offen.
+    // Correct semantic: paidCents += paid_cents (3000), offenCents +=
+    // GREATEST(betrag_cents - paid_cents, 0) (3000).
+    const mut = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
+    try {
+      // Wipe existing member_beitrags so the single partial row is the only fact.
+      await mut`TRUNCATE member_beitrags RESTART IDENTITY CASCADE`;
+      await mut`
+        INSERT INTO member_beitrags (member_id, year, betrag_cents, paid_cents, gezahlt_am)
+        VALUES (${m1}, ${SEED_YEAR}, 6000, 3000, NULL)
+      `;
+    } finally {
+      await mut.end();
+    }
+    const totals = await memberBeitragsTotals(SEED_YEAR);
+    expect(totals.paidCents).toBe(3000);
+    expect(totals.offenCents).toBe(3000);
+  });
+
+  it("handles overpayment: paid_cents=7000, betrag_cents=6000 → 70 € paid + 0 € offen (GREATEST clamp)", async () => {
+    const mut = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
+    try {
+      await mut`TRUNCATE member_beitrags RESTART IDENTITY CASCADE`;
+      await mut`
+        INSERT INTO member_beitrags (member_id, year, betrag_cents, paid_cents, gezahlt_am)
+        VALUES (${m1}, ${SEED_YEAR}, 6000, 7000, ${`${SEED_YEAR}-05-01`})
+      `;
+    } finally {
+      await mut.end();
+    }
+    const totals = await memberBeitragsTotals(SEED_YEAR);
+    expect(totals.paidCents).toBe(7000);
+    // GREATEST(betrag_cents - paid_cents, 0) clamps the negative to 0.
+    expect(totals.offenCents).toBe(0);
+  });
+
+  it("handles paid-without-gezahlt_am: paid_cents=betrag_cents but gezahlt_am NULL → still counts as paid", async () => {
+    // The OLD discriminator would call this row "offen". The correct
+    // semantic recognises full payment via paid_cents >= betrag_cents.
+    const mut = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
+    try {
+      await mut`TRUNCATE member_beitrags RESTART IDENTITY CASCADE`;
+      await mut`
+        INSERT INTO member_beitrags (member_id, year, betrag_cents, paid_cents, gezahlt_am)
+        VALUES (${m1}, ${SEED_YEAR}, 6000, 6000, NULL)
+      `;
+    } finally {
+      await mut.end();
+    }
+    const totals = await memberBeitragsTotals(SEED_YEAR);
+    expect(totals.paidCents).toBe(6000);
+    expect(totals.offenCents).toBe(0);
+  });
+
+  it("memberCount excludes members with austritts_datum (active-only denominator)", async () => {
+    // Cycle-2 finding (vorstand): the original SQL used unfiltered
+    // COUNT(*) FROM members. Active-only is the correct denominator so
+    // ex-members don't dilute the "X von Y bezahlt" UI line.
+    const mut = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
+    try {
+      await mut`UPDATE members SET austritts_datum = '2024-12-31' WHERE id = ${m3}`;
+    } finally {
+      await mut.end();
+    }
+    const totals = await memberBeitragsTotals(SEED_YEAR);
+    expect(totals.memberCount).toBe(2);
   });
 });
