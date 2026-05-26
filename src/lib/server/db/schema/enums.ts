@@ -73,6 +73,7 @@ export const mailTemplateEnum = pgEnum("mail_template", [
   "spende_bescheinigung",
   "beitrag_reminder",
   "invoice_versendet",
+  "auslage_approved",
 ]);
 
 /** Audit-log action verbs (ADR-0004). */
