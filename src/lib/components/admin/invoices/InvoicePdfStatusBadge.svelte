@@ -1,23 +1,30 @@
 <!--
   InvoicePdfStatusBadge — tiny pill showing the PDF generation status of an
   invoice. Color-coded for at-a-glance scanning in the list view.
+
+  Phase 11: derived purely from pdfStatus + presence of pdfFileId. The legacy
+  driveStatus axis is gone — invoices now persist directly to Vercel Blob via
+  the files table, so a successful generation means the blob exists.
 -->
 <script lang="ts">
-	import type { InvoicePdfStatus, InvoiceDriveStatus } from '$lib/domain/invoices.js';
-	import { pdfStatusLabel, driveStatusLabel } from '$lib/domain/invoices.js';
+	import type { InvoicePdfStatus } from '$lib/domain/invoices.js';
+	import { pdfStatusLabel } from '$lib/domain/invoices.js';
 
 	let {
 		pdfStatus,
-		driveStatus = null,
-		showDrive = false
+		hasFile = false
 	}: {
 		pdfStatus: InvoicePdfStatus;
-		driveStatus?: InvoiceDriveStatus;
-		showDrive?: boolean;
+		/** True once the matching files row exists. Belt-and-braces: if pdfStatus
+		 *  is 'generated' but the file is missing (shouldn't happen with the new
+		 *  state machine), we degrade to "Fehler" tone. */
+		hasFile?: boolean;
 	} = $props();
 
-	const meta = $derived(pdfStatusLabel(pdfStatus));
-	const driveLabel = $derived(driveStatusLabel(driveStatus));
+	const effectiveStatus = $derived<InvoicePdfStatus>(
+		pdfStatus === 'generated' && !hasFile ? 'failed' : pdfStatus
+	);
+	const meta = $derived(pdfStatusLabel(effectiveStatus));
 
 	const toneClass = $derived.by(() => {
 		switch (meta.tone) {
@@ -35,13 +42,10 @@
 
 <span
 	class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium {toneClass}"
-	title={driveLabel && showDrive ? `${meta.label} · ${driveLabel}` : meta.label}
+	title={meta.label}
 >
-	{#if pdfStatus === 'running' || pdfStatus === 'queued'}
+	{#if effectiveStatus === 'running' || effectiveStatus === 'queued'}
 		<span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current"></span>
 	{/if}
 	{meta.label}
-	{#if showDrive && driveLabel && driveStatus === 'failed'}
-		<span aria-hidden="true" class="ml-1 text-red-600">⚠</span>
-	{/if}
 </span>

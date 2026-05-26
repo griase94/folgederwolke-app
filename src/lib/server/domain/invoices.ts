@@ -6,22 +6,25 @@
  *   - Business-ID allocation via id-allocator (FDW-{YYYY}-{NNN})
  *   - Festschreibung gate (ADR-0006)
  *   - PDF rendering via the InvoicePdfRenderer interface (pdf-lib default)
- *   - Best-effort Drive upload via the FileStorage interface
+ *   - Vercel Blob persistence via the Phase 9 FileStorage / files-table pipeline
  *   - Async job state machine (invoice_jobs)
  *   - Event bus emissions (invoice.created, invoice.pdf_generated,
  *     invoice.superseded)
  *
- * The PDF generation is engine-agnostic — see §4.1.1 #4. We never reach into
- * a Drive Doc template because the OAuth scope is `drive.file` (the app can
- * only access files it created itself). pdf-lib builds the PDF entirely
- * from the data passed in.
+ * The PDF generation is engine-agnostic — see §4.1.1 #4. pdf-lib builds the
+ * PDF entirely from the data passed in. After render, bytes go to Vercel Blob
+ * at deterministic pathname `rechnungen/<year>/<business_id>[.vN].pdf`, then
+ * a `files` row with `kind='rechnung'` is created, and finally the invoice
+ * row's `pdf_file_id` is set. Only after all three succeed does `pdf_status`
+ * flip to 'generated'.
  *
- * If Drive upload fails, `pdf_bytes` still holds the PDF and `drive_status`
- * is set to 'failed' — the app can serve the bytes directly. Drive becomes
- * optional convenience storage, not load-bearing.
+ * Tamper-evidence: `files.sha256` is anchored into the hash-chained audit_log
+ * at upload time (`invoice.pdf_generated` event handler) so any silent blob
+ * mutation is detectable via the existing chain (ADR-0004).
  */
 
-import { sql, and, desc, eq, isNotNull, isNull, lt } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { sql, and, desc, eq, isNotNull, isNull, like, lt } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "$lib/server/db/index.js";
 import { invoices } from "$lib/server/db/schema/invoices.js";
@@ -29,6 +32,7 @@ import { invoiceJobs } from "$lib/server/db/schema/invoice_jobs.js";
 import { customers } from "$lib/server/db/schema/customers.js";
 import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { projects } from "$lib/server/db/schema/projects.js";
+import { files } from "$lib/server/db/schema/files.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getFileStorage, type FileStorage } from "$lib/server/files/storage.js";
 import { berlinYear } from "$lib/domain/year.js";
@@ -40,7 +44,6 @@ import type {
   InvoiceRenderInput,
 } from "$lib/server/pdf/invoice.js";
 import type {
-  InvoiceDriveStatus,
   InvoicePdfStatus,
   InvoiceRow,
   RechnungenStatus,
@@ -303,7 +306,6 @@ export async function createInvoice(
           : null,
         leistungszeitraum: input.leistungszeitraum,
         pdfStatus: "queued",
-        driveStatus: "pending",
         createdByUserId: actorUserId,
       })
       .returning({ id: invoices.id });
@@ -362,8 +364,48 @@ export async function createInvoice(
 
 export interface InvoiceJobDeps {
   renderer?: InvoicePdfRenderer;
-  /** Pass `null` to skip Drive upload entirely (test mode). */
+  /** Pass `null` to skip blob upload entirely (test mode). */
   storage?: FileStorage | null;
+}
+
+/**
+ * Deterministic blob pathname for the canonical PDF.
+ *
+ *   v1     → `rechnungen/<year>/<businessId>.pdf`
+ *   v2,v3  → `rechnungen/<year>/<businessId>.v<N>.pdf`
+ *
+ * Year is `year_for_booking(invoices.gebucht_am)` — i.e. the booking year, NOT
+ * the upload year. The `files` Festschreibung trigger keys on `uploaded_at`
+ * (see ADR-0012 caveat) — this is accepted for the Verein and documented.
+ */
+function buildInvoicePdfPathname(args: {
+  year: number;
+  businessId: string;
+  version: number;
+}): string {
+  const suffix = args.version <= 1 ? "" : `.v${args.version}`;
+  return `rechnungen/${args.year}/${args.businessId}${suffix}.pdf`;
+}
+
+/**
+ * Count how many `files` rows already exist for this invoice's storage_key
+ * prefix to compute the next version number. v1 is the unsuffixed pathname;
+ * the v2/v3 suffixes match the prefix scan so we always pick a fresh slot.
+ *
+ * Counts soft-deleted rows too so the deterministic pathname never collides
+ * with a tombstoned file (idx_files_storage_key is UNIQUE without a WHERE
+ * predicate — see drizzle/0016_files_table.sql:50).
+ */
+async function nextInvoicePdfVersion(
+  db: ReturnType<typeof getDb>,
+  args: { year: number; businessId: string },
+): Promise<number> {
+  const prefix = `rechnungen/${args.year}/${args.businessId}`;
+  const existing = await db
+    .select({ key: files.storageKey })
+    .from(files)
+    .where(like(files.storageKey, `${prefix}%`));
+  return existing.length + 1;
 }
 
 export async function runInvoiceJob(
@@ -398,37 +440,94 @@ export async function runInvoiceJob(
 
   try {
     const renderInput = await loadRenderInput(job.invoiceId);
-    const { bytes, suggestedFilename } = await renderer.render(renderInput);
+    const { bytes } = await renderer.render(renderInput);
 
+    // Look up year + business_id for the deterministic pathname.
+    const [meta] = await db
+      .select({
+        businessId: invoices.businessId,
+        yearOfBuchung: invoices.yearOfBuchung,
+      })
+      .from(invoices)
+      .where(eq(invoices.id, job.invoiceId))
+      .limit(1);
+    if (!meta) {
+      throw new Error(`runInvoiceJob: invoice ${job.invoiceId} not found`);
+    }
+
+    const year = meta.yearOfBuchung ?? berlinYear(new Date());
+    const businessId = meta.businessId;
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+
+    let fileId: string | null = null;
+    if (storage) {
+      // Pre-check: if THIS invoice's latest existing version has matching
+      // sha (regenerate of an unchanged invoice → deterministic renderer →
+      // identical bytes), reuse it. Scoping to "latest version of THIS
+      // invoice" avoids the edge case where toggling a field then toggling
+      // back would silently repoint at a stale `.v2.pdf` and orphan `.v3.pdf`.
+      const prefix = `rechnungen/${year}/${businessId}`;
+      const existing = await db
+        .select({ id: files.id, sha256: files.sha256 })
+        .from(files)
+        .where(
+          and(like(files.storageKey, `${prefix}%`), isNull(files.deletedAt)),
+        )
+        .orderBy(desc(files.uploadedAt))
+        .limit(1);
+      if (existing[0] && existing[0].sha256 === sha256) {
+        fileId = existing[0].id;
+      } else {
+        const version = await nextInvoicePdfVersion(db, { year, businessId });
+        const pathname = buildInvoicePdfPathname({ year, businessId, version });
+        const originalFilename =
+          version <= 1
+            ? `Rechnung_${businessId}.pdf`
+            : `Rechnung_${businessId}_v${version}.pdf`;
+
+        // Phase A — upload to blob FIRST (no DB lock held during network call).
+        await storage.upload({
+          buffer: bytes,
+          mimeType: "application/pdf",
+          pathname,
+        });
+
+        // Phase B — files INSERT. files_uploaded_by_one_of CHECK requires
+        // exactly one of (user_id, submitter_email). Fall back to a system
+        // marker for cron-driven retries / fire-and-forget jobs without an
+        // actor session (matches plan §"Idempotency / regenerate" I5).
+        const [inserted] = await db
+          .insert(files)
+          .values({
+            storageKey: pathname,
+            storageBackend: "blob",
+            mimeType: "application/pdf",
+            byteSize: BigInt(bytes.byteLength),
+            sha256,
+            originalFilename,
+            kind: "rechnung",
+            uploadedByUserId: actorUserId,
+            uploadedBySubmitterEmail: actorUserId
+              ? null
+              : "system@folgederwolke.local",
+            sourceKind: "app",
+          })
+          .returning({ id: files.id });
+        if (!inserted) {
+          throw new Error("runInvoiceJob: files insert returned no row");
+        }
+        fileId = inserted.id;
+      }
+    }
+
+    // Phase C — flip pdf_status='generated' only after blob + files succeed.
     await db
       .update(invoices)
       .set({
-        pdfBytes: Buffer.from(bytes),
+        pdfFileId: fileId,
         pdfStatus: "generated",
         pdfStatusError: null,
         updatedAt: new Date(),
-      })
-      .where(eq(invoices.id, job.invoiceId));
-
-    // FIXME(Phase 9 follow-up): invoice PDF upload to Blob storage.
-    // The old Drive path used { name, idempotencyKey } and returned { id }.
-    // The new FileStorage interface is pathname-addressed and returns { etag };
-    // wiring the invoice domain to compute a deterministic pathname (e.g.
-    // `rechnungen/<year>/<rechnungsnummer>.pdf`) and to persist a row in the
-    // `files` table is deferred to a follow-up. For now we mark the upload
-    // as skipped so the rest of the job (DB row update, status transition)
-    // keeps working.
-    void storage;
-    void suggestedFilename;
-    const driveStatus: "uploaded" | "failed" | "pending" | "skipped" =
-      "skipped";
-    const drivePdfFileId: string | null = null;
-
-    await db
-      .update(invoices)
-      .set({
-        drivePdfFileId,
-        driveStatus,
       })
       .where(eq(invoices.id, job.invoiceId));
 
@@ -437,28 +536,21 @@ export async function runInvoiceJob(
       .set({ status: "succeeded", finishedAt: new Date(), lastError: null })
       .where(eq(invoiceJobs.id, job.id));
 
-    const [row] = await db
-      .select({ businessId: invoices.businessId })
-      .from(invoices)
-      .where(eq(invoices.id, job.invoiceId))
-      .limit(1);
-
+    // Emit AFTER the row is updated so handlers see the new pdf_file_id.
+    // sha256 + storage_key are forwarded to the audit-log anchor handler.
     await bus.emit("invoice.pdf_generated", {
       invoiceId: job.invoiceId,
-      invoiceBusinessId: row?.businessId ?? "?",
+      invoiceBusinessId: businessId,
       actorUserId,
-      drivePdfFileId,
-      driveStatus,
+      fileId,
+      sha256,
+      byteSize: bytes.byteLength,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await db
       .update(invoices)
-      .set({
-        pdfStatus: "failed",
-        pdfStatusError: message,
-        driveStatus: "failed",
-      })
+      .set({ pdfStatus: "failed", pdfStatusError: message })
       .where(eq(invoices.id, job.invoiceId));
     await db
       .update(invoiceJobs)
@@ -608,7 +700,7 @@ export async function regeneratePdf(
 
   await db
     .update(invoices)
-    .set({ pdfStatus: "queued", driveStatus: "pending" })
+    .set({ pdfStatus: "queued" })
     .where(eq(invoices.id, invoiceId));
 
   void runInvoiceJob(job.id, actorUserId).catch((err) => {
@@ -682,7 +774,6 @@ export async function supersedeInvoice(
         leistungsBeschreibung: old.leistungsBeschreibung,
         leistungszeitraum: old.leistungszeitraum,
         pdfStatus: "queued",
-        driveStatus: "pending",
         supersedesId: old.id,
         createdByUserId: actorUserId,
       })
@@ -829,9 +920,7 @@ export async function listInvoices(
     bruttoCents: Number(inv.bruttoCents),
     currency: inv.currency,
     pdfStatus: inv.pdfStatus as InvoicePdfStatus,
-    driveStatus: (inv.driveStatus ?? null) as InvoiceDriveStatus,
-    drivePdfFileId: inv.drivePdfFileId ?? null,
-    hasPdfBytes: inv.pdfBytes !== null && inv.pdfBytes !== undefined,
+    pdfFileId: inv.pdfFileId ?? null,
     festgeschriebenAt: inv.festgeschriebenAt
       ? inv.festgeschriebenAt.toISOString()
       : null,
@@ -842,147 +931,7 @@ export async function listInvoices(
 }
 
 // ---------------------------------------------------------------------------
-// Live HTML preview - used by the new-invoice route
+// (Phase 11) renderInvoicePreviewHtml + PreviewInput removed — the live
+// preview now renders the real PDF via /api/rechnungen/preview, so there is
+// no second renderer to keep in sync.
 // ---------------------------------------------------------------------------
-
-export interface PreviewInput {
-  bezeichnung: string;
-  leistungsBeschreibung: string | null;
-  rechnungsdatum: string;
-  leistungsDatum: string | null;
-  faelligkeitsDatum: string | null;
-  /** Phase 10 — free-text Leistungszeitraum row. */
-  leistungszeitraum?: string | null;
-  customerName: string;
-  customerAddressBlock: string | null;
-  /** Phase 10 — ISO 3166-1 alpha-2; preview hides Land line for 'DE'. */
-  customerCountry?: string;
-  nettoCents: number;
-  ustCents: number;
-  bruttoCents: number;
-  currency: string;
-  invoiceNumberPreview: string;
-  verein: {
-    name: string;
-    adresse: string;
-    steuernummer: string;
-    vereinsregister: string;
-  };
-}
-
-export function renderInvoicePreviewHtml(opts: PreviewInput): string {
-  // Phase 10: mirror the Rechnung v2 PDF layout in the live preview so admins
-  // see the same colors + structure they'll get in the PDF.
-  // Colors match colors.ts: #f09dff (rosa), #f5beff (soft rosa), #000028 (body).
-  const eur = (c: number) =>
-    (c / 100).toLocaleString("de-DE", {
-      style: "currency",
-      currency: opts.currency,
-      minimumFractionDigits: 2,
-    });
-  const date = (iso: string | null) => {
-    if (!iso) return "";
-    const m = /^\d{4}-\d{2}-\d{2}/.test(iso);
-    if (!m) return iso;
-    return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
-  };
-  const escape = (s: string) =>
-    s
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  const nl = (s: string | null) =>
-    s ? escape(s).replace(/\n/g, "<br />") : "";
-
-  const verName = escape(opts.verein.name);
-  const verAddrSingle = escape(
-    (opts.verein.adresse ?? "")
-      .split(/[\r\n]+/)
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .join(" - "),
-  );
-  const custName = escape(opts.customerName || "(Kund:in wählen)");
-  const custAddr = nl(opts.customerAddressBlock);
-  const bez = escape(opts.bezeichnung || "(Bezeichnung)");
-  const country = (opts.customerCountry ?? "DE").toUpperCase();
-  const showCountry = country && country !== "DE";
-  const countryLabel = showCountry
-    ? `<div style="font-size:13px;color:#000028;">${escape(country)}</div>`
-    : "";
-
-  const metaRows: string[] = [
-    `<tr><td style="font-weight:700;color:#000028;padding:2px 16px 2px 0;text-align:right;">Rechnung Nr.:</td><td style="text-align:right;color:#000028;">${escape(opts.invoiceNumberPreview)}</td></tr>`,
-    `<tr><td style="font-weight:700;color:#000028;padding:2px 16px 2px 0;text-align:right;">Rechnungsdatum:</td><td style="text-align:right;color:#000028;">${escape(date(opts.rechnungsdatum))}</td></tr>`,
-  ];
-  if (opts.leistungszeitraum && opts.leistungszeitraum.trim()) {
-    metaRows.push(
-      `<tr><td style="font-weight:700;color:#000028;padding:2px 16px 2px 0;text-align:right;">Leistungszeitraum:</td><td style="text-align:right;color:#000028;">${escape(opts.leistungszeitraum.trim())}</td></tr>`,
-    );
-  }
-  const beschrRow = opts.leistungsBeschreibung
-    ? `<div style="font-size:13px;font-style:italic;color:#000028;margin-top:2px;">${nl(opts.leistungsBeschreibung)}</div>`
-    : "";
-
-  return `<div class="invoice-preview" style="font-family:'DejaVu Sans',system-ui,-apple-system,sans-serif;color:#000028;background:#fff;border:1px solid #f5beff;border-radius:14px;padding:28px 32px;max-width:720px;">
-  <!-- Header band -->
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">
-    <div>
-      <div style="font-family:'Anton',Impact,sans-serif;font-size:38px;font-weight:400;line-height:1;color:#f09dff;letter-spacing:0.5px;">RECHNUNG</div>
-      <div style="font-size:11px;font-weight:700;color:#000028;margin-top:6px;">${verName} - ${verAddrSingle}</div>
-      <div style="font-size:10px;font-style:italic;color:#000028;margin-top:2px;">eingetragen im Vereinsregister des AG München unter ${escape(opts.verein.vereinsregister || "")}</div>
-    </div>
-    <!-- Logo placeholder (the PDF embeds the actual brand mark) -->
-    <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#f5beff,#f09dff);opacity:0.6;"></div>
-  </div>
-
-  <!-- Address + meta block -->
-  <div style="display:flex;justify-content:space-between;gap:24px;margin:24px 0 28px;">
-    <div style="flex:1;font-size:13px;color:#000028;line-height:1.4;">
-      <div style="font-weight:600;">${custName}</div>
-      <div>${custAddr}</div>
-      ${countryLabel}
-    </div>
-    <table style="font-size:12px;border-collapse:collapse;"><tbody>${metaRows.join("")}</tbody></table>
-  </div>
-
-  <!-- Section heading -->
-  <div style="font-size:13px;font-weight:700;color:#f09dff;letter-spacing:0.5px;margin-bottom:14px;">RECHNUNG NR. ${escape(opts.invoiceNumberPreview)}</div>
-
-  <!-- Intro -->
-  <div style="font-size:13px;color:#000028;margin-bottom:6px;">Sehr geehrte Damen und Herren,</div>
-  <div style="font-size:13px;color:#000028;margin-bottom:18px;">vielen Dank für Ihr Vertrauen. Ich stelle Ihnen hiermit folgende Leistungen in Rechnung:</div>
-
-  <!-- Table -->
-  <table style="width:100%;border-collapse:collapse;font-size:13px;">
-    <thead>
-      <tr style="background:#f09dff;color:#fff;">
-        <th style="padding:6px 8px;text-align:left;font-weight:700;width:8%;">Pos.</th>
-        <th style="padding:6px 8px;text-align:left;font-weight:700;">Beschreibung</th>
-        <th style="padding:6px 8px;text-align:right;font-weight:700;width:12%;">Menge</th>
-        <th style="padding:6px 8px;text-align:right;font-weight:700;width:18%;">Gesamtpreis</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td style="padding:10px 8px;text-align:center;color:#000028;vertical-align:top;">1.</td>
-        <td style="padding:10px 8px;color:#000028;">${bez}${beschrRow}</td>
-        <td style="padding:10px 8px;text-align:right;color:#000028;vertical-align:top;">1</td>
-        <td style="padding:10px 8px;text-align:right;color:#000028;vertical-align:top;">${eur(opts.nettoCents)}</td>
-      </tr>
-      <tr><td colspan="4" style="border-top:1px solid #f5beff;padding:0;height:1px;"></td></tr>
-      <tr>
-        <td colspan="3" style="background:#f5beff;color:#fff;font-weight:700;padding:8px;text-align:right;">Gesamtsumme</td>
-        <td style="background:#f09dff;color:#fff;font-weight:700;padding:8px;text-align:right;">${eur(opts.bruttoCents)}</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <!-- Body paragraphs -->
-  <div style="font-size:13px;font-style:italic;color:#000028;margin-top:18px;">Gemäß § 19 UStG wird keine Umsatzsteuer ausgewiesen.</div>
-  <div style="font-size:13px;color:#000028;margin-top:10px;">Zahlungsbedingungen: Zahlung innerhalb von 14 Tagen ab Rechnungseingang ohne Abzüge.</div>
-  <div style="font-size:13px;color:#000028;margin-top:6px;">Bei Rückfragen stehe ich selbstverständlich jederzeit gerne zur Verfügung.</div>
-  <div style="font-size:13px;color:#000028;margin-top:18px;">Mit freundlichen Grüßen</div>
-</div>`;
-}

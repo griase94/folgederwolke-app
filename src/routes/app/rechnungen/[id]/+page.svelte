@@ -89,11 +89,7 @@
 				<h1 class="font-mono text-2xl font-bold tracking-tight text-foreground">
 					{inv.businessId}
 				</h1>
-				<InvoicePdfStatusBadge
-					pdfStatus={inv.pdfStatus}
-					driveStatus={inv.driveStatus}
-					showDrive
-				/>
+				<InvoicePdfStatusBadge pdfStatus={inv.pdfStatus} hasFile={inv.pdfFileId !== null} />
 			</div>
 			<p class="mt-1 text-sm text-muted-foreground">
 				{inv.customerName} - {datumFmt}
@@ -129,13 +125,6 @@
 	{#if inv.pdfStatus === 'failed' && inv.pdfStatusError}
 		<div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
 			PDF-Erstellung fehlgeschlagen: {inv.pdfStatusError}
-		</div>
-	{/if}
-
-	{#if inv.driveStatus === 'failed'}
-		<div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-			Drive-Upload fehlgeschlagen - die Rechnung kann hier heruntergeladen werden,
-			aber wurde nicht auf Drive gesichert.
 		</div>
 	{/if}
 
@@ -187,7 +176,7 @@
 	</div>
 
 	<div class="mt-6 flex flex-wrap items-center gap-3">
-		{#if inv.hasPdfBytes}
+		{#if inv.pdfFileId}
 			<Button href={`/app/rechnungen/${inv.id}/pdf`} target="_blank" rel="noopener">
 				<svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />

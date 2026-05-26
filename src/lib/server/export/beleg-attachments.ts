@@ -57,14 +57,17 @@ export async function assembleBelegAttachments(args: {
       i.sphere_snapshot      AS income_sphere,
       i.bezeichnung          AS income_bezeichnung,
       d.business_id          AS donation_business_id,
-      COALESCE(d.spender_name, d.kategorie_name_snapshot) AS donation_bezeichnung
+      COALESCE(d.spender_name, d.kategorie_name_snapshot) AS donation_bezeichnung,
+      inv.business_id        AS invoice_business_id,
+      inv.bezeichnung        AS invoice_bezeichnung
     FROM files f
-    LEFT JOIN expenses  e ON e.beleg_file_id = f.id AND e.year_of_buchung = ${year}
-    LEFT JOIN income    i ON i.beleg_file_id = f.id AND i.year_of_buchung = ${year}
-    LEFT JOIN donations d ON d.beleg_file_id = f.id AND d.year_of_buchung = ${year}
+    LEFT JOIN expenses  e   ON e.beleg_file_id   = f.id AND e.year_of_buchung   = ${year}
+    LEFT JOIN income    i   ON i.beleg_file_id   = f.id AND i.year_of_buchung   = ${year}
+    LEFT JOIN donations d   ON d.beleg_file_id   = f.id AND d.year_of_buchung   = ${year}
+    LEFT JOIN invoices  inv ON inv.pdf_file_id   = f.id AND inv.year_of_buchung = ${year}
     WHERE f.year_of_buchung = ${year}
       AND f.deleted_at IS NULL
-      AND (e.id IS NOT NULL OR i.id IS NOT NULL OR d.id IS NOT NULL)
+      AND (e.id IS NOT NULL OR i.id IS NOT NULL OR d.id IS NOT NULL OR inv.id IS NOT NULL)
   `)) as unknown as Array<{
     file_id: string;
     storage_key: string;
@@ -78,13 +81,15 @@ export async function assembleBelegAttachments(args: {
     income_bezeichnung: string | null;
     donation_business_id: string | null;
     donation_bezeichnung: string | null;
+    invoice_business_id: string | null;
+    invoice_bezeichnung: string | null;
   }>;
 
   const attachments: BelegAttachment[] = [];
   const bundlePathByBusinessId = new Map<string, string>();
 
   for (const r of belegRows) {
-    let ownerKind: "expense" | "income" | "donation";
+    let ownerKind: "expense" | "income" | "donation" | "invoice";
     let businessId: string;
     let sphere: string | null;
     let bezeichnung: string | null;
@@ -103,6 +108,11 @@ export async function assembleBelegAttachments(args: {
       businessId = r.donation_business_id;
       sphere = null;
       bezeichnung = r.donation_bezeichnung;
+    } else if (r.invoice_business_id) {
+      ownerKind = "invoice";
+      businessId = r.invoice_business_id;
+      sphere = null;
+      bezeichnung = r.invoice_bezeichnung;
     } else {
       // Shouldn't happen given the WHERE clause, but skip defensively.
       continue;

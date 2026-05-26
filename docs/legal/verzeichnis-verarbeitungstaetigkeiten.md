@@ -42,18 +42,18 @@
 
 ## VVT-3: Buchhaltung (Einnahmen und Ausgaben)
 
-| Feld                      | Inhalt                                                                                                                                      |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Bezeichnung**           | GoBD-konforme Einnahmen-Überschuss-Rechnung (EÜR)                                                                                           |
-| **Zweck**                 | Steuerrechtliche Buchführungspflicht (§§ 140–147 AO); Nachweis Gemeinnützigkeit                                                             |
-| **Rechtsgrundlage**       | Art. 6 Abs. 1 lit. c DSGVO (rechtliche Verpflichtung)                                                                                       |
-| **Betroffene Personen**   | Kassenwart, Vorstand, Mitglieder (als Kostenstellen), Kunden (Rechnungsempfänger), Lieferanten                                              |
-| **Datenkategorien**       | Name/Firmenname, Adresse, Betrag, Verwendungszweck, Zahlungsweg, Sphäre, Buchungsjahr, Beleg-Referenz                                       |
-| **Empfänger**             | Kassenwart, Vorstand (intern); Steuerberater (extern, auf Anfrage); Finanzamt (EÜR-Abgabe); Auftragsverarbeiter: Neon, Vercel, Google Drive |
-| **Drittlandübermittlung** | Nein                                                                                                                                        |
-| **Löschfrist**            | 10 Jahre (§ 147 AO, § 14b UStG) — keine Löschung, nur Anonymisierung wenn möglich                                                           |
-| **TOMs**                  | Siehe [TOM-Katalog](tom-katalog.md)                                                                                                         |
-| **DB-Tabellen**           | `expenses`, `income`, `donations`, `invoices`, `customers`, `kategorien`                                                                    |
+| Feld                      | Inhalt                                                                                                                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Bezeichnung**           | GoBD-konforme Einnahmen-Überschuss-Rechnung (EÜR)                                                                                                                                    |
+| **Zweck**                 | Steuerrechtliche Buchführungspflicht (§§ 140–147 AO); Nachweis Gemeinnützigkeit                                                                                                      |
+| **Rechtsgrundlage**       | Art. 6 Abs. 1 lit. c DSGVO (rechtliche Verpflichtung)                                                                                                                                |
+| **Betroffene Personen**   | Kassenwart, Vorstand, Mitglieder (als Kostenstellen), Kunden (Rechnungsempfänger), Lieferanten                                                                                       |
+| **Datenkategorien**       | Name/Firmenname, Adresse, Betrag, Verwendungszweck, Zahlungsweg, Sphäre, Buchungsjahr, Beleg-Referenz                                                                                |
+| **Empfänger**             | Kassenwart, Vorstand (intern); Steuerberater (extern, auf Anfrage); Finanzamt (EÜR-Abgabe); Auftragsverarbeiter: Neon, Vercel (Hosting + Blob für Ausgangsrechnungen/Belege in fra1) |
+| **Drittlandübermittlung** | Nein                                                                                                                                                                                 |
+| **Löschfrist**            | 10 Jahre (§ 147 AO, § 14b UStG) — keine Löschung, nur Anonymisierung wenn möglich                                                                                                    |
+| **TOMs**                  | Siehe [TOM-Katalog](tom-katalog.md)                                                                                                                                                  |
+| **DB-Tabellen**           | `expenses`, `income`, `donations`, `invoices`, `customers`, `kategorien`, `files` (Blob-Index: Belege + Ausgangsrechnungen)                                                          |
 
 ---
 

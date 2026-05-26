@@ -31,9 +31,8 @@ vi.mock("$lib/server/mail/index.js", () => ({
   sendMail: vi.fn(),
 }));
 
-// Phase 9: drive-impl.ts deleted; storage flows through getFileStorage().
-// The retry helper is stubbed (FIXME Phase 9 follow-up) so we no longer mock
-// a storage backend at this layer.
+// Phase 11: retryFailedDriveUploads removed — invoice PDFs now persist
+// synchronously to Vercel Blob inside finalizePdfJob (no separate retry path).
 
 // Drizzle operators used in the module — pass-through identity stubs so
 // the import doesn't blow up in the test environment (no pg connection).
@@ -61,10 +60,9 @@ vi.mock("$lib/server/db/schema/users.js", () => ({
 }));
 vi.mock("$lib/server/db/schema/invoices.js", () => ({
   invoices: {
-    driveStatus: "invoices.drive_status",
-    pdfBytes: "invoices.pdf_bytes",
     id: "invoices.id",
     businessId: "invoices.business_id",
+    pdfFileId: "invoices.pdf_file_id",
   },
 }));
 vi.mock("$lib/server/db/schema/members.js", () => ({
@@ -92,7 +90,6 @@ const {
   cleanupMagicLinks,
   cleanupSessions,
   cleanupRateLimitAttempts,
-  retryFailedDriveUploads,
   dispatchBeitragsreminder,
 } = await import("$lib/server/domain/cron-tasks.js");
 
@@ -158,27 +155,6 @@ describe("cleanupRateLimitAttempts", () => {
     makeDeleteChain(10);
     const result = await cleanupRateLimitAttempts();
     expect(result).toBe(10);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// retryFailedDriveUploads
-// ---------------------------------------------------------------------------
-
-describe("retryFailedDriveUploads", () => {
-  it("returns zeroes when storage is null (no-op)", async () => {
-    const result = await retryFailedDriveUploads(null);
-    expect(result).toEqual({ attempted: 0, succeeded: 0, failed: 0 });
-    expect(mockSelect).not.toHaveBeenCalled();
-  });
-
-  // TODO(Phase 9 follow-up): re-enable once retryFailedDriveUploads is
-  // wired to the new pathname-addressed FileStorage interface and the
-  // invoice upload pipeline (files-row + deterministic pathname) lands.
-  // The body below exercises the old { id, viewUrl } upload shape which
-  // no longer exists.
-  it.skip("counts succeeded and failed uploads", async () => {
-    void retryFailedDriveUploads;
   });
 });
 

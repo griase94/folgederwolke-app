@@ -169,6 +169,13 @@
       "when": 1779980000000,
       "tag": "0023_rechnung_redesign",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1780012800000,
+      "tag": "0024_invoices_blob_pdf",
+      "breakpoints": true
     }
   ]
 }

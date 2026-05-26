@@ -56,10 +56,9 @@ vi.mock("$lib/server/db/schema/users.js", () => ({
 }));
 vi.mock("$lib/server/db/schema/invoices.js", () => ({
   invoices: {
-    driveStatus: "invoices.drive_status",
-    pdfBytes: "invoices.pdf_bytes",
     id: "invoices.id",
     businessId: "invoices.business_id",
+    pdfFileId: "invoices.pdf_file_id",
   },
 }));
 vi.mock("$lib/server/db/schema/members.js", () => ({

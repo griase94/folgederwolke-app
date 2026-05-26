@@ -31,13 +31,14 @@ export function slugify(s: string, maxLen = 40): string {
  *   ausgaben/{sphere}/{business_id}-{slug}.{ext}
  *   einnahmen/{sphere}/{business_id}-{slug}.{ext}
  *   spenden/{business_id}-{slug}.{ext}     (Spenden have no sphere subfolder)
+ *   rechnungen/{business_id}-{slug}.{ext}  (Phase 11 — Ausgangsrechnungen)
  *
  * The `09_Belege-{year}/` prefix is added by `buildJahresabschlussBundle()`
  * in `bundle.ts`; this helper returns the relative path inside that folder.
  */
 export function bundlePath(row: {
   businessId: string;
-  ownerKind: "expense" | "income" | "donation";
+  ownerKind: "expense" | "income" | "donation" | "invoice";
   sphere?: string | null;
   bezeichnung?: string | null;
   ext: string;
@@ -48,6 +49,7 @@ export function bundlePath(row: {
     expense: `ausgaben/${sphereFolder}`,
     income: `einnahmen/${sphereFolder}`,
     donation: "spenden",
+    invoice: "rechnungen",
   };
   const tail = slug ? `${row.businessId}-${slug}` : row.businessId;
   return `${folderByKind[row.ownerKind]}/${tail}.${row.ext}`;

@@ -381,6 +381,9 @@ export function registerHandlers(): void {
   );
 
   // ── invoice.pdf_generated ──────────────────────────────────────────────
+  // Phase 11: anchor files.sha256 + storage pointer in the hash-chained
+  // audit_log. § 14 Abs. 1 UStG Unversehrtheit mitigation given that the
+  // off-platform `files-backup` workflow is parked (ADR-0012).
   bus.on<EventPayload<"invoice.pdf_generated">>(
     "invoice.pdf_generated",
     async (payload) => {
@@ -393,8 +396,9 @@ export function registerHandlers(): void {
         actorKind: payload.actorUserId ? "user" : "system",
         payload: {
           kind: "pdf_generated",
-          drivePdfFileId: payload.drivePdfFileId,
-          driveStatus: payload.driveStatus,
+          fileId: payload.fileId,
+          sha256: payload.sha256,
+          byteSize: payload.byteSize,
         },
       });
     },

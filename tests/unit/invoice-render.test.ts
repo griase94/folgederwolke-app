@@ -1,14 +1,18 @@
 /**
- * @phase-5
+ * @phase-5 / @phase-11
  *
- * Unit tests for the pdf-lib invoice renderer + the live preview HTML
- * helper. These tests do NOT hit the database — they exercise the pure
- * rendering layer so a broken template fails fast in CI.
+ * Unit tests for the pdf-lib invoice renderer. These tests do NOT hit the
+ * database — they exercise the pure rendering layer so a broken template
+ * fails fast in CI.
+ *
+ * The Phase 10 HTML preview helper (renderInvoicePreviewHtml) was deleted
+ * in Phase 11; live preview now invokes the real pdf-lib renderer through
+ * /api/rechnungen/preview. See tests/unit/invoice-preview-endpoint.test.ts
+ * for the endpoint contract.
  */
 
 import { describe, it, expect } from "vitest";
 import { PdfLibInvoiceRenderer } from "$lib/server/pdf/pdf-lib-renderer.js";
-import { renderInvoicePreviewHtml } from "$lib/server/domain/invoices.js";
 import type { InvoiceRenderInput } from "$lib/server/pdf/invoice.js";
 
 const FIXTURE: InvoiceRenderInput = {
@@ -84,64 +88,5 @@ describe("@phase-5 PdfLibInvoiceRenderer", () => {
     };
     const out = await renderer.render(minimal);
     expect(out.bytes.byteLength).toBeGreaterThan(500);
-  });
-
-  it("renders the live HTML preview with German formatting", () => {
-    // Phase 10: preview mirrors the v2 PDF layout — Leistungszeitraum
-    // replaces the Phase-5 Leistungsdatum / Fälligkeitsdatum rows.
-    const html = renderInvoicePreviewHtml({
-      bezeichnung: "Auftritt 12.05.2026",
-      leistungsBeschreibung: "Beschreibung",
-      rechnungsdatum: "2026-05-19",
-      leistungsDatum: null,
-      faelligkeitsDatum: "2026-06-12",
-      leistungszeitraum: "Mai 2026",
-      customerName: "Kulturbuero",
-      customerAddressBlock: "Beispielstrasse 12",
-      customerCountry: "DE",
-      nettoCents: 12345,
-      ustCents: 0,
-      bruttoCents: 12345,
-      currency: "EUR",
-      invoiceNumberPreview: "FDW-2026-007",
-      verein: {
-        name: "Folge der Wolke e.V.",
-        adresse: "Westermuehlstrasse 6",
-        steuernummer: "143/215/10028",
-        vereinsregister: "VR 211227",
-      },
-    });
-    expect(html).toContain("FDW-2026-007");
-    expect(html).toContain("Kulturbuero");
-    expect(html).toMatch(/123,45/);
-    expect(html).toContain("19.05.2026");
-    expect(html).toContain("Mai 2026");
-    expect(html).toContain("RECHNUNG");
-  });
-
-  it("preview HTML escapes user input", () => {
-    const html = renderInvoicePreviewHtml({
-      bezeichnung: "<script>alert(1)</script>",
-      leistungsBeschreibung: null,
-      rechnungsdatum: "2026-05-19",
-      leistungsDatum: null,
-      faelligkeitsDatum: null,
-      customerName: 'Bad "Name" & Co',
-      customerAddressBlock: null,
-      nettoCents: 100,
-      ustCents: 0,
-      bruttoCents: 100,
-      currency: "EUR",
-      invoiceNumberPreview: "FDW-2026-001",
-      verein: {
-        name: "FDW",
-        adresse: "",
-        steuernummer: "",
-        vereinsregister: "",
-      },
-    });
-    expect(html).not.toContain("<script>");
-    expect(html).toContain("&lt;script&gt;");
-    expect(html).toContain("&quot;Name&quot;");
   });
 });

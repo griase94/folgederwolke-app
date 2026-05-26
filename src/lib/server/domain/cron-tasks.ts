@@ -18,7 +18,6 @@ import {
 import { invoices } from "$lib/server/db/schema/invoices.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 import { sendMail } from "$lib/server/mail/index.js";
-import { getFileStorage, type FileStorage } from "$lib/server/files/storage.js";
 import { verifyAuditChain } from "$lib/server/audit-log/verifier.js";
 import { berlinYear } from "$lib/domain/year.js";
 
@@ -73,68 +72,12 @@ export async function cleanupRateLimitAttempts(): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
-// Drive-resilience: retry failed invoice uploads
+// (Phase 11) retryFailedDriveUploads removed — invoice PDFs persist to Vercel
+// Blob synchronously inside finalizePdfJob (no separate Drive step to retry).
+// Transient failures land on invoices.pdf_status='failed' with the error
+// message in pdf_status_error and can be retried via the admin "PDF neu
+// generieren" action (regeneratePdf) which produces a versioned file path.
 // ---------------------------------------------------------------------------
-
-export interface DriveRetryResult {
-  attempted: number;
-  succeeded: number;
-  failed: number;
-}
-
-/**
- * Best-effort retry of Drive uploads for invoices where drive_status='failed'
- * and pdf_bytes is not null.
- *
- * Limits to a small batch per run to avoid serverless timeout.
- * Accepts an optional `storage` dep (pass null in tests to skip real Drive).
- */
-export async function retryFailedDriveUploads(
-  storage?: FileStorage | null,
-  batchSize = 10,
-): Promise<DriveRetryResult> {
-  // `undefined` → resolve the production-configured backend via the factory.
-  // `null` → caller explicitly skips Drive (test mode).
-  const resolved: FileStorage | null =
-    storage === undefined ? await getFileStorage() : storage;
-  if (resolved === null) {
-    return { attempted: 0, succeeded: 0, failed: 0 };
-  }
-
-  const db = getDb();
-
-  const rows = await db
-    .select({
-      id: invoices.id,
-      businessId: invoices.businessId,
-      pdfBytes: invoices.pdfBytes,
-    })
-    .from(invoices)
-    .where(
-      and(
-        eq(invoices.driveStatus, "failed"),
-        sql`${invoices.pdfBytes} IS NOT NULL`,
-      ),
-    )
-    .limit(batchSize);
-
-  const succeeded = 0;
-  let failed = 0;
-
-  // FIXME(Phase 9 follow-up): retry-failed-uploads against Blob storage.
-  // The retry path mirrors `runInvoiceJob` above; once the invoice domain is
-  // migrated to a deterministic pathname + `files` row, this loop should call
-  // the same upload helper rather than the raw FileStorage.upload(). For now
-  // it's a structural no-op: we still iterate so the result shape is
-  // unchanged, but we don't attempt a real upload.
-  void resolved;
-  for (const row of rows) {
-    if (!row.pdfBytes) continue;
-    failed++;
-  }
-
-  return { attempted: rows.length, succeeded, failed };
-}
 
 // ---------------------------------------------------------------------------
 // Audit-chain nightly verifier (ADR-0004, Phase 7.5)

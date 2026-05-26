@@ -204,5 +204,6 @@ export async function cleanupFilesViaAdmin(prefix?: string): Promise<void> {
                                          WHERE beleg_file_id::text LIKE ${idPattern}
                                             OR bescheinigung_file_id::text LIKE ${idPattern}`;
   await a`UPDATE auslagen_submissions  SET beleg_file_id = NULL WHERE beleg_file_id::text LIKE ${idPattern}`;
+  await a`UPDATE invoices              SET pdf_file_id   = NULL WHERE pdf_file_id::text   LIKE ${idPattern}`;
   await a`DELETE FROM files WHERE id::text LIKE ${idPattern}`;
 }

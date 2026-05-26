@@ -35,8 +35,7 @@ export const GET: RequestHandler = async ({ params, locals }) => {
     .select({
       id: invoices.id,
       pdfStatus: invoices.pdfStatus,
-      driveStatus: invoices.driveStatus,
-      drivePdfFileId: invoices.drivePdfFileId,
+      pdfFileId: invoices.pdfFileId,
       businessId: invoices.businessId,
     })
     .from(invoices)
@@ -58,8 +57,7 @@ export const GET: RequestHandler = async ({ params, locals }) => {
             id: inv.id,
             businessId: inv.businessId,
             pdfStatus: inv.pdfStatus,
-            driveStatus: inv.driveStatus,
-            drivePdfFileId: inv.drivePdfFileId,
+            pdfFileId: inv.pdfFileId,
           }
         : null,
     }),

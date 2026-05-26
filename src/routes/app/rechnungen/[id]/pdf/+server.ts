@@ -1,42 +1,50 @@
 /**
- * GET /app/rechnungen/[id]/pdf — stream the stored PDF bytes back.
+ * GET /app/rechnungen/[id]/pdf — redirect to the blob-backed PDF.
  *
- * Drive-failure resilience: serving from `invoices.pdf_bytes` works even
- * when Drive upload failed. If the Drive copy exists, downloads still go
- * through this endpoint so admins get a consistent UX (and we don't have
- * to expose Drive's anonymous-link gymnastics).
+ * Phase 11: PDFs live on Vercel Blob via the `files` table. We resolve the
+ * invoice's `pdf_file_id`, then 302 to /api/files/<fileId>/blob which handles
+ * session-gated access via authorizeFileAccess + streams from FileStorage.
+ *
+ * Status mapping:
+ *   - invoice not found             → 404
+ *   - pdf_status !== 'generated'    → 409 ("noch nicht generiert" — admins
+ *                                          should wait for the poll to settle
+ *                                          or retry via "PDF neu generieren")
+ *   - pdf_file_id IS NULL           → 409 (defence-in-depth: with the new
+ *                                          state machine this should never
+ *                                          happen if pdf_status==='generated')
  */
 
-import { error } from "@sveltejs/kit";
+import { error, redirect } from "@sveltejs/kit";
 import { eq } from "drizzle-orm";
 import type { RequestHandler } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { invoices } from "$lib/server/db/schema/invoices.js";
 
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async ({ params, locals }) => {
+  if (!locals.session) {
+    throw error(401, "Nicht authentifiziert");
+  }
+
   const db = getDb();
   const [row] = await db
     .select({
-      pdfBytes: invoices.pdfBytes,
-      businessId: invoices.businessId,
+      pdfStatus: invoices.pdfStatus,
+      pdfFileId: invoices.pdfFileId,
     })
     .from(invoices)
     .where(eq(invoices.id, params.id))
     .limit(1);
+
   if (!row) {
     throw error(404, "Rechnung nicht gefunden");
   }
-  if (!row.pdfBytes) {
+  if (row.pdfStatus !== "generated" || !row.pdfFileId) {
     throw error(409, "PDF wurde noch nicht generiert");
   }
-  const bytes = row.pdfBytes as unknown as Buffer;
-  const u8 = new Uint8Array(bytes);
-  return new Response(u8, {
-    status: 200,
-    headers: {
-      "content-type": "application/pdf",
-      "content-disposition": `inline; filename="Rechnung_${row.businessId}.pdf"`,
-      "cache-control": "private, no-store",
-    },
-  });
+
+  // 302 to the generic files endpoint — single source of truth for blob auth
+  // + streaming. `inline` disposition + filename are honoured downstream by
+  // /api/files/[id]/blob which reads `originalFilename` from the row.
+  throw redirect(302, `/api/files/${row.pdfFileId}/blob`);
 };

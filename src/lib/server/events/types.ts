@@ -189,14 +189,20 @@ export type Events = {
     customerNameSnapshot: string;
     bruttoCents: number;
   };
-  /** An invoice PDF was successfully generated (pdf_bytes populated). */
+  /**
+   * An invoice PDF was successfully generated and persisted to Vercel Blob
+   * via the files table. The sha256 anchor here lands in the hash-chained
+   * audit_log so silent blob mutation is detectable post-hoc (ADR-0004 +
+   * ADR-0012 in-band mitigation for the off-platform-backup gap).
+   */
   "invoice.pdf_generated": {
     invoiceId: string;
     invoiceBusinessId: string;
     actorUserId: string | null;
-    /** Best-effort Drive id (null if upload failed). */
-    drivePdfFileId: string | null;
-    driveStatus: "uploaded" | "failed" | "pending" | "skipped";
+    /** files.id of the persisted PDF, or null in test mode (storage=null). */
+    fileId: string | null;
+    sha256: string;
+    byteSize: number;
   };
   /** A new invoice supersedes an older one (correction). */
   "invoice.superseded": {

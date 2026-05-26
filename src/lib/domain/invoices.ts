@@ -13,13 +13,6 @@ export type InvoicePdfStatus =
   | "generated"
   | "failed";
 
-export type InvoiceDriveStatus =
-  | "pending"
-  | "uploaded"
-  | "failed"
-  | "skipped"
-  | null;
-
 /**
  * Derived payment-state used for the /app/rechnungen filter chip from the
  * dashboard.
@@ -101,9 +94,10 @@ export interface InvoiceRow {
   bruttoCents: number;
   currency: string;
   pdfStatus: InvoicePdfStatus;
-  driveStatus: InvoiceDriveStatus;
-  drivePdfFileId: string | null;
-  hasPdfBytes: boolean;
+  /** FK to files.id once the blob upload + files row land. Null while
+   *  queued/generating; the polling predicate is pdfStatus==='generated' &&
+   *  pdfFileId !== null. */
+  pdfFileId: string | null;
   festgeschriebenAt: string | null;
   supersedesId: string | null;
   /** Set on the predecessor when a newer invoice supersedes it. */
@@ -140,19 +134,5 @@ export function pdfStatusLabel(status: InvoicePdfStatus): {
       return { label: "Erstellt", tone: "primary" };
     case "failed":
       return { label: "Fehler", tone: "destructive" };
-  }
-}
-
-export function driveStatusLabel(status: InvoiceDriveStatus): string | null {
-  if (status === null) return null;
-  switch (status) {
-    case "pending":
-      return "Drive-Upload offen";
-    case "uploaded":
-      return "Auf Drive gesichert";
-    case "failed":
-      return "Drive-Upload fehlgeschlagen";
-    case "skipped":
-      return "Drive übersprungen";
   }
 }
