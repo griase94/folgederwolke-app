@@ -28,6 +28,7 @@ import {
 } from "$lib/server/domain/members.js";
 import { bus } from "$lib/server/events/index.js";
 import { berlinYmd } from "$lib/domain/year.js";
+import { requireAdmin } from "$lib/server/domain/require-role.js";
 
 // Default Beitrag rate in cents (69.69 €) — until Einstellungen tab in Phase 4.
 const DEFAULT_BEITRAG_CENTS = 6969n;
@@ -297,7 +298,12 @@ export async function markBeitragPaid(
   memberId: string,
   year: number,
   actorUserId: string | null,
+  actorRole?: string | null,
 ): Promise<MarkBeitragPaidResult> {
+  // B2 fix (ADR-0009): admin-only gate.
+  const denial = requireAdmin(actorRole);
+  if (denial) return denial;
+
   if (!memberId || !Number.isFinite(year)) {
     return { ok: false, status: 400, error: "Ungültige Parameter" };
   }

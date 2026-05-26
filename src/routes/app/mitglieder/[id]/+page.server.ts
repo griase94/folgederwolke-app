@@ -204,12 +204,13 @@ export const actions: Actions = {
   // ── Mark Beitrag paid ─────────────────────────────────────────────────────
   "mark-beitrag-paid": async ({ request, locals, params }) => {
     const userId = locals.session?.user.id ?? null;
+    const userRole = locals.session?.user.role ?? null;
     const memberId = params.id;
     const formData = await request.formData();
     const yearStr = formData.get("year")?.toString() ?? "";
     const year = parseInt(yearStr, 10);
 
-    const result = await markBeitragPaid(memberId, year, userId);
+    const result = await markBeitragPaid(memberId, year, userId, userRole);
     if (!result.ok) {
       return fail(result.status, {
         action: "mark-beitrag-paid",

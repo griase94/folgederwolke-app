@@ -33,7 +33,7 @@ describe("@phase-0 markBeitragPaid — B1 Berlin-date regression", () => {
     const member = await seedMember({ name: "B1RegressionMember" });
     await seedOpenBeitrag({ memberId: member.id, year: 2026 });
 
-    await markBeitragPaid(member.id, 2026, null);
+    await markBeitragPaid(member.id, 2026, null, "admin");
 
     const row = await getMemberBeitrag(member.id, 2026);
     // With the B1 fix: gezahlt_am = "2027-01-01" (Berlin local)
@@ -48,7 +48,7 @@ describe("@phase-0 markBeitragPaid — B1 Berlin-date regression", () => {
     const member = await seedMember({ name: "B1RegressionMemberNoon" });
     await seedOpenBeitrag({ memberId: member.id, year: 2026 });
 
-    await markBeitragPaid(member.id, 2026, null);
+    await markBeitragPaid(member.id, 2026, null, "admin");
 
     const row = await getMemberBeitrag(member.id, 2026);
     expect(row?.gezahltAm).toBe("2026-12-31");

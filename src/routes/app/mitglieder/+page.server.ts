@@ -193,12 +193,13 @@ export const actions: Actions = {
   // ── Mark Beitrag paid ───────────────────────────────────────────────────────
   "mark-beitrag-paid": async ({ request, locals }) => {
     const userId = locals.session?.user.id ?? null;
+    const userRole = locals.session?.user.role ?? null;
     const formData = await request.formData();
     const memberId = formData.get("member_id")?.toString() ?? "";
     const yearStr = formData.get("year")?.toString() ?? "";
     const year = parseInt(yearStr, 10);
 
-    const result = await markBeitragPaid(memberId, year, userId);
+    const result = await markBeitragPaid(memberId, year, userId, userRole);
     if (!result.ok) {
       return fail(result.status, {
         action: "mark-beitrag-paid",
