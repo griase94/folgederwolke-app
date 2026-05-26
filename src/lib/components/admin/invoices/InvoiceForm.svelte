@@ -250,7 +250,7 @@
 				name="bezeichnung"
 				bind:value={bezeichnung}
 				required
-				minlength="3"
+				minlength="5"
 				maxlength="200"
 				placeholder="z.B. Auftritt 12.05.2026"
 				class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
