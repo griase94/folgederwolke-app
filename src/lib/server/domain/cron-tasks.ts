@@ -208,11 +208,16 @@ export async function dispatchBeitragsreminder(opts: {
       continue;
     }
     try {
+      // B7 fix (ADR-0005): use year-based send_attempt so 2026 reminder is not
+      // deduped against the 2025 reminder. Formula: year - 2020 is monotonic
+      // (2025→5, 2026→6, …) and unique per year for the same (template, entity).
+      const sendAttempt = currentYear - 2020;
       const result = await sendMail({
         template: "beitrag_reminder",
         entity_kind: "member",
         entity_id: row.memberId,
         to: row.email,
+        send_attempt: sendAttempt,
         props: {
           vorname: row.vorname,
           nachname: row.nachname,
