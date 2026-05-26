@@ -134,7 +134,7 @@ jobs:
           key: pw-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
 
       - name: Install psql
         run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends postgresql-client
