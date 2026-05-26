@@ -1,26 +1,29 @@
-// Drain pending timers at the end of every test file to prevent bits-ui's
-// body-scroll-lock module from leaking setTimeout callbacks that fire AFTER
-// vitest's happy-dom environment is torn down.
+// Drain bits-ui's deferred body-scroll-lock restore timer at the end of every
+// test file, so it can't fire after vitest tears down the happy-dom environment.
 //
-// Root cause: bits-ui's BodyScrollLock.onDestroyEffect calls
-// scheduleCleanupIfNoNewLocks which registers window.setTimeout(..., 24).
-// When a test renders a bits-ui component (DropdownMenu, Sheet, Dialog, etc.)
-// that opens and then unmounts without closing, the cleanup timer fires after
-// vitest destroys the happy-dom environment, producing:
+// Root cause: bits-ui's BodyScrollLock.onDestroyEffect schedules
+// `window.setTimeout(resetBodyStyle, ~24ms)` when a Sheet/Dialog/DropdownMenu is
+// unmounted while open (e.g. via testing-library `cleanup()`). `resetBodyStyle`
+// touches `document.body`; if the environment is destroyed before the timer
+// fires, the whole run aborts (even when every test passed) with:
 //   ReferenceError: document is not defined
 //     at Proxy.resetBodyStyle bits-ui/dist/internal/body-scroll-lock.svelte.js
 //
-// The fix: after every test file runs, briefly switch to fake timers, flush
-// any remaining pending timers (including bits-ui's 24ms cleanup callback),
-// then restore real timers. The timers fire while happy-dom is still alive.
+// Why the previous fake-timers approach did NOT work: the cleanup timer is
+// registered with the REAL `window.setTimeout` during unmount, BEFORE this hook
+// runs. `vi.useFakeTimers()` only replaces the timer functions going forward, so
+// `vi.runOnlyPendingTimers()` never sees the already-scheduled real timer — the
+// hook was effectively a no-op and the flake was pure timing luck.
 //
-// This is a global afterAll — it runs after every test file because
-// setupFiles are evaluated once per worker/fork before any test file, and
-// afterAll at the top level of a setupFile applies to the entire suite.
-import { afterAll, vi } from "vitest";
+// Fix: keep REAL timers and simply wait past bits-ui's ~24ms delay in an async
+// afterAll, while happy-dom is still alive. Timers fire in deadline order, so
+// the 24ms cleanup callback always runs before this 50ms wait resolves
+// (load delays both equally, preserving the order) — it resets the body style
+// harmlessly and is gone before teardown. afterAll (once per file) is enough:
+// only the final test's cleanup timer risks outliving the environment; earlier
+// ones fire naturally during the file run.
+import { afterAll } from "vitest";
 
-afterAll(() => {
-  vi.useFakeTimers();
-  vi.runOnlyPendingTimers();
-  vi.useRealTimers();
+afterAll(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 50));
 });
