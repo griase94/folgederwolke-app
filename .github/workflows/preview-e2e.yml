@@ -1,0 +1,136 @@
+name: preview-e2e
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+
+concurrency:
+  group: preview-e2e-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  wait-for-vercel:
+    name: wait for Vercel preview deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      url: ${{ steps.poll.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Poll Vercel for ready deploy
+        id: poll
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ./scripts/ci/wait-for-vercel.sh "$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+  migrate-and-seed:
+    name: migrate + seed preview Neon
+    needs: wait-for-vercel
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DIRECT_DATABASE_URL: ${{ secrets.NEON_PREVIEW_MIGRATE_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        run: pnpm tsx scripts/migrate.ts
+
+      - name: Seed baseline
+        run: pnpm tsx scripts/seed-preview.ts
+
+  e2e:
+    name: playwright @ preview
+    needs: [wait-for-vercel, migrate-and-seed]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PREVIEW_URL: ${{ needs.wait-for-vercel.outputs.url }}
+      E2E_RUN_ID: pr${{ github.event.pull_request.number }}-${{ github.run_attempt }}
+      VERCEL_PROTECTION_BYPASS: ${{ secrets.VERCEL_PROTECTION_BYPASS }}
+      DIRECT_DATABASE_URL: ${{ secrets.NEON_PREVIEW_MIGRATE_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Mint preview session
+        id: mint
+        env:
+          E2E_ADMIN_EMAIL: e2e-admin@folgederwolke.de
+        run: |
+          COOKIE=$(pnpm tsx scripts/mint-session.ts)
+          echo "::add-mask::$COOKIE"
+          echo "cookie=$COOKIE" >> "$GITHUB_OUTPUT"
+
+      - name: Run Playwright against preview URL
+        env:
+          PREVIEW_SESSION_COOKIE: ${{ steps.mint.outputs.cookie }}
+        run: pnpm exec playwright test --config=playwright.preview.config.ts
+
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-pr-${{ github.event.pull_request.number }}
+          path: playwright-report/
+          retention-days: 7
+
+  cleanup:
+    name: best-effort cleanup
+    needs: e2e
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      DIRECT_DATABASE_URL: ${{ secrets.NEON_PREVIEW_MIGRATE_DATABASE_URL }}
+      E2E_RUN_ID: pr${{ github.event.pull_request.number }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Delete namespaced rows
+        run: pnpm tsx scripts/preview-cleanup.ts
+        continue-on-error: true
