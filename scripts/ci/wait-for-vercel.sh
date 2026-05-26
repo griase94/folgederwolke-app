@@ -25,10 +25,19 @@ if [ -n "${VERCEL_ORG_ID:-}" ]; then
   TEAM_PARAM="&teamId=${VERCEL_ORG_ID}"
 fi
 
+FIRST_POLL=1
 while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-  RESP=$(curl -sf -H "Authorization: Bearer ${VERCEL_TOKEN}" \
-    "${API_BASE}/v6/deployments?projectId=${VERCEL_PROJECT_ID}&meta-githubCommitSha=${SHA}&limit=1${TEAM_PARAM}" \
-    || echo '{"deployments":[]}')
+  # NOTE: dropped -f so we capture HTTP status code even on 4xx/5xx; the
+  # silent fallback hid stale-token failures as "stuck in PENDING".
+  RESP_RAW=$(curl -s -w '\nHTTPCODE:%{http_code}' -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+    "${API_BASE}/v6/deployments?projectId=${VERCEL_PROJECT_ID}&meta-githubCommitSha=${SHA}&limit=1${TEAM_PARAM}")
+  HTTP_CODE=$(echo "$RESP_RAW" | sed -n 's/^HTTPCODE://p')
+  RESP=$(echo "$RESP_RAW" | sed '/^HTTPCODE:/d')
+  if [ "$FIRST_POLL" = "1" ]; then
+    echo "first-poll HTTP=${HTTP_CODE} resp_len=${#RESP} resp_head=$(echo "$RESP" | head -c 200)" >&2
+    FIRST_POLL=0
+  fi
+  if [ -z "$RESP" ] || [ "$HTTP_CODE" != "200" ]; then RESP='{"deployments":[]}'; fi
 
   STATE=$(echo "$RESP" | jq -r '.deployments[0].readyState // "PENDING"')
   URL=$(echo "$RESP"  | jq -r '.deployments[0].url // ""')
