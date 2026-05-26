@@ -8,10 +8,12 @@
  */
 
 import { error, fail } from "@sveltejs/kit";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { customers } from "$lib/server/db/schema/customers.js";
+import { invoices } from "$lib/server/db/schema/invoices.js";
+import { projects } from "$lib/server/db/schema/projects.js";
 import {
   editCustomer,
   softDeleteCustomer,
@@ -33,6 +35,31 @@ export const load: PageServerLoad = async ({ params }) => {
 
   const c = rows[0];
 
+  const [rechnungenRows, projekteRows] = await Promise.all([
+    db
+      .select({
+        id: invoices.id,
+        businessId: invoices.businessId,
+        bezeichnung: invoices.bezeichnung,
+        nettoCents: invoices.nettoCents,
+        bezahltAm: invoices.bezahltAm,
+        rechnungsdatum: invoices.rechnungsdatum,
+      })
+      .from(invoices)
+      .where(eq(invoices.customerId, c.id))
+      .orderBy(desc(invoices.rechnungsdatum)),
+    db
+      .select({
+        id: projects.id,
+        businessId: projects.businessId,
+        name: projects.name,
+      })
+      .from(projects)
+      .where(
+        and(eq(projects.defaultCustomerId, c.id), isNull(projects.deletedAt)),
+      ),
+  ]);
+
   return {
     customer: {
       id: c.id,
@@ -45,6 +72,15 @@ export const load: PageServerLoad = async ({ params }) => {
       deletedAt: c.deletedAt?.toISOString() ?? null,
       createdAt: c.createdAt.toISOString(),
     },
+    rechnungen: rechnungenRows.map((r) => ({
+      id: r.id,
+      businessId: r.businessId,
+      bezeichnung: r.bezeichnung,
+      nettoCents: Number(r.nettoCents),
+      bezahltAm: r.bezahltAm ?? null,
+      rechnungsdatum: r.rechnungsdatum,
+    })),
+    projekte: projekteRows,
   };
 };
 

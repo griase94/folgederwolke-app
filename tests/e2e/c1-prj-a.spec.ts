@@ -161,8 +161,8 @@ test.describe("@phase-9 C1-PRJ-A Projekte first-class Phase 1", () => {
     await expect(page.getByTestId("project-cta")).toHaveCount(3);
     await expect(page.getByTestId("project-cta-edit")).toBeVisible();
 
-    // Two tabs only — scope-guard reminder.
-    await expect(page.getByTestId("project-tab")).toHaveCount(2);
+    // Six tabs total (C1-PRJ-B/C extended the original 2 to 6).
+    await expect(page.getByTestId("project-tab")).toHaveCount(6);
 
     // Default tab = Übersicht
     await expect(page.getByTestId("project-overview-tab")).toBeVisible();

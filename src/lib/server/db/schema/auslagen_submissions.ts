@@ -29,6 +29,7 @@ import { bezahltVonKindEnum } from "./enums.js";
 import { expenses } from "./expenses.js";
 import { files } from "./files.js";
 import { members } from "./members.js";
+import { projects } from "./projects.js";
 import { users } from "./users.js";
 
 export const auslagenSubmissions = pgTable(
@@ -84,6 +85,15 @@ export const auslagenSubmissions = pgTable(
       onDelete: "restrict",
     }),
     decisionReason: text("decision_reason"),
+    /**
+     * Optional project this submission belongs to (Night-2 C1-PRJ-B/C).
+     * Additive, NULL allowed — backfill is manual via UI / Night 3+ batch.
+     * ON DELETE SET NULL: deleting the project nulls this FK, it does NOT
+     * cascade-delete the submission.
+     */
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
     /** If approved, link to the created expense row. */
     approvedExpenseId: uuid("approved_expense_id").references(
       () => expenses.id,
@@ -118,5 +128,6 @@ export const auslagenSubmissions = pgTable(
     submittedAtIdx: index("auslagen_submissions_submitted_at_idx").on(
       t.submittedAt,
     ),
+    projectIdIdx: index("auslagen_submissions_project_id_idx").on(t.projectId),
   }),
 );

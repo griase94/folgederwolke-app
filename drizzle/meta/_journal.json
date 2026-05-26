@@ -148,6 +148,13 @@
       "when": 1779900100000,
       "tag": "0020_c5_member_beitrag_exempt",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1779950000000,
+      "tag": "0021_auslagen_submissions_project_id",
+      "breakpoints": true
     }
   ]
 }
