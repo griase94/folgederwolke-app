@@ -381,28 +381,12 @@ export function registerHandlers(): void {
   );
 
   // ── invoice.pdf_generated ──────────────────────────────────────────────
-  // Phase 11: anchor files.sha256 + storage pointer in the hash-chained
-  // audit_log. § 14 Abs. 1 UStG Unversehrtheit mitigation given that the
-  // off-platform `files-backup` workflow is parked (ADR-0012).
-  bus.on<EventPayload<"invoice.pdf_generated">>(
-    "invoice.pdf_generated",
-    async (payload) => {
-      await logAudit({
-        action: "update",
-        entityKind: "invoice",
-        entityId: payload.invoiceId,
-        entityBusinessId: payload.invoiceBusinessId,
-        actorUserId: payload.actorUserId,
-        actorKind: payload.actorUserId ? "user" : "system",
-        payload: {
-          kind: "pdf_generated",
-          fileId: payload.fileId,
-          sha256: payload.sha256,
-          byteSize: payload.byteSize,
-        },
-      });
-    },
-  );
+  // Phase 11: the sha256 audit-log anchor (§ 14 UStG Unversehrtheit per
+  // ADR-0012 §6) is written DIRECTLY inside finalizePdfJob, not through this
+  // event handler — a handler throw must not be able to skip the anchor.
+  // This subscription is reserved for future best-effort consumers (mail
+  // templates, analytics, …) that don't carry the legal guarantee. None
+  // exist today; we deliberately leave the slot unsubscribed.
 
   // ── invoice.superseded ─────────────────────────────────────────────────
   bus.on<EventPayload<"invoice.superseded">>(

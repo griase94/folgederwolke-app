@@ -107,9 +107,6 @@ export const invoices = pgTable(
     leistungszeitraum: text("leistungszeitraum").notNull(),
 
     // --- PDF persistence (Phase 11 — Vercel Blob via files table) ---
-    /** Legacy Google-Doc id; never populated in new code, retained for the
-     *  pre-Phase-10 importer pathway. Dropping requires a separate migration. */
-    driveDocId: text("drive_doc_id"),
     pdfStatus: pdfStatusEnum("pdf_status").notNull().default("not_generated"),
     pdfStatusError: text("pdf_status_error"),
     /** FK to files.id holding the canonical rendered PDF. NULL while

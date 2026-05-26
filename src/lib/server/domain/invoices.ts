@@ -37,6 +37,7 @@ import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getFileStorage, type FileStorage } from "$lib/server/files/storage.js";
 import { berlinYear } from "$lib/domain/year.js";
 import { bus } from "$lib/server/events/index.js";
+import { logAudit } from "$lib/server/audit-log/index.js";
 import { env } from "$lib/server/env.js";
 import { pdfLibInvoiceRenderer } from "$lib/server/pdf/pdf-lib-renderer.js";
 import type {
@@ -520,7 +521,30 @@ export async function runInvoiceJob(
       }
     }
 
-    // Phase C — flip pdf_status='generated' only after blob + files succeed.
+    // Phase C — anchor the sha256 in the hash-chained audit_log FIRST,
+    // before flipping pdf_status. § 14 UStG Unversehrtheit per ADR-0012 §6
+    // depends on this row landing whenever the file row landed; previously
+    // the anchor went through the event bus and a handler throw would have
+    // left the file persisted but unanchored. Direct write keeps the
+    // invariant tight: `pdf_status='generated'` implies an audit row with
+    // the file's sha256.
+    if (fileId) {
+      await logAudit({
+        action: "update",
+        entityKind: "invoice",
+        entityId: job.invoiceId,
+        entityBusinessId: businessId,
+        actorUserId: actorUserId ?? null,
+        actorKind: actorUserId ? "user" : "system",
+        payload: {
+          kind: "pdf_generated",
+          fileId,
+          sha256,
+          byteSize: bytes.byteLength,
+        },
+      });
+    }
+
     await db
       .update(invoices)
       .set({
@@ -536,16 +560,25 @@ export async function runInvoiceJob(
       .set({ status: "succeeded", finishedAt: new Date(), lastError: null })
       .where(eq(invoiceJobs.id, job.id));
 
-    // Emit AFTER the row is updated so handlers see the new pdf_file_id.
-    // sha256 + storage_key are forwarded to the audit-log anchor handler.
-    await bus.emit("invoice.pdf_generated", {
-      invoiceId: job.invoiceId,
-      invoiceBusinessId: businessId,
-      actorUserId,
-      fileId,
-      sha256,
-      byteSize: bytes.byteLength,
-    });
+    // Emit for downstream consumers (currently none — the audit anchor is
+    // written above, not through this event). Wrapped so a future handler
+    // throw cannot retroactively flip pdf_status to 'failed' for an invoice
+    // whose blob, files row, audit anchor, and status update all succeeded.
+    try {
+      await bus.emit("invoice.pdf_generated", {
+        invoiceId: job.invoiceId,
+        invoiceBusinessId: businessId,
+        actorUserId,
+        fileId,
+        sha256,
+        byteSize: bytes.byteLength,
+      });
+    } catch (emitErr) {
+      console.error(
+        "[runInvoiceJob] invoice.pdf_generated handler threw (non-fatal):",
+        emitErr,
+      );
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await db

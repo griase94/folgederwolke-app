@@ -228,6 +228,10 @@
 		</div>
 	{/if}
 
+	<!-- eslint-disable svelte/no-navigation-without-resolve — the hrefs below
+	     point at `blob:` URLs (PDF previews), not app routes; SvelteKit's
+	     resolve() doesn't apply. -->
+
 	<!-- Mobile (< lg): no inline iframe; iOS Safari refuses blob:application/pdf in <iframe>. -->
 	<div class="lg:hidden">
 		{#if mobileBlobUrl}
@@ -278,6 +282,7 @@
 			</a>
 		</div>
 	{/if}
+	<!-- eslint-enable svelte/no-navigation-without-resolve -->
 
 	<p class="mt-2 text-xs italic text-muted-foreground">
 		Vorschau – Druckbild kann minimal abweichen.

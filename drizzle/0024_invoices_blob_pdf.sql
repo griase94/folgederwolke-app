@@ -7,6 +7,12 @@
 --       test data; the guard catches an accidental real invoice slipped in.
 --   (2) refuse the DROP COLUMN if any pdf_bytes value survived the truncate.
 --
+-- TRUNCATE blast radius (verified): only `invoice_jobs.invoice_id` references
+-- `invoices` (ON DELETE CASCADE from `drizzle/0000_init.sql`). `invoice_jobs`
+-- has no children. CASCADE here therefore touches exactly `invoices` and
+-- `invoice_jobs` — nothing else. A future maintainer adding a child table
+-- (e.g. `invoice_payments`) needs to revisit this guard before running.
+--
 -- audit_log rows referencing truncated invoice ids are PRESERVED by design —
 -- the hash chain (ADR-0004) does not dereference entity_id, so removing
 -- entities does not corrupt the chain.
@@ -63,6 +69,10 @@ ALTER TABLE invoices DROP CONSTRAINT IF EXISTS invoices_drive_status_enum_ck;
 ALTER TABLE invoices DROP COLUMN pdf_bytes;
 ALTER TABLE invoices DROP COLUMN drive_pdf_file_id;
 ALTER TABLE invoices DROP COLUMN drive_status;
+-- drive_doc_id has been dead since Phase 10 (PDF generation no longer
+-- routes through a Drive Doc template); drop it now while we're already
+-- bumping the schema.
+ALTER TABLE invoices DROP COLUMN drive_doc_id;
 
 -- ── Add the blob FK ─────────────────────────────────────────────────────────
 ALTER TABLE invoices

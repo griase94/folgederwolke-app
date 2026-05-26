@@ -15,7 +15,6 @@ import {
   sessions,
   rateLimitAttempts,
 } from "$lib/server/db/schema/users.js";
-import { invoices } from "$lib/server/db/schema/invoices.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 import { sendMail } from "$lib/server/mail/index.js";
 import { verifyAuditChain } from "$lib/server/audit-log/verifier.js";
