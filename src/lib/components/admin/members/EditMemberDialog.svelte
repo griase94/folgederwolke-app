@@ -5,6 +5,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 	import { toast } from 'svelte-sonner';
 	import type { MemberView } from '$lib/domain/members.js';
 
@@ -219,15 +220,17 @@
 					/>
 				</div>
 
+				<!-- E4.5 (Night-2 C6-FORM): both date inputs migrated to
+				     DateField. ISO hidden mirrors keep the server action's
+				     `date_of_birth` + `eintritts_datum` field names. -->
 				<div class="grid grid-cols-2 gap-3">
 					<div class="space-y-1">
 						<Label for="edit-dob">Geburtsdatum</Label>
-						<Input
+						<DateField
 							id="edit-dob"
 							name="date_of_birth"
-							type="date"
-							lang="de"
 							value={member.dateOfBirth ?? ''}
+							aria-invalid={!!fieldError('date_of_birth')}
 						/>
 						{#if fieldError('date_of_birth')}
 							<p class="text-xs text-destructive">{fieldError('date_of_birth')}</p>
@@ -235,12 +238,11 @@
 					</div>
 					<div class="space-y-1">
 						<Label for="edit-eintritt">Eintrittsdatum</Label>
-						<Input
+						<DateField
 							id="edit-eintritt"
 							name="eintritts_datum"
-							type="date"
-							lang="de"
 							value={member.eintrittsDatum ?? ''}
+							aria-invalid={!!fieldError('eintritts_datum')}
 						/>
 					</div>
 				</div>

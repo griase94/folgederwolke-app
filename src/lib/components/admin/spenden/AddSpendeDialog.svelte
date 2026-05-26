@@ -5,6 +5,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 
 	let {
 		open = $bindable(false),
@@ -189,15 +190,15 @@
 			</fieldset>
 
 			<div class="grid gap-3 sm:grid-cols-2">
+				<!-- E4.x (Night-2 C6-FORM): migrated to DateField. Server still
+				     reads `name="zugewendet_am"` from the hidden ISO sibling. -->
 				<div class="space-y-1">
 					<Label for="add-spende-datum">Zuwendungsdatum *</Label>
-					<Input
+					<DateField
 						id="add-spende-datum"
 						name="zugewendet_am"
-						type="date"
-						lang="de"
 						required
-						data-testid="zugewendet-am-input"
+						aria-invalid={!!fieldError('zugewendet_am')}
 					/>
 					{#if fieldError('zugewendet_am')}
 						<p class="text-xs text-destructive">{fieldError('zugewendet_am')}</p>

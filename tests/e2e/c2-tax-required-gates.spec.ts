@@ -81,8 +81,14 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     await page.getByLabel(/bezeichnung/i).fill("Test");
     await page.locator('input[type="number"]').first().fill("10");
     // Fill the date fields so only Beleg is missing.
-    await page.getByLabel(/rechnungsdatum/i).fill("2026-05-01");
-    await page.getByLabel(/abfluss-datum/i).fill("2026-05-02");
+    // C6-FORM (Night-2 E4): the date inputs are now DateField primitives — they
+    // accept TT.MM.JJJJ display text and commit ISO to the hidden mirror onBlur.
+    const rechnungs = page.getByLabel(/rechnungsdatum/i);
+    await rechnungs.fill("01.05.2026");
+    await rechnungs.blur();
+    const abfluss = page.getByLabel(/abfluss-datum/i);
+    await abfluss.fill("02.05.2026");
+    await abfluss.blur();
     // Beleg deliberately left empty.
 
     // Native HTML5 required attribute on the file input prevents submission
@@ -100,7 +106,11 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     await page.waitForLoadState("networkidle");
     if (page.url().includes("/sign-in")) test.skip();
 
-    const abfluss = page.locator('input[name="abfluss_datum"]');
+    // C6-FORM (Night-2 E4): after the DateField migration the visible text
+    // input is what carries `required` (the hidden ISO mirror lacks it). We
+    // pin to the visible input by id and assert the required attribute is
+    // present (HTML serialises a bare `required` attribute as empty string).
+    const abfluss = page.locator("input#abfluss_datum");
     await expect(abfluss).toHaveAttribute("required", "");
   });
 
@@ -127,7 +137,9 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     await page.waitForLoadState("networkidle");
     if (page.url().includes("/sign-in")) test.skip();
 
-    const rechnungs = page.locator('input[name="rechnungsdatum"]');
+    // C6-FORM (Night-2 E4): after the DateField migration the visible text
+    // input is what carries `required`; pin by id.
+    const rechnungs = page.locator("input#rechnungsdatum");
     await expect(rechnungs).toHaveAttribute("required", "");
   });
 });

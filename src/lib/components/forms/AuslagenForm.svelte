@@ -3,6 +3,7 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 	import BezahltVonPicker from './BezahltVonPicker.svelte';
 	import BelegUpload from './BelegUpload.svelte';
 	import { DATENSCHUTZ_TEXT, DATENSCHUTZ_VERSION } from '$lib/domain/datenschutz.js';
@@ -245,6 +246,13 @@
 		const cents = parseBetragCents(betrag);
 		if (!cents || cents <= 0) {
 			errs['betragCents'] = ['Bitte einen gültigen Betrag eingeben (z.B. 12,50).'];
+		}
+		if (!rechnungsdatum || !/^\d{4}-\d{2}-\d{2}$/.test(rechnungsdatum)) {
+			// E4.1: DateField commits "" to the form when the user enters an
+			// invalid calendar date (e.g. 30.02.2026). Surface a field-level
+			// error so the parent's `aria-invalid` prop lights the field up
+			// even after the controlled-binding sync cycle re-runs.
+			errs['rechnungsdatum'] = ['Bitte ein gültiges Rechnungsdatum eingeben.'];
 		}
 		if (!datenschutzConsent) {
 			errs['consent'] = ['Bitte Datenschutzhinweis bestätigen.'];
@@ -505,24 +513,31 @@
 
 			<!-- Rechnungsdatum -->
 			<!-- C2-TAX: required per EÜR §11 EStG — surface the * marker and
-			     wire aria-invalid + role=alert error rendering. -->
+			     wire aria-invalid + role=alert error rendering.
+			     E4.1 (Night-2 C6-FORM consumers): migrated to DateField
+			     primitive — TT.MM.JJJJ display, ISO YYYY-MM-DD on the hidden
+			     `rechnungsdatum` sibling input. AuslagenForm encodes its
+			     payload into the hidden `data` JSON, so we drive the
+			     `rechnungsdatum` $state directly via the DateField onchange
+			     hook (and keep `markBlurred` semantics for the inline error). -->
 			<div class="flex flex-col gap-1.5">
 				<Label for="rechnungsdatum">
 					Rechnungsdatum <span aria-hidden="true">*</span>
 				</Label>
 				<p class="text-muted-foreground text-xs">Datum vom Beleg.</p>
-				<Input
+				<DateField
 					id="rechnungsdatum"
-					name="rechnungsdatum_display"
-					type="date"
-					lang="de"
+					name="rechnungsdatum"
+					value={rechnungsdatum}
 					required
 					max={new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' })}
-					bind:value={rechnungsdatum}
-					oninput={triggerDraftSave}
-					onblur={() => markBlurred('rechnungsdatum')}
 					aria-invalid={!!getError('rechnungsdatum')}
 					aria-describedby={getError('rechnungsdatum') ? 'err-rechnungsdatum' : undefined}
+					onchange={(iso) => {
+						rechnungsdatum = iso;
+						markBlurred('rechnungsdatum');
+						triggerDraftSave();
+					}}
 				/>
 				{#if getError('rechnungsdatum')}
 					<p id="err-rechnungsdatum" class="text-destructive text-xs" role="alert">
