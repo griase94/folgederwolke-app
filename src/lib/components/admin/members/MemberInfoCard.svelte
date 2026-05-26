@@ -21,6 +21,9 @@
 			role: string;
 			eintrittsDatum: string | null;
 			austrittsDatum: string | null;
+			/** Night-2 C5-MEM-full */
+			beitragExempt: boolean;
+			beitragExemptReason: string | null;
 			isFixture: boolean;
 			createdAt: string;
 		};
@@ -40,7 +43,10 @@
 			vorstand: 'Vorstand',
 			kassenwart: 'Kassenwart',
 			schriftfuehrer: 'Schriftführer',
-			'fördermitglied': 'Fördermitglied'
+			'fördermitglied': 'Fördermitglied',
+			// Night-2 C5-MEM-full additions
+			extern: 'Extern',
+			helfer: 'Helfer'
 		};
 		return map[role] ?? role;
 	}
@@ -127,7 +133,21 @@
 							Fixture
 						</span>
 					{/if}
+					{#if member.beitragExempt}
+						<span
+							data-testid="member-exempt-badge"
+							class="inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900"
+							title={member.beitragExemptReason ?? ''}
+						>
+							Beitragsbefreit
+						</span>
+					{/if}
 				</div>
+				{#if member.beitragExempt && member.beitragExemptReason}
+					<p class="mt-2 text-xs italic text-amber-700" data-testid="member-exempt-reason">
+						{member.beitragExemptReason}
+					</p>
+				{/if}
 			</div>
 		</div>
 

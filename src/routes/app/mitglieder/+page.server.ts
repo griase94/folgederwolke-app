@@ -94,6 +94,11 @@ export const load: PageServerLoad = async ({ url }) => {
       role: m.role,
       eintrittsDatum: m.eintrittsDatum,
       austrittsDatum: m.austrittsDatum,
+      // Night-2 C5-MEM-full: surface exempt-flag + reason to the client so
+      // MemberRow can render the `befreit` badge and EditMemberDialog can
+      // pre-fill the toggle on edit.
+      beitragExempt: m.beitragExempt,
+      beitragExemptReason: m.beitragExemptReason,
       isFixture: m.isFixture,
       createdAt: m.createdAt.toISOString(),
       beitrags: Object.fromEntries(

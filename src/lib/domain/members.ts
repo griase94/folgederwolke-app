@@ -26,9 +26,15 @@ export type BeitragCell = {
  * Mirrored by the server helper `memberBeitragsTotals(year)` in
  * `$lib/server/domain/members.ts` (re-exported from there for callers that
  * already use the server module).
+ *
+ * Night-2 C5-MEM-full extends the aggregate with `exemptCount` (count of
+ * active members where `beitrag_exempt = true`). Exempt members are also
+ * excluded from the `offenCents` sum — see `memberBeitragsTotals` in
+ * `$lib/server/domain/members.ts` for the SQL.
  */
 export type MemberBeitragsTotals = {
   memberCount: number;
+  exemptCount: number;
   paidCents: number;
   offenCents: number;
 };
@@ -45,6 +51,10 @@ export type MemberView = {
   role: string;
   eintrittsDatum: string | null;
   austrittsDatum: string | null;
+  /** Night-2 C5-MEM-full: Beitragspflicht ausgesetzt? */
+  beitragExempt: boolean;
+  /** Night-2 C5-MEM-full: free-text justification (tooltip on the badge). */
+  beitragExemptReason: string | null;
   isFixture: boolean;
   createdAt: string;
   beitrags: Record<number, BeitragCell>;

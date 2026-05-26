@@ -13,12 +13,23 @@
 		updatedAt: string;
 	};
 
+	// Night-2 C5-MEM-full — accept member-level exempt flag so the timeline
+	// can decorate ALL rows as `befreit` (Beitragspflicht-Aussetzung) and
+	// hide the "als bezahlt markieren" CTA for them. The flag is propagated
+	// as a 4th status type — `exempt` — purely for display; the underlying
+	// rows keep their own paid/open/waived semantic in the DB.
+	type RowStatus = BeitragStatus | 'exempt';
+
 	let {
 		beitrags,
-		memberId
+		memberId,
+		beitragExempt = false,
+		beitragExemptReason = null
 	}: {
 		beitrags: BeitragRow[];
 		memberId: string;
+		beitragExempt?: boolean;
+		beitragExemptReason?: string | null;
 	} = $props();
 
 	// Sorted newest first (server already orders this, but be explicit)
@@ -27,8 +38,12 @@
 	const totalPaidCents = $derived(
 		beitrags.reduce((sum, b) => sum + Math.min(b.paidCents, b.betragCents), 0)
 	);
+	// Night-2 C5-MEM-full: exempt members don't owe anything — clamp `open`
+	// to zero so the summary matches the matrix aggregate.
 	const totalOpenCents = $derived(
-		beitrags.reduce((sum, b) => sum + Math.max(0, b.betragCents - b.paidCents), 0)
+		beitragExempt
+			? 0
+			: beitrags.reduce((sum, b) => sum + Math.max(0, b.betragCents - b.paidCents), 0)
 	);
 
 	function fmtEur(cents: number): string {
@@ -44,17 +59,34 @@
 		});
 	}
 
-	const statusLabel: Record<BeitragStatus, string> = {
+	const statusLabel: Record<RowStatus, string> = {
 		paid: 'bezahlt',
 		open: 'offen',
-		waived: 'erlassen'
+		waived: 'erlassen',
+		// Night-2 C5-MEM-full
+		exempt: 'befreit'
 	};
 
-	const statusClasses: Record<BeitragStatus, string> = {
+	const statusClasses: Record<RowStatus, string> = {
 		paid: 'bg-green-100 text-green-800 border-green-200',
 		open: 'bg-amber-100 text-amber-800 border-amber-200',
-		waived: 'bg-gray-100 text-gray-500 border-gray-200'
+		waived: 'bg-gray-100 text-gray-500 border-gray-200',
+		// Night-2 C5-MEM-full — amber-tinted but distinct from `open` to
+		// communicate "active waiver" rather than "owed".
+		exempt: 'bg-amber-50 text-amber-700 border-amber-200'
 	};
+
+	/**
+	 * Combine member-level exempt with the row-level paid/open/waived
+	 * semantic. Exempt overrides everything except `paid` (a fully-paid
+	 * row stays "bezahlt" even if the member is later marked exempt — we
+	 * preserve history).
+	 */
+	function rowStatus(b: BeitragRow): RowStatus {
+		const base = beitragStatusFor(b);
+		if (base === 'paid') return 'paid';
+		return beitragExempt ? 'exempt' : base;
+	}
 
 	let markingYear = $state<number | null>(null);
 </script>
@@ -87,6 +119,23 @@
 		</div>
 	{/if}
 
+	<!-- Night-2 C5-MEM-full — exempt banner sits ABOVE the timeline (or empty
+	     state) so admins still see the Beitragsbefreit context even before
+	     any Beitragsrows exist for this member. -->
+	{#if beitragExempt}
+		<div
+			class="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+			data-testid="beitragsverlauf-exempt-banner"
+		>
+			<p class="font-medium">Beitragspflicht ausgesetzt</p>
+			{#if beitragExemptReason}
+				<p class="mt-0.5 text-xs text-amber-700">
+					Grund: {beitragExemptReason}
+				</p>
+			{/if}
+		</div>
+	{/if}
+
 	<!-- Timeline -->
 	{#if sorted.length === 0}
 		<div class="rounded-xl border border-dashed border-border py-10 text-center">
@@ -114,8 +163,13 @@
 			></div>
 
 			{#each sorted as b (b.id)}
-				{@const status = beitragStatusFor(b)}
-				<div class="relative flex items-start gap-4 pb-4">
+				{@const status = rowStatus(b)}
+				<div
+					class="relative flex items-start gap-4 pb-4"
+					data-testid="beitragsverlauf-row"
+					data-year={b.year}
+					data-status={status}
+				>
 					<!-- Timeline dot -->
 					<div
 						class="relative z-10 mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 bg-background
@@ -123,7 +177,9 @@
 							? 'border-green-400'
 							: status === 'open'
 								? 'border-amber-400'
-								: 'border-gray-300'}"
+								: status === 'exempt'
+									? 'border-amber-300'
+									: 'border-gray-300'}"
 					>
 						{#if status === 'paid'}
 							<svg
@@ -139,6 +195,8 @@
 							</svg>
 						{:else if status === 'open'}
 							<div class="h-2 w-2 rounded-full bg-amber-400"></div>
+						{:else if status === 'exempt'}
+							<div class="h-2 w-2 rounded-full bg-amber-200"></div>
 						{/if}
 					</div>
 
@@ -170,8 +228,9 @@
 							{/if}
 						</div>
 
-						<!-- Mark paid action -->
-						{#if status !== 'paid' && status !== 'waived'}
+						<!-- Mark paid action — hidden for exempt members; admins must
+						     clear the exempt flag before recording a payment. -->
+						{#if status !== 'paid' && status !== 'waived' && status !== 'exempt'}
 							<form
 								method="POST"
 								action="?/mark-beitrag-paid"

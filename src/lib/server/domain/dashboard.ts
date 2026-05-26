@@ -208,17 +208,21 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         ),
       ),
 
-    // 3. Open beitrags (paid < due) for current year — count rows + distinct members
+    // 3. Open beitrags (paid < due) for current year — count rows + distinct members.
+    // Exempt members (beitrag_exempt = true) are excluded: their synthetic
+    // unpaid rows must not inflate the "X members owe €Y" KPI.
     db
       .select({
         rowCount: count(),
         memberCount: sql<number>`count(distinct ${memberBeitrags.memberId})`,
       })
       .from(memberBeitrags)
+      .innerJoin(members, eq(memberBeitrags.memberId, members.id))
       .where(
         and(
           eq(memberBeitrags.year, currentYear),
           lt(memberBeitrags.paidCents, memberBeitrags.betragCents),
+          eq(members.beitragExempt, false),
         ),
       ),
 

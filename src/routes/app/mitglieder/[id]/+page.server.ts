@@ -117,6 +117,9 @@ export const load: PageServerLoad = async ({ params }) => {
       role: member.role,
       eintrittsDatum: member.eintrittsDatum,
       austrittsDatum: member.austrittsDatum,
+      // Night-2 C5-MEM-full: surface exempt-flag + reason to the detail page.
+      beitragExempt: member.beitragExempt,
+      beitragExemptReason: member.beitragExemptReason,
       isFixture: member.isFixture,
       createdAt: member.createdAt.toISOString(),
     },
@@ -253,6 +256,15 @@ export const actions: Actions = {
       return fail(422, {
         action: "send-reminder",
         error: "Keine E-Mail-Adresse hinterlegt",
+      });
+    }
+
+    // Night-2 C5-MEM-full: refuse to remind exempt members — they don't
+    // owe anything, so a "you owe €X" mail would be wrong.
+    if (member.beitragExempt) {
+      return fail(422, {
+        action: "send-reminder",
+        error: "Mitglied ist von der Beitragspflicht befreit",
       });
     }
 
