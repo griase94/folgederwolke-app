@@ -40,21 +40,25 @@ const previewSchema = z.object({
     .regex(/^[A-Za-z]{0,3}$/, "country must be 2-3 letter code or empty")
     .optional()
     .default("DE"),
+  // Dates: accept the YYYY-MM-DD shape OR empty string (pre-hydration the
+  // form's $state defaults are `""` and the first reactive refresh fires
+  // before the parent's hydration $effect propagates `data.today`). Empty
+  // is then passed through to the renderer which falls back to today.
   rechnungsdatum: z
     .string()
     .max(20)
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD")
+    .regex(/^(\d{4}-\d{2}-\d{2})?$/, "must be YYYY-MM-DD or empty")
     .optional(),
   leistungsDatum: z
     .string()
     .max(20)
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .regex(/^(\d{4}-\d{2}-\d{2})?$/)
     .nullable()
     .optional(),
   faelligkeitsDatum: z
     .string()
     .max(20)
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .regex(/^(\d{4}-\d{2}-\d{2})?$/)
     .nullable()
     .optional(),
   leistungszeitraum: z.string().max(500).optional().default(""),
@@ -128,12 +132,14 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   const bezeichnung = payload.bezeichnung.trim() || "Bezeichnung";
   const customerName = payload.customerName.trim() || "Kund:in";
 
+  // Treat empty-string dates as missing — the form's $state defaults are
+  // "" before parent hydration, and the renderer wants real ISO strings.
+  const today = new Date().toISOString().slice(0, 10);
   const { bytes } = await pdfLibInvoiceRenderer.render({
     invoiceNumber: invoiceNumberPreview,
-    rechnungsdatum:
-      payload.rechnungsdatum ?? new Date().toISOString().slice(0, 10),
-    leistungsDatum: payload.leistungsDatum ?? null,
-    faelligkeitsDatum: payload.faelligkeitsDatum ?? null,
+    rechnungsdatum: payload.rechnungsdatum || today,
+    leistungsDatum: payload.leistungsDatum || null,
+    faelligkeitsDatum: payload.faelligkeitsDatum || null,
     leistungszeitraum: payload.leistungszeitraum.trim() || null,
     verein: {
       name: env.VEREIN_NAME || "Folge der Wolke e.V.",
