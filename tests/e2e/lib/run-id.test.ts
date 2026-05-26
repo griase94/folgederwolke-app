@@ -1,4 +1,3 @@
-// tests/e2e/lib/run-id.test.ts
 import { describe, it, expect, afterEach } from "vitest";
 import { getRunId, nsEmail, nsLabel } from "./run-id";
 

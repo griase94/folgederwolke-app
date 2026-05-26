@@ -1,4 +1,3 @@
-// tests/e2e/lib/run-id.ts
 export function getRunId(): string {
   return process.env.E2E_RUN_ID || "local";
 }
