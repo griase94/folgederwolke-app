@@ -1,10 +1,21 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { page } from '$app/state';
+	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import InvoiceList from '$lib/components/admin/invoices/InvoiceList.svelte';
 	import { rechnungenStatusLabel } from '$lib/domain/invoices.js';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
+
+	onMount(() => {
+		// P12-D: ?paid=1 flash after the per-row inline mark-paid POST + redirect.
+		// Mirrors the detail-page pattern at /app/rechnungen/[id]/+page.svelte.
+		if (page.url.searchParams.get('paid') === '1') {
+			toast.success('Als bezahlt markiert');
+		}
+	});
 
 	let searchQuery = $state('');
 
@@ -102,5 +113,5 @@
 		</div>
 	</div>
 
-	<InvoiceList invoices={filtered} />
+	<InvoiceList invoices={filtered} today={data.today} />
 </div>

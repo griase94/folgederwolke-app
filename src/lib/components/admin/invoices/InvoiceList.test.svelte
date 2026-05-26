@@ -2,7 +2,7 @@
 	import InvoiceList from './InvoiceList.svelte';
 	import type { InvoiceRow } from '$lib/domain/invoices.js';
 
-	let { invoices }: { invoices: InvoiceRow[] } = $props();
+	let { invoices, today = '2026-05-26' }: { invoices: InvoiceRow[]; today?: string } = $props();
 </script>
 
-<InvoiceList {invoices} />
+<InvoiceList {invoices} {today} />

@@ -102,6 +102,10 @@ export interface InvoiceRow {
   supersedesId: string | null;
   /** Set on the predecessor when a newer invoice supersedes it. */
   supersededByBusinessId: string | null;
+  /** ISO date (YYYY-MM-DD) when the invoice was marked as paid; null if open. */
+  bezahltAm: string | null;
+  /** FK to the auto-created income row (set together with bezahltAm). */
+  paidByIncomeId: string | null;
   createdAt: string;
 }
 
@@ -116,6 +120,21 @@ export interface InvoiceDetail extends InvoiceRow {
   projectName: string | null;
   leistungsBeschreibung: string | null;
   pdfStatusError: string | null;
+  /** Business id of the linked income row (E-YYYY-NNN), populated on join. */
+  paidByIncomeBusinessId: string | null;
+}
+
+/**
+ * One audit_log row scoped to a single invoice — payload shape is
+ * defined by the domain layer (`logAudit` callsites in
+ * `src/lib/server/domain/invoices.ts`). The Verlauf component renders
+ * specific `payload.kind` values; unknown kinds fall back to the action.
+ */
+export interface InvoiceHistoryEntry {
+  occurredAt: string;
+  action: "create" | "update" | "delete";
+  actorName: string | null;
+  payload: Record<string, unknown>;
 }
 
 /** Lightweight label for the InvoicePdfStatusBadge. */

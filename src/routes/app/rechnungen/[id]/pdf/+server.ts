@@ -8,8 +8,9 @@
  * Status mapping:
  *   - invoice not found             → 404
  *   - pdf_status !== 'generated'    → 409 ("noch nicht generiert" — admins
- *                                          should wait for the poll to settle
- *                                          or retry via "PDF neu generieren")
+ *                                          should wait for the poll to settle;
+ *                                          an edit (Phase 12) re-queues the
+ *                                          render with a fresh job)
  *   - pdf_file_id IS NULL           → 409 (defence-in-depth: with the new
  *                                          state machine this should never
  *                                          happen if pdf_status==='generated')

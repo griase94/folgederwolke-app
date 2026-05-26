@@ -84,6 +84,10 @@ To re-send, increment `send_attempt`. Never call the provider directly.
 Archived Buchungsjahre are immutable. Route actions must check
 `settings.festgeschrieben_bis` before accepting writes.
 
+Phase 12 introduces a precise column-set carve-out so post-payment fields
+(`bezahlt_am`, `paid_by_income_id`) can be updated even after Festschreibung —
+see ADR-0006 "Phase 12 Limitations".
+
 ### 9. bezahlt_von is a discriminated union (ADR-0007)
 
 Use `bezahlt_von_kind` enum + nullable `extern_*` columns (gated by CHECK

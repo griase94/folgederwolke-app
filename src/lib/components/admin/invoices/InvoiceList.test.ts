@@ -24,6 +24,8 @@ const sampleInvoice: InvoiceRow = {
   festgeschriebenAt: null,
   supersedesId: null,
   supersededByBusinessId: null,
+  bezahltAm: null,
+  paidByIncomeId: null,
   createdAt: "2026-03-04",
 };
 

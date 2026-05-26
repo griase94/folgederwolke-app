@@ -4,10 +4,12 @@
  * Verifies the post-Phase-11 finalizePdfJob behaviour:
  *   - blob upload succeeds → files row written → invoices.pdf_file_id set
  *     → invoices.pdf_status='generated' → audit_log row carries sha256
- *   - regenerate (`runInvoiceJob` called a second time on the same invoice)
- *     produces a versioned pathname (`.v2.pdf`) and a new files row; the
- *     v1 files row is preserved (Festschreibung integrity)
  *   - storage=null (test-mode opt-out) still updates DB but skips blob
+ *
+ * Phase 12-A removed the "regenerate with changed content → .v2.pdf, v1
+ * preserved" assertion from this file; the equivalent flow is exercised
+ * through `editInvoice` in tests/integration/invoice-edit-history.test.ts
+ * (Phase 12-E).
  *
  * Driver notes:
  *   drizzle-orm/postgres-js `db.execute(sql`…`)` returns rows as a plain
@@ -153,62 +155,6 @@ describe("Phase 11 — invoice PDF blob persistence", () => {
     const bytes = await storage.download(file.storage_key);
     expect(bytes.byteLength).toBe(Number(file.byte_size));
     expect(bytes[0]).toBe(0x25); // '%' — PDF header
-  });
-
-  it("regenerate with changed content → .v2.pdf, v1 preserved", async () => {
-    const storage = new InMemoryMockFileStorage();
-    const seeded = await seedInvoiceWithJob({ businessId: "FDW-2099-002" });
-
-    // First render.
-    await runInvoiceJob(seeded.jobId, null, { storage });
-
-    const db = getDb();
-
-    // Mutate the invoice so the regenerated PDF has different bytes (otherwise
-    // sha-dedup would correctly keep the same files row — no new version).
-    await db.execute(sql`
-      UPDATE invoices
-      SET bezeichnung = 'Integrationstest Rechnung v2 (geändert)',
-          netto_cents = 99999,
-          brutto_cents = 99999
-      WHERE id = ${seeded.invoiceId}::uuid
-    `);
-
-    // Requeue: insert a fresh invoice_jobs row + flip invoice pdf_status
-    // back to 'queued' (mirrors what regeneratePdf() does).
-    const jobs = (await db.execute(sql`
-      INSERT INTO invoice_jobs (invoice_id, idempotency_key, status)
-      VALUES (${seeded.invoiceId}::uuid, ${`invoice:${seeded.invoiceId}:regen-${Date.now()}`}, 'queued')
-      RETURNING id
-    `)) as unknown as Row<{ id: string }>;
-    const job2 = jobs[0]!;
-    await db.execute(
-      sql`UPDATE invoices SET pdf_status='queued' WHERE id = ${seeded.invoiceId}::uuid`,
-    );
-
-    await runInvoiceJob(job2.id, null, { storage });
-
-    const invs = (await db.execute(sql`
-      SELECT pdf_file_id::text AS pdf_file_id, year_of_buchung
-      FROM invoices WHERE id = ${seeded.invoiceId}::uuid
-    `)) as unknown as Row<{ pdf_file_id: string; year_of_buchung: number }>;
-    const inv = invs[0]!;
-
-    const fileRows = (await db.execute(sql`
-      SELECT id::text AS id, storage_key
-      FROM files WHERE storage_key LIKE ${`rechnungen/${inv.year_of_buchung}/FDW-2099-002%`}
-      ORDER BY storage_key
-    `)) as unknown as Row<{ id: string; storage_key: string }>;
-
-    expect(fileRows.length).toBe(2);
-    expect(fileRows[0]!.storage_key).toBe(
-      `rechnungen/${inv.year_of_buchung}/FDW-2099-002.pdf`,
-    );
-    expect(fileRows[1]!.storage_key).toBe(
-      `rechnungen/${inv.year_of_buchung}/FDW-2099-002.v2.pdf`,
-    );
-    // The invoice now points at v2.
-    expect(inv.pdf_file_id).toBe(fileRows[1]!.id);
   });
 
   // NB: an "unchanged content → sha-dedup → single files row" assertion is

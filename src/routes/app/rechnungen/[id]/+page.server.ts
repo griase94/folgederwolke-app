@@ -2,26 +2,44 @@
  * /app/rechnungen/[id] — invoice detail page.
  *
  * load()  → invoice + linked customer/project/kategorie + latest job state
+ *           + audit_log timeline for the Verlauf section (joined with users
+ *           for the actor display name).
  *
  * actions:
- *   regenerate → re-run PDF generation in place (only when not festgeschrieben)
- *   supersede  → create a new invoice that replaces this one
- *   download   → streamed PDF bytes (works even if Drive upload failed)
+ *   supersede     → create a new invoice that replaces this one (kept in
+ *                   code for now even though the UI no longer surfaces it;
+ *                   Phase 13 will replace it with a Storno + correction flow).
+ *   mark-paid     → mark unpaid invoice as paid + auto-create matching
+ *                   income row (Phase 12-A domain layer).
+ *   undo-payment  → same-day-only fat-finger recovery; deletes the income
+ *                   row + clears bezahlt_am.
+ *
+ * The legacy `?/regenerate` action was removed in Phase 12-A — sha-dedup
+ * made it a near-no-op and "Bearbeiten" replaces it as the primary edit
+ * pathway.
  */
 
 import { error, fail, redirect } from "@sveltejs/kit";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { invoices } from "$lib/server/db/schema/invoices.js";
 import { invoiceJobs } from "$lib/server/db/schema/invoice_jobs.js";
 import { customers } from "$lib/server/db/schema/customers.js";
 import { projects } from "$lib/server/db/schema/projects.js";
+import { income } from "$lib/server/db/schema/income.js";
+import { auditLog } from "$lib/server/db/schema/audit_log.js";
+import { users } from "$lib/server/db/schema/users.js";
 import {
-  regeneratePdf,
+  markInvoiceAsPaid,
   supersedeInvoice,
+  undoPayment,
 } from "$lib/server/domain/invoices.js";
-import type { InvoiceDetail, InvoicePdfStatus } from "$lib/domain/invoices.js";
+import type {
+  InvoiceDetail,
+  InvoiceHistoryEntry,
+  InvoicePdfStatus,
+} from "$lib/domain/invoices.js";
 
 export const load: PageServerLoad = async ({ params, url }) => {
   const db = getDb();
@@ -70,6 +88,41 @@ export const load: PageServerLoad = async ({ params, url }) => {
     .limit(1);
   if (succ) successor = succ;
 
+  // Linked income row business_id (populated when invoice is paid). Used by
+  // the paid-banner on the detail page.
+  let paidByIncomeBusinessId: string | null = null;
+  if (inv.paidByIncomeId) {
+    const [incomeRow] = await db
+      .select({ businessId: income.businessId })
+      .from(income)
+      .where(eq(income.id, inv.paidByIncomeId))
+      .limit(1);
+    if (incomeRow) paidByIncomeBusinessId = incomeRow.businessId;
+  }
+
+  // Verlauf: audit_log rows for this invoice, newest first, joined to users
+  // so the timeline can render the actor's display name. Pattern from
+  // src/routes/app/mitglieder/[id]/+page.server.ts:60-65.
+  const auditRows = await db
+    .select({
+      occurredAt: auditLog.occurredAt,
+      action: auditLog.action,
+      payload: auditLog.payload,
+      actorName: users.name,
+    })
+    .from(auditLog)
+    .leftJoin(users, eq(users.id, auditLog.actorUserId))
+    .where(and(eq(auditLog.entityKind, "invoice"), eq(auditLog.entityId, id)))
+    .orderBy(desc(auditLog.occurredAt))
+    .limit(50);
+
+  const auditEntries: InvoiceHistoryEntry[] = auditRows.map((r) => ({
+    occurredAt: r.occurredAt.toISOString(),
+    action: r.action as "create" | "update" | "delete",
+    actorName: r.actorName ?? null,
+    payload: (r.payload as Record<string, unknown> | null) ?? {},
+  }));
+
   const invoice: InvoiceDetail = {
     id: inv.id,
     businessId: inv.businessId,
@@ -92,6 +145,9 @@ export const load: PageServerLoad = async ({ params, url }) => {
       : null,
     supersedesId: inv.supersedesId ?? null,
     supersededByBusinessId: successor?.businessId ?? null,
+    bezahltAm: inv.bezahltAm ?? null,
+    paidByIncomeId: inv.paidByIncomeId ?? null,
+    paidByIncomeBusinessId,
     kategorieId: inv.kategorieId ?? null,
     kategorieNameSnapshot: inv.kategorieNameSnapshot,
     sphereSnapshot: inv.sphereSnapshot,
@@ -100,10 +156,22 @@ export const load: PageServerLoad = async ({ params, url }) => {
     createdAt: inv.createdAt.toISOString(),
   };
 
+  // Today (Berlin) as ISO YYYY-MM-DD — used as the default + max bound for
+  // the mark-paid DateField. The detail page renders this client-side; the
+  // domain re-checks the upper bound on submit.
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
   return {
     invoice,
     predecessor,
     successor,
+    auditEntries,
+    today,
     latestJob: latestJob
       ? {
           id: latestJob.id,
@@ -117,19 +185,12 @@ export const load: PageServerLoad = async ({ params, url }) => {
         }
       : null,
     pollJobId: url.searchParams.get("job"),
+    paidFlash: url.searchParams.get("paid") === "1",
+    undoneFlash: url.searchParams.get("undone") === "1",
   };
 };
 
 export const actions: Actions = {
-  regenerate: async ({ params, locals }) => {
-    const actorUserId = locals.session?.user.id ?? null;
-    const result = await regeneratePdf(params.id, actorUserId);
-    if (!result.ok) {
-      return fail(result.status, { action: "regenerate", error: result.error });
-    }
-    throw redirect(303, `/app/rechnungen/${params.id}?job=${result.jobId}`);
-  },
-
   supersede: async ({ params, locals }) => {
     const actorUserId = locals.session?.user.id ?? null;
     const result = await supersedeInvoice(params.id, actorUserId);
@@ -140,5 +201,33 @@ export const actions: Actions = {
       303,
       `/app/rechnungen/${result.newInvoiceId}?job=${result.jobId}`,
     );
+  },
+
+  // Mark unpaid → paid. Auto-creates the matching income row in one tx
+  // (see markInvoiceAsPaid in src/lib/server/domain/invoices.ts).
+  "mark-paid": async ({ params, request, locals }) => {
+    const actorUserId = locals.session?.user.id ?? null;
+    const formData = await request.formData();
+    const bezahltAm = formData.get("bezahltAm")?.toString() ?? "";
+
+    const result = await markInvoiceAsPaid(params.id, bezahltAm, actorUserId);
+    if (!result.ok) {
+      return fail(result.status, { action: "mark-paid", error: result.error });
+    }
+    throw redirect(303, `/app/rechnungen/${params.id}?paid=1`);
+  },
+
+  // Same-day-only fat-finger recovery — deletes the linked income row and
+  // clears bezahlt_am on the invoice. Guarded by the domain layer.
+  "undo-payment": async ({ params, locals }) => {
+    const actorUserId = locals.session?.user.id ?? null;
+    const result = await undoPayment(params.id, actorUserId);
+    if (!result.ok) {
+      return fail(result.status, {
+        action: "undo-payment",
+        error: result.error,
+      });
+    }
+    throw redirect(303, `/app/rechnungen/${params.id}?undone=1`);
   },
 };

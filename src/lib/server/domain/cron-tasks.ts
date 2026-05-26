@@ -74,8 +74,10 @@ export async function cleanupRateLimitAttempts(): Promise<number> {
 // (Phase 11) retryFailedDriveUploads removed — invoice PDFs persist to Vercel
 // Blob synchronously inside finalizePdfJob (no separate Drive step to retry).
 // Transient failures land on invoices.pdf_status='failed' with the error
-// message in pdf_status_error and can be retried via the admin "PDF neu
-// generieren" action (regeneratePdf) which produces a versioned file path.
+// message in pdf_status_error. Phase 12-A removed the "PDF neu generieren"
+// action; users re-trigger a render by editing the invoice (which always
+// queues a fresh invoice_jobs row + bumps the PDF version), or — for
+// festgeschriebene rows — by issuing a Storno via supersede.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
