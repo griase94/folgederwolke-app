@@ -19,11 +19,18 @@
 	let {
 		open = $bindable(false),
 		submissionId,
-		ausId
+		ausId,
+		formAction = '?/reject'
 	}: {
 		open: boolean;
 		submissionId: string;
 		ausId: string;
+		/**
+		 * Form action target. Defaults to the detail-page `?/reject` action.
+		 * The inbox list (C7-INBOX full) overrides this to
+		 * `/app/inbox?/inline-reject` so reject works from the list row.
+		 */
+		formAction?: string;
 	} = $props();
 
 	type Template = {
@@ -100,7 +107,7 @@
 
 		<form
 			method="POST"
-			action="?/reject"
+			action={formAction}
 			use:enhance={() => {
 				loading = true;
 				error = null;

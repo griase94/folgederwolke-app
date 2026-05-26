@@ -77,6 +77,35 @@ export function registerHandlers(): void {
     },
   );
 
+  // ── auslage.approved ────────────────────────────────────────────────────
+  // ApprovalMail (best-effort). The handler is registered BEFORE expense.approved
+  // so the approval confirmation mail fires in the same request as the audit row.
+  bus.on<EventPayload<"auslage.approved">>("auslage.approved", async (p) => {
+    if (!p.submitterEmail) return; // no recipient → no mail
+    try {
+      await sendMail({
+        template: "auslage_approved",
+        entity_kind: "auslagen_submission",
+        entity_id: p.submissionId,
+        send_attempt: p.send_attempt, // P2-B6: required for re-approve-after-reject
+        to: p.submitterEmail,
+        props: {
+          vorname: p.vorname ?? "",
+          ausId: p.submissionBusinessId,
+          bezeichnung: p.bezeichnung,
+          betragCents: p.betragCents,
+          kategorie: p.kategorie,
+          decidedAt: p.decidedAt,
+        },
+      });
+    } catch (e) {
+      console.error(
+        `[events] ApprovalMail failed for ${p.submissionBusinessId}:`,
+        e,
+      );
+    }
+  });
+
   // ── expense.approved ────────────────────────────────────────────────────
   // No mail on approval — the user already received the EingangsMail and will
   // be notified again on `expense.erstattet`. The handler just appends an

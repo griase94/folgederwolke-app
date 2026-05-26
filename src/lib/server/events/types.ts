@@ -130,6 +130,30 @@ export type Events = {
   };
 
   /**
+   * Admin approved an Auslage submission in the audit inbox — triggers
+   * ApprovalMail to the submitter via the bus handler (ADR-0005 idempotency).
+   *
+   * P2-B6: `send_attempt` is computed by the caller before emitting:
+   * SELECT count(*) FROM sent_mails WHERE template='auslage_approved' AND entity_id=...
+   * Default 0 for first approval; a re-approve-after-reject cycle increments
+   * so ADR-0005's UNIQUE(template, entity_kind, entity_id, send_attempt) allows
+   * a NEW row rather than silently deduping the legitimate re-send.
+   */
+  "auslage.approved": {
+    submissionId: string;
+    submissionBusinessId: string;
+    submitterEmail: string | null;
+    vorname: string | null;
+    bezeichnung: string;
+    betragCents: number;
+    kategorie: string;
+    decidedAt: string;
+    decidedByUserId: string;
+    /** P2-B6: per ADR-0005 UNIQUE(template, entity_kind, entity_id, send_attempt). */
+    send_attempt: number;
+  };
+
+  /**
    * Admin opened an `auslagen_submissions` row in the audit inbox for the
    * first time. Handler sets `reviewed_at = now()` if NULL and writes a
    * single `audit_log` row (entityKind='auslagen_submission'). Emitting the
