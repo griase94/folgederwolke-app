@@ -14,8 +14,9 @@
 
 	let {
 		invoices,
+		today,
 		newInvoiceHref = '/app/rechnungen/new'
-	}: { invoices: InvoiceRow[]; newInvoiceHref?: string } = $props();
+	}: { invoices: InvoiceRow[]; today: string; newInvoiceHref?: string } = $props();
 </script>
 
 {#if invoices.length === 0}
@@ -34,7 +35,7 @@
 	>
 		{#each invoices as invoice (invoice.id)}
 			<div role="listitem">
-				<InvoiceCardMobile {invoice} />
+				<InvoiceCardMobile {invoice} {today} />
 			</div>
 		{/each}
 	</div>
@@ -48,7 +49,7 @@
 	>
 		{#each invoices as invoice (invoice.id)}
 			<div role="listitem">
-				<InvoiceListRow {invoice} />
+				<InvoiceListRow {invoice} {today} />
 			</div>
 		{/each}
 	</div>
