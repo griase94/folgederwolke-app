@@ -12,27 +12,63 @@
  */
 
 import { fail } from "@sveltejs/kit";
-import { isNull, desc, eq } from "drizzle-orm";
+import { isNull, isNotNull, desc, eq, and, sql } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { validateAuslageInput } from "$lib/server/domain/auslagen.js";
-import { manualImportSubmission } from "$lib/server/domain/audit-inbox-actions.js";
+import {
+  manualImportSubmission,
+  approveSubmission,
+  rejectSubmission,
+} from "$lib/server/domain/audit-inbox-actions.js";
 import type { InboxSubmissionView } from "$lib/domain/inbox.js";
+
+/**
+ * Decoded ?status= filter value. Falls back to "Offen" for missing/invalid.
+ * C7-INBOX full: filter chips on /app/inbox.
+ */
+type InboxStatusFilter = "Offen" | "Geprüft" | "Abgelehnt";
+
+function parseStatus(raw: string | null): InboxStatusFilter {
+  if (raw === "Geprüft" || raw === "Abgelehnt") return raw;
+  return "Offen";
+}
 
 // ---------------------------------------------------------------------------
 // load
 // ---------------------------------------------------------------------------
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
   const db = getDb();
 
-  // All open (un-decided) submissions, newest first, with the linked member
-  // joined in so we can show "Mitglied: Max Mustermann" with the live name
-  // (the snapshot `bezahlt_von_display` is preserved on the row for audit but
-  // we render the live name where possible). LEFT JOIN: members may have been
-  // deleted between submission and review.
+  const activeStatus: InboxStatusFilter = parseStatus(
+    url.searchParams.get("status"),
+  );
+
+  // Choose WHERE clause based on the filter (Offen/Geprüft/Abgelehnt).
+  // - Offen   → decided_at IS NULL
+  // - Geprüft → decision = 'approved'
+  // - Abgelehnt → decision = 'rejected'
+  const whereClause =
+    activeStatus === "Geprüft"
+      ? and(
+          isNotNull(auslagenSubmissions.decidedAt),
+          eq(auslagenSubmissions.decision, "approved"),
+        )
+      : activeStatus === "Abgelehnt"
+        ? and(
+            isNotNull(auslagenSubmissions.decidedAt),
+            eq(auslagenSubmissions.decision, "rejected"),
+          )
+        : isNull(auslagenSubmissions.decidedAt);
+
+  // Submissions matching the active filter, newest first, with the linked
+  // member joined in so we can show "Mitglied: Max Mustermann" with the live
+  // name (the snapshot `bezahlt_von_display` is preserved on the row for
+  // audit but we render the live name where possible). LEFT JOIN: members
+  // may have been deleted between submission and review.
   const rows = await db
     .select({
       submission: auslagenSubmissions,
@@ -41,8 +77,17 @@ export const load: PageServerLoad = async ({ locals }) => {
     })
     .from(auslagenSubmissions)
     .leftJoin(members, eq(members.id, auslagenSubmissions.bezahltVonMemberId))
-    .where(isNull(auslagenSubmissions.decidedAt))
+    .where(whereClause)
     .orderBy(desc(auslagenSubmissions.submittedAt));
+
+  // Counts for the filter chip badges — single round-trip via FILTER clauses.
+  const [counts] = await db
+    .select({
+      offen: sql<number>`count(*) filter (where ${auslagenSubmissions.decidedAt} is null)::int`,
+      geprueft: sql<number>`count(*) filter (where ${auslagenSubmissions.decision} = 'approved')::int`,
+      abgelehnt: sql<number>`count(*) filter (where ${auslagenSubmissions.decision} = 'rejected')::int`,
+    })
+    .from(auslagenSubmissions);
 
   const submissions: InboxSubmissionView[] = rows.map(
     ({ submission: s, memberVorname, memberNachname }) => ({
@@ -68,6 +113,15 @@ export const load: PageServerLoad = async ({ locals }) => {
       projectName: null,
       wofuer: s.wofuer ?? null,
       kommentar: s.kommentar ?? null,
+      // C7-INBOX full: decided/decision so InboxCard can render the right
+      // status pill + data-* attributes for filter assertions.
+      decided: s.decidedAt ? "yes" : "no",
+      decision:
+        s.decision === "approved"
+          ? "approved"
+          : s.decision === "rejected"
+            ? "rejected"
+            : null,
     }),
   );
 
@@ -92,6 +146,12 @@ export const load: PageServerLoad = async ({ locals }) => {
     submissions,
     members: memberList,
     user: locals.session!.user,
+    activeStatus,
+    counts: {
+      offen: Number(counts?.offen ?? 0),
+      geprueft: Number(counts?.geprueft ?? 0),
+      abgelehnt: Number(counts?.abgelehnt ?? 0),
+    },
   };
 };
 
@@ -196,5 +256,76 @@ export const actions: Actions = {
       success: true,
       ausId: result.ausId,
     };
+  },
+
+  /**
+   * C7-INBOX full: inline approve from the list row (no detail-page detour).
+   * Idempotent — second call returns the existing expense without re-emitting.
+   * Approval emits `expense.approved` + `auslage.approved` (ApprovalMail).
+   */
+  "inline-approve": async ({ request, locals }) => {
+    const actorUserId = locals.session!.user.id;
+
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch {
+      return fail(400, { error: "Ungültige Anfrage: FormData defekt." });
+    }
+
+    const submissionId = String(formData.get("submissionId") ?? "");
+    if (!submissionId) {
+      return fail(400, { error: "submissionId fehlt" });
+    }
+
+    const result = await approveSubmission({ submissionId, actorUserId });
+    if (!result.ok) {
+      return fail(result.status, { error: result.error });
+    }
+
+    return {
+      success: true,
+      action: "inline-approve",
+      expenseId: result.expenseId,
+      ausId: result.expenseBusinessId,
+    };
+  },
+
+  /**
+   * C7-INBOX full: inline reject from the list row, with reasoned modal.
+   * Idempotent — second call against an already-decided row is a no-op.
+   * Rejection emits `auslage.rejected` → RejectionMail (best-effort).
+   */
+  "inline-reject": async ({ request, locals }) => {
+    const actorUserId = locals.session!.user.id;
+
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch {
+      return fail(400, { error: "Ungültige Anfrage: FormData defekt." });
+    }
+
+    const submissionId = String(formData.get("submissionId") ?? "");
+    const grund = String(formData.get("grund") ?? "").trim();
+    if (!submissionId) {
+      return fail(400, { error: "submissionId fehlt" });
+    }
+    if (!grund || grund.length < 3) {
+      return fail(422, {
+        error: "Bitte gib eine Begründung an (mind. 3 Zeichen)",
+      });
+    }
+
+    const result = await rejectSubmission({
+      submissionId,
+      actorUserId,
+      grund,
+    });
+    if (!result.ok) {
+      return fail(result.status, { error: result.error });
+    }
+
+    return { success: true, action: "inline-reject" };
   },
 };

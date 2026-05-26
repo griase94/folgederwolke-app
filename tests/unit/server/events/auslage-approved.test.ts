@@ -172,14 +172,14 @@ function makeDbFake() {
         if (ctx.table === "submissions") {
           rows = [...submissionsStore.values()].filter((r) =>
             ctx.whereField
-              ? (r as Record<string, unknown>)[ctx.whereField!] ===
+              ? (r as unknown as Record<string, unknown>)[ctx.whereField!] ===
                 ctx.whereValue
               : true,
           );
         } else if (ctx.table === "expenses") {
           rows = [...expensesStore.values()].filter((r) =>
             ctx.whereField
-              ? (r as Record<string, unknown>)[ctx.whereField!] ===
+              ? (r as unknown as Record<string, unknown>)[ctx.whereField!] ===
                 ctx.whereValue
               : true,
           );
@@ -363,7 +363,9 @@ vi.mock("drizzle-orm", async () => ({
   isNull: (c: unknown) => ({ field: c, value: null }),
 }));
 
-const emitMock = vi.fn(async () => undefined);
+const emitMock: ReturnType<
+  typeof vi.fn<(event: string, payload?: unknown) => Promise<void>>
+> = vi.fn(async () => undefined);
 vi.mock("$lib/server/events/index.js", () => ({
   bus: { emit: emitMock },
   registerHandlers: () => undefined,
@@ -378,7 +380,7 @@ vi.mock("$lib/server/domain/id-allocator.js", () => ({
 // SUT — import AFTER vi.mock
 // ---------------------------------------------------------------------------
 
-const { approveSubmission, rejectSubmission } =
+const { approveSubmission } =
   await import("$lib/server/domain/audit-inbox-actions.js");
 
 // ---------------------------------------------------------------------------

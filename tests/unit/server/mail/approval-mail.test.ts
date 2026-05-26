@@ -4,12 +4,15 @@
  * Unit test for ApprovalMail template rendering.
  */
 import { describe, it, expect } from "vitest";
+import type { Component } from "svelte";
 import { renderMailTemplate } from "$lib/server/mail/render.js";
 
 describe("ApprovalMail template", () => {
   it("renders subject + body with German formatting", async () => {
     const mod = await import("$lib/server/mail/templates/ApprovalMail.svelte");
-    const out = renderMailTemplate(mod.default, {
+    // mod.default has narrower Props than renderMailTemplate's loose
+    // `Component<{}>` signature — match the casting pattern used in mail/index.ts.
+    const out = renderMailTemplate(mod.default as unknown as Component, {
       vorname: "Max",
       ausId: "AUS-2026-007",
       bezeichnung: "Druckerpapier",
