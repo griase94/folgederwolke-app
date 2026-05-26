@@ -13,6 +13,8 @@
 
 set -euo pipefail
 SHA="${1:?usage: wait-for-vercel.sh <commit-sha>}"
+: "${VERCEL_TOKEN:?VERCEL_TOKEN is required}"
+: "${VERCEL_PROJECT_ID:?VERCEL_PROJECT_ID is required}"
 TIMEOUT_S="${TIMEOUT_S:-480}"
 INTERVAL_S=10
 DEADLINE=$(( $(date +%s) + TIMEOUT_S ))
@@ -33,6 +35,10 @@ while [ "$(date +%s)" -lt "$DEADLINE" ]; do
 
   case "$STATE" in
     READY)
+      if [ -z "$URL" ]; then
+        echo "READY state but no URL in response for SHA ${SHA}" >&2
+        exit 1
+      fi
       echo "url=https://${URL}"
       exit 0
       ;;
