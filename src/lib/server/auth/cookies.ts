@@ -5,9 +5,12 @@
  * HMAC-SHA256 signature appended as `.{hex}` — verified with timingSafeEqual.
  */
 
-import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Cookies } from "@sveltejs/kit";
 import { env } from "$lib/server/env.js";
+import {
+  sign as signWithSecret,
+  unsign as unsignWithSecret,
+} from "./cookie-sign.js";
 import { INTENT_COOKIE_NAME, SESSION_COOKIE_NAME } from "./cookie-names.js";
 
 export { SESSION_COOKIE_NAME } from "./cookie-names.js";
@@ -16,37 +19,16 @@ const SESSION_COOKIE = SESSION_COOKIE_NAME;
 const INTENT_COOKIE = INTENT_COOKIE_NAME;
 
 // ---------------------------------------------------------------------------
-// HMAC signing
+// HMAC signing — see cookie-sign.ts for implementation
 // ---------------------------------------------------------------------------
 
 function sign(value: string): string {
-  const sig = createHmac("sha256", env.SESSION_SECRET)
-    .update(value)
-    .digest("hex");
-  return `${value}.${sig}`;
+  return signWithSecret(value, env.SESSION_SECRET);
 }
 
 /** Verify HMAC signature. Returns the original value, or null on tamper. */
 export function unsign(signed: string): string | null {
-  const lastDot = signed.lastIndexOf(".");
-  if (lastDot < 0) return null;
-  const value = signed.slice(0, lastDot);
-  const expected = sign(value);
-  try {
-    const a = Buffer.from(expected, "utf8");
-    const b = Buffer.from(signed, "utf8");
-    if (a.length !== b.length) {
-      // Lengths differ — can't timingSafeEqual; leak no timing info via fallback.
-      // Still do the comparison on equal-length buffers to avoid timing-oracle
-      // but return null regardless.
-      timingSafeEqual(Buffer.alloc(a.length), Buffer.alloc(a.length));
-      return null;
-    }
-    if (!timingSafeEqual(a, b)) return null;
-    return value;
-  } catch {
-    return null;
-  }
+  return unsignWithSecret(signed, env.SESSION_SECRET);
 }
 
 // ---------------------------------------------------------------------------
