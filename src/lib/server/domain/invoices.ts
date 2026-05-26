@@ -116,15 +116,32 @@ export const createInvoiceSchema = z
       .optional()
       .or(z.literal(""))
       .transform((v) => (v ? v : null)),
+    // § 14 Abs. 4 Nr. 5 UStG + BFH V R 28/15: Bezeichnung muss die Leistung
+    // eindeutig identifizieren. Min 5 chars + reject generic placeholders.
     bezeichnung: z
       .string()
-      .min(3, "Bezeichnung muss mindestens 3 Zeichen haben")
-      .max(200, "Bezeichnung zu lang"),
+      .min(5, "Bezeichnung muss mindestens 5 Zeichen haben")
+      .max(200, "Bezeichnung zu lang")
+      .refine(
+        (v) =>
+          !/^(leistung|beratung|spende|dienstleistung|sonstiges|service|arbeit|honorar|rechnung)\s*$/i.test(
+            v.trim(),
+          ),
+        "Bezeichnung zu generisch — bitte die Leistung konkret benennen (z.B. mit Datum, Veranstaltungsname)",
+      ),
     leistungsBeschreibung: z
       .string()
       .max(2000, "Leistungsbeschreibung zu lang")
       .optional()
       .or(z.literal("")),
+    // Leistungszeitraum is MANDATORY per § 14 Abs. 4 Nr. 6 UStG. Empty
+    // string would produce a non-compliant invoice. Reject at the form/Zod
+    // boundary so the renderer can rely on a non-empty value.
+    leistungszeitraum: z
+      .string()
+      .min(3, "Leistungszeitraum ist Pflicht (§ 14 Abs. 4 Nr. 6 UStG)")
+      .max(200, "Leistungszeitraum zu lang")
+      .transform((v) => v.trim()),
     nettoCents: z.coerce
       .number()
       .int("Betrag muss ganzzahlig in Cent sein")
@@ -284,6 +301,7 @@ export async function createInvoice(
         leistungsBeschreibung: input.leistungsBeschreibung
           ? input.leistungsBeschreibung
           : null,
+        leistungszeitraum: input.leistungszeitraum,
         pdfStatus: "queued",
         driveStatus: "pending",
         createdByUserId: actorUserId,
@@ -469,8 +487,17 @@ async function loadRenderInput(invoiceId: string): Promise<InvoiceRenderInput> {
     throw new Error(`loadRenderInput: invoice ${invoiceId} not found`);
   }
 
+  // Fetch customer for the country code (the column was added in Phase 10).
+  // Falls back to 'DE' for legacy customer rows or when the customer is
+  // somehow missing (FK is restrict, but defensive code).
+  const [cust] = await db
+    .select({ country: customers.country })
+    .from(customers)
+    .where(eq(customers.id, inv.customerId))
+    .limit(1);
+
   const settingsRows = await db.execute<{ key: string; value: unknown }>(
-    sql`SELECT key, value FROM settings WHERE key IN ('verein.iban', 'verein.bic', 'verein.bank')`,
+    sql`SELECT key, value FROM settings WHERE key IN ('verein.iban', 'verein.bic', 'verein.bank', 'verein.kassenwaert_name')`,
   );
   const settingsMap = new Map<string, string>();
   for (const r of settingsRows as { key: string; value: unknown }[]) {
@@ -479,23 +506,38 @@ async function loadRenderInput(invoiceId: string): Promise<InvoiceRenderInput> {
     else if (v !== null && v !== undefined) settingsMap.set(r.key, String(v));
   }
 
+  // settings.value is stored as JSONB strings, e.g. '"Julia Schwarz"'.
+  // Strip the wrapping quotes if present.
+  const unquote = (s: string): string => s.replace(/^"|"$/g, "");
+  const kassenwaertName =
+    unquote(settingsMap.get("verein.kassenwaert_name") ?? "") ||
+    "Julia Schwarz";
+
   return {
     invoiceNumber: inv.businessId,
     rechnungsdatum: inv.rechnungsdatum,
     leistungsDatum: inv.leistungsDatum ?? null,
     faelligkeitsDatum: inv.faelligkeitsDatum ?? null,
+    leistungszeitraum: inv.leistungszeitraum,
     verein: {
       name: env.VEREIN_NAME || "Folge der Wolke e.V.",
       adresse: env.VEREIN_ADRESSE || "Westermuehlstrasse 6\n80469 Muenchen",
       steuernummer: env.VEREIN_STEUERNUMMER || "",
       vereinsregister: env.VEREIN_VR || "",
-      iban: settingsMap.get("verein.iban") ?? "",
-      bic: settingsMap.get("verein.bic") ?? "",
-      bank: settingsMap.get("verein.bank") ?? "",
+      iban:
+        unquote(settingsMap.get("verein.iban") ?? "") || env.VEREIN_IBAN || "",
+      bic: unquote(settingsMap.get("verein.bic") ?? "") || env.VEREIN_BIC || "",
+      bank:
+        unquote(settingsMap.get("verein.bank") ?? "") || env.VEREIN_BANK || "",
+      kontaktPerson: env.VEREIN_KONTAKT_PERSON || "",
+      contactPhone: env.VEREIN_CONTACT_PHONE || "",
+      // Footer contact email reuses MAIL_FROM — no separate env var.
+      contactEmail: env.MAIL_FROM || "",
     },
     customer: {
       name: inv.customerNameSnapshot,
       addressBlock: inv.customerAddressSnapshot ?? null,
+      country: cust?.country ?? "DE",
     },
     bezeichnung: inv.bezeichnung,
     leistungsBeschreibung: inv.leistungsBeschreibung ?? null,
@@ -515,6 +557,7 @@ async function loadRenderInput(invoiceId: string): Promise<InvoiceRenderInput> {
     footerNote:
       "Kein Ausweis der Umsatzsteuer gemaess Paragraph 19 UStG (Kleinunternehmerregelung). " +
       "Vielen Dank fuer die gute Zusammenarbeit.",
+    kassenwaertName,
   };
 }
 
@@ -637,6 +680,7 @@ export async function supersedeInvoice(
         sphereSnapshot: old.sphereSnapshot,
         bezeichnung: old.bezeichnung,
         leistungsBeschreibung: old.leistungsBeschreibung,
+        leistungszeitraum: old.leistungszeitraum,
         pdfStatus: "queued",
         driveStatus: "pending",
         supersedesId: old.id,
@@ -807,8 +851,12 @@ export interface PreviewInput {
   rechnungsdatum: string;
   leistungsDatum: string | null;
   faelligkeitsDatum: string | null;
+  /** Phase 10 — free-text Leistungszeitraum row. */
+  leistungszeitraum?: string | null;
   customerName: string;
   customerAddressBlock: string | null;
+  /** Phase 10 — ISO 3166-1 alpha-2; preview hides Land line for 'DE'. */
+  customerCountry?: string;
   nettoCents: number;
   ustCents: number;
   bruttoCents: number;
@@ -823,6 +871,9 @@ export interface PreviewInput {
 }
 
 export function renderInvoicePreviewHtml(opts: PreviewInput): string {
+  // Phase 10: mirror the Rechnung v2 PDF layout in the live preview so admins
+  // see the same colors + structure they'll get in the PDF.
+  // Colors match colors.ts: #f09dff (rosa), #f5beff (soft rosa), #000028 (body).
   const eur = (c: number) =>
     (c / 100).toLocaleString("de-DE", {
       style: "currency",
@@ -831,8 +882,9 @@ export function renderInvoicePreviewHtml(opts: PreviewInput): string {
     });
   const date = (iso: string | null) => {
     if (!iso) return "";
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-    return m ? `${m[3]}.${m[2]}.${m[1]}` : iso;
+    const m = /^\d{4}-\d{2}-\d{2}/.test(iso);
+    if (!m) return iso;
+    return `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
   };
   const escape = (s: string) =>
     s
@@ -844,76 +896,93 @@ export function renderInvoicePreviewHtml(opts: PreviewInput): string {
     s ? escape(s).replace(/\n/g, "<br />") : "";
 
   const verName = escape(opts.verein.name);
-  const verAddr = nl(opts.verein.adresse);
-  const custName = escape(opts.customerName || "(Kund:in waehlen)");
+  const verAddrSingle = escape(
+    (opts.verein.adresse ?? "")
+      .split(/[\r\n]+/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .join(" - "),
+  );
+  const custName = escape(opts.customerName || "(Kund:in wählen)");
   const custAddr = nl(opts.customerAddressBlock);
   const bez = escape(opts.bezeichnung || "(Bezeichnung)");
-  const beschr = opts.leistungsBeschreibung
-    ? `<div style="font-size:13px;color:#374151;line-height:1.5;margin-bottom:14px;">${nl(opts.leistungsBeschreibung)}</div>`
-    : '<div style="height:8px;"></div>';
-  const lDatum = opts.leistungsDatum
-    ? `<div style="display:flex;justify-content:space-between;padding:2px 0;"><span style="color:#6b7280;">Leistung</span><span style="font-weight:600;">${escape(date(opts.leistungsDatum))}</span></div>`
+  const country = (opts.customerCountry ?? "DE").toUpperCase();
+  const showCountry = country && country !== "DE";
+  const countryLabel = showCountry
+    ? `<div style="font-size:13px;color:#000028;">${escape(country)}</div>`
     : "";
-  const fDatum = opts.faelligkeitsDatum
-    ? `<div style="display:flex;justify-content:space-between;padding:2px 0;"><span style="color:#6b7280;">Faellig bis</span><span style="font-weight:600;">${escape(date(opts.faelligkeitsDatum))}</span></div>`
-    : "";
-  const ust =
-    opts.ustCents !== 0
-      ? `<tr><td style="padding:2px 18px 2px 0;color:#374151;">Umsatzsteuer</td><td style="text-align:right;">${eur(opts.ustCents)}</td></tr>`
-      : "";
 
-  return `<div class="invoice-preview" style="font-family:system-ui,-apple-system,sans-serif;color:#1f1f29;background:#fff;border:1px solid #f3d6e3;border-radius:14px;padding:24px 28px;max-width:680px;">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #9c2c6e;padding-bottom:12px;margin-bottom:16px;">
+  const metaRows: string[] = [
+    `<tr><td style="font-weight:700;color:#000028;padding:2px 16px 2px 0;text-align:right;">Rechnung Nr.:</td><td style="text-align:right;color:#000028;">${escape(opts.invoiceNumberPreview)}</td></tr>`,
+    `<tr><td style="font-weight:700;color:#000028;padding:2px 16px 2px 0;text-align:right;">Rechnungsdatum:</td><td style="text-align:right;color:#000028;">${escape(date(opts.rechnungsdatum))}</td></tr>`,
+  ];
+  if (opts.leistungszeitraum && opts.leistungszeitraum.trim()) {
+    metaRows.push(
+      `<tr><td style="font-weight:700;color:#000028;padding:2px 16px 2px 0;text-align:right;">Leistungszeitraum:</td><td style="text-align:right;color:#000028;">${escape(opts.leistungszeitraum.trim())}</td></tr>`,
+    );
+  }
+  const beschrRow = opts.leistungsBeschreibung
+    ? `<div style="font-size:13px;font-style:italic;color:#000028;margin-top:2px;">${nl(opts.leistungsBeschreibung)}</div>`
+    : "";
+
+  return `<div class="invoice-preview" style="font-family:'DejaVu Sans',system-ui,-apple-system,sans-serif;color:#000028;background:#fff;border:1px solid #f5beff;border-radius:14px;padding:28px 32px;max-width:720px;">
+  <!-- Header band -->
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">
     <div>
-      <div style="font-size:13px;font-weight:700;letter-spacing:0.5px;color:#9c2c6e;text-transform:uppercase;">${verName}</div>
-      <div style="font-size:11px;color:#6b7280;margin-top:2px;">${verAddr}</div>
+      <div style="font-family:'Anton',Impact,sans-serif;font-size:38px;font-weight:400;line-height:1;color:#f09dff;letter-spacing:0.5px;">RECHNUNG</div>
+      <div style="font-size:11px;font-weight:700;color:#000028;margin-top:6px;">${verName} - ${verAddrSingle}</div>
+      <div style="font-size:10px;font-style:italic;color:#000028;margin-top:2px;">eingetragen im Vereinsregister des AG München unter ${escape(opts.verein.vereinsregister || "")}</div>
     </div>
-    <div style="font-size:20px;font-weight:700;color:#9c2c6e;">Rechnung</div>
+    <!-- Logo placeholder (the PDF embeds the actual brand mark) -->
+    <div style="width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#f5beff,#f09dff);opacity:0.6;"></div>
   </div>
 
-  <div style="display:flex;justify-content:space-between;gap:24px;margin-bottom:16px;">
-    <div style="flex:1;">
-      <div style="font-size:10px;color:#6b7280;text-transform:uppercase;font-weight:600;letter-spacing:0.4px;">Rechnung an</div>
-      <div style="font-weight:700;margin-top:4px;">${custName}</div>
-      <div style="font-size:12px;color:#374151;margin-top:2px;">${custAddr}</div>
+  <!-- Address + meta block -->
+  <div style="display:flex;justify-content:space-between;gap:24px;margin:24px 0 28px;">
+    <div style="flex:1;font-size:13px;color:#000028;line-height:1.4;">
+      <div style="font-weight:600;">${custName}</div>
+      <div>${custAddr}</div>
+      ${countryLabel}
     </div>
-    <div style="font-size:12px;min-width:200px;">
-      <div style="display:flex;justify-content:space-between;padding:2px 0;"><span style="color:#6b7280;">Rechnungs-Nr.</span><span style="font-weight:600;">${escape(opts.invoiceNumberPreview)}</span></div>
-      <div style="display:flex;justify-content:space-between;padding:2px 0;"><span style="color:#6b7280;">Datum</span><span style="font-weight:600;">${escape(date(opts.rechnungsdatum))}</span></div>
-      ${lDatum}
-      ${fDatum}
-    </div>
+    <table style="font-size:12px;border-collapse:collapse;"><tbody>${metaRows.join("")}</tbody></table>
   </div>
 
-  <hr style="border:none;border-top:1px solid #f3d6e3;margin:0 0 12px 0;" />
+  <!-- Section heading -->
+  <div style="font-size:13px;font-weight:700;color:#f09dff;letter-spacing:0.5px;margin-bottom:14px;">RECHNUNG NR. ${escape(opts.invoiceNumberPreview)}</div>
 
-  <div style="font-size:16px;font-weight:700;color:#9c2c6e;margin-bottom:6px;">${bez}</div>
-  ${beschr}
+  <!-- Intro -->
+  <div style="font-size:13px;color:#000028;margin-bottom:6px;">Sehr geehrte Damen und Herren,</div>
+  <div style="font-size:13px;color:#000028;margin-bottom:18px;">vielen Dank für Ihr Vertrauen. Ich stelle Ihnen hiermit folgende Leistungen in Rechnung:</div>
 
+  <!-- Table -->
   <table style="width:100%;border-collapse:collapse;font-size:13px;">
-    <thead><tr><th style="text-align:left;color:#6b7280;font-size:11px;font-weight:600;text-transform:uppercase;border-bottom:1px solid #9c2c6e;padding:6px 0;">Beschreibung</th><th style="text-align:right;color:#6b7280;font-size:11px;font-weight:600;text-transform:uppercase;border-bottom:1px solid #9c2c6e;padding:6px 0;">Netto</th></tr></thead>
+    <thead>
+      <tr style="background:#f09dff;color:#fff;">
+        <th style="padding:6px 8px;text-align:left;font-weight:700;width:8%;">Pos.</th>
+        <th style="padding:6px 8px;text-align:left;font-weight:700;">Beschreibung</th>
+        <th style="padding:6px 8px;text-align:right;font-weight:700;width:12%;">Menge</th>
+        <th style="padding:6px 8px;text-align:right;font-weight:700;width:18%;">Gesamtpreis</th>
+      </tr>
+    </thead>
     <tbody>
-      <tr><td style="padding:8px 0;border-bottom:1px solid #f3d6e3;">${escape(opts.bezeichnung || "-")}</td><td style="padding:8px 0;border-bottom:1px solid #f3d6e3;text-align:right;font-weight:600;">${eur(opts.nettoCents)}</td></tr>
+      <tr>
+        <td style="padding:10px 8px;text-align:center;color:#000028;vertical-align:top;">1.</td>
+        <td style="padding:10px 8px;color:#000028;">${bez}${beschrRow}</td>
+        <td style="padding:10px 8px;text-align:right;color:#000028;vertical-align:top;">1</td>
+        <td style="padding:10px 8px;text-align:right;color:#000028;vertical-align:top;">${eur(opts.nettoCents)}</td>
+      </tr>
+      <tr><td colspan="4" style="border-top:1px solid #f5beff;padding:0;height:1px;"></td></tr>
+      <tr>
+        <td colspan="3" style="background:#f5beff;color:#fff;font-weight:700;padding:8px;text-align:right;">Gesamtsumme</td>
+        <td style="background:#f09dff;color:#fff;font-weight:700;padding:8px;text-align:right;">${eur(opts.bruttoCents)}</td>
+      </tr>
     </tbody>
   </table>
 
-  <div style="margin-top:12px;display:flex;justify-content:flex-end;">
-    <table style="font-size:13px;border-collapse:collapse;">
-      <tbody>
-        <tr><td style="padding:2px 18px 2px 0;color:#374151;">Netto</td><td style="text-align:right;font-weight:600;">${eur(opts.nettoCents)}</td></tr>
-        ${ust}
-        <tr><td style="padding:6px 18px 2px 0;color:#1f1f29;font-weight:700;border-top:2px solid #9c2c6e;">Gesamtbetrag</td><td style="text-align:right;font-weight:700;border-top:2px solid #9c2c6e;padding-top:6px;">${eur(opts.bruttoCents)}</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <div style="margin-top:18px;font-size:12px;color:#374151;line-height:1.5;">
-    Kein Ausweis der Umsatzsteuer gemaess Paragraph 19 UStG (Kleinunternehmerregelung).
-  </div>
-
-  <div style="margin-top:22px;padding-top:12px;border-top:1px solid #f3d6e3;font-size:10px;color:#6b7280;display:flex;justify-content:space-between;gap:14px;">
-    <div>${verName}<br />${verAddr}</div>
-    <div>Steuernummer: ${escape(opts.verein.steuernummer || "-")}<br />Register: ${escape(opts.verein.vereinsregister || "-")}</div>
-  </div>
+  <!-- Body paragraphs -->
+  <div style="font-size:13px;font-style:italic;color:#000028;margin-top:18px;">Gemäß § 19 UStG wird keine Umsatzsteuer ausgewiesen.</div>
+  <div style="font-size:13px;color:#000028;margin-top:10px;">Zahlungsbedingungen: Zahlung innerhalb von 14 Tagen ab Rechnungseingang ohne Abzüge.</div>
+  <div style="font-size:13px;color:#000028;margin-top:6px;">Bei Rückfragen stehe ich selbstverständlich jederzeit gerne zur Verfügung.</div>
+  <div style="font-size:13px;color:#000028;margin-top:18px;">Mit freundlichen Grüßen</div>
 </div>`;
 }

@@ -95,6 +95,8 @@ test.describe("@phase-5 Rechnungen - create flow", () => {
     await page.goto("/app/rechnungen/new");
     await page.selectOption('select[name="customerId"]', customer.id);
     await page.fill('input[name="bezeichnung"]', `E2E Auftritt ${unique}`);
+    // Phase 10: Leistungszeitraum is required per § 14 Abs. 4 Nr. 6 UStG.
+    await page.fill('input[name="leistungszeitraum"]', "Mai 2026");
     await page.fill('input[name="nettoEur"]', "750,00");
 
     await Promise.all([

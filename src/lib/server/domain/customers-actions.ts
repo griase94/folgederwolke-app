@@ -50,7 +50,7 @@ export async function addCustomer(
   }
 
   const db = getDb();
-  const { name, anrede, address_block, email, notes } = result.data;
+  const { name, anrede, address_block, country, email, notes } = result.data;
 
   const inserted = await db
     .insert(customers)
@@ -58,6 +58,7 @@ export async function addCustomer(
       name,
       anrede: anrede ?? null,
       addressBlock: address_block ?? null,
+      country: country,
       email: email ?? null,
       notes: notes ?? null,
     })
@@ -88,7 +89,8 @@ export async function editCustomer(
   }
 
   const db = getDb();
-  const { id, name, anrede, address_block, email, notes } = result.data;
+  const { id, name, anrede, address_block, country, email, notes } =
+    result.data;
 
   await db
     .update(customers)
@@ -96,6 +98,7 @@ export async function editCustomer(
       name,
       anrede: anrede ?? null,
       addressBlock: address_block ?? null,
+      country: country,
       email: email ?? null,
       notes: notes ?? null,
       updatedAt: new Date(),

@@ -19,7 +19,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import InvoiceLivePreview from './InvoiceLivePreview.svelte';
 
-	type CustomerOpt = { id: string; name: string; addressBlock: string | null };
+	type CustomerOpt = { id: string; name: string; addressBlock: string | null; country?: string };
 	type KategorieOpt = { id: string; name: string };
 	type ProjectOpt = { id: string; name: string };
 
@@ -42,6 +42,7 @@
 			rechnungsdatum: string;
 			leistungsDatum: string;
 			faelligkeitsDatum: string;
+			leistungszeitraum: string;
 			bezeichnung: string;
 			leistungsBeschreibung: string;
 			nettoEur: string;
@@ -55,6 +56,7 @@
 	let rechnungsdatum = $state('');
 	let leistungsDatum = $state('');
 	let faelligkeitsDatum = $state('');
+	let leistungszeitraum = $state('');
 	let bezeichnung = $state('');
 	let leistungsBeschreibung = $state('');
 	let nettoEur = $state('');
@@ -73,6 +75,7 @@
 		rechnungsdatum = initial.rechnungsdatum;
 		leistungsDatum = initial.leistungsDatum;
 		faelligkeitsDatum = initial.faelligkeitsDatum;
+		leistungszeitraum = initial.leistungszeitraum;
 		bezeichnung = initial.bezeichnung;
 		leistungsBeschreibung = initial.leistungsBeschreibung;
 		nettoEur = initial.nettoEur;
@@ -94,6 +97,7 @@
 			rechnungsdatum,
 			leistungsDatum,
 			faelligkeitsDatum,
+			leistungszeitraum,
 			bezeichnung,
 			leistungsBeschreibung,
 			nettoEur
@@ -135,9 +139,11 @@
 		customerId,
 		customerName: selectedCustomer?.name ?? '',
 		customerAddressBlock: selectedCustomer?.addressBlock ?? null,
+		customerCountry: selectedCustomer?.country ?? 'DE',
 		rechnungsdatum,
 		leistungsDatum: leistungsDatum || null,
 		faelligkeitsDatum: faelligkeitsDatum || null,
+		leistungszeitraum: leistungszeitraum || null,
 		bezeichnung,
 		leistungsBeschreibung: leistungsBeschreibung || null,
 		nettoCents,
@@ -221,6 +227,22 @@
 		</div>
 
 		<div>
+			<label for="leistungszeitraum" class="mb-1 block text-sm font-medium">Leistungszeitraum <span class="text-destructive">*</span></label>
+			<input
+				type="text"
+				id="leistungszeitraum"
+				name="leistungszeitraum"
+				bind:value={leistungszeitraum}
+				minlength="3"
+				maxlength="200"
+				required
+				placeholder="z. B. Februar 2026"
+				class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+			/>
+			<p class="mt-1 text-xs text-muted-foreground">Pflichtfeld nach § 14 Abs. 4 Nr. 6 UStG. Freitext — z.&nbsp;B. „Februar 2026", „21.02.2026" oder „Leistungsdatum entspricht Rechnungsdatum".</p>
+		</div>
+
+		<div>
 			<label for="bezeichnung" class="mb-1 block text-sm font-medium">Bezeichnung</label>
 			<input
 				type="text"
@@ -228,7 +250,7 @@
 				name="bezeichnung"
 				bind:value={bezeichnung}
 				required
-				minlength="3"
+				minlength="5"
 				maxlength="200"
 				placeholder="z.B. Auftritt 12.05.2026"
 				class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

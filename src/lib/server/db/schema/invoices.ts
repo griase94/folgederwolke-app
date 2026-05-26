@@ -103,6 +103,12 @@ export const invoices = pgTable(
     // --- Body ---
     bezeichnung: text("bezeichnung").notNull(),
     leistungsBeschreibung: text("leistungs_beschreibung"),
+    /**
+     * Leistungszeitraum per § 14 Abs. 4 Nr. 6 UStG. Required on every invoice.
+     * Common values: "Februar 2026", "21.02.2026", or "Leistungsdatum entspricht
+     * Rechnungsdatum". DB enforces NOT NULL + length ≥ 3.
+     */
+    leistungszeitraum: text("leistungszeitraum").notNull(),
 
     // --- Drive (Doc + PDF) per §6.3 ---
     driveDocId: text("drive_doc_id"),

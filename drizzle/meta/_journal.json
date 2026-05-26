@@ -162,6 +162,13 @@
       "when": 1779970000000,
       "tag": "0022_mail_template_auslage_approved",
       "breakpoints": false
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1779980000000,
+      "tag": "0023_rechnung_redesign",
+      "breakpoints": true
     }
   ]
 }

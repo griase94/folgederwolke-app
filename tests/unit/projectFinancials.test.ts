@@ -89,13 +89,13 @@ describe.skipIf(!dbConfigured)(
       >`SELECT id, name FROM customers LIMIT 1`;
       if (c1) {
         await sql`INSERT INTO invoices (
-        business_id, gebucht_am, rechnungsdatum,
+        business_id, gebucht_am, rechnungsdatum, leistungszeitraum,
         customer_id, customer_name_snapshot,
         netto_cents, brutto_cents,
         kategorie_id, kategorie_name_snapshot, sphere_snapshot,
         bezeichnung, project_id
       ) VALUES (
-        ${`FDW-${FY}-${N1}`}, ${FY_TS}, ${`${FY}-04-05`},
+        ${`FDW-${FY}-${N1}`}, ${FY_TS}, ${`${FY}-04-05`}, 'April-Test',
         ${c1.id}::uuid, ${c1.name},
         5000, 5000,
         ${kI.id}, ${kI.name}, ${kI.sphere}::sphere,

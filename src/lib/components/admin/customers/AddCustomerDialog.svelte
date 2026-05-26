@@ -118,6 +118,31 @@
 			</div>
 
 			<div class="space-y-1">
+				<Label for="add-cust-country">Land</Label>
+				<select
+					id="add-cust-country"
+					name="country"
+					class="border-input bg-background focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 sm:text-sm"
+				>
+					<option value="DE" selected>Deutschland</option>
+					<option value="AT">Österreich</option>
+					<option value="CH">Schweiz</option>
+					<option value="FR">Frankreich</option>
+					<option value="IT">Italien</option>
+					<option value="NL">Niederlande</option>
+					<option value="BE">Belgien</option>
+					<option value="LU">Luxemburg</option>
+					<option value="GB">Vereinigtes Königreich</option>
+					<option value="US">Vereinigte Staaten</option>
+					<option value="ES">Spanien</option>
+				</select>
+				<p class="text-xs text-muted-foreground">Auf der Rechnung nur angezeigt, wenn nicht Deutschland.</p>
+				{#if fieldError('country')}
+					<p class="text-xs text-destructive">{fieldError('country')}</p>
+				{/if}
+			</div>
+
+			<div class="space-y-1">
 				<Label for="add-cust-notes">Notizen</Label>
 				<textarea
 					id="add-cust-notes"

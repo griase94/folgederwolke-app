@@ -177,6 +177,35 @@
 				</div>
 
 				<div class="space-y-1">
+					<Label for="edit-cust-country">Land</Label>
+					<select
+						id="edit-cust-country"
+						name="country"
+						class="border-input bg-background focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 sm:text-sm"
+					>
+						{#each [
+							['DE', 'Deutschland'],
+							['AT', 'Österreich'],
+							['CH', 'Schweiz'],
+							['FR', 'Frankreich'],
+							['IT', 'Italien'],
+							['NL', 'Niederlande'],
+							['BE', 'Belgien'],
+							['LU', 'Luxemburg'],
+							['GB', 'Vereinigtes Königreich'],
+							['US', 'Vereinigte Staaten'],
+							['ES', 'Spanien'],
+						] as [code, label] (code)}
+							<option value={code} selected={(customer.country ?? 'DE') === code}>{label}</option>
+						{/each}
+					</select>
+					<p class="text-xs text-muted-foreground">Auf der Rechnung nur angezeigt, wenn nicht Deutschland.</p>
+					{#if fieldError('country')}
+						<p class="text-xs text-destructive">{fieldError('country')}</p>
+					{/if}
+				</div>
+
+				<div class="space-y-1">
 					<Label for="edit-cust-notes">Notizen</Label>
 					<textarea
 						id="edit-cust-notes"
