@@ -99,4 +99,33 @@ describe("POST /api/rechnungen/preview — hardening gates", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  it("validation passes for the form's pre-hydration empty-shape payload", async () => {
+    // Mirrors exactly what `<InvoicePdfPreview>` POSTs on first mount before
+    // the parent InvoiceForm's hydration $effect propagates `data.today`.
+    // If validation fails here, the user sees a stuck preview badge in
+    // production — regression-guard with the precise shape the client sends.
+    const event = makeEvent({
+      locals: { session: { user: { id: "u1" } } },
+      body: {
+        customerId: "",
+        customerName: "",
+        customerAddressBlock: null,
+        customerCountry: "DE",
+        rechnungsdatum: "",
+        leistungsDatum: null,
+        faelligkeitsDatum: null,
+        leistungszeitraum: null,
+        bezeichnung: "",
+        leistungsBeschreibung: null,
+        nettoCents: 0,
+        currency: "EUR",
+      },
+    });
+    // The DB mock throws after validation passes — that proves the schema
+    // accepted the payload (failure would be a 400 returned, not a throw).
+    await expect(
+      (POST as unknown as (e: unknown) => Promise<Response>)(event),
+    ).rejects.toThrow(/unexpected DB call/);
+  });
 });

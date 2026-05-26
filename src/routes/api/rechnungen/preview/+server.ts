@@ -61,7 +61,10 @@ const previewSchema = z.object({
     .regex(/^(\d{4}-\d{2}-\d{2})?$/)
     .nullable()
     .optional(),
-  leistungszeitraum: z.string().max(500).optional().default(""),
+  // leistungszeitraum + leistungsBeschreibung: form sends `null` when the
+  // input is empty (parent `_ || null`), so both must accept null in addition
+  // to a string.
+  leistungszeitraum: z.string().max(500).nullable().optional().default(""),
   bezeichnung: z.string().max(2000).optional().default(""),
   leistungsBeschreibung: z.string().max(4000).nullable().optional().default(""),
   // 100 million euros — way above any real Rechnung, low enough that
@@ -140,7 +143,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     rechnungsdatum: payload.rechnungsdatum || today,
     leistungsDatum: payload.leistungsDatum || null,
     faelligkeitsDatum: payload.faelligkeitsDatum || null,
-    leistungszeitraum: payload.leistungszeitraum.trim() || null,
+    leistungszeitraum: payload.leistungszeitraum?.trim() || null,
     verein: {
       name: env.VEREIN_NAME || "Folge der Wolke e.V.",
       adresse: env.VEREIN_ADRESSE || "Westermuehlstrasse 6\n80469 Muenchen",
