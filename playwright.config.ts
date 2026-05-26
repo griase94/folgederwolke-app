@@ -1,4 +1,8 @@
-import { defineConfig, devices } from "@playwright/test";
+import {
+  defineConfig,
+  devices,
+  type PlaywrightTestConfig,
+} from "@playwright/test";
 import { config as loadEnv } from "dotenv";
 
 // Load .env.test at config-load time so webServer.env can forward vars.
@@ -16,16 +20,14 @@ loadEnv({ path: ".env.test.local", override: true });
 const PORT = process.env["PORT"] ?? "4173";
 const ORIGIN = process.env["ORIGIN"] ?? `http://127.0.0.1:${PORT}`;
 
-export default defineConfig({
+export const baseConfig: PlaywrightTestConfig = {
   testDir: "./tests/e2e",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 1,
   workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "html",
-  globalSetup: "./tests/playwright-global-setup.ts",
   use: {
-    baseURL: `http://127.0.0.1:${PORT}`,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
@@ -35,6 +37,15 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
+};
+
+export default defineConfig({
+  ...baseConfig,
+  globalSetup: "./tests/playwright-global-setup.ts",
+  use: {
+    ...baseConfig.use,
+    baseURL: `http://127.0.0.1:${PORT}`,
+  },
   webServer: {
     // `server.js` is a thin custom Node entry that wraps adapter-node's
     // compiled handler and normalises the `Origin` header for the PWA
