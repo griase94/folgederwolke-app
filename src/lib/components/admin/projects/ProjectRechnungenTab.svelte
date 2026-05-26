@@ -51,8 +51,8 @@
 					data-project-id={r.projectId}
 					class="flex items-center justify-between gap-4 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:bg-accent dark:hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 				>
-					<div class="flex flex-col">
-						<span class="font-medium">{r.businessId} · {r.bezeichnung}</span>
+					<div class="min-w-0 flex-1 flex flex-col">
+						<span class="truncate font-medium">{r.businessId} · {r.bezeichnung}</span>
 						<span class="text-sm text-muted-foreground"
 							>{r.customerName} · {fmtDate(r.rechnungsdatum)} · Fällig: {fmtDate(
 								r.faelligkeitsDatum,

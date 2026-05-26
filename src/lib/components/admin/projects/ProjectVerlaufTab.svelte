@@ -22,7 +22,11 @@
 </script>
 
 {#if events.length === 0}
-	<div class="text-muted-foreground">Noch keine Aktivitäten.</div>
+	<div
+		class="rounded-xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center text-muted-foreground"
+	>
+		Noch keine Aktivitäten.
+	</div>
 {:else}
 	<ol class="relative ml-4 border-l border-border">
 		{#each events as e (e.id)}

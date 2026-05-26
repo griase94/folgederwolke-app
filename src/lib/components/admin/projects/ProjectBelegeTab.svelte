@@ -31,7 +31,7 @@
 	<ul class="grid gap-2 sm:grid-cols-2">
 		{#each belege as b (b.id)}
 			<li
-				class="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3"
+				class="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 shadow-sm dark:border-border/60 dark:bg-card/40"
 				data-testid="project-beleg-row"
 				data-project-id={b.projectId}
 			>

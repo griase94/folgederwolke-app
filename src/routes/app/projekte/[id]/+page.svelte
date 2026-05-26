@@ -95,7 +95,7 @@
 				type="button"
 				onclick={() => (activeTab = tab.id)}
 				class={[
-					'border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors',
+					'border-b-2 px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors',
 					activeTab === tab.id
 						? 'border-primary text-foreground'
 						: 'border-transparent text-muted-foreground hover:text-foreground',

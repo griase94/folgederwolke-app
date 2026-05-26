@@ -50,8 +50,8 @@
 								data-project-id={a.projectId}
 								class="flex items-center justify-between gap-4 rounded-lg border border-border bg-card px-4 py-3 hover:bg-accent dark:hover:bg-accent/40"
 							>
-								<div class="flex flex-col">
-									<span class="font-medium">{a.ausId} · {a.bezeichnung}</span>
+								<div class="min-w-0 flex-1 flex flex-col">
+									<span class="truncate font-medium">{a.ausId} · {a.bezeichnung}</span>
 									<span class="text-sm text-muted-foreground">{a.bezahltVonDisplay}</span>
 								</div>
 								<span class="tabular-nums font-semibold">{fmtEur(a.betragCents)}</span>
