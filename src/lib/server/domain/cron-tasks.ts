@@ -243,6 +243,9 @@ export async function dispatchBeitragsreminder(opts: {
         eq(memberBeitrags.year, currentYear),
         sql`${memberBeitrags.paidCents} < ${memberBeitrags.betragCents}`,
         sql`${members.email} IS NOT NULL`,
+        // Exclude Ehrenmitglieder / exempt members — they may have synthetic
+        // unpaid rows but must never receive "Sie schulden €X" reminders.
+        eq(members.beitragExempt, false),
         // Only active members (no Austrittsdatum or Austrittsdatum in future)
         or(
           sql`${members.austrittsDatum} IS NULL`,

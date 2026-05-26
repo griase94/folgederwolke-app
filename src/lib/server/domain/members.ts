@@ -41,6 +41,26 @@ function optionalText(schema: z.ZodString) {
     .pipe(z.union([schema, z.undefined()]));
 }
 
+/**
+ * Coerce HTML-form checkbox values to booleans:
+ *   - absent → false (browsers omit unchecked checkboxes from POST data)
+ *   - "on"   → true
+ *   - "true" / "false" strings (programmatic) → respective booleans
+ *   - direct boolean (programmatic call) → preserved
+ *
+ * Anything else fails validation explicitly.
+ */
+const checkboxBoolean = z
+  .union([z.boolean(), z.string(), z.undefined()])
+  .transform((v) => {
+    if (v === undefined) return false;
+    if (typeof v === "boolean") return v;
+    if (v === "on" || v === "true") return true;
+    if (v === "" || v === "off" || v === "false") return false;
+    return v; // pass through to refine for an error
+  })
+  .pipe(z.boolean());
+
 const memberBaseSchema = z.object({
   vorname: z
     .string()
@@ -84,8 +104,16 @@ const memberBaseSchema = z.object({
       "schriftfuehrer",
       "mitglied",
       "fördermitglied",
+      // Night-2 C5-MEM-full additions:
+      "extern",
+      "helfer",
     ])
     .default("mitglied"),
+  // Night-2: Beitragspflicht-Aussetzung.
+  beitrag_exempt: checkboxBoolean.default(false),
+  beitrag_exempt_reason: optionalText(
+    z.string().max(500, "Begründung zu lang"),
+  ),
 });
 
 export const addMemberSchema = memberBaseSchema;
@@ -171,18 +199,24 @@ import type { MemberBeitragsTotals } from "$lib/domain/members.js";
  *     independent so the header member count stays stable when the user
  *     switches between years in the per-year tab switcher (the open/paid
  *     sums vary per year).
+ *   - `exemptCount` — active members with `beitrag_exempt = true` (Night-2
+ *     C5-MEM-full). Surfaced as a "befreit" chip in the matrix header so
+ *     admins see at a glance who is excluded from the offen-sum.
  *   - `paidCents`   — Σ paid_cents for `year`. Discriminator-free: a row
  *     with paid_cents=3000, betrag_cents=6000 contributes 3000 to paidCents
- *     AND 3000 to offenCents (partial payment).
- *   - `offenCents`  — Σ GREATEST(betrag_cents - paid_cents, 0) for `year`.
- *     The GREATEST clamp ensures overpayments don't subtract from offen.
+ *     AND 3000 to offenCents (partial payment). Exempt members keep their
+ *     paid_cents history — granting exemption doesn't erase prior payments.
+ *   - `offenCents`  — Σ GREATEST(betrag_cents - paid_cents, 0) for `year`
+ *     **excluding exempt members** (Night-2). The GREATEST clamp ensures
+ *     overpayments don't subtract from offen.
  *
  * Matches the codebase-wide convention used by `v_offene_beitraege`,
  * `dashboard.ts:221`, `cron-tasks.ts:244`, and `mitglieder/[id]/+page.server.ts:100`
  * — discriminate by `paid_cents < betrag_cents`, not `gezahlt_am IS NULL`.
  *
  * Column names per `src/lib/server/db/schema/members.ts`:
- *   `betrag_cents`, `paid_cents`, `gezahlt_am` (NOT `bezahlt_am`).
+ *   `betrag_cents`, `paid_cents`, `gezahlt_am` (NOT `bezahlt_am`),
+ *   `beitrag_exempt` (Night-2).
  *
  * Members without any `member_beitrags` row for `year` contribute 0 to both
  * paid and offen — they're "not yet billed" rather than "owed".
@@ -197,19 +231,29 @@ export async function memberBeitragsTotals(
   const db = getDb();
   const rows = await db.execute<{
     member_count: string;
+    exempt_count: string;
     paid_cents: string;
     offen_cents: string;
   }>(sql`
     SELECT
-      (SELECT COUNT(*) FROM members WHERE austritts_datum IS NULL)::text AS member_count,
-      COALESCE(SUM(paid_cents), 0)::text                                  AS paid_cents,
-      COALESCE(SUM(GREATEST(betrag_cents - paid_cents, 0)), 0)::text     AS offen_cents
-    FROM member_beitrags
-    WHERE year = ${year}
+      (SELECT COUNT(*) FROM members WHERE austritts_datum IS NULL)::text       AS member_count,
+      (SELECT COUNT(*) FROM members
+         WHERE austritts_datum IS NULL
+           AND beitrag_exempt = true)::text                                     AS exempt_count,
+      COALESCE(SUM(mb.paid_cents), 0)::text                                     AS paid_cents,
+      COALESCE(
+        SUM(GREATEST(mb.betrag_cents - mb.paid_cents, 0))
+          FILTER (WHERE m.beitrag_exempt = false),
+        0
+      )::text                                                                   AS offen_cents
+    FROM member_beitrags mb
+    JOIN members m ON m.id = mb.member_id
+    WHERE mb.year = ${year}
   `);
   const row = rows[0];
   return {
     memberCount: Number(row?.member_count ?? 0),
+    exemptCount: Number(row?.exempt_count ?? 0),
     paidCents: Number(row?.paid_cents ?? 0),
     offenCents: Number(row?.offen_cents ?? 0),
   };
