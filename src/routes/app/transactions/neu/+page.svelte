@@ -3,6 +3,7 @@
 	import { enhance } from '$app/forms';
 	import { beforeNavigate } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 	import type { PageData, ActionData } from './$types.js';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -44,6 +45,12 @@
 	// EÜR §11 EStG. Default to today (Berlin TZ) for ergonomic input. Maps
 	// to the existing `expenses.abfluss_datum` column (cycle 2 consolidation).
 	let abflussDatum = $state(new Date().toISOString().split('T')[0]!);
+
+	// E4.2 (Night-2 C6-FORM): rechnungsdatum was previously an uncontrolled
+	// native date input — DateField needs an initial ISO value to render
+	// TT.MM.JJJJ on mount. Keep the same Berlin-TZ default-today behaviour
+	// the native picker had.
+	let rechnungsdatum = $state(new Date().toISOString().split('T')[0]!);
 
 	// C2-TAX: Beleg file state for kind=ausgabe — required.
 	let belegFile = $state<File | null>(null);
@@ -236,35 +243,37 @@
 
 			<!-- Expense-specific fields -->
 			{#if selectedType === 'expense'}
+				<!-- E4.2 (Night-2 C6-FORM): Rechnungsdatum migrated to DateField.
+				     The hidden ISO sibling input keeps the existing
+				     `name="rechnungsdatum"` form-submit shape so the route
+				     action's Zod parsing path is unchanged. -->
 				<div class="space-y-1.5">
 					<label for="rechnungsdatum" class="block text-sm font-medium text-foreground">
 						Rechnungsdatum <span class="text-red-500" aria-hidden="true">*</span>
 					</label>
-					<input
+					<DateField
 						id="rechnungsdatum"
 						name="rechnungsdatum"
-						type="date"
-						lang="de"
+						value={rechnungsdatum}
 						required
-						class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+						onchange={(iso) => (rechnungsdatum = iso)}
 					/>
 				</div>
 
 				<!-- C2-TAX: Abfluss-Datum — required per EÜR §11 EStG. Maps to the
-				     existing `expenses.abfluss_datum` column. -->
+				     existing `expenses.abfluss_datum` column.
+				     E4.2: migrated to DateField. -->
 				<div class="space-y-1.5">
 					<label for="abfluss_datum" class="block text-sm font-medium text-foreground">
 						Abfluss-Datum <span class="text-red-500" aria-hidden="true">*</span>
 					</label>
 					<p class="text-muted-foreground text-xs">Tag, an dem das Geld tatsächlich abgeflossen ist.</p>
-					<input
+					<DateField
 						id="abfluss_datum"
 						name="abfluss_datum"
-						type="date"
-						lang="de"
+						value={abflussDatum}
 						required
-						bind:value={abflussDatum}
-						class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+						onchange={(iso) => (abflussDatum = iso)}
 					/>
 				</div>
 

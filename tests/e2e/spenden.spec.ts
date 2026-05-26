@@ -88,10 +88,15 @@ test.describe("@phase-5 Spenden — create + Bescheinigung", () => {
       '[data-testid="spender-adresse-input"]',
       "Hauptstr. 1, 80331 München",
     );
-    await page.fill(
-      '[data-testid="zugewendet-am-input"]',
-      new Date().toISOString().slice(0, 10),
-    );
+    // C6-FORM (Night-2 E4): Zuwendungsdatum is now a DateField primitive
+    // (TT.MM.JJJJ display, hidden ISO sibling). Fill TT.MM.JJJJ from today's
+    // ISO date and blur to commit the hidden mirror.
+    const iso = new Date().toISOString().slice(0, 10);
+    const [yyyy, mm, dd] = iso.split("-");
+    const ddmmyyyy = `${dd}.${mm}.${yyyy}`;
+    const zugewendet = page.locator("input#add-spende-datum");
+    await zugewendet.fill(ddmmyyyy);
+    await zugewendet.blur();
     await page.fill('[data-testid="betrag-eur-input"]', "327.09");
 
     // Kategorie is required — pick the first one in the dropdown that's not the placeholder

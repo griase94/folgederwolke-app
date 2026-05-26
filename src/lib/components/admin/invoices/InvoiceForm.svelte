@@ -17,6 +17,7 @@
 	import { enhance } from '$app/forms';
 	import { beforeNavigate } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 	import InvoiceLivePreview from './InvoiceLivePreview.svelte';
 
 	type CustomerOpt = { id: string; name: string; addressBlock: string | null; country?: string };
@@ -188,41 +189,39 @@
 			{/if}
 		</div>
 
+		<!-- E4.3 (Night-2 C6-FORM): migrated the three date inputs (rechnungs/
+		     leistungs/faelligkeits) to DateField — TT.MM.JJJJ display, ISO
+		     hidden mirror keeps the server action's named-field-parse
+		     contract intact. -->
 		<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 			<div>
 				<label for="rechnungsdatum" class="mb-1 block text-sm font-medium">Rechnungsdatum</label>
-				<input
-					type="date"
-					lang="de"
+				<DateField
 					id="rechnungsdatum"
 					name="rechnungsdatum"
-					bind:value={rechnungsdatum}
+					value={rechnungsdatum}
 					required
-					class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+					onchange={(iso) => (rechnungsdatum = iso)}
 				/>
 			</div>
 			<div>
 				<label for="leistungsDatum" class="mb-1 block text-sm font-medium">Leistungsdatum (optional)</label>
-				<input
-					type="date"
-					lang="de"
+				<DateField
 					id="leistungsDatum"
 					name="leistungsDatum"
-					bind:value={leistungsDatum}
-					class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+					value={leistungsDatum}
+					onchange={(iso) => (leistungsDatum = iso)}
 				/>
 			</div>
 		</div>
 
 		<div>
 			<label for="faelligkeitsDatum" class="mb-1 block text-sm font-medium">Fällig bis (optional)</label>
-			<input
-				type="date"
-				lang="de"
+			<DateField
 				id="faelligkeitsDatum"
 				name="faelligkeitsDatum"
-				bind:value={faelligkeitsDatum}
-				class="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				value={faelligkeitsDatum}
+				onchange={(iso) => (faelligkeitsDatum = iso)}
 			/>
 		</div>
 
