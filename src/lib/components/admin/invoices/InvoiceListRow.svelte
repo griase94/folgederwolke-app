@@ -62,8 +62,7 @@
 			<span>{datumFmt}</span>
 			<InvoicePdfStatusBadge
 				pdfStatus={invoice.pdfStatus}
-				driveStatus={invoice.driveStatus}
-				showDrive
+				hasFile={invoice.pdfFileId !== null}
 			/>
 		</div>
 	</div>

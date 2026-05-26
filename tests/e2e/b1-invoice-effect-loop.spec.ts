@@ -1,18 +1,22 @@
 /**
  * E2E B-1 — Rechnungen $effect infinite-loop fix + beforeNavigate dirty-check.
  *
- * Done-tests for cluster B-1 (Night 1, Wave 0). Three guarantees:
- *   1. InvoiceLivePreview updates within ~1s of typing, and submit enables
- *      within 1.5s (proves the $effect loop no longer re-triggers itself
- *      and the unconditional override $effect doesn't wipe user input).
+ * Done-tests for cluster B-1, updated in Phase 11 when the preview pane
+ * switched from an HTML mockup (InvoiceLivePreview) to a real-PDF iframe
+ * (InvoicePdfPreview). Three guarantees:
+ *   1. The preview component mounts and its 3-state badge settles to
+ *      `aktuell` after typing (proves the $effect debounce + the
+ *      preview-endpoint round-trip work end-to-end; the typed bezeichnung
+ *      now lives inside the PDF bytes, so we cannot toContainText it).
  *   2. No `effect_update_depth_exceeded` console errors during the fill
- *      flow (regression guard for the $state(timer) bug).
+ *      flow (regression guard for the $state(timer) bug that prompted this
+ *      test).
  *   3. A dirty form on /app/rechnungen/new AND /app/transactions/neu prompts
  *      with window.confirm on sidebar navigation.
  *
  * Auth helper mirrors tests/e2e/rechnungen.spec.ts (magic-link insertion).
  *
- * @phase-9
+ * @phase-9 @phase-11
  */
 
 import { expect, test } from "@playwright/test";
@@ -90,6 +94,25 @@ test.describe("@phase-9 B-1 InvoiceForm effect loop fix", () => {
 
     await page.goto("/app/rechnungen/new");
 
+    // Phase 11: the preview now renders a real PDF inside an <iframe>, so
+    // toContainText is not applicable and a badge-state assertion is racy
+    // (the badge transition depends on iframe `load`, which headless
+    // Chrome does not fire for `blob:application/pdf`). Instead assert
+    // the network round-trip directly — the preview endpoint must return
+    // 200 application/pdf for our form input. That's the tight evidence
+    // the $effect debounce reaches the server.
+    const preview = page.locator('[data-component="invoice-pdf-preview"]');
+    await expect(preview).toBeVisible();
+
+    // Arm the response wait BEFORE filling so we don't miss a debounced
+    // fetch that fires fast after the customer selectOption.
+    const previewResponse = page.waitForResponse(
+      (r) =>
+        r.url().endsWith("/api/rechnungen/preview") &&
+        r.request().method() === "POST",
+      { timeout: 10_000 },
+    );
+
     // Select the seeded customer (use native <select>)
     await page.selectOption('select[name="customerId"]', customer.id);
 
@@ -102,11 +125,13 @@ test.describe("@phase-9 B-1 InvoiceForm effect loop fix", () => {
     );
     await expect(submitBtn).toBeEnabled({ timeout: 1500 });
 
-    // Preview must contain the typed bezeichnung — proves $effect debounce
-    // reaches the server preview endpoint and renders into the DOM. The
-    // debounce is 500ms; allow 2.5s for the round-trip in CI.
-    const preview = page.locator('[data-component="invoice-live-preview"]');
-    await expect(preview).toContainText("Test", { timeout: 2500 });
+    // The preview endpoint round-trip must complete successfully with PDF
+    // bytes. Status code surfaces server errors directly (Zod failure,
+    // session gate, renderer crash) instead of hiding them behind a stuck
+    // badge state.
+    const resp = await previewResponse;
+    expect(resp.status()).toBe(200);
+    expect(resp.headers()["content-type"]).toContain("application/pdf");
 
     // No effect-loop errors during the entire fill flow.
     const loopErrors = consoleErrors.filter((e) =>

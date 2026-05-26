@@ -1,28 +1,23 @@
 /**
- * /app/rechnungen/new — create a new invoice with live HTML preview.
+ * /app/rechnungen/new — create a new invoice with live real-PDF preview.
  *
  * load()  → fetches customer + projekt + (income) kategorie lists for the form
  *           plus a next-business-id preview ("FDW-2026-007").
  *
- * actions:
- *   default  → validates and inserts via domain.createInvoice(). On success
- *              redirects to /app/rechnungen/{id}?job={jobId}.
- *   preview  → returns HTML string for the side-by-side preview pane.
+ * Phase 11: the live preview is no longer rendered server-side as HTML — the
+ * client POSTs to /api/rechnungen/preview which returns the real PDF bytes.
+ * Only the `create` action lives here now.
  */
 
 import { fail, redirect } from "@sveltejs/kit";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { customers } from "$lib/server/db/schema/customers.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { idCounters } from "$lib/server/db/schema/id_counters.js";
-import {
-  createInvoice,
-  renderInvoicePreviewHtml,
-} from "$lib/server/domain/invoices.js";
-import { env } from "$lib/server/env.js";
+import { createInvoice } from "$lib/server/domain/invoices.js";
 import { berlinYear } from "$lib/domain/year.js";
 
 // ---------------------------------------------------------------------------
@@ -171,70 +166,5 @@ export const actions: Actions = {
       303,
       `/app/rechnungen/${result.invoiceId}?job=${result.jobId}`,
     );
-  },
-
-  // Side-by-side preview pane — returns HTML for the form to inject.
-  preview: async ({ request }) => {
-    const fd = await request.formData();
-    const v = (k: string): string => {
-      const value = fd.get(k);
-      return typeof value === "string" ? value : "";
-    };
-    const customerName = v("customerName");
-    const customerAddressBlock = v("customerAddressBlock") || null;
-    const customerCountry = v("customerCountry") || "DE";
-    const rechnungsdatum =
-      v("rechnungsdatum") || new Date().toISOString().slice(0, 10);
-    const leistungsDatum = v("leistungsDatum") || null;
-    const faelligkeitsDatum = v("faelligkeitsDatum") || null;
-    const leistungszeitraum = v("leistungszeitraum") || null;
-    const bezeichnung = v("bezeichnung");
-    const leistungsBeschreibung = v("leistungsBeschreibung") || null;
-    const currency = v("currency") || "EUR";
-    const nettoCents = parseInt(v("nettoCents") || "0", 10) || 0;
-    const ustCents = 0;
-    const bruttoCents = nettoCents + ustCents;
-
-    // Compute a fresh preview business id at render time (without bumping).
-    const db = getDb();
-    const counterRows = await db
-      .select({ nextValue: idCounters.nextValue })
-      .from(idCounters)
-      .where(
-        and(
-          eq(idCounters.kind, "FDW"),
-          eq(idCounters.year, new Date().getFullYear()),
-        ),
-      )
-      .limit(1);
-    void sql; // satisfy lint for the imported helper
-    const year = berlinYear(); // ADR-0001: Berlin-local Buchhaltungsjahr
-    const nextSeq = counterRows[0] ? Number(counterRows[0].nextValue) : 1;
-    const invoiceNumberPreview = `FDW-${year}-${String(nextSeq).padStart(3, "0")}`;
-
-    const html = renderInvoicePreviewHtml({
-      bezeichnung,
-      leistungsBeschreibung,
-      rechnungsdatum,
-      leistungsDatum,
-      faelligkeitsDatum,
-      leistungszeitraum,
-      customerName,
-      customerAddressBlock,
-      customerCountry,
-      nettoCents,
-      ustCents,
-      bruttoCents,
-      currency,
-      invoiceNumberPreview,
-      verein: {
-        name: env.VEREIN_NAME || "Folge der Wolke e.V.",
-        adresse: env.VEREIN_ADRESSE || "",
-        steuernummer: env.VEREIN_STEUERNUMMER || "",
-        vereinsregister: env.VEREIN_VR || "",
-      },
-    });
-
-    return { html };
   },
 };

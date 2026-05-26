@@ -4,11 +4,13 @@
  * Applies ADRs 0001, 0002, 0003, 0006, 0010, 0012.
  *
  * Differs from income in that the invoice is the legal artifact (PDF stored
- * in Drive). The corresponding payment receipt is a separate income row,
- * linked via `paid_by_income_id` for reconciliation.
+ * in Vercel Blob via the Phase 9 `files` table). The corresponding payment
+ * receipt is a separate income row, linked via `paid_by_income_id` for
+ * reconciliation.
  *
- * `drive_doc_id` / `drive_pdf_id` track the Google Doc copy + exported PDF
- * (per §6.3-6.4). `pdf_status` reflects the async generation pipeline.
+ * `pdf_file_id` is the FK to the canonical PDF in `files`; `pdf_status`
+ * reflects the async generation pipeline (queued → running → generated, or
+ * failed with a non-null `pdf_status_error`).
  */
 // TODO multi-tenant: add verein_id
 
@@ -16,7 +18,6 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   char,
-  customType,
   date,
   index,
   integer,
@@ -29,14 +30,9 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
-/** Postgres bytea column ↔ Node Buffer mapping (drizzle has no native bytea). */
-const bytea = customType<{ data: Buffer; default: false }>({
-  dataType() {
-    return "bytea";
-  },
-});
 import { customers } from "./customers.js";
 import { pdfStatusEnum, sourceKindEnum, sphereEnum } from "./enums.js";
+import { files } from "./files.js";
 import { kategorien } from "./kategorien.js";
 import { projects } from "./projects.js";
 import { users } from "./users.js";
@@ -110,19 +106,15 @@ export const invoices = pgTable(
      */
     leistungszeitraum: text("leistungszeitraum").notNull(),
 
-    // --- Drive (Doc + PDF) per §6.3 ---
-    driveDocId: text("drive_doc_id"),
-    drivePdfFileId: text("drive_pdf_file_id"),
+    // --- PDF persistence (Phase 11 — Vercel Blob via files table) ---
     pdfStatus: pdfStatusEnum("pdf_status").notNull().default("not_generated"),
     pdfStatusError: text("pdf_status_error"),
-
-    // --- Drive-failure resilience (Phase 5) ---
-    /** Raw PDF bytes — populated when pdf-lib renders. Persists even if
-     *  Drive upload fails so admins can still download from the app. */
-    pdfBytes: bytea("pdf_bytes"),
-    /** Drive sync state: 'pending' | 'uploaded' | 'failed' | 'skipped' — null
-     *  while no PDF has been generated. */
-    driveStatus: text("drive_status"),
+    /** FK to files.id holding the canonical rendered PDF. NULL while
+     *  queued/generating; set inside finalizePdfJob after the blob upload +
+     *  files INSERT succeed. */
+    pdfFileId: uuid("pdf_file_id").references(() => files.id, {
+      onDelete: "restrict",
+    }),
 
     // --- Payment reconciliation ---
     paidByIncomeId: uuid("paid_by_income_id"),
@@ -159,7 +151,7 @@ export const invoices = pgTable(
     customerIdIdx: index("invoices_customer_id_idx").on(t.customerId),
     projectIdIdx: index("invoices_project_id_idx").on(t.projectId),
     pdfStatusIdx: index("invoices_pdf_status_idx").on(t.pdfStatus),
-    driveStatusIdx: index("invoices_drive_status_idx").on(t.driveStatus),
+    pdfFileIdIdx: index("invoices_pdf_file_id_idx").on(t.pdfFileId),
     rechnungsdatumIdx: index("invoices_rechnungsdatum_idx").on(
       t.rechnungsdatum,
     ),

@@ -381,24 +381,12 @@ export function registerHandlers(): void {
   );
 
   // ── invoice.pdf_generated ──────────────────────────────────────────────
-  bus.on<EventPayload<"invoice.pdf_generated">>(
-    "invoice.pdf_generated",
-    async (payload) => {
-      await logAudit({
-        action: "update",
-        entityKind: "invoice",
-        entityId: payload.invoiceId,
-        entityBusinessId: payload.invoiceBusinessId,
-        actorUserId: payload.actorUserId,
-        actorKind: payload.actorUserId ? "user" : "system",
-        payload: {
-          kind: "pdf_generated",
-          drivePdfFileId: payload.drivePdfFileId,
-          driveStatus: payload.driveStatus,
-        },
-      });
-    },
-  );
+  // Phase 11: the sha256 audit-log anchor (§ 14 UStG Unversehrtheit per
+  // ADR-0012 §6) is written DIRECTLY inside finalizePdfJob, not through this
+  // event handler — a handler throw must not be able to skip the anchor.
+  // This subscription is reserved for future best-effort consumers (mail
+  // templates, analytics, …) that don't carry the legal guarantee. None
+  // exist today; we deliberately leave the slot unsubscribed.
 
   // ── invoice.superseded ─────────────────────────────────────────────────
   bus.on<EventPayload<"invoice.superseded">>(

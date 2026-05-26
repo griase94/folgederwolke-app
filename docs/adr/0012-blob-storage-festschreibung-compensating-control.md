@@ -38,6 +38,14 @@ Phase 9 ships on Vercel Hobby without a signed DPA. This is a lateral move from 
 
 Vercel account compromise = total file loss until backup is activated (`scripts/backup-files.ts` + `.github/workflows/files-backup.yml` are shipped but `workflow_dispatch`-only). Activation per RUNBOOK §6.4. Accepted risk; ~€3.20/mo (Hetzner Storage Box) when activated.
 
+### 6. Phase 11 — invoice PDFs are now Original-Belege under this regime
+
+Phase 11 moved invoice PDFs from `invoices.pdf_bytes` (bytea) onto Vercel Blob via the same `files`-table pipeline that holds Belege. Two consequences for this ADR:
+
+- **The file IS the Rechnung** — not a Beleg-scan whose original lives elsewhere. Under § 14 Abs. 1 Satz 2 UStG (Echtheit der Herkunft / Unversehrtheit / Lesbarkeit über 10 Jahre) and § 147 AO, the Verein is the **issuer** of the legally binding document; the Blob copy is the only durable copy until §5 above is un-parked. To compensate for this without activating off-platform backup yet, `finalizePdfJob` emits an `invoice.pdf_generated` event whose `audit_log` row carries `files.sha256`. Any silent blob mutation becomes detectable via the hash-chained audit log (ADR-0004), which is itself replicated to the weekly off-Postgres anchor — extending tamper-evidence to invoice content without doubling storage.
+
+- **Festschreibung year mismatch is accepted** — the `files` table trigger keys on `uploaded_at`, while invoice Festschreibung keys on `gebucht_am`. For a Rechnung dated 2025-12-29 but generated 2026-01-15, the file row's Festschreibung year is 2026, not 2025. The invoice row itself is correctly locked (entity-level trigger uses `gebucht_am`); soft-delete of historic-invoice files would route through code paths that also check `settings.festgeschrieben_bis`. Direct DB mutation bypassing app code is outside the L3 guarantee — accepted for Verein scale, tracked here rather than via a new ADR.
+
 ## Consequences
 
 - ESLint rule (`no-restricted-imports`) prevents direct `@vercel/blob` imports outside `vercel-blob-impl.ts`

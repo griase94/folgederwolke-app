@@ -18,7 +18,7 @@
 	import { beforeNavigate } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import DateField from '$lib/components/ui/date-field/DateField.svelte';
-	import InvoiceLivePreview from './InvoiceLivePreview.svelte';
+	import InvoicePdfPreview from './InvoicePdfPreview.svelte';
 
 	type CustomerOpt = { id: string; name: string; addressBlock: string | null; country?: string };
 	type KategorieOpt = { id: string; name: string };
@@ -339,6 +339,6 @@
 
 	<!-- ── Live preview ──────────────────────────────────────────────── -->
 	<div class="lg:sticky lg:top-4 lg:self-start">
-		<InvoiceLivePreview input={previewInput} />
+		<InvoicePdfPreview input={previewInput} />
 	</div>
 </div>

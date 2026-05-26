@@ -20,7 +20,6 @@ import {
   cleanupMagicLinks,
   cleanupSessions,
   cleanupRateLimitAttempts,
-  retryFailedDriveUploads,
   runAuditChainVerification,
 } from "$lib/server/domain/cron-tasks.js";
 import { env } from "$lib/server/env.js";
@@ -70,15 +69,7 @@ export const GET: RequestHandler = async ({ request }) => {
     );
   }
 
-  // 4. Drive-resilience retry (best-effort — never fails the whole cron)
-  try {
-    results.drive_retry = await retryFailedDriveUploads();
-  } catch (err) {
-    errors.drive_retry = err instanceof Error ? err.message : String(err);
-    console.error("[cron/daily-dispatcher] drive retry failed:", err);
-  }
-
-  // 5. Audit-chain verification (ADR-0004). Chain breaks land as
+  // 4. Audit-chain verification (ADR-0004). Chain breaks land as
   //    `errors.audit_chain` so the response shape signals an alert.
   try {
     const auditResult = await runAuditChainVerification();

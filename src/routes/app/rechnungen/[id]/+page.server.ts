@@ -21,11 +21,7 @@ import {
   regeneratePdf,
   supersedeInvoice,
 } from "$lib/server/domain/invoices.js";
-import type {
-  InvoiceDetail,
-  InvoicePdfStatus,
-  InvoiceDriveStatus,
-} from "$lib/domain/invoices.js";
+import type { InvoiceDetail, InvoicePdfStatus } from "$lib/domain/invoices.js";
 
 export const load: PageServerLoad = async ({ params, url }) => {
   const db = getDb();
@@ -89,10 +85,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
     bruttoCents: Number(inv.bruttoCents),
     currency: inv.currency,
     pdfStatus: inv.pdfStatus as InvoicePdfStatus,
-    driveStatus: (inv.driveStatus ?? null) as InvoiceDriveStatus,
-    drivePdfFileId: inv.drivePdfFileId ?? null,
+    pdfFileId: inv.pdfFileId ?? null,
     pdfStatusError: inv.pdfStatusError ?? null,
-    hasPdfBytes: inv.pdfBytes !== null && inv.pdfBytes !== undefined,
     festgeschriebenAt: inv.festgeschriebenAt
       ? inv.festgeschriebenAt.toISOString()
       : null,

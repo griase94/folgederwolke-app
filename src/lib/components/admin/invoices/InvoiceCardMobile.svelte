@@ -53,8 +53,7 @@
 			{/if}
 			<InvoicePdfStatusBadge
 				pdfStatus={invoice.pdfStatus}
-				driveStatus={invoice.driveStatus}
-				showDrive={false}
+				hasFile={invoice.pdfFileId !== null}
 			/>
 		</div>
 	</div>

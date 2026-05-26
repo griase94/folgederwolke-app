@@ -60,6 +60,14 @@ inside (a) `archive()` after SHA-verify, and (b) the upload pipeline's
 dedup-cleanup helper. ESLint guards `@vercel/blob` imports; CI grep
 (`scripts/check-internal-del.sh`) guards `_internalDelByPath` callsites.
 
+Invoice PDFs (Phase 11) persist to Blob via `files` with `kind='rechnung'`
+at deterministic pathname `rechnungen/<year>/<business_id>[.vN].pdf`. No
+bytea storage anywhere — the `invoices.pdf_file_id` FK is the canonical
+handle, served via 302 from `/app/rechnungen/[id]/pdf` to
+`/api/files/[id]/blob`. The `invoice.pdf_generated` event anchors the
+file's sha256 in the hash-chained `audit_log` so silent blob mutation is
+detectable (see ADR-0012 §6).
+
 ### 6. Audit log is append-only (ADR-0004)
 
 `audit_log` rows are never updated or deleted. `app_runtime` role has only
