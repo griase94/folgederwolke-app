@@ -20,9 +20,11 @@ import { InMemoryMockFileStorage } from "$lib/server/files/in-memory-mock-impl.j
 import { runInvoiceJob } from "$lib/server/domain/invoices.js";
 import { registerHandlers } from "$lib/server/events/index.js";
 
-// Register the in-process bus handlers so invoice.pdf_generated → audit_log
-// fires under test. In prod this happens in hooks.server.ts; integration
-// tests bypass HTTP so we register explicitly.
+// Phase 11: the invoice.pdf_generated audit_log anchor is written DIRECTLY
+// inside finalizePdfJob (not via this bus subscriber — see ADR-0012 §6),
+// so the audit assertion below works whether or not handlers are
+// registered. We still register so any future best-effort handlers exercise
+// under test.
 registerHandlers();
 import {
   resetFestgeschreibungBis,

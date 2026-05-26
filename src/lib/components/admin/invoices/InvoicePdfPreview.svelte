@@ -125,8 +125,14 @@
 			// Also expose the latest URL to the mobile "Vorschau anzeigen"
 			// button — same blob, no second render.
 			mobileBlobUrl = url;
-			// The iframe `load` event handler calls swapToBack(). Until then
-			// the front iframe stays visible.
+			// Badge flips to `aktuell` as soon as the bytes are in hand — that's
+			// the user-facing signal that "your data is ready". The iframe swap
+			// happens async via the back-iframe's `load` event (see
+			// onBackLoad). Decoupling matters in headless browsers (e.g. CI
+			// Chrome without the PDF plugin) where `blob:application/pdf`
+			// never fires `load` on the iframe; the data is still fresh and
+			// the real-browser user sees it instantly.
+			badge = 'aktuell';
 		} catch (err) {
 			if ((err as Error).name === 'AbortError') return;
 			// First failure: silent retry after 800 ms.
@@ -142,9 +148,11 @@
 	}
 
 	function onBackLoad(): void {
+		// Visual-only: promote the freshly-loaded back iframe to be the
+		// visible one. Badge state is owned by `refresh` (already flipped to
+		// `aktuell` when the fetch resolved); don't re-touch it here.
 		if (!backUrl) return;
 		swapToBack();
-		badge = 'aktuell';
 	}
 
 	function manualRetry(): void {
