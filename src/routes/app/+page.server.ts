@@ -19,6 +19,7 @@ import type { PageServerLoad } from "./$types.js";
 import {
   loadDashboardKpis,
   loadRecentActivity,
+  topActiveProjects,
 } from "$lib/server/domain/dashboard.js";
 import { getDb } from "$lib/server/db/index.js";
 import { sql } from "drizzle-orm";
@@ -51,11 +52,13 @@ export const load: PageServerLoad = async ({ url }) => {
   const yearArg = yearParam ? parseInt(yearParam, 10) : undefined;
   const year = Number.isFinite(yearArg) ? yearArg : undefined;
 
-  const [kpis, recentActivity, festgeschriebenBis] = await Promise.all([
-    loadDashboardKpis(year),
-    loadRecentActivity(),
-    fetchFestgeschriebenBis(),
-  ]);
+  const [kpis, recentActivity, festgeschriebenBis, topProjekte] =
+    await Promise.all([
+      loadDashboardKpis(year),
+      loadRecentActivity(),
+      fetchFestgeschriebenBis(),
+      topActiveProjects(5),
+    ]);
 
   // C4-DASH-lite: load Beiträge totals for the dashboard widget (O-3/M-1).
   // We inline the aggregation here; once C5-MEM-lite's `memberBeitragsTotals`
@@ -117,5 +120,7 @@ export const load: PageServerLoad = async ({ url }) => {
     festgeschriebenBis,
     // C4-DASH-lite: BeitragsuebersichtWidget data.
     beitragsuebersicht,
+    // C1-PRJ-B/C: top 5 active projects by |saldo| for the dashboard widget.
+    topProjekte,
   };
 };

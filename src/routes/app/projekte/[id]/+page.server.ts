@@ -14,16 +14,22 @@
  */
 
 import { error, fail } from "@sveltejs/kit";
-import { eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { customers } from "$lib/server/db/schema/customers.js";
+import { invoices } from "$lib/server/db/schema/invoices.js";
+import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
+import { files } from "$lib/server/db/schema/files.js";
+import { auditLog } from "$lib/server/db/schema/audit_log.js";
+import { users } from "$lib/server/db/schema/users.js";
 import {
   editProject,
   softDeleteProject,
 } from "$lib/server/domain/projects-actions.js";
 import { projectFinancials } from "$lib/server/domain/projects.js";
+import { fileViewUrl } from "$lib/server/files/storage.js";
 
 export const load: PageServerLoad = async ({ params, url }) => {
   const { id } = params;
@@ -123,6 +129,145 @@ export const load: PageServerLoad = async ({ params, url }) => {
     status: r.status,
   }));
 
+  // --- Night-2 C1-PRJ-B/C tabs ---
+
+  // Rechnungen tab: invoices linked to this project.
+  const rechnungenRows = await db
+    .select({
+      id: invoices.id,
+      projectId: invoices.projectId, // P2-B7: surface for e2e cross-project leak check
+      businessId: invoices.businessId,
+      bezeichnung: invoices.bezeichnung,
+      customerName: invoices.customerNameSnapshot,
+      nettoCents: invoices.nettoCents,
+      bezahltAm: invoices.bezahltAm,
+      rechnungsdatum: invoices.rechnungsdatum,
+      faelligkeitsDatum: invoices.faelligkeitsDatum,
+    })
+    .from(invoices)
+    .where(eq(invoices.projectId, p.id))
+    .orderBy(desc(invoices.rechnungsdatum));
+
+  const rechnungen = rechnungenRows.map((r) => ({
+    id: r.id,
+    projectId: p.id, // P2-B7: always this project's id (not the nullable FK)
+    businessId: r.businessId,
+    bezeichnung: r.bezeichnung,
+    customerName: r.customerName,
+    nettoCents: Number(r.nettoCents),
+    bezahltAm: r.bezahltAm ?? null,
+    rechnungsdatum: r.rechnungsdatum,
+    faelligkeitsDatum: r.faelligkeitsDatum ?? null,
+  }));
+
+  // Auslagen tab: submissions linked to this project via project_id FK.
+  const auslagenRows = await db
+    .select({
+      id: auslagenSubmissions.id,
+      ausId: auslagenSubmissions.businessId,
+      bezeichnung: auslagenSubmissions.bezeichnung,
+      bezahltVonDisplay: auslagenSubmissions.bezahltVonDisplay,
+      betragCents: auslagenSubmissions.betragCents,
+      decidedAt: auslagenSubmissions.decidedAt,
+      decision: auslagenSubmissions.decision,
+      submittedAt: auslagenSubmissions.submittedAt,
+    })
+    .from(auslagenSubmissions)
+    .where(eq(auslagenSubmissions.projectId, p.id))
+    .orderBy(desc(auslagenSubmissions.submittedAt));
+
+  const auslagen = auslagenRows.map((a) => ({
+    id: a.id,
+    projectId: p.id, // P2-B7
+    ausId: a.ausId,
+    bezeichnung: a.bezeichnung,
+    bezahltVonDisplay: a.bezahltVonDisplay,
+    betragCents: Number(a.betragCents),
+    status: (a.decidedAt == null
+      ? "offen"
+      : a.decision === "approved"
+        ? "approved"
+        : "rejected") as "offen" | "approved" | "rejected",
+    submittedAt: a.submittedAt.toISOString(),
+  }));
+
+  // Belege tab: files attached via auslagen submissions linked to this project.
+  // The files table does not have a direct linkedEntityId — we join through
+  // auslagen_submissions.beleg_file_id where project_id = this project.
+  const belegeRows = await db
+    .select({
+      id: files.id,
+      originalFilename: files.originalFilename,
+      mimeType: files.mimeType,
+      byteSize: files.byteSize,
+      sourceKind: files.sourceKind,
+      uploadedAt: files.uploadedAt,
+    })
+    .from(files)
+    .innerJoin(
+      auslagenSubmissions,
+      and(
+        eq(auslagenSubmissions.belegFileId, files.id),
+        eq(auslagenSubmissions.projectId, p.id),
+      ),
+    )
+    .where(isNull(files.deletedAt))
+    .orderBy(desc(files.uploadedAt));
+
+  const belege = belegeRows.map((b) => ({
+    id: b.id,
+    projectId: p.id, // P2-B7
+    originalFilename: b.originalFilename,
+    mimeType: b.mimeType,
+    byteSize: Number(b.byteSize),
+    sourceKind: b.sourceKind,
+    uploadedAt: b.uploadedAt.toISOString(),
+    viewUrl: fileViewUrl(b.id),
+  }));
+
+  // Verlauf tab: audit_log entries for this project (direct entity match or
+  // payload projectId reference). Newest-first, capped at 50.
+  function summarisePayload(payload: unknown): string {
+    if (!payload || typeof payload !== "object") return "";
+    const obj = payload as Record<string, unknown>;
+    const keys = ["bezeichnung", "betragCents", "name", "status"].filter(
+      (k) => k in obj,
+    );
+    return keys.map((k) => `${k}: ${String(obj[k])}`).join(" · ");
+  }
+
+  const verlaufRows = await db
+    .select({
+      id: auditLog.id,
+      action: auditLog.action,
+      entityKind: auditLog.entityKind,
+      entityId: auditLog.entityId,
+      ts: auditLog.occurredAt,
+      payload: auditLog.payload,
+      userDisplay: sql<string>`coalesce(${users.name}, 'System')`,
+    })
+    .from(auditLog)
+    .leftJoin(users, eq(auditLog.actorUserId, users.id))
+    .where(
+      or(
+        and(eq(auditLog.entityKind, "project"), eq(auditLog.entityId, p.id)),
+        sql`${auditLog.payload}->>'projectId' = ${p.id}`,
+      ),
+    )
+    .orderBy(desc(auditLog.occurredAt))
+    .limit(50);
+
+  const verlauf = verlaufRows.map((r) => ({
+    id: r.id,
+    projectId: p.id, // P2-B7
+    action: r.action,
+    entityKind: r.entityKind,
+    entityId: r.entityId ?? null,
+    actorDisplay: r.userDisplay,
+    ts: r.ts.toISOString(),
+    payloadSummary: summarisePayload(r.payload),
+  }));
+
   return {
     project: {
       id: p.id,
@@ -141,6 +286,11 @@ export const load: PageServerLoad = async ({ params, url }) => {
     transactions,
     customers: customerRows,
     toast,
+    // Night-2 C1-PRJ-B/C tabs
+    rechnungen,
+    auslagen,
+    belege,
+    verlauf,
   };
 };
 
