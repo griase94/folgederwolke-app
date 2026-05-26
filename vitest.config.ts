@@ -13,9 +13,11 @@ export default defineConfig({
     globals: true,
     include: [
       "src/**/*.{test,spec}.{js,ts}",
+      "scripts/**/*.{test,spec}.{js,ts}",
       "tests/unit/**/*.{test,spec}.{js,ts}",
       "tests/canary/**/*.{test,spec}.{js,ts}",
       "tests/integration/**/*.{test,spec}.{js,ts}",
+      "tests/e2e/lib/**/*.{test,spec}.{js,ts}",
     ],
     pool: "forks",
     poolOptions: { forks: { singleFork: true } },
