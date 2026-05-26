@@ -24,16 +24,27 @@
 	let confirmDelete = $state(false);
 	let deleteError = $state<string | null>(null);
 
+	// Night-2 C5-MEM-full — exempt toggle drives the reason input visibility.
+	// Synced from `member.beitragExempt` whenever the dialog opens (or the
+	// member prop changes) so editing pre-fills the checkbox state.
+	let beitragExempt = $state(false);
+
 	function reset() {
 		errors = {};
 		loading = false;
 		deleteLoading = false;
 		confirmDelete = false;
 		deleteError = null;
+		beitragExempt = member?.beitragExempt ?? false;
 	}
 
 	$effect(() => {
 		if (!open) reset();
+	});
+
+	$effect(() => {
+		// Keep the toggle in sync with the freshly-passed member prop.
+		if (member) beitragExempt = member.beitragExempt ?? false;
 	});
 
 	function fieldError(key: string): string | undefined {
@@ -239,12 +250,44 @@
 					<select
 						id="edit-role"
 						name="role"
+						data-testid="edit-role-select"
 						class="border-input bg-background h-8 w-full rounded-lg border px-2.5 py-1 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
 					>
-						{#each ['mitglied', 'vorstand', 'kassenwart', 'schriftfuehrer', 'fördermitglied'] as r (r)}
+						{#each ['mitglied', 'vorstand', 'kassenwart', 'schriftfuehrer', 'fördermitglied', 'extern', 'helfer'] as r (r)}
 							<option value={r} selected={member.role === r}>{r}</option>
 						{/each}
 					</select>
+				</div>
+
+				<!-- Night-2 C5-MEM-full — Beitragspflicht aussetzen + Begründung -->
+				<div class="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+					<label class="flex items-start gap-2 text-sm">
+						<input
+							id="edit-beitrag-exempt"
+							type="checkbox"
+							name="beitrag_exempt"
+							data-testid="edit-beitrag-exempt"
+							class="mt-0.5 h-4 w-4 rounded border-input"
+							bind:checked={beitragExempt}
+						/>
+						<span>
+							<span class="font-medium text-foreground">Beitragspflicht aussetzen</span>
+							<span class="block text-xs text-muted-foreground">
+								Mitglied zählt nicht in den „offen"-Summen.
+							</span>
+						</span>
+					</label>
+					{#if beitragExempt}
+						<div class="space-y-1">
+							<Label for="edit-exempt-reason">Begründung</Label>
+							<Input
+								id="edit-exempt-reason"
+								name="beitrag_exempt_reason"
+								placeholder="z.B. Ehrenmitglied, Härtefall"
+								value={member.beitragExemptReason ?? ''}
+							/>
+						</div>
+					{/if}
 				</div>
 
 				{#if errors['_']}

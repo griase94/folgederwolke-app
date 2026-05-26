@@ -74,6 +74,7 @@ vi.mock("$lib/server/db/schema/members.js", () => ({
     nachname: "members.nachname",
     email: "members.email",
     austrittsDatum: "members.austritts_datum",
+    beitragExempt: "members.beitrag_exempt",
   },
   memberBeitrags: {
     memberId: "member_beitrags.member_id",
@@ -290,5 +291,61 @@ describe("dispatchBeitragsreminder", () => {
 
     const result = await dispatchBeitragsreminder(opts);
     expect(result).toEqual({ checked: 0, sent: 0, skipped: 0, errors: 0 });
+  });
+
+  // -------------------------------------------------------------------------
+  // Exempt-member filter (Blocker A — cycle 2)
+  // -------------------------------------------------------------------------
+  // The DB mock returns only what the query would return after the
+  // `beitrag_exempt = false` WHERE predicate. We verify here that the
+  // function correctly counts only the non-exempt candidate returned by the
+  // (already filtered) DB result, and does NOT attempt to send to the
+  // exempt member.
+  //
+  // Because all DB I/O is mocked at the Drizzle builder level, the actual SQL
+  // predicate (`eq(members.beitragExempt, false)`) is validated by the
+  // query-shape tests in cron-tasks-exempt-filter.test.ts. Here we confirm
+  // the calling layer correctly passes through and counts only what the DB
+  // returns.
+  it("does not send to exempt member when DB returns only non-exempt candidates", async () => {
+    // Simulate: m1 (active, unpaid) is returned by the query; m2 (exempt) is
+    // already excluded by the DB predicate and therefore absent from openRows.
+    const openRows = [
+      {
+        memberId: "m1-active",
+        year: 2026,
+        betragCents: BigInt(6000),
+        paidCents: BigInt(0),
+        vorname: "Lena",
+        nachname: "Richter",
+        email: "lena@example.com",
+      },
+    ];
+
+    const selectChain = {
+      from: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue(openRows),
+    };
+    mockSelect.mockReturnValue(selectChain);
+
+    vi.mocked(sendMail).mockResolvedValue({
+      messageId: "msg-lena",
+      deduped: false,
+    });
+
+    const result = await dispatchBeitragsreminder(opts);
+
+    // Only m1 is in the list → exactly one mail sent.
+    expect(result.checked).toBe(1);
+    expect(result.sent).toBe(1);
+    expect(result.skipped).toBe(0);
+    expect(result.errors).toBe(0);
+
+    // sendMail was called once and only for m1.
+    expect(sendMail).toHaveBeenCalledOnce();
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({ entity_id: "m1-active" }),
+    );
   });
 });

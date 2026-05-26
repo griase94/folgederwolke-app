@@ -39,6 +39,15 @@ export const members = pgTable(
     role: memberRoleEnum("role").notNull().default("mitglied"),
     eintrittsDatum: date("eintritts_datum"),
     austrittsDatum: date("austritts_datum"),
+    /**
+     * Beitragspflicht ausgesetzt (Night-2 C5-MEM-full).
+     * Exempt members are excluded from the `offen` sum and from the
+     * bulk-reminder candidate list. `beitragExemptReason` is a free-text
+     * justification (Ehrenmitglied, Härtefall, ...) shown as tooltip on
+     * the "befreit" badge.
+     */
+    beitragExempt: boolean("beitrag_exempt").notNull().default(false),
+    beitragExemptReason: text("beitrag_exempt_reason"),
     /** Sample/fixture rows for Phase 2-5 development before importer runs (Phase 6). */
     isFixture: boolean("is_fixture").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true })

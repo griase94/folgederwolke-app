@@ -16,11 +16,15 @@
 	let loading = $state(false);
 	let errors = $state<Record<string, string[]>>({});
 
+	// Night-2 C5-MEM-full — exempt toggle drives the optional reason field.
+	let beitragExempt = $state(false);
+
 	const todayIso = new Date().toISOString().slice(0, 10);
 
 	function reset() {
 		errors = {};
 		loading = false;
+		beitragExempt = false;
 	}
 
 	function fieldError(key: string): string | undefined {
@@ -139,6 +143,55 @@
 					<Label for="add-eintritt">Eintrittsdatum</Label>
 					<Input id="add-eintritt" name="eintritts_datum" type="date" lang="de" value={todayIso} />
 				</div>
+			</div>
+
+			<div class="space-y-1">
+				<Label for="add-role">Rolle</Label>
+				<select
+					id="add-role"
+					name="role"
+					data-testid="add-role-select"
+					class="border-input bg-background h-8 w-full rounded-lg border px-2.5 py-1 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
+				>
+					<option value="mitglied">Mitglied</option>
+					<option value="vorstand">Vorstand</option>
+					<option value="kassenwart">Kassenwart</option>
+					<option value="schriftfuehrer">Schriftführer</option>
+					<option value="fördermitglied">Fördermitglied</option>
+					<!-- Night-2 C5-MEM-full: extern + helfer additions -->
+					<option value="extern">Extern</option>
+					<option value="helfer">Helfer</option>
+				</select>
+			</div>
+
+			<!-- Night-2 C5-MEM-full — Beitragspflicht aussetzen (optional) -->
+			<div class="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+				<label class="flex items-start gap-2 text-sm">
+					<input
+						id="add-beitrag-exempt"
+						type="checkbox"
+						name="beitrag_exempt"
+						data-testid="add-beitrag-exempt"
+						class="mt-0.5 h-4 w-4 rounded border-input"
+						bind:checked={beitragExempt}
+					/>
+					<span>
+						<span class="font-medium text-foreground">Beitragspflicht aussetzen</span>
+						<span class="block text-xs text-muted-foreground">
+							Mitglied zählt nicht in den „offen"-Summen.
+						</span>
+					</span>
+				</label>
+				{#if beitragExempt}
+					<div class="space-y-1">
+						<Label for="add-exempt-reason">Begründung</Label>
+						<Input
+							id="add-exempt-reason"
+							name="beitrag_exempt_reason"
+							placeholder="z.B. Ehrenmitglied, Härtefall"
+						/>
+					</div>
+				{/if}
 			</div>
 
 			{#if errors['_']}

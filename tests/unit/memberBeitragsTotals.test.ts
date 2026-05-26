@@ -190,4 +190,68 @@ describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
     // baseline + 2 active test members (m1, m2; m3 just became inactive).
     expect(totals.memberCount).toBe(baselineActiveCount + 2);
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Night-2 C5-MEM-full — exempt-aware semantics
+  //
+  // The new `exemptCount` field counts active members with
+  // `beitrag_exempt = true`. Exempt members are excluded from `offenCents`
+  // (they don't owe anything) but their `paid_cents` for the year (if any
+  // — e.g. they paid before being granted exemption) is preserved.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  it("Night-2: exposes exemptCount and excludes exempt members from offenCents", async () => {
+    // Mark m2 exempt mid-test. m2 owes 60€ in the SEED, but as exempt that
+    // 60€ must NOT contribute to offenCents.
+    const mut = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
+    try {
+      await mut`UPDATE members SET beitrag_exempt = true,
+                                    beitrag_exempt_reason = 'Ehrenmitglied'
+                WHERE id = ${m2}`;
+    } finally {
+      await mut.end();
+    }
+
+    const totals = await memberBeitragsTotals(SEED_YEAR);
+
+    // exemptCount is a NEW field on the aggregate (Night-2).
+    expect(totals.exemptCount).toBe(1);
+
+    // m1 fully paid 60€ → paidCents still 6000 (exempt status doesn't
+    // erase prior payments).
+    expect(totals.paidCents).toBe(6000);
+
+    // m2's 60€ owed is now suppressed by their exempt flag → offenCents = 0.
+    expect(totals.offenCents).toBe(0);
+  });
+
+  it("Night-2: exempt members still count toward memberCount (active denominator)", async () => {
+    const mut = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
+    try {
+      await mut`UPDATE members SET beitrag_exempt = true WHERE id IN (${m1}, ${m2})`;
+    } finally {
+      await mut.end();
+    }
+    const totals = await memberBeitragsTotals(SEED_YEAR);
+    // m1/m2/m3 still active; exempt flag does NOT remove them from the
+    // active-member count.
+    expect(totals.memberCount).toBe(baselineActiveCount + 3);
+    expect(totals.exemptCount).toBe(2);
+  });
+
+  it("Night-2: exemptCount excludes austritts_datum members (active-only)", async () => {
+    // m3 is exempt AND austritts → should NOT appear in exemptCount
+    // (we count exempt among ACTIVE members only).
+    const mut = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
+    try {
+      await mut`UPDATE members
+                SET beitrag_exempt = true,
+                    austritts_datum = '2024-12-31'
+                WHERE id = ${m3}`;
+    } finally {
+      await mut.end();
+    }
+    const totals = await memberBeitragsTotals(SEED_YEAR);
+    expect(totals.exemptCount).toBe(0);
+  });
 });

@@ -89,6 +89,13 @@
 		{#if member.austrittsDatum}
 			<p class="text-xs text-destructive">(ausgetreten)</p>
 		{/if}
+		{#if member.beitragExempt}
+			<span
+				class="mt-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900 dark:text-amber-100"
+				title={member.beitragExemptReason ?? ''}
+				data-testid="member-card-befreit-badge"
+			>befreit</span>
+		{/if}
 	</div>
 
 	{#if currentYear !== null}
