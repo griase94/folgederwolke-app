@@ -4,6 +4,7 @@
 	import RecentActivity from '$lib/components/admin/dashboard/RecentActivity.svelte';
 	import WGBWidget from '$lib/components/admin/dashboard/WGBWidget.svelte';
 	import BeitragsuebersichtWidget from '$lib/components/admin/dashboard/BeitragsuebersichtWidget.svelte';
+	import TopProjekteWidget from '$lib/components/admin/dashboard/TopProjekteWidget.svelte';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
@@ -72,6 +73,11 @@
 			paidMemberCount={data.beitragsuebersicht.paidMemberCount}
 			openMemberCount={data.beitragsuebersicht.openMemberCount}
 		/>
+	</div>
+
+	<!-- C1-PRJ-B/C: Top-Projekte widget — 5 most active by |saldo| -->
+	<div class="mt-6">
+		<TopProjekteWidget rows={data.topProjekte} />
 	</div>
 
 	<!-- Recent activity feed -->

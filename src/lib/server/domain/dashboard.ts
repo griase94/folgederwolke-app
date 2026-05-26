@@ -17,6 +17,8 @@ import {
   sql,
   sum,
 } from "drizzle-orm";
+import { batchProjectFinancials } from "$lib/server/domain/projects.js";
+import { projects } from "$lib/server/db/schema/projects.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
@@ -589,6 +591,50 @@ export function buildActivityLabel(
   const actionLabel = actionLabels[action] ?? action;
 
   return `${entityLabel}${entityStr} ${actionLabel}`;
+}
+
+// ---------------------------------------------------------------------------
+// Top-Projekte widget (Night-2 C1-PRJ-B/C)
+// ---------------------------------------------------------------------------
+
+export interface TopProjectRow {
+  id: string;
+  name: string;
+  businessId: string;
+  saldoCents: number;
+}
+
+/**
+ * Returns up to `limit` active projects sorted by |saldoCents| descending.
+ * "Active" means not soft-deleted. Scans up to 50 non-deleted projects and
+ * ranks by absolute net cashflow so both high-income and high-spending
+ * projects surface at the top.
+ */
+export async function topActiveProjects(limit = 5): Promise<TopProjectRow[]> {
+  const db = getDb();
+  const active = await db
+    .select({
+      id: projects.id,
+      name: projects.name,
+      businessId: projects.businessId,
+    })
+    .from(projects)
+    .where(isNull(projects.deletedAt))
+    .limit(50); // ceiling so batchProjectFinancials stays cheap
+
+  if (active.length === 0) return [];
+
+  const fins = await batchProjectFinancials(active.map((p) => p.id));
+
+  return active
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      businessId: p.businessId,
+      saldoCents: fins[p.id]?.saldoCents ?? 0,
+    }))
+    .sort((a, b) => Math.abs(b.saldoCents) - Math.abs(a.saldoCents))
+    .slice(0, limit);
 }
 
 /**
