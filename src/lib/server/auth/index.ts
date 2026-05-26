@@ -184,13 +184,7 @@ export async function getMagicLinkByToken(rawToken: string) {
 // Issue session (extracted so the mint-session CLI can call it directly)
 // ---------------------------------------------------------------------------
 
-/**
- * Minimal Drizzle writer interface — accepts either the singleton db client
- * or an in-flight transaction handle. Same shape as `AuditWriter` in
- * audit-log/index.ts: callers inside a `db.transaction()` must pass `tx` so
- * the INSERT participates in the same transaction (e.g. user upsert + session
- * issue + audit row all commit together).
- */
+// Same shape as AuditWriter (audit-log/index.ts) — accepts db or tx handle.
 type SessionWriter = Pick<ReturnType<typeof getDb>, "insert">;
 
 /**

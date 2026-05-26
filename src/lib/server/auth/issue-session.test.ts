@@ -49,7 +49,7 @@ describe("issueSession", () => {
     const db = getDb();
     const { token } = await issueSession(db, userId);
 
-    expect(token).toMatch(/^[A-Za-z0-9_-]{40,}$/);
+    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
 
     const rows = await db
       .select()
