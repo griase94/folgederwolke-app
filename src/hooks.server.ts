@@ -48,14 +48,16 @@ const authHandle: Handle = async ({ event, resolve }) => {
   // `/applepay` are not accidentally caught by the auth gate.
   if (event.url.pathname === "/app" || event.url.pathname.startsWith("/app/")) {
     if (!event.locals.session) {
-      // PM-007: an Externe who installs the PWA from /auslage-einreichen
-      // will have start_url=/app?source=pwa (per manifest.webmanifest).
-      // Without this branch they'd land on /sign-in?redirectTo=/app and
-      // be stuck — they have no admin credentials. Redirect them straight
-      // back to the public form instead. Authed admins on the same flow
-      // never hit this branch because event.locals.session is truthy.
+      // The PWA start_url is now `/?source=pwa` (the role-aware root), so a
+      // fresh logged-out launch never reaches `/app` here. This branch only
+      // catches STALE installs whose cached start_url is still
+      // `/app?source=pwa`: route them through the role-aware landing (`/`)
+      // rather than dumping them on the public form. The landing then offers
+      // both "Anmelden" and "Auslage einreichen" (and fast-forwards a returning
+      // external to the form via the sticky preference), so no audience —
+      // including a logged-out admin — is trapped.
       if (event.url.searchParams.get("source") === "pwa") {
-        redirect(303, "/auslage-einreichen?source=pwa");
+        redirect(303, "/?source=pwa");
       }
       redirect(
         303,

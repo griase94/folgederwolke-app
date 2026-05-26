@@ -102,8 +102,12 @@ describe("manifest.webmanifest — structural validity", () => {
     expect(manifest.prefer_related_applications).toBe(false);
   });
 
-  it("uses /app?source=pwa as start_url (PM-007 redirect bridge)", () => {
-    expect(manifest.start_url).toBe("/app?source=pwa");
+  it("uses /?source=pwa as start_url (A1: role-aware root router)", () => {
+    // The launch target is the role-aware root, which routes admins → /app,
+    // returning externals → the form (sticky), and everyone else → the landing
+    // with both choices. Previously this was /app?source=pwa, which trapped
+    // logged-out users on the public form.
+    expect(manifest.start_url).toBe("/?source=pwa");
   });
 
   it("declares display_override fallback chain", () => {

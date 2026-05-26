@@ -2,6 +2,7 @@
 	import '../app.css';
 	import type { Snippet } from 'svelte';
 	import type { LayoutData } from './$types.js';
+	import PwaUpdater from '$lib/components/pwa/PwaUpdater.svelte';
 
 	let { children, data }: { children: Snippet; data: LayoutData } = $props();
 	// Favicon links live in src/app.html (PM-001 fix): a multi-format set
@@ -17,3 +18,6 @@
 </svelte:head>
 
 {@render children()}
+
+<!-- Registers the service worker app-wide + silent auto-update (no UI). -->
+<PwaUpdater />

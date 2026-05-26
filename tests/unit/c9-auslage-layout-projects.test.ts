@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { load } from "../../src/routes/auslage-einreichen/+layout.server.js";
+import { load } from "../../src/routes/(public)/auslage-einreichen/+layout.server.js";
 
 // The SvelteKit-generated `LayoutServerLoad` return type is widened to
 // `void | (Partial<PageData> & …)`; cast to the concrete shape we know the
