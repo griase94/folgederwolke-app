@@ -6,6 +6,10 @@
  * ADMIN_EMAILS env, not a schema column) and applies the same reference
  * fixtures the local dev DB uses. Safe to run before every preview-e2e
  * workflow.
+ *
+ * Safety: refuses to run unless DIRECT_DATABASE_URL contains "preview"
+ * (matches the Neon preview-branch host pattern). Set ALLOW_NON_PREVIEW_SEED=1
+ * to override (local docker dev).
  */
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -16,7 +20,20 @@ import { seedFixtures } from "./seed-fixtures.js";
 
 async function main() {
   const url = process.env["DIRECT_DATABASE_URL"];
-  if (!url) throw new Error("DIRECT_DATABASE_URL required");
+  if (!url) {
+    console.error("ERROR: DIRECT_DATABASE_URL required.");
+    process.exit(1);
+  }
+
+  if (!process.env["ALLOW_NON_PREVIEW_SEED"] && !url.includes("preview")) {
+    console.error(
+      "ERROR: refusing to seed — DIRECT_DATABASE_URL does not contain 'preview'.",
+    );
+    console.error(
+      "Set ALLOW_NON_PREVIEW_SEED=1 to override (use only for local docker dev).",
+    );
+    process.exit(1);
+  }
 
   const client = postgres(url, { prepare: false, max: 1 });
   const db = drizzle(client, { schema });
