@@ -159,6 +159,15 @@ export interface InvoiceVersendetMailProps {
   empfaenger?: string;
 }
 
+export interface ApprovalMailProps {
+  vorname: string;
+  ausId: string;
+  bezeichnung: string;
+  betragCents: number;
+  kategorie: string;
+  decidedAt: string;
+}
+
 export interface TemplateProps {
   magic_link: MagicLinkProps;
   auslage_eingang: EingangsMailProps;
@@ -168,4 +177,6 @@ export interface TemplateProps {
   spende_bescheinigung: AufwandsspendenBestaetigungProps;
   beitrag_reminder: BeitragsReminderProps;
   invoice_versendet: InvoiceVersendetMailProps;
+  /** ApprovalMail — sent when admin approves an Auslage submission (C7-INBOX). */
+  auslage_approved: ApprovalMailProps;
 }

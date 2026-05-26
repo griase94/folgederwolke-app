@@ -38,6 +38,8 @@ async function loadTemplate(name: TemplateName) {
       return (await import("./templates/RejectionMail.svelte")).default;
     case "invoice_versendet":
       return (await import("./templates/InvoiceVersendetMail.svelte")).default;
+    case "auslage_approved":
+      return (await import("./templates/ApprovalMail.svelte")).default;
   }
 }
 
@@ -64,6 +66,8 @@ function subjectFor(
       return "Deine Aufwandsspenden-Bestätigung von Folge der Wolke e.V.";
     case "invoice_versendet":
       return `Rechnung ${props.invoiceNumber ?? ""} von Folge der Wolke e.V.`;
+    case "auslage_approved":
+      return `${props.ausId ?? ""} genehmigt – Folge der Wolke e.V.`;
     default:
       return "Nachricht von Folge der Wolke e.V.";
   }
