@@ -3,28 +3,34 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
- * Cluster C5 — cycle 2.
+ * Cluster C5 — cycle 2 (PM-007 superseded by A1, 2026-05-26).
  *
  * Asserts the additional scope items beyond the icon pack:
- *   - PM-007: hooks.server.ts redirects /app?source=pwa → /auslage-einreichen
- *             when the user is unauthenticated.
- *   - PM-020: an OfflineBanner.svelte component exists and is mounted in
- *             both the admin shell and the public Auslagen page.
+ *   - A1/PM-007: hooks.server.ts routes an unauthed `?source=pwa` launch through
+ *             the role-aware root (`/?source=pwa`), NOT straight to the form.
+ *             The start_url is now `/?source=pwa`; this branch only catches
+ *             stale installs whose cached start_url is still `/app?source=pwa`,
+ *             and the landing then offers both Anmelden and the form (so a
+ *             logged-out admin is no longer trapped).
+ *   - PM-020: an OfflineBanner.svelte component exists and is mounted in both
+ *             the admin shell and the public shell.
  *   - PM-006: vite.config.ts ships a background-sync queue for
  *             POST /auslage-einreichen (named fdw-auslage-queue).
  */
 
 const repoRoot = resolve(__dirname, "..", "..");
 
-describe("PM-007 — hooks.server.ts redirects unauthed PWA launches to the public form", () => {
+describe("A1/PM-007 — hooks.server.ts routes unauthed PWA launches through the role-aware root", () => {
   const hooks = readFileSync(resolve(repoRoot, "src/hooks.server.ts"), "utf8");
 
   it("inspects source=pwa search-param", () => {
     expect(hooks).toMatch(/source.*pwa/);
   });
 
-  it("redirects to /auslage-einreichen instead of /sign-in for that branch", () => {
-    expect(hooks).toMatch(/\/auslage-einreichen\?source=pwa/);
+  it("routes that branch to the role-aware root, not directly to the form", () => {
+    expect(hooks).toMatch(/redirect\(303,\s*["']\/\?source=pwa["']\)/);
+    // The old trap (straight to the public form) must not return.
+    expect(hooks).not.toMatch(/\/auslage-einreichen\?source=pwa/);
   });
 });
 
@@ -53,19 +59,22 @@ describe("PM-020 — OfflineBanner.svelte exists and is mounted", () => {
     expect(shell).toMatch(/OfflineBanner/);
   });
 
-  it("is mounted on the public Auslagen page", () => {
-    const page = readFileSync(
-      resolve(repoRoot, "src/routes/auslage-einreichen/+page.svelte"),
+  it("is mounted in the public shell layout (covers form, success, status, sign-in)", () => {
+    // Moved off the individual page and into the shared (public) shell so every
+    // public route shows the offline banner — and carries the escape chrome —
+    // without per-page duplication.
+    const layout = readFileSync(
+      resolve(repoRoot, "src/routes/(public)/+layout.svelte"),
       "utf8",
     );
-    expect(page).toMatch(/OfflineBanner/);
+    expect(layout).toMatch(/OfflineBanner/);
   });
 });
 
 describe("PM-005 — share_target POST is handled server-side (no fail(400))", () => {
   const serverPath = resolve(
     repoRoot,
-    "src/routes/auslage-einreichen/+page.server.ts",
+    "src/routes/(public)/auslage-einreichen/+page.server.ts",
   );
   const src = readFileSync(serverPath, "utf8");
 
@@ -97,7 +106,7 @@ describe("PM-005 — share_target POST is handled server-side (no fail(400))", (
 
   it("the page renders the share-prefill banner and forwards initial values", () => {
     const page = readFileSync(
-      resolve(repoRoot, "src/routes/auslage-einreichen/+page.svelte"),
+      resolve(repoRoot, "src/routes/(public)/auslage-einreichen/+page.svelte"),
       "utf8",
     );
     expect(page).toMatch(/data-testid=['"]share-prefill-banner['"]/);

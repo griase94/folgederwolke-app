@@ -6,7 +6,6 @@
 	import type { SessionUser } from '$lib/server/auth/index.js';
 	import IosInstallHint from '$lib/components/pwa/IosInstallHint.svelte';
 	import OfflineBanner from '$lib/components/pwa/OfflineBanner.svelte';
-	import UpdateAvailableToast from '$lib/components/pwa/UpdateAvailableToast.svelte';
 
 	interface Props {
 		user: SessionUser;
@@ -71,7 +70,8 @@
 <!-- Mobile bottom tab bar (hidden md+) -->
 <MobileTabBar />
 
-<!-- PWA overlays (iOS install hint + SW update toast + offline banner) -->
+<!-- PWA overlays (iOS install hint + offline banner). SW registration +
+     silent auto-update live in PwaUpdater, mounted app-wide in the root
+     layout (so the public form is covered too). -->
 <OfflineBanner />
 <IosInstallHint />
-<UpdateAvailableToast />

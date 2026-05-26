@@ -8,6 +8,23 @@
     />
     <meta name="text-scale" content="scale" />
 
+    <!--
+      Cold-start paint fix (A2): paint a light surface immediately on launch,
+      before the CSS bundle loads. The `color-scheme: light only` rule lives in
+      app.css, which loads late, so when the installed PWA is reopened on a
+      dark-mode device the webview paints a black canvas during the cold-start /
+      SSR wait. This inline rule (parsed before the head placeholder below)
+      makes that frame white (matching the app surface), so the gap reads as a
+      brief blank rather than a black screen. (An instant cached-shell launch is
+      a separate, measured Tier 2 follow-up.)
+    -->
+    <style>
+      html {
+        background-color: #fff;
+        color-scheme: light;
+      }
+    </style>
+
     <!-- PWA manifest -->
     <link rel="manifest" href="/manifest.webmanifest" />
 

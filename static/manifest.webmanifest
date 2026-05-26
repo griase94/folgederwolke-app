@@ -4,7 +4,7 @@
   "short_name": "FdW",
   "description": "Vereinsverwaltung für Folge der Wolke e.V.",
   "theme_color": "#be185d",
-  "background_color": "#fdf2f8",
+  "background_color": "#ffffff",
   "display": "standalone",
   "display_override": [
     "window-controls-overlay",
@@ -13,7 +13,7 @@
     "browser"
   ],
   "orientation": "any",
-  "start_url": "/app?source=pwa",
+  "start_url": "/?source=pwa",
   "scope": "/",
   "lang": "de",
   "dir": "ltr",

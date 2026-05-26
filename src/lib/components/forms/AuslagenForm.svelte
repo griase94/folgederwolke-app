@@ -7,7 +7,7 @@
 	import BezahltVonPicker from './BezahltVonPicker.svelte';
 	import BelegUpload from './BelegUpload.svelte';
 	import { DATENSCHUTZ_TEXT, DATENSCHUTZ_VERSION } from '$lib/domain/datenschutz.js';
-	import { makeDebouncedSave, loadDraft, clearDraft, type DraftMetadata } from '$lib/client/drafts.js';
+	import { makeDebouncedSave, saveDraft, loadDraft, clearDraft, type DraftMetadata } from '$lib/client/drafts.js';
 	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
@@ -218,10 +218,19 @@
 	});
 
 	// SvelteKit navigation guard (C2)
-	beforeNavigate(({ cancel }) => {
-		if (hasUnsavedChanges && !isSubmitting) {
-			const ok = confirm('Du hast ungespeicherte Änderungen. Wirklich verlassen?');
-			if (!ok) cancel();
+	// Leaving the form in-app is NON-destructive: the in-progress entry is
+	// persisted to IndexedDB and restored on return (the "Entwurf
+	// wiederhergestellt" banner). So instead of the old scary "Wirklich
+	// verlassen?" confirm — which wrongly implied data loss and made the
+	// "Vereins-Login" escape feel like a trap — we just force-flush the latest
+	// keystrokes and let the navigation proceed. This is a client-side
+	// SvelteKit nav (SPA): the page does not unload, so the async IndexedDB
+	// write completes after navigation starts. The `beforeunload` handler in
+	// onMount still guards a real tab/PWA close, where an async write can't be
+	// guaranteed.
+	beforeNavigate(() => {
+		if (hasUnsavedChanges && !isSubmitting && browser) {
+			void saveDraft(getDraftMetadata(), belegFile);
 		}
 	});
 

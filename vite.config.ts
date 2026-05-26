@@ -9,7 +9,18 @@ export default defineConfig({
     sveltekit(),
     SvelteKitPWA({
       strategies: "generateSW",
-      registerType: "prompt",
+      // Silent auto-update: a new deploy installs in the background and applies
+      // on the next launch/navigation (or via the controllerchange reload in
+      // PwaUpdater.svelte for a session left open across a deploy). The old
+      // "prompt" + skipWaiting combination was incoherent — skipWaiting removes
+      // the "waiting" state the prompt UI depended on, so the toast never fired.
+      registerType: "autoUpdate",
+      // Registration is handled manually in PwaUpdater.svelte with an absolute
+      // `/sw.js` + `scope: '/'`. The plugin's own injected registration uses a
+      // path-relative scope that 404s on sub-path entries (e.g. a shared link
+      // straight to /auslage-einreichen). `false` disables it so there is no
+      // double-register.
+      injectRegister: false,
       // We manage the manifest file in /static directly
       manifest: false,
       workbox: {
@@ -50,7 +61,8 @@ export default defineConfig({
             },
           },
         ],
-        // Immediately activate new SW so UpdateAvailableToast can prompt reload
+        // New SW self-activates + claims clients immediately; PwaUpdater then
+        // applies the update silently (reload deferred to the next navigation).
         skipWaiting: true,
         clientsClaim: true,
       },
