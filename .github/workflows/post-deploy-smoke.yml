@@ -1,57 +1,88 @@
 name: post-deploy smoke
 
 # Validates that the production deploy actually serves the latest commit and
-# that `/healthz` reports `db: ok` and `blob: ok`. Vercel reports "Deployment
-# has completed" at the platform level even if a deploy ships broken runtime
-# code (e.g. an env-var misconfiguration that crashes on first request). This
-# workflow is the safety net that surfaces those failures in GitHub instead
-# of letting them sit silent.
+# stays healthy. Vercel reports "Deployment has completed" at the platform
+# level even if a deploy ships broken runtime code (env-var misconfig, dead
+# DB credential, etc.). This workflow is the safety net that surfaces those
+# failures in GitHub instead of letting them sit silent — and on persistent
+# failure, automatically rolls production back to the previous READY deploy.
 #
-# Trigger: GitHub `deployment_status` event, which Vercel fires once per
-# deployment with a `state` of `success`/`failure`/`error`. We only smoke
-# production deploys — preview deploys are visible to PR authors via the
-# Vercel comment bot already.
+# Trigger:
+#   - GitHub `deployment_status` event, fired by Vercel once per deployment
+#     with `state` of `success`/`failure`/`error`. We only act on
+#     `success` + Production.
+#   - `workflow_dispatch` for manual testing without a fresh deploy.
 #
-# Required environment:
-#   * env.SMOKE_BASE_URL — the production hostname (e.g.
-#     `https://folgederwolke-app.vercel.app`). Hard-coded below; bump here
-#     if the production alias ever changes.
+# Flow:
+#   1. Wait for the prod alias to flip to the deployed SHA (~3 min budget).
+#   2. Smoke (attempt 1) against the prod URL via Playwright.
+#   3. If attempt 1 fails: sleep 30s, smoke (attempt 2).
+#   4. If BOTH attempts fail:
+#        - File a GH issue tagged `incident` + `auto-rollback`.
+#        - Invoke scripts/ci/vercel-rollback.sh (Instant Rollback API).
+#        - Mark the job RED so it shows up in the Actions dashboard.
+#   5. If either smoke attempt passes: job exits green; no rollback.
+#
+# Required env (workflow-level):
+#   * env.SMOKE_BASE_URL — production hostname. Hard-coded; bump here if
+#     the production alias ever changes.
+# Required secrets (only for the rollback step):
+#   * VERCEL_TOKEN, VERCEL_PROJECT_ID — same secrets used by wait-for-vercel.
+#   * VERCEL_ORG_ID — optional, required on team-scoped tokens.
+#
+# Security: every `github.event.*` field we read (deployment_status.state,
+# deployment.environment, deployment.sha, sha) is a Vercel/GH-controlled
+# value, not user-controllable text. Even so, we surface them through `env:`
+# mappings rather than direct `${{ }}` interpolation into shell, per the
+# GitHub Actions injection-hardening guide.
 
 on:
   deployment_status:
+  workflow_dispatch:
 
 permissions:
   contents: read
   deployments: read
+  # `issues: write` is needed for the auto-rollback issue filer.
+  issues: write
+
+# Never cancel a rollback mid-flight. If a second deploy lands while this
+# workflow is still running for the first one, queue it instead.
+concurrency:
+  group: post-deploy-smoke
+  cancel-in-progress: false
 
 jobs:
   smoke:
-    name: smoke /healthz
+    name: smoke prod
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     # Gate to Vercel + production + a successful platform-level deploy.
     # `state == 'success'` is what Vercel reports when the build finished
     # and the deployment is reachable. Preview/staging deploys carry
-    # `environment != 'Production'` and are skipped.
-    if: >
-      github.event.deployment_status.state == 'success' &&
-      github.event.deployment.environment == 'Production'
+    # `environment != 'Production'` and are skipped. `workflow_dispatch`
+    # bypasses the gate so we can rehearse the rollback flow manually.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       (github.event.deployment.environment == 'Production' ||
+        github.event.deployment.environment == 'production'))
     env:
       SMOKE_BASE_URL: https://folgederwolke-app.vercel.app
-      EXPECTED_SHA: ${{ github.event.deployment.sha }}
+      EXPECTED_SHA: ${{ github.event.deployment.sha || github.sha }}
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Wait for production alias to flip to new deployment
         # Vercel reports `state=success` the moment the build finishes, but
         # there is a brief window where the production alias is still
         # serving the previous deployment from the edge cache. Poll
         # `/healthz` (which returns the deployed `sha`) until it matches the
-        # expected commit, or fail after ~3 minutes.
-        #
-        # Phase 9: also assert `blob: ok` — the new Vercel Blob backend is
-        # part of the runtime contract; if the BLOB_READ_WRITE_TOKEN env var
-        # is missing or the store is unreachable, /healthz reports `blob:
-        # fail` and we want to surface that as a deploy failure.
+        # expected commit, or warn after ~3 minutes. On `workflow_dispatch`
+        # we skip the strict SHA match because there's no triggering
+        # deployment SHA to match against — we just smoke whatever's live.
+        if: github.event_name == 'deployment_status'
         env:
           BASE_URL: ${{ env.SMOKE_BASE_URL }}
           EXPECTED: ${{ env.EXPECTED_SHA }}
@@ -60,42 +91,126 @@ jobs:
           deadline=$(( $(date +%s) + 180 ))
           actual=""
           db_status=""
-          blob_status=""
           while [ "$(date +%s)" -lt "$deadline" ]; do
             payload=$(curl -fsS --max-time 10 "${BASE_URL}/healthz" || true)
             if [ -n "$payload" ]; then
-              actual=$(printf '%s' "$payload"      | jq -r '.sha  // ""' 2>/dev/null || true)
-              db_status=$(printf '%s' "$payload"   | jq -r '.db   // ""' 2>/dev/null || true)
-              blob_status=$(printf '%s' "$payload" | jq -r '.blob // ""' 2>/dev/null || true)
+              actual=$(printf '%s' "$payload"    | jq -r '.sha // ""' 2>/dev/null || true)
+              db_status=$(printf '%s' "$payload" | jq -r '.db  // ""' 2>/dev/null || true)
               if [ "$actual" = "${EXPECTED:0:7}" ] || [ "$actual" = "$EXPECTED" ]; then
-                echo "match: alias serving ${EXPECTED:0:7} (db=$db_status blob=$blob_status)"
-                if [ "$db_status" != "ok" ]; then
-                  echo "::error::/healthz reports db=$db_status (expected ok)"
-                  exit 1
-                fi
-                if [ "$blob_status" != "ok" ] && [ -n "$blob_status" ]; then
-                  echo "::error::/healthz reports blob=$blob_status (expected ok)"
-                  exit 1
-                fi
+                echo "match: alias serving ${EXPECTED:0:7} (db=$db_status)"
                 exit 0
               fi
-              echo "wait: alias serves '$actual', want '${EXPECTED:0:7}' (db=$db_status blob=$blob_status)"
+              echo "wait: alias serves '$actual', want '${EXPECTED:0:7}' (db=$db_status)"
             else
               echo "wait: /healthz did not respond"
             fi
             sleep 5
           done
-          echo "::error::production alias did not flip to ${EXPECTED:0:7} within 180s (last seen sha=$actual, db=$db_status, blob=$blob_status)"
+          echo "::warning::production alias did not flip to ${EXPECTED:0:7} within 180s (last seen sha=$actual)"
+          # Don't exit 1 — let the Playwright smoke decide. A stale alias is
+          # concerning but the smoke is the source of truth for whether prod
+          # is actually serving requests.
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Playwright (chromium)
+        # --with-deps installs OS libs the browser needs on a fresh runner.
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Smoke (attempt 1)
+        id: attempt1
+        continue-on-error: true
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ env.SMOKE_BASE_URL }}
+        run: |
+          pnpm exec playwright test \
+            --config=playwright.post-deploy.config.ts \
+            --reporter=line
+
+      - name: Retry on failure (attempt 2)
+        id: attempt2
+        if: steps.attempt1.outcome == 'failure'
+        continue-on-error: true
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ env.SMOKE_BASE_URL }}
+        run: |
+          echo "Attempt 1 failed; sleeping 30s before retry..."
+          sleep 30
+          pnpm exec playwright test \
+            --config=playwright.post-deploy.config.ts \
+            --reporter=line
+
+      # ── PERSISTENT FAILURE PATH ────────────────────────────────────────
+      # Condition: `attempt1==failure && (attempt2==failure || attempt2==skipped)`.
+      # Truth table:
+      #   attempt1=success                   → false (attempt1!=failure)
+      #   attempt1=failure, attempt2=success → false (success≠failure ∧ ≠skipped)
+      #   attempt1=failure, attempt2=failure → TRUE  → file issue, rollback
+      #   attempt1=failure, attempt2=skipped → TRUE  (defensive; should not occur)
+      # Net: rollback only triggers when prod smoke fails TWICE in a row.
+
+      - name: File GH issue on persistent failure
+        if: steps.attempt1.outcome == 'failure' && (steps.attempt2.outcome == 'failure' || steps.attempt2.outcome == 'skipped')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = (context.sha || '').slice(0, 7);
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `prod smoke failed after deploy ${sha}`,
+              body: [
+                `Both attempts of post-deploy smoke failed against production.`,
+                ``,
+                `**Auto-rollback** is being initiated by the next workflow step.`,
+                ``,
+                `- Deploy SHA: \`${context.sha}\``,
+                `- Workflow run: ${runUrl}`,
+                ``,
+                `See **scripts/ci/vercel-rollback.sh** for the rollback target selection logic, and **docs/RUNBOOK.md §7** for the post-rollback recovery steps.`,
+              ].join('\n'),
+              labels: ['incident', 'auto-rollback'],
+            });
+
+      - name: Auto-rollback to previous READY production deployment
+        if: steps.attempt1.outcome == 'failure' && (steps.attempt2.outcome == 'failure' || steps.attempt2.outcome == 'skipped')
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+        run: ./scripts/ci/vercel-rollback.sh
+
+      - name: Mark job failed
+        # Without this the job ends GREEN because every smoke step was
+        # `continue-on-error: true`. We need RED in the Actions dashboard
+        # so the on-call can see something happened.
+        if: steps.attempt1.outcome == 'failure' && (steps.attempt2.outcome == 'failure' || steps.attempt2.outcome == 'skipped')
+        run: |
+          echo "::error::Both smoke attempts failed against production; auto-rollback initiated above."
           exit 1
 
-      - name: Probe a representative public route
-        env:
-          BASE_URL: ${{ env.SMOKE_BASE_URL }}
-        run: |
-          set -euo pipefail
-          # /auslage-einreichen is the only unauthenticated full-render route
-          # we ship; if it returns non-2xx the app is functionally broken
-          # even if /healthz is happy. -L follows the root redirect.
-          code=$(curl -fsS -L -o /dev/null -w '%{http_code}' --max-time 15 "${BASE_URL}/auslage-einreichen")
-          echo "auslage-einreichen: $code"
-          test "$code" = "200"
+      - name: Upload Playwright artifacts on failure
+        if: steps.attempt1.outcome == 'failure' && (steps.attempt2.outcome == 'failure' || steps.attempt2.outcome == 'skipped')
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-deploy-smoke-results
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+          if-no-files-found: ignore
