@@ -94,6 +94,25 @@ test.describe("@phase-9 B-1 InvoiceForm effect loop fix", () => {
 
     await page.goto("/app/rechnungen/new");
 
+    // Phase 11: the preview now renders a real PDF inside an <iframe>, so
+    // toContainText is not applicable and a badge-state assertion is racy
+    // (the badge transition depends on iframe `load`, which headless
+    // Chrome does not fire for `blob:application/pdf`). Instead assert
+    // the network round-trip directly — the preview endpoint must return
+    // 200 application/pdf for our form input. That's the tight evidence
+    // the $effect debounce reaches the server.
+    const preview = page.locator('[data-component="invoice-pdf-preview"]');
+    await expect(preview).toBeVisible();
+
+    // Arm the response wait BEFORE filling so we don't miss a debounced
+    // fetch that fires fast after the customer selectOption.
+    const previewResponse = page.waitForResponse(
+      (r) =>
+        r.url().endsWith("/api/rechnungen/preview") &&
+        r.request().method() === "POST",
+      { timeout: 10_000 },
+    );
+
     // Select the seeded customer (use native <select>)
     await page.selectOption('select[name="customerId"]', customer.id);
 
@@ -106,17 +125,13 @@ test.describe("@phase-9 B-1 InvoiceForm effect loop fix", () => {
     );
     await expect(submitBtn).toBeEnabled({ timeout: 1500 });
 
-    // Phase 11: the preview now renders a real PDF inside an <iframe>, so
-    // toContainText is not applicable. Assert the component mounts and its
-    // three-state badge settles to `aktuell` after the debounced render
-    // completes (180ms debounce + warm render + network → ~500ms typical;
-    // allow 5s for CI cold-start).
-    const preview = page.locator('[data-component="invoice-pdf-preview"]');
-    await expect(preview).toBeVisible();
-    const stateBadge = page.locator('[data-testid="preview-state"]');
-    await expect(stateBadge).toHaveAttribute("data-state", "aktuell", {
-      timeout: 5000,
-    });
+    // The preview endpoint round-trip must complete successfully with PDF
+    // bytes. Status code surfaces server errors directly (Zod failure,
+    // session gate, renderer crash) instead of hiding them behind a stuck
+    // badge state.
+    const resp = await previewResponse;
+    expect(resp.status()).toBe(200);
+    expect(resp.headers()["content-type"]).toContain("application/pdf");
 
     // No effect-loop errors during the entire fill flow.
     const loopErrors = consoleErrors.filter((e) =>
