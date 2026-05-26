@@ -128,6 +128,45 @@ run `ALTER ROLE app_runtime WITH LOGIN PASSWORD 'app_runtime'` (and the same for
 
 ---
 
+## Preview environment + post-deploy smoke (ADR-0011)
+
+### Topology
+
+- Single Vercel project; Production scope deploys from `main`, Preview scope from PRs.
+- Neon: one project, two branches — `production` (prod) and `preview` (CoW fork of production).
+- Blob: separate stores per scope — prod store scoped to Production env, preview store scoped to Preview env.
+- Mail: prod uses real SMTP; preview uses `MAIL_PROVIDER=no-op` (writes `sent_mails` rows, no SMTP I/O).
+
+### Deploy flow
+
+1. Open PR → Vercel creates a preview deploy.
+2. `.github/workflows/preview-e2e.yml` polls the Vercel API → migrates preview Neon → seeds baseline → mints an e2e session → runs the `playwright.preview.config.ts` smoke suite.
+3. Branch protection on `main` requires `preview-e2e / e2e` to pass on the PR head SHA.
+4. Merge to `main` → Vercel prod deploys → `migrate.yml` migrates prod Neon (gated on `drizzle/**` changes).
+5. After prod deploy → `.github/workflows/post-deploy-smoke.yml` runs read-only smoke tests; on second consecutive failure: opens a GH issue and triggers auto-rollback via the Vercel API.
+
+### Migrations
+
+- `migrate.yml` → prod Neon only (pushes to `main`, when `drizzle/**` changes).
+- `preview-e2e.yml`'s `migrate-and-seed` job → preview Neon (every PR run, always idempotent).
+
+### Refreshing preview from clean state
+
+```bash
+neonctl branches reset preview --parent production
+DIRECT_DATABASE_URL='<preview direct URL>' pnpm tsx scripts/migrate.ts
+ALLOW_NON_PREVIEW_SEED=1 DIRECT_DATABASE_URL='<preview direct URL>' pnpm tsx scripts/seed-preview.ts
+vercel blob empty-store folgederwolke-preview-blob  # optional if bloated
+```
+
+`ALLOW_NON_PREVIEW_SEED` is normally not needed when the preview URL contains "preview" — set it explicitly when running against a fresh or non-standard branch name.
+
+### Manual rollback
+
+See `docs/RUNBOOK.md §7`.
+
+---
+
 ## Branch protection
 
 - `main` is protected — PRs only, require passing CI.
