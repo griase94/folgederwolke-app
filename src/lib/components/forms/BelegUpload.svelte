@@ -7,14 +7,23 @@
 		errors?: Record<string, string[]>;
 		onchange?: () => void;
 		onfile?: (file: File | null) => void;
+		/**
+		 * C2-TAX: aria-invalid passthrough so the parent form can mark the
+		 * Beleg input as invalid when the schema reports a missing-beleg
+		 * error. Defaults to false; the parent flips it true on validation
+		 * failure.
+		 */
+		'aria-invalid'?: boolean;
 	}
 
 	let {
 		file = $bindable(null),
 		errors = {},
 		onchange,
-		onfile
+		onfile,
+		...rest
 	}: Props = $props();
+	const ariaInvalid = $derived(Boolean(rest['aria-invalid']));
 
 	let isDragging = $state(false);
 	let isCompressing = $state(false);
@@ -104,7 +113,8 @@
 
 <Card>
 	<CardHeader>
-		<CardTitle>Beleg</CardTitle>
+		<!-- C2-TAX: surface the * required marker on the section title. -->
+		<CardTitle>Beleg <span aria-hidden="true">*</span></CardTitle>
 	</CardHeader>
 	<CardContent class="flex flex-col gap-4">
 		<p class="text-muted-foreground text-sm">
@@ -152,6 +162,7 @@
 						name="beleg"
 						accept=".pdf,image/jpeg,image/png,image/heic,image/heif,image/webp"
 						class="sr-only"
+						aria-invalid={ariaInvalid}
 						onchange={onInputChange}
 					/>
 				</label>
@@ -167,6 +178,7 @@
 							name="beleg"
 							accept=".pdf,image/jpeg,image/png,image/heic,image/heif,image/webp"
 							class="sr-only"
+							aria-invalid={ariaInvalid}
 							onchange={onInputChange}
 						/>
 					</label>
@@ -181,6 +193,7 @@
 							accept="image/jpeg,image/png,image/heic,image/heif,image/webp"
 							capture="environment"
 							class="sr-only"
+							aria-invalid={ariaInvalid}
 							onchange={onInputChange}
 						/>
 					</label>
@@ -260,7 +273,7 @@
 		{/if}
 
 		{#if errorMsg}
-			<p class="text-destructive text-xs">{errorMsg}</p>
+			<p class="text-destructive text-xs" role="alert">{errorMsg}</p>
 		{/if}
 	</CardContent>
 </Card>

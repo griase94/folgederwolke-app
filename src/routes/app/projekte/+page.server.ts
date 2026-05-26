@@ -14,21 +14,36 @@ import { isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { projects } from "$lib/server/db/schema/projects.js";
+import { customers } from "$lib/server/db/schema/customers.js";
 import {
   addProject,
   editProject,
   softDeleteProject,
   restoreProject,
 } from "$lib/server/domain/projects-actions.js";
+import { batchProjectFinancials } from "$lib/server/domain/projects.js";
 
 export const load: PageServerLoad = async () => {
   const db = getDb();
 
-  const rows = await db
-    .select()
-    .from(projects)
-    .where(isNull(projects.deletedAt))
-    .orderBy(projects.name);
+  const [rows, customerRows] = await Promise.all([
+    db
+      .select()
+      .from(projects)
+      .where(isNull(projects.deletedAt))
+      .orderBy(projects.name),
+    // Used by AddProjectDialog + EditProjectDialog (Default-Kunde combobox).
+    db
+      .select({ id: customers.id, name: customers.name })
+      .from(customers)
+      .where(isNull(customers.deletedAt))
+      .orderBy(customers.name),
+  ]);
+
+  // Batched financials so each row can render a saldo pill without
+  // per-row round-trips (N+1-safe — exactly two SQL execs total).
+  const ids = rows.map((p) => p.id);
+  const financialsMap = await batchProjectFinancials(ids);
 
   return {
     projects: rows.map((p) => ({
@@ -39,10 +54,13 @@ export const load: PageServerLoad = async () => {
       startDate: p.startDate,
       endDate: p.endDate,
       notes: p.notes,
+      defaultCustomerId: p.defaultCustomerId,
       isFixture: p.isFixture,
       deletedAt: p.deletedAt?.toISOString() ?? null,
       createdAt: p.createdAt.toISOString(),
     })),
+    customers: customerRows,
+    financialsMap,
   };
 };
 

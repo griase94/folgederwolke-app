@@ -88,29 +88,19 @@ test.describe("@phase-2 auslage form UI", () => {
     await expect(page.getByPlaceholder("max@example.com")).toBeVisible();
   });
 
-  test("submit without required fields shows validation errors", async ({
+  test("submit button is disabled without required fields (C2-TAX gate)", async ({
     page,
   }) => {
     await goToForm(page);
 
-    // The JS handleSubmit handler marks all fields blurred, runs validate(),
-    // calls e.preventDefault() on invalid forms, and shows .text-destructive errors.
-    // Use dispatchEvent to bypass CSRF guard that fires on native form submit.
+    // C2-TAX: AuslagenForm's submit button is now disabled whenever the
+    // required fields (bezeichnung, betrag, Beleg, rechnungsdatum, …) are
+    // missing or invalid. The disabled state IS the validation signal —
+    // the previous "click → see errors" interaction is replaced by the
+    // gate-at-the-button pattern. Asserting disabled-on-empty here protects
+    // the regression that "you can submit a half-filled Auslage".
     const button = page.getByRole("button", { name: "Auslage einreichen" });
-    await button.click();
-
-    // After the click, JS validation runs and prevents form submission.
-    // The CTA bar paragraph and/or inline field errors use .text-destructive.
-    // Wait for at least one error message to appear.
-    await expect(page.locator(".text-destructive").first()).toBeVisible({
-      timeout: 10_000,
-    });
-
-    const errorText = await page
-      .locator(".text-destructive")
-      .first()
-      .textContent();
-    expect(errorText).toBeTruthy();
+    await expect(button).toBeDisabled();
   });
 
   test("bezeichnung counter shows character count", async ({ page }) => {

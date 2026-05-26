@@ -172,6 +172,26 @@ export async function softDeleteMember(
   }
 
   const db = getDb();
+
+  // C3-DISC: refuse if the member has any unpaid Beiträge — soft-deleting
+  // would otherwise hide a member with open dues from the Mitglieder-Matrix
+  // and lose track of money owed to the Verein. Admins must mark the year
+  // paid (or zero out the dues) before archiving.
+  const openRows = (await db.execute(sql`
+    SELECT COUNT(*)::int AS c
+      FROM member_beitrags
+     WHERE member_id = ${memberId}::uuid
+       AND paid_cents < betrag_cents
+  `)) as unknown as { c: number }[];
+  const openCount = openRows[0]?.c ?? 0;
+  if (openCount > 0) {
+    return {
+      ok: false,
+      status: 409,
+      error: `Mitglied hat ${openCount} offene Beiträge — bitte zuerst markieren oder ausgleichen.`,
+    };
+  }
+
   await db
     .update(members)
     .set({

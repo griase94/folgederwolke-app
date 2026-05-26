@@ -1,21 +1,64 @@
 <script lang="ts">
-	import ProjectInfoCard from '$lib/components/admin/projects/ProjectInfoCard.svelte';
+	import { onMount } from 'svelte';
+	import { toast } from 'svelte-sonner';
 	import type { PageData } from './$types.js';
+	import ProjectDetailHero from '$lib/components/admin/projects/ProjectDetailHero.svelte';
+	import ProjectOverviewTab from '$lib/components/admin/projects/ProjectOverviewTab.svelte';
+	import ProjectTransactionsTab from '$lib/components/admin/projects/ProjectTransactionsTab.svelte';
+	import EditProjectDialog from '$lib/components/admin/projects/EditProjectDialog.svelte';
 
 	let { data }: { data: PageData } = $props();
+
+	type Tab = 'uebersicht' | 'transaktionen';
+	let activeTab = $state<Tab>('uebersicht');
+
+	let editOpen = $state(false);
+	function onEdit() {
+		editOpen = true;
+	}
+
+	// C1-PRJ-A: surface the redirect-back-with-toast payload set by
+	// /rechnungen/new after `?from=projekt` save.
+	onMount(() => {
+		if (!data.toast) return;
+		const fn =
+			data.toast.kind === 'error'
+				? toast.error
+				: data.toast.kind === 'info'
+					? toast.info
+					: toast.success;
+		fn(data.toast.message);
+	});
 </script>
 
 <svelte:head>
-	<title>{data.project.name} – Projekte – Folge der Wolke</title>
+	<title>{data.project.name} – Projekt – Folge der Wolke</title>
 </svelte:head>
 
-<div class="container mx-auto max-w-5xl px-4 py-6 sm:px-6">
+<main class="container mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6">
+	<!-- eslint-disable svelte/no-navigation-without-resolve -->
 	<!-- Breadcrumb -->
-	<nav class="mb-4 flex items-center gap-2 text-sm text-muted-foreground" aria-label="Brotkrümel">
-		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-		<a href="/app/projekte" class="flex items-center gap-1 rounded hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-			<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+	<nav
+		class="flex items-center gap-2 text-sm text-muted-foreground"
+		aria-label="Brotkrümel"
+	>
+		<a
+			href="/app/projekte"
+			class="flex items-center gap-1 rounded transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+		>
+			<svg
+				class="h-4 w-4"
+				fill="none"
+				viewBox="0 0 24 24"
+				stroke="currentColor"
+				stroke-width="2"
+				aria-hidden="true"
+			>
+				<path
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					d="M15 19l-7-7 7-7"
+				/>
 			</svg>
 			Projekte
 		</a>
@@ -23,28 +66,54 @@
 		<span class="truncate font-medium text-foreground">{data.project.name}</span>
 	</nav>
 
-	<div class="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
-		<!-- Left: Info card -->
-		<div class="lg:sticky lg:top-4 lg:self-start">
-			<ProjectInfoCard project={data.project} />
-		</div>
+	<ProjectDetailHero
+		project={data.project}
+		financials={data.financials}
+		{onEdit}
+	/>
 
-		<!-- Right: placeholder for linked transactions / expenses (future) -->
-		<div class="flex flex-col gap-4">
-			<div class="rounded-xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center">
-				<svg
-					class="mx-auto mb-3 h-8 w-8 text-muted-foreground/40"
-					fill="none"
-					viewBox="0 0 24 24"
-					stroke="currentColor"
-					stroke-width="1.5"
-				>
-					<path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-				</svg>
-				<p class="text-sm text-muted-foreground">
-					Verknüpfte Ausgaben und Einnahmen werden in einem späteren Release angezeigt.
-				</p>
-			</div>
-		</div>
-	</div>
-</div>
+	<nav class="flex gap-2 border-b border-border" aria-label="Projekt-Tabs">
+		<button
+			type="button"
+			onclick={() => (activeTab = 'uebersicht')}
+			class={[
+				'border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+				activeTab === 'uebersicht'
+					? 'border-primary text-foreground'
+					: 'border-transparent text-muted-foreground hover:text-foreground',
+			].join(' ')}
+			data-testid="project-tab"
+			data-tab="uebersicht"
+			aria-pressed={activeTab === 'uebersicht'}
+		>
+			Übersicht
+		</button>
+		<button
+			type="button"
+			onclick={() => (activeTab = 'transaktionen')}
+			class={[
+				'border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+				activeTab === 'transaktionen'
+					? 'border-primary text-foreground'
+					: 'border-transparent text-muted-foreground hover:text-foreground',
+			].join(' ')}
+			data-testid="project-tab"
+			data-tab="transaktionen"
+			aria-pressed={activeTab === 'transaktionen'}
+		>
+			Transaktionen
+		</button>
+	</nav>
+
+	{#if activeTab === 'uebersicht'}
+		<ProjectOverviewTab project={data.project} financials={data.financials} />
+	{:else if activeTab === 'transaktionen'}
+		<ProjectTransactionsTab rows={data.transactions} />
+	{/if}
+</main>
+
+<EditProjectDialog
+	bind:open={editOpen}
+	project={data.project}
+	customers={data.customers}
+/>

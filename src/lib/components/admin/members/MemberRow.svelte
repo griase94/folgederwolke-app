@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { toast } from 'svelte-sonner';
+	import { invalidateAll } from '$app/navigation';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import BeitragsBadge from './BeitragsBadge.svelte';
 	import { beitragStatusFor, type MemberView } from '$lib/domain/members.js';
@@ -42,10 +44,26 @@
 
 	let markingYear = $state<number | null>(null);
 	let dropdownOpen = $state(false);
+
+	// C3-DISC: the soft-delete form lives OUTSIDE the DropdownMenu.Content so
+	// it survives the menu's unmount-on-close. The menu item just confirms +
+	// flips this flag; an $effect submits the form right after the menu
+	// closes (and the form is still mounted).
+	let deleteFormEl = $state<HTMLFormElement | null>(null);
+	function confirmDelete() {
+		dropdownOpen = false;
+		const ok = window.confirm(
+			`Mitglied "${member.vorname} ${member.nachname}" wirklich archivieren?`,
+		);
+		if (!ok) return;
+		queueMicrotask(() => deleteFormEl?.requestSubmit());
+	}
 </script>
 
 <div
 	class="group flex items-center gap-4 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md"
+	data-testid="member-row"
+	data-member-id={member.id}
 >
 	<!-- Avatar -->
 	<div
@@ -181,6 +199,71 @@
 				</svg>
 				Erinnerung senden
 			</DropdownMenu.Item>
+
+			<!-- C3-DISC: Löschen confirms via native dialog and submits the
+				 sibling form (kept outside Content so menu close doesn't unmount
+				 the form before the submission fires). -->
+			<DropdownMenu.Item
+				data-testid="member-row-loeschen"
+				class="text-destructive focus:text-destructive"
+				onSelect={(e) => {
+					e.preventDefault();
+					confirmDelete();
+				}}
+			>
+				<svg
+					class="h-4 w-4 text-destructive"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke="currentColor"
+					stroke-width="2"
+					aria-hidden="true"
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
+					/>
+				</svg>
+				Löschen
+			</DropdownMenu.Item>
 		</DropdownMenu.Content>
 	</DropdownMenu.Root>
+
+	<!-- Soft-delete form lives outside DropdownMenu.Content so the menu's
+		 unmount-on-close doesn't tear the form out of the DOM mid-submit. -->
+	<form
+		bind:this={deleteFormEl}
+		method="POST"
+		action="?/delete"
+		class="hidden"
+		use:enhance={() => {
+			const memberId = member.id;
+			return async ({ result }) => {
+				if (result.type === 'success') {
+					const toastId = toast.success('Mitglied archiviert', {
+						action: {
+							label: 'Rückgängig',
+							onClick: async () => {
+								const fd = new FormData();
+								fd.set('id', memberId);
+								await fetch('?/restore', { method: 'POST', body: fd });
+								await invalidateAll();
+								toast.dismiss(toastId);
+								toast.info('Wiederhergestellt');
+							},
+						},
+						duration: 8000,
+					});
+					await invalidateAll();
+				} else if (result.type === 'failure') {
+					toast.error(
+						(result.data?.['error'] as string | undefined) ?? 'Löschen fehlgeschlagen',
+					);
+				}
+			};
+		}}
+	>
+		<input type="hidden" name="id" value={member.id} />
+	</form>
 </div>

@@ -119,6 +119,18 @@ vi.mock("$lib/server/db/schema/projects.js", () => ({
   },
 }));
 
+// C2-TAX — mock the Beleg upload helper so the action doesn't hit Drive/DB.
+// Returns a deterministic fileId so the createExpense mock can assert it.
+const handleAuslageUploadMock = vi.fn(async () => ({
+  fileId: "file-c2-test-1",
+  dedupHit: false,
+  sniffedMimeType: "application/pdf",
+  sanitizedFilename: "beleg.pdf",
+}));
+vi.mock("$lib/server/files/handleAuslageUpload.js", () => ({
+  handleAuslageUpload: handleAuslageUploadMock,
+}));
+
 vi.mock("$lib/server/db/schema/members.js", () => ({
   members: {
     _kind: "members",
@@ -191,7 +203,7 @@ interface ActionEvent {
   locals: { session: { user: { id: string } } };
 }
 
-function makeEvent(formFields: Record<string, string>): ActionEvent {
+function makeEvent(formFields: Record<string, string | File>): ActionEvent {
   const fd = new FormData();
   for (const [k, v] of Object.entries(formFields)) fd.set(k, v);
   const request = new Request("http://test.local/app/transactions/neu", {
@@ -202,6 +214,17 @@ function makeEvent(formFields: Record<string, string>): ActionEvent {
     request,
     locals: { session: { user: { id: "user-test-1" } } },
   };
+}
+
+// C2-TAX — minimal valid PDF for the Beleg-required gate. file-type sniffs
+// %PDF- magic bytes at offset 0. Kept small so the action's size cap
+// doesn't reject it.
+function mkBelegFile(): File {
+  const buf = Buffer.from(
+    "%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\nxref\n0 1\n0000000000 65535 f\ntrailer<</Size 1/Root 1 0 R>>\n%%EOF\n",
+    "utf-8",
+  );
+  return new File([buf], "beleg.pdf", { type: "application/pdf" });
 }
 
 // Action handlers throw the redirect on success; wrap so we can assert.
@@ -264,6 +287,10 @@ describe("/app/transactions/neu — create action honors ADR-0008", () => {
       bezahltVonKind: "verein",
       bezahltVonDisplay: "Verein",
       projectId: BAR_POPUP_PROJECT_ID,
+      // C2-TAX: rechnungsdatum + abfluss_datum + beleg are now required.
+      rechnungsdatum: "2026-05-01",
+      abfluss_datum: "2026-05-02",
+      beleg: mkBelegFile(),
     });
 
     // ACT
@@ -290,6 +317,10 @@ describe("/app/transactions/neu — create action honors ADR-0008", () => {
       sphereSnapshot: "ideeller",
       bezahltVonKind: "verein",
       bezahltVonDisplay: "Verein",
+      // C2-TAX: rechnungsdatum + abfluss_datum + beleg are now required.
+      rechnungsdatum: "2026-05-01",
+      abfluss_datum: "2026-05-02",
+      beleg: mkBelegFile(),
     });
 
     const result = await runCreate(event);

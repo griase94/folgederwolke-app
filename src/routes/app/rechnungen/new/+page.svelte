@@ -17,9 +17,12 @@
 	);
 
 	const initial = $derived({
-		customerId: values['customerId'] ?? '',
+		// C1-PRJ-A: prefer the deep-link prefills (?projectId=) over the
+		// post-fail values; both fall back to empty string.
+		customerId:
+			values['customerId'] ?? data.prefillCustomerId ?? '',
 		kategorieId: values['kategorieId'] ?? '',
-		projectId: values['projectId'] ?? '',
+		projectId: values['projectId'] ?? data.prefillProjectId ?? '',
 		rechnungsdatum: values['rechnungsdatum'] ?? data.today,
 		leistungsDatum: values['leistungsDatum'] ?? '',
 		faelligkeitsDatum: values['faelligkeitsDatum'] ?? '',
@@ -56,6 +59,22 @@
 	{#if form && 'error' in form && form.error}
 		<div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
 			{form.error}
+		</div>
+	{/if}
+
+	{#if data.from === 'projekt' && data.prefillProjectId}
+		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+		<div
+			class="mb-4 rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+			data-testid="invoice-from-projekt"
+		>
+			Aus Projekt —
+			<a
+				class="font-medium text-foreground underline"
+				href={`/app/projekte/${data.prefillProjectId}`}
+			>
+				zum Projekt zurück
+			</a>
 		</div>
 	{/if}
 

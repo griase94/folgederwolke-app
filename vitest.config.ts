@@ -26,6 +26,7 @@ export default defineConfig({
     // serialization to keep the DB fixtures hermetic.
     fileParallelism: false,
     globalSetup: "./tests/vitest-global-setup.ts",
+    setupFiles: ["./tests/setup/bits-ui-body-scroll-lock-stub.ts"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],

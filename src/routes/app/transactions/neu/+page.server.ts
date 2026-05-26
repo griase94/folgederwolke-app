@@ -36,8 +36,9 @@ import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { projects } from "$lib/server/db/schema/projects.js";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, isNull } from "drizzle-orm";
 import { parseKindFromUrl } from "$lib/domain/transaction-kind-url.js";
+import { handleAuslageUpload } from "$lib/server/files/handleAuslageUpload.js";
 
 function berlinYear(): number {
   return parseInt(
@@ -66,12 +67,25 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const initialType: "expense" | "income" | "donation" =
     parseKindFromUrl(url.searchParams.get("kind")) ?? "expense";
 
+  // C1-PRJ-A: `?projectId=` lets ProjectCtaRail (+Einnahme/+Ausgabe) deep-link
+  // into this form with the project preselected. Validated UUID upstream by
+  // the Zod schema in the action; here we just shape the value for the form.
+  const prefillProjectIdRaw = url.searchParams.get("projectId");
+  const prefillProjectId =
+    prefillProjectIdRaw &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      prefillProjectIdRaw,
+    )
+      ? prefillProjectIdRaw
+      : null;
+
   const [
     zahlungsarten,
     allMembers,
     expenseKategorien,
     incomeKategorien,
     recent,
+    allProjects,
   ] = await Promise.all([
     listZahlungsarten(),
     db
@@ -87,6 +101,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     listKategorieOptions("expense"),
     listKategorieOptions("income"),
     userId ? loadRecentKategorieUsage(userId) : Promise.resolve([]),
+    db
+      .select({ id: projects.id, name: projects.name })
+      .from(projects)
+      .where(isNull(projects.deletedAt))
+      .orderBy(projects.name),
   ]);
 
   // Pre-compute the no-project default for each kind so the form lands on a
@@ -112,6 +131,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     defaultExpenseKategorie,
     defaultIncomeKategorie,
     initialType,
+    // C1-PRJ-A: list of active projects + optional ?projectId= prefill.
+    projects: allProjects,
+    prefillProjectId,
   };
 };
 
@@ -148,12 +170,23 @@ const baseSchema = z.object({
 });
 
 const expenseSchema = baseSchema.extend({
+  // C2-TAX: required (was optional) — EÜR §11 EStG requires the invoice
+  // date for every expense.
   rechnungsdatum: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable()
-    .optional(),
-  bezahltVonKind: z.enum(["verein", "member", "extern"]).default("member"),
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Rechnungsdatum erforderlich (YYYY-MM-DD)"),
+  // C2-TAX: newly required — distinct from Rechnungsdatum. The cash-out
+  // (Abfluss) date is what drives Buchungsjahr-Zuordnung for EÜR §11 EStG.
+  // Persists into the existing `expenses.abfluss_datum` column; cycle 2
+  // replaces the originally-proposed parallel `geldfluss_datum` column
+  // (julia-buchhaltung flagged the duplicate).
+  abfluss_datum: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Abfluss-Datum erforderlich (YYYY-MM-DD)"),
+  // C2-TAX: default flips 'member' → 'verein' for the admin direct path
+  // (the admin almost always enters Verein-paid expenses; Mitglied entries
+  // come via the public Auslage form).
+  bezahltVonKind: z.enum(["verein", "member", "extern"]).default("verein"),
   bezahltVonMemberId: z.string().uuid().nullable().optional(),
   bezahltVonDisplay: z.string().max(200).default("(unbekannt)"),
   externName: z.string().max(200).nullable().optional(),
@@ -226,6 +259,17 @@ export const actions = {
           });
         }
 
+        // C2-TAX: a Beleg is now required for kind=ausgabe on the admin
+        // direct path (tax-correctness gate — EÜR §11 EStG). Mirror the
+        // public-form check.
+        const belegFormField = data.get("beleg");
+        if (!(belegFormField instanceof File) || belegFormField.size === 0) {
+          return fail(400, {
+            error: "Beleg-Datei ist erforderlich für Ausgaben.",
+            errors: { beleg: ["Beleg-Datei ist erforderlich."] },
+          });
+        }
+
         // Sphere is server-truth: re-derive from the picked kategorie so a
         // tampered form body cannot mis-classify the booking. When a project
         // is attached, its `sphereDefault` overrides the kategorie default
@@ -250,11 +294,36 @@ export const actions = {
         const gate = await checkFestschreibungGate(year);
         if (!gate.ok) return fail(gate.status, { error: gate.error });
 
+        // C2-TAX: upload Beleg via the generalized helper. sourceKind='app'
+        // routes the actor identity to files.uploaded_by_user_id per ADR-0010.
+        let belegFileId: string;
+        try {
+          const uploadResult = await handleAuslageUpload(belegFormField, {
+            actorUserId: user.id,
+            sourceKind: "app",
+          });
+          belegFileId = uploadResult.fileId;
+        } catch (uploadErr) {
+          console.error("[neu/create] beleg upload failed:", uploadErr);
+          const msg =
+            uploadErr instanceof Error
+              ? uploadErr.message
+              : "Beleg konnte nicht hochgeladen werden.";
+          return fail(422, {
+            error: msg,
+            errors: { beleg: [msg] },
+          });
+        }
+
         // `A-` prefix for direct app entries. `AUS-` is reserved for form
         // submissions (carries over via the inbox approve flow). See ADR-0010.
         const businessId = await allocateBusinessId("A", year);
         const result = await createExpense({
           ...parsed.data,
+          // C2-TAX: persist Abfluss-Datum (form field is snake_case; the
+          // domain layer uses camelCase per Drizzle convention).
+          abflussDatum: parsed.data.abfluss_datum,
+          belegFileId,
           sphereSnapshot,
           businessId,
           actorUserId: user.id,
@@ -323,9 +392,26 @@ export const actions = {
         const gate = await checkFestschreibungGate(year);
         if (!gate.ok) return fail(gate.status, { error: gate.error });
 
+        // C2-TAX: derive kategorieNameSnapshot from the selected Kategorie
+        // (was hardcoded to 'Spende'). When the user picks a real kategorie
+        // we want the snapshot to match — the form sends `kategorieId` and
+        // we look up the live name; falls back to the form-supplied snapshot
+        // (or the schema default 'Spende') when no kategorie was picked.
+        let kategorieNameSnapshot = parsed.data.kategorieNameSnapshot;
+        if (raw.kategorieId && typeof raw.kategorieId === "string") {
+          const incomeKategorien = await listKategorieOptions("income");
+          const selected = incomeKategorien.find(
+            (k) => k.id === raw.kategorieId,
+          );
+          if (selected) {
+            kategorieNameSnapshot = selected.name;
+          }
+        }
+
         const businessId = await allocateBusinessId("S", year);
         const result = await createDonation({
           ...parsed.data,
+          kategorieNameSnapshot,
           businessId,
           actorUserId: user.id,
         });

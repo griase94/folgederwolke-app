@@ -131,8 +131,15 @@
     {
       "idx": 18,
       "version": "7",
+      "when": 1779800000000,
+      "tag": "0018_c1_projects_default_customer_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
       "when": 1779900000000,
-      "tag": "0018_rechnung_redesign",
+      "tag": "0019_rechnung_redesign",
       "breakpoints": true
     }
   ]

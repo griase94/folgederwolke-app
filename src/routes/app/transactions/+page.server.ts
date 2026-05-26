@@ -17,6 +17,7 @@ import {
   listTransactions,
   listZahlungsarten,
   listApprovedPendingErstattet,
+  markExpenseAsPaid,
 } from "$lib/server/domain/transactions.js";
 import { parseKindFromUrl } from "$lib/domain/transaction-kind-url.js";
 import { markExpenseErstattet } from "$lib/server/domain/audit-inbox-actions.js";
@@ -146,6 +147,34 @@ export const actions = {
     }
 
     return { ok: true, count: expenseIds.length };
+  },
+
+  // C3-DISC: quick "Bezahlt markieren" from the TransactionRow kebab.
+  // No mail dispatch — that path stays on `?/save-and-notify` on the detail page.
+  markAsPaid: async ({ request, locals }) => {
+    const user = locals.session?.user;
+    if (!user) return fail(401, { error: "Nicht angemeldet" });
+
+    const data = await request.formData();
+    const id = String(data.get("id") ?? "");
+    const datum = String(data.get("datum") ?? "");
+    const zahlartRaw = data.get("zahlart");
+    const zahlartId =
+      typeof zahlartRaw === "string" && zahlartRaw.length > 0
+        ? zahlartRaw
+        : null;
+
+    if (!/^[0-9a-f-]{36}$/.test(id)) {
+      return fail(400, { error: "Ungültige Expense-ID" });
+    }
+
+    const result = await markExpenseAsPaid(id, {
+      datum,
+      zahlartId,
+      actorUserId: user.id,
+    });
+    if (!result.ok) return fail(400, { error: result.error });
+    return { ok: true };
   },
 
   "unmark-erstattet": async ({ request, locals }) => {

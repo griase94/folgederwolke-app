@@ -275,6 +275,7 @@
 							{row}
 							selected={selectedIds.includes(row.id)}
 							ontoggle={toggleRow}
+							{zahlungsarten}
 						/>
 					{/each}
 				</tbody>

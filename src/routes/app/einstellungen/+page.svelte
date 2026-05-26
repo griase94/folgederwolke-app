@@ -57,11 +57,11 @@
 	</section>
 
 	<!-- ── Verein ───────────────────────────────────────────────────────────── -->
-	{#if data.verein.name}
-		<section aria-labelledby="section-verein" class="mb-10">
-			<h2 id="section-verein" class="mb-4 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-				Vereinsdaten (nur lesend)
-			</h2>
+	<section aria-labelledby="section-verein" class="mb-10">
+		<h2 id="section-verein" class="mb-4 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+			Vereinsdaten {data.verein.name ? '(nur lesend)' : ''}
+		</h2>
+		{#if data.verein.name}
 			<div class="rounded-xl border border-border bg-card divide-y divide-border">
 				{#each [
 					{ label: 'Name', value: data.verein.name },
@@ -83,8 +83,19 @@
 			<p class="mt-2 text-xs text-muted-foreground">
 				Vereinsdaten werden über Umgebungsvariablen (<code class="font-mono">VEREIN_*</code>) konfiguriert.
 			</p>
-		</section>
-	{/if}
+		{/if}
+		<div class="mt-3">
+			<!-- eslint-disable svelte/no-navigation-without-resolve -->
+			<a
+				href="/app/einstellungen/verein"
+				class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
+				data-testid="link-stammdaten"
+			>
+				Stammdaten bearbeiten →
+			</a>
+			<!-- eslint-enable svelte/no-navigation-without-resolve -->
+		</div>
+	</section>
 
 	<!-- ── Kassenwärt:in (Phase 10 — Rechnungs-Signatur) ──────────────────── -->
 	<section aria-labelledby="section-kassen" class="mb-10">
@@ -156,6 +167,30 @@
 			{/each}
 		</div>
 	</section>
+
+	<!-- ── Backup-Export ────────────────────────────────────────────────────── -->
+	<!-- eslint-disable svelte/no-navigation-without-resolve -->
+	<section aria-labelledby="section-backup-export" class="mb-10">
+		<h2 id="section-backup-export" class="mb-4 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+			Backup-Export
+		</h2>
+		<div class="rounded-xl border border-border bg-card p-6 dark:border-border/60 dark:bg-card/40">
+			<p class="mb-3 text-sm text-muted-foreground">
+				Komplettes Daten-Backup als ZIP (CSV pro Tabelle).
+				<strong>Diese ZIP ist KEIN Ersatz für den jahresabschluss-bundle.zip</strong>
+				— sie ist ein technischer Lese-Abzug ohne Festschreibungs-Signatur. Für
+				die Steuerberater-Übergabe nutze den Jahresabschluss-Export.
+			</p>
+			<a
+				href="/app/einstellungen/backup-export"
+				class="inline-flex items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted"
+				data-testid="backup-export-button"
+			>
+				ZIP herunterladen
+			</a>
+		</div>
+	</section>
+	<!-- eslint-enable svelte/no-navigation-without-resolve -->
 </div>
 
 <!-- Keep `form` referenced so SvelteKit knows it's used. -->

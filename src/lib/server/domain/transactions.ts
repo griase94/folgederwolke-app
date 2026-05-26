@@ -574,6 +574,14 @@ export interface CreateExpenseInput {
   betragCents: number;
   currency?: string;
   rechnungsdatum?: string | null;
+  /**
+   * C2-TAX (cycle 2): Abfluss-Datum — required for kind=ausgabe per EÜR §11
+   * EStG. Maps to the existing `expenses.abfluss_datum` column (no new
+   * column added; the migration 0018 that introduced a parallel
+   * `geldfluss_datum` was reverted after julia-buchhaltung's review).
+   * Zod + UI on the admin direct path enforce this for new app-mode entries.
+   */
+  abflussDatum?: string | null;
   kommentar?: string | null;
   kategorieId?: string | null;
   kategorieNameSnapshot: string;
@@ -585,6 +593,8 @@ export interface CreateExpenseInput {
   externIban?: string | null;
   externEmail?: string | null;
   projectId?: string | null;
+  /** C2-TAX: FK into the normalized `files` table for the attached Beleg. */
+  belegFileId?: string | null;
   actorUserId: string;
   businessId: string;
 }
@@ -636,6 +646,8 @@ export async function createExpense(
       betragCents: BigInt(input.betragCents),
       currency: input.currency ?? "EUR",
       rechnungsdatum: input.rechnungsdatum ?? null,
+      // C2-TAX: persist the cash-out date per EÜR §11 EStG.
+      abflussDatum: input.abflussDatum ?? null,
       kommentar: input.kommentar ?? null,
       kategorieId: input.kategorieId ?? null,
       kategorieNameSnapshot: input.kategorieNameSnapshot,
@@ -647,6 +659,8 @@ export async function createExpense(
       externIban: input.externIban ?? null,
       externEmail: input.externEmail ?? null,
       projectId: input.projectId ?? null,
+      // C2-TAX: FK into the normalized `files` table for the attached Beleg.
+      belegFileId: input.belegFileId ?? null,
       status: "geprueft",
       approvedAt: new Date(),
       approvedByUserId: input.actorUserId,
@@ -764,6 +778,93 @@ export interface UpdateExpenseInput {
   projectId?: string | null;
   zahlungsartId?: string | null;
   erstattetAm?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// markExpenseAsPaid — single source of truth for the quick "Bezahlt markieren"
+// shortcut (TransactionRow kebab) and any other "just set the dates" entrypoint
+// that doesn't need to fire the ErstattungsMail.
+//
+// Differs from `markExpenseErstattet` (audit-inbox-actions.ts) in three ways:
+//   1. `zahlartId` is optional — the kebab quick-action skips Zahlungsart
+//      selection. The "Speichern und benachrichtigen" path on the detail
+//      page still uses `markExpenseErstattet` because it requires Zahlungsart
+//      to fire the dedup'd ErstattungsMail.
+//   2. Festschreibung check is row-level (`expenses.festgeschriebenAt IS NOT
+//      NULL`) per ADR-0006 — once the year is closed the row is sealed; the
+//      settings-based gate is layered on top by `markExpenseErstattet` for
+//      pre-close windows.
+//   3. Does NOT emit `expense.erstattet` (which would fire ErstattungsMail).
+//      Emits `expense.updated` so the audit-log timeline records the change.
+// ---------------------------------------------------------------------------
+
+export interface MarkExpenseAsPaidParams {
+  /** ISO date string YYYY-MM-DD — the date money moved. */
+  datum: string;
+  /** Optional Zahlungsart FK. Pass `null` from the kebab quick-action. */
+  zahlartId: string | null;
+  actorUserId: string;
+}
+
+export type MarkExpenseAsPaidResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export async function markExpenseAsPaid(
+  expenseId: string,
+  params: MarkExpenseAsPaidParams,
+): Promise<MarkExpenseAsPaidResult> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(params.datum)) {
+    return { ok: false, error: "Datum ungültig (YYYY-MM-DD erwartet)" };
+  }
+
+  const db = getDb();
+  const rows = (await db.execute(sql`
+    SELECT festgeschrieben_at::text AS festgeschrieben_at,
+           business_id,
+           bezeichnung,
+           betrag_cents
+      FROM expenses
+     WHERE id = ${expenseId}::uuid
+     LIMIT 1
+  `)) as unknown as {
+    festgeschrieben_at: string | null;
+    business_id: string;
+    bezeichnung: string;
+    betrag_cents: string | number | bigint;
+  }[];
+  const row = rows[0];
+  if (!row) return { ok: false, error: "Auslage nicht gefunden" };
+  if (row.festgeschrieben_at !== null) {
+    return {
+      ok: false,
+      error: "Auslage ist festgeschrieben — Bezahlt-Markierung verweigert",
+    };
+  }
+
+  await db.execute(sql`
+    UPDATE expenses
+       SET erstattet_am   = ${params.datum}::date,
+           status         = 'erstattet',
+           zahlungsart_id = ${params.zahlartId}::uuid,
+           abfluss_datum  = ${params.datum}::date,
+           updated_at     = NOW()
+     WHERE id = ${expenseId}::uuid
+       AND erstattet_am IS NULL
+  `);
+
+  // Audit-only emit (CLAUDE.md §2 — never write audit_log directly).
+  await bus.emit("expense.updated", {
+    id: expenseId,
+    actorUserId: params.actorUserId,
+    payload: {
+      bezeichnung: row.bezeichnung,
+      betragCents: Number(row.betrag_cents),
+      kind: "mark_as_paid",
+    },
+  });
+
+  return { ok: true };
 }
 
 export type FestschreibungGateResult =

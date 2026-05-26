@@ -64,7 +64,18 @@ export const auslageInputSchema = z
       .min(3, "Bezeichnung muss mindestens 3 Zeichen haben")
       .max(200, "Bezeichnung zu lang"),
     kommentar: z.string().max(1000, "Kommentar zu lang").optional(),
-    rechnungsdatum: z.string().max(32).optional().nullable(), // ISO date string
+    /**
+     * C2-TAX: required ISO YYYY-MM-DD. Tax-correctness gate — EÜR §11 EStG
+     * requires the invoice date for every expense. Was `.optional().nullable()`
+     * pre-C2-TAX which left a hole where Zod accepted a Beleg-less submission.
+     */
+    rechnungsdatum: z
+      .string()
+      .regex(
+        /^\d{4}-\d{2}-\d{2}$/,
+        "Rechnungsdatum im ISO-Format YYYY-MM-DD erforderlich",
+      )
+      .max(32),
     /** Amount in cents (integer). Positive only. */
     betragCents: z
       .number({ error: "Betrag muss eine Zahl sein" })
@@ -74,18 +85,21 @@ export const auslageInputSchema = z
     currency: z.string().length(3).default("EUR"),
     wofuer: z.string().max(500).optional().nullable(),
     bezahlt_von: bezahltVonSchema,
-    /** Original filename of the uploaded Beleg (informational). */
+    /**
+     * Original filename of the uploaded Beleg. C2-TAX: required (was optional)
+     * — every Auslage must carry a Beleg. Action attaches this from the
+     * multipart File header before Zod validation runs.
+     */
     beleg_name: z
       .string()
       .min(1, "Beleg-Dateiname fehlt")
-      .max(255, "Dateiname zu lang")
-      .optional(),
+      .max(255, "Dateiname zu lang"),
     /**
      * MIME type of the uploaded Beleg — must be in the server-side allowlist.
      * The actual magic-byte verification happens in the action; this is just
-     * the first gate.
+     * the first gate. C2-TAX: required (was optional).
      */
-    beleg_mime_type: z.enum(ALLOWED_BELEG_MIMES).optional(),
+    beleg_mime_type: z.enum(ALLOWED_BELEG_MIMES),
     /**
      * DSGVO snapshot — version of the Datenschutz text the submitter
      * agreed to. Compared against DATENSCHUTZ_VERSION in the action.

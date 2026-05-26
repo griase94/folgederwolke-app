@@ -1,19 +1,46 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import BeitragsBadge from './BeitragsBadge.svelte';
-	import { beitragStatusFor, type MemberView } from '$lib/domain/members.js';
+	import {
+		beitragStatusFor,
+		type MemberView,
+		type MemberBeitragsTotals
+	} from '$lib/domain/members.js';
 
 	let {
 		members,
-		years
+		years,
+		totalsByYear = {}
 	}: {
 		members: MemberView[];
 		years: number[];
+		/** C5-MEM-lite — per-year aggregates for the header line. */
+		totalsByYear?: Record<number, MemberBeitragsTotals>;
 	} = $props();
 
 	let compact = $state(false);
 	let sortBy = $state<'name' | 'status'>('name');
 	let markingKey = $state<string | null>(null);
+
+	// C5-MEM-lite — active year for the €-summen header. The default tracks
+	// the middle year in the window (the anchor / current Buchungsjahr) so the
+	// header lands on "today" out of the box. Once the user clicks a tab the
+	// explicit selection sticks until the prop window slides past it.
+	let activeYearOverride = $state<number | null>(null);
+	const defaultYear = $derived(years[Math.floor(years.length / 2)] ?? new Date().getFullYear());
+	const activeYear = $derived(
+		activeYearOverride !== null && years.includes(activeYearOverride)
+			? activeYearOverride
+			: defaultYear
+	);
+
+	function fmtEur(cents: number): string {
+		return (cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+	}
+
+	const headerTotals = $derived<MemberBeitragsTotals>(
+		totalsByYear[activeYear] ?? { memberCount: 0, paidCents: 0, offenCents: 0 }
+	);
 
 	// Count paid per year
 	function paidCount(year: number): number {
@@ -43,6 +70,45 @@
 </script>
 
 <div class="overflow-x-auto rounded-xl border border-border">
+	<!-- C5-MEM-lite — per-year tab switcher for the €-summen header -->
+	<div
+		class="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-2 text-xs"
+		role="tablist"
+		aria-label="Buchungsjahr für Beitrags-Summen"
+	>
+		<span class="text-muted-foreground">Jahr:</span>
+		{#each years as y (y)}
+			<button
+				type="button"
+				role="tab"
+				aria-selected={activeYear === y}
+				onclick={() => (activeYearOverride = y)}
+				class="rounded px-2 py-0.5 font-medium transition-colors {activeYear === y
+					? 'bg-primary text-primary-foreground'
+					: 'text-muted-foreground hover:bg-muted dark:text-muted-foreground'}"
+				data-testid="matrix-year-tab"
+				data-year={y}
+			>
+				{y}
+			</button>
+		{/each}
+	</div>
+
+	<!-- C5-MEM-lite — €-summen header: {N} Mitglieder · {X €} offen · {Y €} bezahlt -->
+	<div
+		class="border-b border-border bg-card px-4 py-3 dark:bg-card/60"
+		data-testid="matrix-header-totals"
+		data-year={activeYear}
+	>
+		<p class="text-sm font-medium text-foreground tabular-nums">
+			<span data-testid="matrix-header-mitglieder">{headerTotals.memberCount} Mitglieder</span>
+			<span class="text-muted-foreground">·</span>
+			<span data-testid="matrix-header-offen">{fmtEur(headerTotals.offenCents)} offen</span>
+			<span class="text-muted-foreground">·</span>
+			<span data-testid="matrix-header-bezahlt">{fmtEur(headerTotals.paidCents)} bezahlt</span>
+		</p>
+	</div>
+
 	<!-- Controls -->
 	<div
 		class="flex items-center justify-between gap-3 border-b border-border bg-muted/30 px-4 py-2"

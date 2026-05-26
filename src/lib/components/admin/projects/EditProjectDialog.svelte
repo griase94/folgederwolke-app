@@ -11,10 +11,13 @@
 	let {
 		open = $bindable(false),
 		project,
+		customers = [],
 		onSuccess
 	}: {
 		open: boolean;
 		project: ProjectView | null;
+		/** C1-PRJ-A: customer list for the Default-Kunde combobox. */
+		customers?: Array<{ id: string; name: string }>;
 		onSuccess?: () => void;
 	} = $props();
 
@@ -160,6 +163,23 @@
 							<option value={opt.value} selected={project.sphereDefault === opt.value || (!project.sphereDefault && opt.value === '')}>
 								{opt.label}
 							</option>
+						{/each}
+					</select>
+				</div>
+
+				<!-- C1-PRJ-A: Default-Kunde combobox. /rechnungen/new?projectId=X
+				     uses this FK to pre-fill the customer picker. -->
+				<div class="space-y-1">
+					<Label for="edit-proj-default-customer">Standard-Kunde (optional)</Label>
+					<select
+						id="edit-proj-default-customer"
+						name="default_customer_id"
+						class="border-input bg-background h-9 w-full rounded-lg border px-2.5 py-1 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
+						data-testid="project-default-customer"
+					>
+						<option value="" selected={!project.defaultCustomerId}>— Kein Standard-Kunde —</option>
+						{#each customers as c (c.id)}
+							<option value={c.id} selected={project.defaultCustomerId === c.id}>{c.name}</option>
 						{/each}
 					</select>
 				</div>

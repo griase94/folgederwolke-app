@@ -4,7 +4,14 @@
 	import EditProjectDialog from './EditProjectDialog.svelte';
 	import type { ProjectView } from '$lib/server/domain/projects.js';
 
-	let { project }: { project: ProjectView } = $props();
+	let {
+		project,
+		customers = [],
+	}: {
+		project: ProjectView;
+		/** C1-PRJ-A: forwarded into EditProjectDialog for the Default-Kunde combobox. */
+		customers?: Array<{ id: string; name: string }>;
+	} = $props();
 
 	let editOpen = $state(false);
 
@@ -111,4 +118,4 @@
 	</Card.Content>
 </Card.Root>
 
-<EditProjectDialog bind:open={editOpen} {project} />
+<EditProjectDialog bind:open={editOpen} {project} {customers} />

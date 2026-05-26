@@ -132,6 +132,10 @@ describe("validateAuslageInput", async () => {
       iban: "DE43830654089999999999",
       email: "lea@example.com",
     },
+    // C2-TAX: beleg_name, beleg_mime_type, rechnungsdatum are now required.
+    beleg_name: "beleg.pdf",
+    beleg_mime_type: "application/pdf" as const,
+    rechnungsdatum: "2025-05-01",
   };
 
   it("accepts valid extern input", () => {
