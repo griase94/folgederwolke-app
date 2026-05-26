@@ -171,7 +171,7 @@ test.describe("@phase-9 C5-MEM-full — exempt + new roles", () => {
     });
     const unique = randomBytes(4).toString("hex");
     const nachname = `ReminderGate-${unique}`;
-    let memberId = "";
+    let memberId: string;
     try {
       const rows = await client<{ id: string }[]>`
         INSERT INTO members (vorname, nachname, email, role, beitrag_exempt)
