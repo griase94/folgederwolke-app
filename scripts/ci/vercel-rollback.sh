@@ -9,11 +9,14 @@
 # Optional:
 #   VERCEL_ORG_ID       — Team ID (team_xxx); required on team-scoped tokens
 #
-# API endpoints used (confirmed 2026-05-26):
+# API endpoints used (confirmed 2026-05-26 against
+# https://vercel.com/docs/rest-api/projects/points-all-production-domains-for-a-project-to-the-given-deploy):
 #   GET  /v6/deployments?projectId=...&state=READY&target=production&limit=2
 #        → returns deployments[] sorted newest-first
-#   POST /v9/projects/{projectId}/rollback/{deploymentId}?teamId=...
-#        → empty JSON body; promotes the named deployment to Current alias
+#   POST /v1/projects/{projectId}/rollback/{deploymentId}?teamId=...
+#        → no body; query-param "description" optional; returns 201 on success.
+#        (Earlier drafts of this script used /v9/ — that endpoint does not
+#        exist in the current OpenAPI spec; only /v1/ is correct.)
 #
 # Behaviour:
 #   - Lists the two most-recent READY production deployments.
@@ -76,18 +79,20 @@ fi
 echo "Current (broken)  : ${CURRENT_URL} (${CURRENT_ID})" >&2
 echo "Rolling back to   : ${PREV_URL} (${PREV_ID})" >&2
 
-ROLLBACK_URL="${API_BASE}/v9/projects/${VERCEL_PROJECT_ID}/rollback/${PREV_ID}${TEAM_QUERY}"
+ROLLBACK_URL="${API_BASE}/v1/projects/${VERCEL_PROJECT_ID}/rollback/${PREV_ID}${TEAM_QUERY}"
 
+# No request body — the spec defines "description" as a query parameter, not
+# a body field, and the endpoint accepts an empty POST. We also skip the
+# Content-Type header since there's no body to type.
 ROLL_RESP=$(curl -sS -w "\n%{http_code}" -X POST \
   -H "Authorization: Bearer ${VERCEL_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{}' \
   "${ROLLBACK_URL}")
 
 ROLL_BODY=$(printf '%s' "$ROLL_RESP" | sed '$d')
 ROLL_CODE=$(printf '%s' "$ROLL_RESP" | tail -n1)
 
-# Vercel returns 200/201 on accepted rollback. Any 2xx is success.
+# Vercel returns 201 on accepted rollback per the documented spec; accept
+# any 2xx defensively in case the API ever returns 200 instead.
 if [ "$ROLL_CODE" -lt 200 ] || [ "$ROLL_CODE" -ge 300 ]; then
   echo "::error::rollback POST returned HTTP ${ROLL_CODE}" >&2
   echo "$ROLL_BODY" >&2

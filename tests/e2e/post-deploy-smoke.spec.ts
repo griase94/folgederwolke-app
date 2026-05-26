@@ -58,6 +58,33 @@ test.describe("@post-deploy production smoke", () => {
     ).toMatch(/sign-in|login/i);
   });
 
+  test("public Auslage form renders (real SvelteKit render path)", async ({
+    request,
+  }) => {
+    // Read-only anonymous render probe. `/auslage-einreichen` is the only
+    // public unauthenticated route that goes through the full SvelteKit
+    // render pipeline (load → layout → page → +error fallback). Catches a
+    // class of bug — SSR crash on a public route — that the other three
+    // tests don't: `/` is a pure redirect, `/healthz` is a JSON endpoint,
+    // `/app` is just an auth redirect. Previously surfaced by the inline
+    // curl probe in the pre-Task-2.5 workflow; ported into the spec here.
+    const r = await request.get("/auslage-einreichen", {
+      failOnStatusCode: false,
+    });
+    expect(
+      r.status(),
+      `Expected 2xx/3xx from /auslage-einreichen, got ${r.status()}`,
+    ).toBeLessThan(400);
+    const body = await r.text();
+    // Stable marker: either the enabled-state heading "Auslage einreichen"
+    // or the soft-fallback heading "Vorübergehend nicht verfügbar". Both
+    // mean SvelteKit successfully rendered the page; a render crash would
+    // surface the generic SvelteKit error page instead.
+    expect(body, `/auslage-einreichen did not render a known heading`).toMatch(
+      /Auslage einreichen|Vorübergehend nicht verfügbar/i,
+    );
+  });
+
   test("/healthz returns 200 with db=ok (database connectivity)", async ({
     request,
   }) => {
