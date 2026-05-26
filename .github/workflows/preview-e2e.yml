@@ -37,6 +37,11 @@ jobs:
     timeout-minutes: 5
     env:
       DIRECT_DATABASE_URL: ${{ secrets.NEON_PREVIEW_MIGRATE_DATABASE_URL }}
+      # Neon preview-branch URLs use random endpoint IDs (ep-…), not the
+      # branch name — the "preview" substring guard in seed/mint/cleanup
+      # scripts cannot recognize them. The secret IS the preview branch URL
+      # (set in GH secrets), so override the guard in CI.
+      ALLOW_NON_PREVIEW_SEED: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -93,6 +98,7 @@ jobs:
         env:
           E2E_ADMIN_EMAIL: e2e-admin@folgederwolke.de
           SESSION_SECRET: ${{ secrets.PREVIEW_SESSION_SECRET }}
+          ALLOW_NON_PREVIEW_MINT: "1"
         run: |
           COOKIE=$(pnpm tsx scripts/mint-session.ts)
           echo "::add-mask::$COOKIE"
@@ -120,6 +126,7 @@ jobs:
     env:
       DIRECT_DATABASE_URL: ${{ secrets.NEON_PREVIEW_MIGRATE_DATABASE_URL }}
       E2E_RUN_ID: pr${{ github.event.pull_request.number }}-${{ github.run_attempt }}
+      ALLOW_NON_PREVIEW_CLEANUP: "1"
     steps:
       - uses: actions/checkout@v4
 
