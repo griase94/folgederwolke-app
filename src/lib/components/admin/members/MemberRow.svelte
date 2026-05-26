@@ -83,6 +83,15 @@
 		{#if member.austrittsDatum}
 			<span class="ml-1 text-xs text-destructive">(ausgetreten)</span>
 		{/if}
+		{#if member.beitragExempt}
+			<!-- Night-2 C5-MEM-full: amber `befreit` badge surfaces the exempt
+			     flag inline; the reason (if any) shows on hover via `title`. -->
+			<span
+				class="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900 dark:text-amber-100"
+				title={member.beitragExemptReason ?? ''}
+				data-testid="member-row-befreit-badge"
+			>befreit</span>
+		{/if}
 	</div>
 
 	<!-- Beitrag year chips -->

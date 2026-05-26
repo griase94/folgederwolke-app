@@ -117,6 +117,9 @@ export const load: PageServerLoad = async ({ params }) => {
       role: member.role,
       eintrittsDatum: member.eintrittsDatum,
       austrittsDatum: member.austrittsDatum,
+      // Night-2 C5-MEM-full: surface exempt-flag + reason to the detail page.
+      beitragExempt: member.beitragExempt,
+      beitragExemptReason: member.beitragExemptReason,
       isFixture: member.isFixture,
       createdAt: member.createdAt.toISOString(),
     },

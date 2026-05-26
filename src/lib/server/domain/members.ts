@@ -41,6 +41,26 @@ function optionalText(schema: z.ZodString) {
     .pipe(z.union([schema, z.undefined()]));
 }
 
+/**
+ * Coerce HTML-form checkbox values to booleans:
+ *   - absent → false (browsers omit unchecked checkboxes from POST data)
+ *   - "on"   → true
+ *   - "true" / "false" strings (programmatic) → respective booleans
+ *   - direct boolean (programmatic call) → preserved
+ *
+ * Anything else fails validation explicitly.
+ */
+const checkboxBoolean = z
+  .union([z.boolean(), z.string(), z.undefined()])
+  .transform((v) => {
+    if (v === undefined) return false;
+    if (typeof v === "boolean") return v;
+    if (v === "on" || v === "true") return true;
+    if (v === "" || v === "off" || v === "false") return false;
+    return v; // pass through to refine for an error
+  })
+  .pipe(z.boolean());
+
 const memberBaseSchema = z.object({
   vorname: z
     .string()
@@ -84,8 +104,16 @@ const memberBaseSchema = z.object({
       "schriftfuehrer",
       "mitglied",
       "fördermitglied",
+      // Night-2 C5-MEM-full additions:
+      "extern",
+      "helfer",
     ])
     .default("mitglied"),
+  // Night-2: Beitragspflicht-Aussetzung.
+  beitrag_exempt: checkboxBoolean.default(false),
+  beitrag_exempt_reason: optionalText(
+    z.string().max(500, "Begründung zu lang"),
+  ),
 });
 
 export const addMemberSchema = memberBaseSchema;

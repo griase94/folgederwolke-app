@@ -51,6 +51,10 @@ export type MemberView = {
   role: string;
   eintrittsDatum: string | null;
   austrittsDatum: string | null;
+  /** Night-2 C5-MEM-full: Beitragspflicht ausgesetzt? */
+  beitragExempt: boolean;
+  /** Night-2 C5-MEM-full: free-text justification (tooltip on the badge). */
+  beitragExemptReason: string | null;
   isFixture: boolean;
   createdAt: string;
   beitrags: Record<number, BeitragCell>;
