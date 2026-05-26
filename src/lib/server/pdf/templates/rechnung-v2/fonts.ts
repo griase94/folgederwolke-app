@@ -24,14 +24,12 @@ import { dirname, join } from "node:path";
 // In bare Node (vitest / scripts), the import returns the literal source
 // path, which we fall through to read directly.
 import antonUrl from "./assets/anton-regular.ttf?url";
-import bebasUrl from "./assets/bebas-neue-regular.ttf?url";
 import dejavuUrl from "./assets/dejavu-sans.ttf?url";
 import dejavuBoldUrl from "./assets/dejavu-sans-bold.ttf?url";
 import dejavuObliqueUrl from "./assets/dejavu-sans-oblique.ttf?url";
 
 export interface RechnungFontBytes {
   anton: Uint8Array;
-  bebas: Uint8Array;
   dejavu: Uint8Array;
   dejavuBold: Uint8Array;
   dejavuOblique: Uint8Array;
@@ -44,7 +42,6 @@ const ASSETS = join(HERE, "assets");
 
 const URL_TO_FILENAME: Record<string, string> = {
   [antonUrl]: "anton-regular.ttf",
-  [bebasUrl]: "bebas-neue-regular.ttf",
   [dejavuUrl]: "dejavu-sans.ttf",
   [dejavuBoldUrl]: "dejavu-sans-bold.ttf",
   [dejavuObliqueUrl]: "dejavu-sans-oblique.ttf",
@@ -75,13 +72,12 @@ async function readAsset(url: string): Promise<Uint8Array> {
 
 export async function loadFontBytes(): Promise<RechnungFontBytes> {
   if (cache) return cache;
-  const [anton, bebas, dejavu, dejavuBold, dejavuOblique] = await Promise.all([
+  const [anton, dejavu, dejavuBold, dejavuOblique] = await Promise.all([
     readAsset(antonUrl),
-    readAsset(bebasUrl),
     readAsset(dejavuUrl),
     readAsset(dejavuBoldUrl),
     readAsset(dejavuObliqueUrl),
   ]);
-  cache = { anton, bebas, dejavu, dejavuBold, dejavuOblique };
+  cache = { anton, dejavu, dejavuBold, dejavuOblique };
   return cache;
 }

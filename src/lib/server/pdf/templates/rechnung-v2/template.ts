@@ -38,12 +38,10 @@ const MARGIN_LEFT = 20 * MM;
 const MARGIN_RIGHT = 20 * MM;
 const CONTENT_W = PAGE_W - MARGIN_LEFT - MARGIN_RIGHT;
 
-// Font sizes (pt) — Andy review v2.5 (2026-05-26): all body fonts down -1pt
-// for a more refined, less "Word document" feel. KEEP at original size:
-//   - SIZE_WORDMARK_DEFAULT (32) — the "RECHNUNG" wordmark
-//   - SIZE_SUBTITLE_BOLD (9) + SIZE_SUBTITLE_ITALIC (8) — the lines under it
-//   - SIZE_SECTION_TITLE (11) — the "RECHNUNG NR. ..." line
-const SIZE_WORDMARK_DEFAULT = 32;
+// Font sizes (pt) — design hierarchy after Andy's v2.5 review:
+//   - Header tier (untouched in -1pt sweep): WORDMARK, SUBTITLE pair, SECTION_TITLE
+//   - Body tier (all -1pt from initial design): ADDRESS / META / BODY / TABLE / FOOTER
+const SIZE_WORDMARK = 32;
 const SIZE_SUBTITLE_BOLD = 9;
 const SIZE_SUBTITLE_ITALIC = 8;
 const SIZE_ADDRESS = 9;
@@ -84,14 +82,6 @@ export interface RechnungV2Input {
   leistungsBeschreibung: string | null;
   nettoCents: number;
   kassenwaertName: string;
-  /**
-   * Visual variant for A/B/C design review.
-   *   - "faithful" (default): Anton 32pt wordmark, standard whitespace.
-   *   - "bebas": Bebas Neue 40pt wordmark (narrower, Impact-clone), standard whitespace.
-   *   - "editorial": Anton 42pt wordmark, +25% whitespace at key gaps.
-   * Production code calls without this field → faithful.
-   */
-  variant?: "faithful" | "bebas" | "editorial";
 }
 
 // Helpers
@@ -227,20 +217,7 @@ export async function renderRechnungV2(
   doc.setProducer("folgederwolke-app");
   doc.setCreationDate(new Date());
 
-  // Variant selection — drives wordmark font/size and whitespace multiplier.
-  const variant = input.variant ?? "faithful";
-  const useBebas = variant === "bebas";
-  const isEditorial = variant === "editorial";
-
   const anton = await doc.embedFont(fonts.anton, { subset: true });
-  const wordmarkFont = useBebas
-    ? await doc.embedFont(fonts.bebas, { subset: true })
-    : anton;
-  const wordmarkSize = useBebas ? 40 : isEditorial ? 42 : SIZE_WORDMARK_DEFAULT;
-  // Editorial multiplies KEY structural gaps (not addressLineH or footer
-  // leading — those are typographic constants).
-  const ED = isEditorial ? 1.25 : 1.0;
-
   const regular = await doc.embedFont(fonts.dejavu, { subset: true });
   const bold = await doc.embedFont(fonts.dejavuBold, { subset: true });
   const italic = await doc.embedFont(fonts.dejavuOblique, { subset: true });
@@ -258,8 +235,8 @@ export async function renderRechnungV2(
   page.drawText("RECHNUNG", {
     x: MARGIN_LEFT,
     y: wordmarkBaselineY,
-    size: wordmarkSize,
-    font: wordmarkFont,
+    size: SIZE_WORDMARK,
+    font: anton,
     color: BRAND_ROSA,
   });
 
@@ -287,7 +264,7 @@ export async function renderRechnungV2(
   );
 
   // Andy review: bigger logo (was 22mm, too small).
-  const logoBoxW = (isEditorial ? 32 : 30) * MM;
+  const logoBoxW = 30 * MM;
   const logoBoxH = logoBoxW;
   const logoX = PAGE_W - MARGIN_RIGHT - logoBoxW;
   const logoY = PAGE_H - MARGIN_TOP - logoBoxH - 2 * MM;
@@ -385,7 +362,7 @@ export async function renderRechnungV2(
   }
 
   // 3. Section title — Andy review (2026-05-26): more air before this
-  const sectionTitleY = addressY - 14 * MM * ED;
+  const sectionTitleY = addressY - 14 * MM;
   page.drawText(`RECHNUNG NR. ${input.rechnungsnummer}`, {
     x: MARGIN_LEFT,
     y: sectionTitleY,
@@ -395,7 +372,7 @@ export async function renderRechnungV2(
   });
 
   // 4. Greeting + intro — Andy review: a touch more air after the greeting
-  let bodyY = sectionTitleY - 14 * MM * ED;
+  let bodyY = sectionTitleY - 14 * MM;
   page.drawText("Sehr geehrte Damen und Herren,", {
     x: MARGIN_LEFT,
     y: bodyY,
@@ -432,7 +409,7 @@ export async function renderRechnungV2(
   const colPreisRightX = colPreisX + colPreisW;
 
   // Andy review (2026-05-26): more air between intro and table
-  const tableTopY = bodyY - 12 * MM * ED;
+  const tableTopY = bodyY - 12 * MM;
   // Andy review: less squeezed — bump from 7 to 8mm so the rosa band has
   // confident vertical presence.
   const headerH = 8 * MM;
@@ -595,13 +572,13 @@ export async function renderRechnungV2(
   });
 
   // 6. Body paragraphs after table — Andy review (2026-05-26):
-  //   - More air after the table (12mm → 13mm * ED)
+  //   - More air after the table (12mm → 13mm)
   //   - Larger "Mit freundlichen Grüßen" → name gap (5.5mm → 9mm)
   //   - Italic "Kassenwärtin Folge der Wolke e.V." role line (was regular)
   const BODY_LEADING = 7 * MM;
-  const CLOSING_BREAK = 13 * MM * ED;
+  const CLOSING_BREAK = 13 * MM;
 
-  let p = sumBottomY - 13 * MM * ED;
+  let p = sumBottomY - 13 * MM;
   page.drawText("Gemäß § 19 UStG wird keine Umsatzsteuer ausgewiesen.", {
     x: MARGIN_LEFT,
     y: p,
