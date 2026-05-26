@@ -102,7 +102,8 @@ jobs:
           PREVIEW_SESSION_COOKIE: ${{ steps.mint.outputs.cookie }}
         run: pnpm exec playwright test --config=playwright.preview.config.ts
 
-      - if: failure()
+      - name: Upload Playwright report
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-pr-${{ github.event.pull_request.number }}
