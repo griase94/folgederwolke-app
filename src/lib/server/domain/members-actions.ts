@@ -27,6 +27,7 @@ import {
   validateEditMember,
 } from "$lib/server/domain/members.js";
 import { bus } from "$lib/server/events/index.js";
+import { berlinYmd } from "$lib/domain/year.js";
 
 // Default Beitrag rate in cents (69.69 €) — until Einstellungen tab in Phase 4.
 const DEFAULT_BEITRAG_CENTS = 6969n;
@@ -223,7 +224,7 @@ export async function softDeleteMember(
   await db
     .update(members)
     .set({
-      austrittsDatum: new Date().toISOString().slice(0, 10),
+      austrittsDatum: berlinYmd(),
       updatedAt: new Date(),
     })
     .where(eq(members.id, memberId));
@@ -322,7 +323,7 @@ export async function markBeitragPaid(
     )
     .limit(1);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = berlinYmd();
 
   if (existing.length > 0 && existing[0]) {
     const row = existing[0];

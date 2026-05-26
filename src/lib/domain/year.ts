@@ -43,6 +43,32 @@ export function berlinYear(now: Date = new Date()): number {
 }
 
 // ---------------------------------------------------------------------------
+// B1 fix (ADR-0001) — Berlin-local date string
+// ---------------------------------------------------------------------------
+
+const ymdFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: BERLIN_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/**
+ * Returns the current Europe/Berlin date as an ISO-format string "YYYY-MM-DD".
+ *
+ * Use this instead of `new Date().toISOString().slice(0, 10)` whenever a
+ * date string needs to represent the Berlin-local calendar date. The UTC-slice
+ * approach returns the wrong date at 23:01–23:59 CET (= 22:01–22:59 UTC) or
+ * 22:01–23:59 CEST during summer time, causing wrong Buchungsjahr assignment
+ * (ADR-0001 violation).
+ *
+ * Accepts an optional `Date` for testability (vi.useFakeTimers-compatible).
+ */
+export function berlinYmd(d: Date = new Date()): string {
+  return ymdFmt.format(d);
+}
+
+// ---------------------------------------------------------------------------
 // C2 — Global year switcher helpers (VB-002, JB-001, JB-006, UX-010)
 // ---------------------------------------------------------------------------
 
