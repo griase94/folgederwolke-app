@@ -23,7 +23,7 @@ import {
 import fontkit from "@pdf-lib/fontkit";
 import { loadFontBytes } from "./fonts.js";
 import { loadAssetBytes } from "./assets.js";
-import { BRAND_ROSA, BRAND_ROSA_DEEP, BODY, WHITE } from "./colors.js";
+import { BRAND_ROSA, BODY, WHITE } from "./colors.js";
 
 // Geometry
 const MM = 72 / 25.4;
@@ -36,7 +36,9 @@ const MARGIN_RIGHT = 10 * MM;
 const CONTENT_W = PAGE_W - MARGIN_LEFT - MARGIN_RIGHT;
 
 // Font sizes (pt)
-const SIZE_WORDMARK = 36;
+// Variant-default; overridden per-variant in renderRechnungV2 (32 for Anton,
+// 40 for Bebas Neue, 42 for editorial Anton).
+const SIZE_WORDMARK_DEFAULT = 32;
 const SIZE_SUBTITLE_BOLD = 9;
 const SIZE_SUBTITLE_ITALIC = 8;
 const SIZE_ADDRESS = 10;
@@ -79,6 +81,14 @@ export interface RechnungV2Input {
   leistungsBeschreibung: string | null;
   nettoCents: number;
   kassenwaertName: string;
+  /**
+   * Visual variant for A/B/C design review.
+   *   - "faithful" (default): Anton 32pt wordmark, standard whitespace.
+   *   - "bebas": Bebas Neue 40pt wordmark (narrower, Impact-clone), standard whitespace.
+   *   - "editorial": Anton 42pt wordmark, +25% whitespace at key gaps.
+   * Production code calls without this field → faithful.
+   */
+  variant?: "faithful" | "bebas" | "editorial";
 }
 
 // Helpers
@@ -214,7 +224,20 @@ export async function renderRechnungV2(
   doc.setProducer("folgederwolke-app");
   doc.setCreationDate(new Date());
 
+  // Variant selection — drives wordmark font/size and whitespace multiplier.
+  const variant = input.variant ?? "faithful";
+  const useBebas = variant === "bebas";
+  const isEditorial = variant === "editorial";
+
   const anton = await doc.embedFont(fonts.anton, { subset: true });
+  const wordmarkFont = useBebas
+    ? await doc.embedFont(fonts.bebas, { subset: true })
+    : anton;
+  const wordmarkSize = useBebas ? 40 : isEditorial ? 42 : SIZE_WORDMARK_DEFAULT;
+  // Editorial multiplies KEY structural gaps (not addressLineH or footer
+  // leading — those are typographic constants).
+  const ED = isEditorial ? 1.25 : 1.0;
+
   const regular = await doc.embedFont(fonts.dejavu, { subset: true });
   const bold = await doc.embedFont(fonts.dejavuBold, { subset: true });
   const italic = await doc.embedFont(fonts.dejavuOblique, { subset: true });
@@ -232,23 +255,23 @@ export async function renderRechnungV2(
   page.drawText("RECHNUNG", {
     x: MARGIN_LEFT,
     y: wordmarkBaselineY,
-    size: SIZE_WORDMARK,
-    font: anton,
+    size: wordmarkSize,
+    font: wordmarkFont,
     color: BRAND_ROSA,
   });
 
-  // Design review: pull the bold subtitle up so it tucks under the wordmark's
-  // descenders — magazine-cover feel, was 4.5mm "safe gap" before.
-  const subtitleBoldY = wordmarkBaselineY - 2.5 * MM;
+  // Andy review v2.3 (2026-05-26): tighten subtitle a hair closer to wordmark
+  // (was 6mm; that turned out a tiny bit loose).
+  const subtitleBoldY = wordmarkBaselineY - 4 * MM;
   page.drawText(`${input.verein.name} - ${input.verein.adresseSingleLine}`, {
     x: MARGIN_LEFT,
     y: subtitleBoldY,
     size: SIZE_SUBTITLE_BOLD,
     font: bold,
-    color: BODY,
+    color: BRAND_ROSA,
   });
 
-  const subtitleItalicY = subtitleBoldY - 3.5 * MM;
+  const subtitleItalicY = subtitleBoldY - 4 * MM;
   page.drawText(
     `eingetragen im Vereinsregister des AG München unter ${input.verein.vereinsregister}`,
     {
@@ -256,12 +279,13 @@ export async function renderRechnungV2(
       y: subtitleItalicY,
       size: SIZE_SUBTITLE_ITALIC,
       font: italic,
-      color: BODY,
+      color: BRAND_ROSA,
     },
   );
 
-  const logoBoxW = 22 * MM;
-  const logoBoxH = 22 * MM;
+  // Andy review: bigger logo (was 22mm, too small).
+  const logoBoxW = (isEditorial ? 32 : 30) * MM;
+  const logoBoxH = logoBoxW;
   const logoX = PAGE_W - MARGIN_RIGHT - logoBoxW;
   const logoY = PAGE_H - MARGIN_TOP - logoBoxH - 2 * MM;
   drawCenteredImage(
@@ -274,10 +298,9 @@ export async function renderRechnungV2(
   );
 
   // 2. Address block + meta block
-  // Design review: tightened from -53mm to -39mm — removes 13.4mm of dead air
-  // above the customer block to match the reference's confident proportion
-  // (italic baseline → customer name ≈ 8.5mm gap, was 22mm).
-  const addressTopY = PAGE_H - MARGIN_TOP - 39 * MM;
+  // Andy review (2026-05-26): with the larger subtitle gaps (6mm + 4mm) the
+  // header block extends to ~y=33mm; give it ~12mm of air before customer.
+  const addressTopY = PAGE_H - MARGIN_TOP - 47 * MM;
   const addressLeftX = MARGIN_LEFT;
   const addressMaxW = 80 * MM;
   // Design review: 5mm was too generous for 10pt — German postal addresses
@@ -358,8 +381,8 @@ export async function renderRechnungV2(
     metaY -= metaRowH;
   }
 
-  // 3. Section title
-  const sectionTitleY = addressY - 10 * MM;
+  // 3. Section title — Andy review (2026-05-26): more air before this
+  const sectionTitleY = addressY - 14 * MM * ED;
   page.drawText(`RECHNUNG NR. ${input.rechnungsnummer}`, {
     x: MARGIN_LEFT,
     y: sectionTitleY,
@@ -368,8 +391,8 @@ export async function renderRechnungV2(
     color: BRAND_ROSA,
   });
 
-  // 4. Greeting + intro
-  let bodyY = sectionTitleY - 12 * MM;
+  // 4. Greeting + intro — Andy review: a touch more air after the greeting
+  let bodyY = sectionTitleY - 14 * MM * ED;
   page.drawText("Sehr geehrte Damen und Herren,", {
     x: MARGIN_LEFT,
     y: bodyY,
@@ -377,7 +400,7 @@ export async function renderRechnungV2(
     font: regular,
     color: BODY,
   });
-  bodyY -= 7 * MM;
+  bodyY -= 8 * MM;
   page.drawText(
     "vielen Dank für Ihr Vertrauen. Ich stelle Ihnen hiermit folgende Leistungen in Rechnung:",
     {
@@ -405,12 +428,16 @@ export async function renderRechnungV2(
   const colPreisX = colMengeX + colMengeW;
   const colPreisRightX = colPreisX + colPreisW;
 
-  const tableTopY = bodyY - 10 * MM;
-  const headerH = 7 * MM;
+  // Andy review (2026-05-26): more air between intro and table
+  const tableTopY = bodyY - 12 * MM * ED;
+  // Andy review: less squeezed — bump from 7 to 8mm so the rosa band has
+  // confident vertical presence.
+  const headerH = 8 * MM;
 
-  // Design review: BRAND_ROSA_DEEP (not BRAND_ROSA) for fills under WHITE text
-  // — gives ≥3.5:1 contrast so the headers actually read.
-  drawRect(page, tableX, tableTopY - headerH, tableW, headerH, BRAND_ROSA_DEEP);
+  // Andy review: revert to the original pastel rosa for the header bar
+  // (BRAND_ROSA #f09dff). The deeper #e275f4 we introduced for contrast
+  // overshot — the brand intent is soft pastel.
+  drawRect(page, tableX, tableTopY - headerH, tableW, headerH, BRAND_ROSA);
   // Design review: 2.5mm padTop centers 11pt cap inside 7mm band (was 2.2).
   const headerTextY = tableTopY - headerH + 2.5 * MM;
   page.drawText("Pos.", {
@@ -531,19 +558,18 @@ export async function renderRechnungV2(
     color: BODY,
   });
 
-  // Design review: drop the 0.3mm soft-rosa hairline between data row and
-  // Gesamtsumme — the color change between cells provides the divider.
+  // Andy review v2.3 (2026-05-26): drop the soft-rosa hairline above the
+  // Gesamtsumme — Andy wants no line above the block. Color change between
+  // cells (well, between white data row and rosa sum row) is enough divider.
 
-  // Gesamtsumme row — Design review:
-  //   - LABEL cell on BRAND_ROSA (was BRAND_ROSA_SOFT — white text was unreadable)
-  //   - VALUE cell on BRAND_ROSA_DEEP (was BRAND_ROSA — value pops as "result")
-  //   - No gap between data row and sum row (continuous block)
-  const sumRowH = 7 * MM;
+  // Gesamtsumme row — Andy review v2.3:
+  //   - SINGLE rosa bar (no split) — both label + value cells in BRAND_ROSA.
+  //   - White text on the single bar.
+  const sumRowH = 8 * MM;
   const sumTopY = dataBottomY;
   const sumBottomY = sumTopY - sumRowH;
   const sumLeftW = colPosW + colBeschrW + colMengeW;
-  drawRect(page, tableX, sumBottomY, sumLeftW, sumRowH, BRAND_ROSA);
-  drawRect(page, colPreisX, sumBottomY, colPreisW, sumRowH, BRAND_ROSA_DEEP);
+  drawRect(page, tableX, sumBottomY, tableW, sumRowH, BRAND_ROSA);
   const sumLabel = "Gesamtsumme";
   const sumLabelW = bold.widthOfTextAtSize(sumLabel, SIZE_TABLE_HEADER);
   // Design review: optical-center factor 0.35 (was 1/3 = 0.33) — undershoots
@@ -565,15 +591,14 @@ export async function renderRechnungV2(
     color: WHITE,
   });
 
-  // 6. Body paragraphs after table
-  // Design review: rebuild rhythm on a consistent 7mm body baseline,
-  // with a 12mm closing-block break before "Mit freundlichen Grüßen",
-  // and tight signature stack (5.5mm + 4.5mm). Reference template uses
-  // ~8mm body leading + ~13.5mm closing break.
+  // 6. Body paragraphs after table — Andy review (2026-05-26):
+  //   - More air after the table (12mm → 13mm * ED)
+  //   - Larger "Mit freundlichen Grüßen" → name gap (5.5mm → 9mm)
+  //   - Italic "Kassenwärtin Folge der Wolke e.V." role line (was regular)
   const BODY_LEADING = 7 * MM;
-  const CLOSING_BREAK = 12 * MM;
+  const CLOSING_BREAK = 13 * MM * ED;
 
-  let p = sumBottomY - 9 * MM;
+  let p = sumBottomY - 13 * MM * ED;
   page.drawText("Gemäß § 19 UStG wird keine Umsatzsteuer ausgewiesen.", {
     x: MARGIN_LEFT,
     y: p,
@@ -611,7 +636,7 @@ export async function renderRechnungV2(
     font: regular,
     color: BODY,
   });
-  p -= 5.5 * MM;
+  p -= 9 * MM;
   page.drawText(input.kassenwaertName, {
     x: MARGIN_LEFT,
     y: p,
@@ -619,12 +644,12 @@ export async function renderRechnungV2(
     font: bold,
     color: BODY,
   });
-  p -= 4.5 * MM;
+  p -= 5 * MM;
   page.drawText(`Kassenwärtin ${input.verein.name}`, {
     x: MARGIN_LEFT,
     y: p,
     size: SIZE_BODY,
-    font: regular,
+    font: italic,
     color: BODY,
   });
 
@@ -697,7 +722,9 @@ export async function renderRechnungV2(
   drawFooterCol(colCenters[3]!, iconPerson, [
     { text: input.verein.name },
     { text: "Steuernummer:" },
-    { text: input.verein.steuernummer, color: BRAND_ROSA },
+    // Andy review v2.3: revert to BODY/black — pink stood out too much
+    // against the rest of the footer.
+    { text: input.verein.steuernummer },
   ]);
 
   return doc.save();
