@@ -47,6 +47,16 @@ export interface InboxSubmissionView {
   wofuer: string | null;
   /** Free-form admin comment from submitter. */
   kommentar: string | null;
+  /**
+   * C7-INBOX full: "yes" if decided_at is non-null, "no" otherwise.
+   * Used by InboxCard to render data-decided for filter assertions.
+   */
+  decided: "yes" | "no";
+  /**
+   * C7-INBOX full: decision verdict when decided. null when still open.
+   * Used by InboxCard to render data-decision and the status pill.
+   */
+  decision: "approved" | "rejected" | null;
 }
 
 /**

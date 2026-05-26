@@ -25,6 +25,7 @@ import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { members } from "$lib/server/db/schema/members.js";
+import { sentMails } from "$lib/server/db/schema/mails.js";
 import { bus } from "$lib/server/events/index.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import {
@@ -425,7 +426,7 @@ export async function approveSubmission(
     }
   });
 
-  // ── 4. Emit event (audit log written by handler) ───────────────────────
+  // ── 4. Emit events (audit log written by handler) ────────────────────────
   // A6: do NOT swallow handler errors here. The audit handler MUST surface
   // failures to the caller (registered as critical in handlers.ts spec) so
   // operations can recover. AggregateError propagates from bus.emit.
@@ -438,6 +439,64 @@ export async function approveSubmission(
       actorUserId,
       betragCents: Number(submission.betragCents),
       bezeichnung: submission.bezeichnung,
+    });
+
+    // ── 4a. auslage.approved → ApprovalMail (C7-INBOX, ADR-0005) ──────────
+    // Resolve recipient email + vorname for the mail, same pattern as
+    // rejectSubmission. Then compute send_attempt (P2-B6): count existing
+    // auslage_approved rows so re-approve-after-reject increments naturally.
+    let submitterEmail: string | null = null;
+    let submitterVorname: string | null = null;
+    if (submission.bezahltVonKind === "extern") {
+      submitterEmail = submission.externEmail ?? null;
+      submitterVorname =
+        (submission.externName ?? "").split(" ")[0] ||
+        submission.externName ||
+        null;
+    } else if (
+      submission.bezahltVonKind === "member" &&
+      submission.bezahltVonMemberId
+    ) {
+      const memberRows = await db
+        .select({ email: members.email, vorname: members.vorname })
+        .from(members)
+        .where(eq(members.id, submission.bezahltVonMemberId))
+        .limit(1);
+      if (memberRows[0]) {
+        submitterEmail = memberRows[0].email ?? null;
+        submitterVorname = memberRows[0].vorname ?? null;
+      }
+    }
+
+    // P2-B6: count existing auslage_approved rows for this submission to
+    // determine send_attempt. First approval → 0. Re-approve-after-reject
+    // cycle → 1, 2, … so the ADR-0005 UNIQUE allows a new row.
+    const countRows = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(sentMails)
+      .where(
+        and(
+          eq(sentMails.template, "auslage_approved"),
+          eq(sentMails.entityKind, "auslagen_submission"),
+          eq(sentMails.entityId, submissionId),
+        ),
+      );
+    const sendAttempt = Number(countRows[0]?.n ?? 0);
+
+    await bus.emit("auslage.approved", {
+      submissionId,
+      submissionBusinessId: submission.businessId,
+      submitterEmail,
+      vorname: submitterVorname,
+      bezeichnung: submission.bezeichnung,
+      betragCents: Number(submission.betragCents),
+      // The kategorie is snapshotted as "(Unkategorisiert)" at approval time
+      // (same placeholder used in the expense INSERT above). The admin can
+      // re-categorise later on the transaction detail page.
+      kategorie: "(Unkategorisiert)",
+      decidedAt: new Date().toISOString(),
+      decidedByUserId: actorUserId,
+      send_attempt: sendAttempt,
     });
   }
 

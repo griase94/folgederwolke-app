@@ -5,11 +5,16 @@
 	import ProjectDetailHero from '$lib/components/admin/projects/ProjectDetailHero.svelte';
 	import ProjectOverviewTab from '$lib/components/admin/projects/ProjectOverviewTab.svelte';
 	import ProjectTransactionsTab from '$lib/components/admin/projects/ProjectTransactionsTab.svelte';
+	import ProjectRechnungenTab from '$lib/components/admin/projects/ProjectRechnungenTab.svelte';
+	import ProjectAuslagenTab from '$lib/components/admin/projects/ProjectAuslagenTab.svelte';
+	import ProjectBelegeTab from '$lib/components/admin/projects/ProjectBelegeTab.svelte';
+	import ProjectVerlaufTab from '$lib/components/admin/projects/ProjectVerlaufTab.svelte';
+	import SphereOverrideBanner from '$lib/components/admin/projects/SphereOverrideBanner.svelte';
 	import EditProjectDialog from '$lib/components/admin/projects/EditProjectDialog.svelte';
 
 	let { data }: { data: PageData } = $props();
 
-	type Tab = 'uebersicht' | 'transaktionen';
+	type Tab = 'uebersicht' | 'transaktionen' | 'rechnungen' | 'auslagen' | 'belege' | 'verlauf';
 	let activeTab = $state<Tab>('uebersicht');
 
 	let editOpen = $state(false);
@@ -29,6 +34,15 @@
 					: toast.success;
 		fn(data.toast.message);
 	});
+
+	const tabs: Array<{ id: Tab; label: string }> = [
+		{ id: 'uebersicht', label: 'Übersicht' },
+		{ id: 'transaktionen', label: 'Transaktionen' },
+		{ id: 'rechnungen', label: 'Rechnungen' },
+		{ id: 'auslagen', label: 'Auslagen' },
+		{ id: 'belege', label: 'Belege' },
+		{ id: 'verlauf', label: 'Verlauf' },
+	];
 </script>
 
 <svelte:head>
@@ -72,43 +86,41 @@
 		{onEdit}
 	/>
 
-	<nav class="flex gap-2 border-b border-border" aria-label="Projekt-Tabs">
-		<button
-			type="button"
-			onclick={() => (activeTab = 'uebersicht')}
-			class={[
-				'border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-				activeTab === 'uebersicht'
-					? 'border-primary text-foreground'
-					: 'border-transparent text-muted-foreground hover:text-foreground',
-			].join(' ')}
-			data-testid="project-tab"
-			data-tab="uebersicht"
-			aria-pressed={activeTab === 'uebersicht'}
-		>
-			Übersicht
-		</button>
-		<button
-			type="button"
-			onclick={() => (activeTab = 'transaktionen')}
-			class={[
-				'border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-				activeTab === 'transaktionen'
-					? 'border-primary text-foreground'
-					: 'border-transparent text-muted-foreground hover:text-foreground',
-			].join(' ')}
-			data-testid="project-tab"
-			data-tab="transaktionen"
-			aria-pressed={activeTab === 'transaktionen'}
-		>
-			Transaktionen
-		</button>
+	<!-- ADR-0008: sphere override banner — shown when project overrides category sphere -->
+	<SphereOverrideBanner sphereDefault={data.project.sphereDefault ?? null} />
+
+	<nav class="flex gap-2 overflow-x-auto border-b border-border" aria-label="Projekt-Tabs">
+		{#each tabs as tab (tab.id)}
+			<button
+				type="button"
+				onclick={() => (activeTab = tab.id)}
+				class={[
+					'border-b-2 px-3 py-3 text-sm font-medium whitespace-nowrap transition-colors',
+					activeTab === tab.id
+						? 'border-primary text-foreground'
+						: 'border-transparent text-muted-foreground hover:text-foreground',
+				].join(' ')}
+				data-testid="project-tab"
+				data-tab={tab.id}
+				aria-pressed={activeTab === tab.id}
+			>
+				{tab.label}
+			</button>
+		{/each}
 	</nav>
 
 	{#if activeTab === 'uebersicht'}
 		<ProjectOverviewTab project={data.project} financials={data.financials} />
 	{:else if activeTab === 'transaktionen'}
 		<ProjectTransactionsTab rows={data.transactions} />
+	{:else if activeTab === 'rechnungen'}
+		<ProjectRechnungenTab rechnungen={data.rechnungen} />
+	{:else if activeTab === 'auslagen'}
+		<ProjectAuslagenTab auslagen={data.auslagen} />
+	{:else if activeTab === 'belege'}
+		<ProjectBelegeTab belege={data.belege} />
+	{:else if activeTab === 'verlauf'}
+		<ProjectVerlaufTab events={data.verlauf} />
 	{/if}
 </main>
 

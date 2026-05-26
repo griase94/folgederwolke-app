@@ -157,6 +157,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     projectName: null,
     wofuer: s.wofuer ?? null,
     kommentar: s.kommentar ?? null,
+    // C7-INBOX full: decided/decision data so the detail view matches the
+    // list-view shape. Detail page uses its own status banner block, but the
+    // type contract is shared.
+    decided: s.decidedAt ? "yes" : "no",
+    decision:
+      s.decision === "approved"
+        ? "approved"
+        : s.decision === "rejected"
+          ? "rejected"
+          : null,
     externName: s.externName ?? null,
     externIbanMasked: maskIban(s.externIban),
     externEmail: s.externEmail ?? null,
