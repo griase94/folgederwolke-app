@@ -111,19 +111,20 @@ run `ALTER ROLE app_runtime WITH LOGIN PASSWORD 'app_runtime'` (and the same for
 
 ## Key ADR summary
 
-| ADR  | Topic                                  | Status               |
-| ---- | -------------------------------------- | -------------------- |
-| 0001 | Year derivation via `year_for_booking` | Accepted             |
-| 0002 | Sphere snapshot on booking             | Accepted             |
-| 0003 | Cents-only monetary storage            | Accepted             |
-| 0004 | Audit log tamper-evidence (hash chain) | Accepted (Phase 7.5) |
-| 0005 | Mail idempotency via `sent_mails`      | Accepted             |
-| 0006 | Festschreibung / year-close lock       | Accepted             |
-| 0007 | bezahlt_von discriminated union        | Accepted             |
-| 0008 | Project sphere override                | Accepted             |
-| 0009 | Auth threat model                      | Accepted             |
-| 0010 | Importer business_id deduplication     | Accepted             |
-| 0012 | Blob storage festschreibung control    | Accepted (Phase 9)   |
+| ADR  | Topic                                   | Status               |
+| ---- | --------------------------------------- | -------------------- |
+| 0001 | Year derivation via `year_for_booking`  | Accepted             |
+| 0002 | Sphere snapshot on booking              | Accepted             |
+| 0003 | Cents-only monetary storage             | Accepted             |
+| 0004 | Audit log tamper-evidence (hash chain)  | Accepted (Phase 7.5) |
+| 0005 | Mail idempotency via `sent_mails`       | Accepted             |
+| 0006 | Festschreibung / year-close lock        | Accepted             |
+| 0007 | bezahlt_von discriminated union         | Accepted             |
+| 0008 | Project sphere override                 | Accepted             |
+| 0009 | Auth threat model                       | Accepted             |
+| 0010 | Importer business_id deduplication      | Accepted             |
+| 0011 | Preview environment + post-deploy smoke | Accepted             |
+| 0012 | Blob storage festschreibung control     | Accepted (Phase 9)   |
 
 ---
 
