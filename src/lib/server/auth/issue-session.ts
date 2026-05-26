@@ -5,12 +5,12 @@
 
 import { randomBytes } from "node:crypto";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
+import * as schema from "../db/schema/index.js";
 import { sessions } from "../db/schema/users.js";
 import { sha256 } from "./hash.js";
 
 // Structural type: accepts any drizzle db or transaction that can insert.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SessionWriter = Pick<PostgresJsDatabase<any>, "insert">;
+type SessionWriter = Pick<PostgresJsDatabase<typeof schema>, "insert">;
 
 /**
  * Mint a fresh session row for `userId` and return the raw token.
