@@ -45,7 +45,7 @@ test.describe("preview smoke @preview", () => {
     // Either the form is enabled (h1 "Auslage einreichen") or it shows the
     // soft-fallback message ("Vorübergehend nicht verfügbar"). Both are valid
     // 200 renders — we just assert the page painted something visible.
-    await expect(page.locator("main h1").first()).toBeVisible({
+    await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible({
       timeout: 30_000,
     });
   });
@@ -89,6 +89,13 @@ test.describe("preview smoke @preview", () => {
     await expect(
       page.getByRole("heading", { name: /Mitglied hinzufügen/i }),
     ).not.toBeVisible({ timeout: 15_000 });
+
+    // Positive assertion: the namespaced vorname must render in the list.
+    // Without this, a retry that re-creates the row would still pass on the
+    // dialog-closed check alone — retries: 3 makes that a silent dupe risk.
+    await expect(page.getByText(nsLabel("smoke-vorname"))).toBeVisible({
+      timeout: 15_000,
+    });
   });
 
   test("admin can upload a beleg (real Blob chain)", async ({ page }) => {
@@ -101,7 +108,7 @@ test.describe("preview smoke @preview", () => {
       name: /^Ausgabe$/i,
       pressed: true,
     });
-    const isAlreadyActive = await ausgabeBtn.count();
+    const isAlreadyActive = (await ausgabeBtn.count()) > 0;
     if (!isAlreadyActive) {
       await page.getByRole("button", { name: /^Ausgabe$/i }).click();
     }
