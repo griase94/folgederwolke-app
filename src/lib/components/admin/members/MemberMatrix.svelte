@@ -39,7 +39,12 @@
 	}
 
 	const headerTotals = $derived<MemberBeitragsTotals>(
-		totalsByYear[activeYear] ?? { memberCount: 0, paidCents: 0, offenCents: 0 }
+		totalsByYear[activeYear] ?? {
+			memberCount: 0,
+			exemptCount: 0,
+			paidCents: 0,
+			offenCents: 0
+		}
 	);
 
 	// Count paid per year
@@ -94,7 +99,8 @@
 		{/each}
 	</div>
 
-	<!-- C5-MEM-lite — €-summen header: {N} Mitglieder · {X €} offen · {Y €} bezahlt -->
+	<!-- C5-MEM-lite — €-summen header: {N} Mitglieder · {X €} offen · {Y €} bezahlt
+	     C5-MEM-full Night-2 — append a `{N} befreit` chip when exemptCount > 0 -->
 	<div
 		class="border-b border-border bg-card px-4 py-3 dark:bg-card/60"
 		data-testid="matrix-header-totals"
@@ -106,6 +112,15 @@
 			<span data-testid="matrix-header-offen">{fmtEur(headerTotals.offenCents)} offen</span>
 			<span class="text-muted-foreground">·</span>
 			<span data-testid="matrix-header-bezahlt">{fmtEur(headerTotals.paidCents)} bezahlt</span>
+			{#if headerTotals.exemptCount > 0}
+				<span
+					data-testid="matrix-header-exempt"
+					class="ml-3 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-900 dark:text-amber-100"
+					title="Aktive Mitglieder mit ausgesetzter Beitragspflicht"
+				>
+					{headerTotals.exemptCount} befreit
+				</span>
+			{/if}
 		</p>
 	</div>
 

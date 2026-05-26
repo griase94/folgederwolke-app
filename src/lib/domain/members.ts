@@ -26,9 +26,15 @@ export type BeitragCell = {
  * Mirrored by the server helper `memberBeitragsTotals(year)` in
  * `$lib/server/domain/members.ts` (re-exported from there for callers that
  * already use the server module).
+ *
+ * Night-2 C5-MEM-full extends the aggregate with `exemptCount` (count of
+ * active members where `beitrag_exempt = true`). Exempt members are also
+ * excluded from the `offenCents` sum — see `memberBeitragsTotals` in
+ * `$lib/server/domain/members.ts` for the SQL.
  */
 export type MemberBeitragsTotals = {
   memberCount: number;
+  exemptCount: number;
   paidCents: number;
   offenCents: number;
 };
