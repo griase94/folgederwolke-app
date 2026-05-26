@@ -92,6 +92,7 @@ jobs:
         id: mint
         env:
           E2E_ADMIN_EMAIL: e2e-admin@folgederwolke.de
+          SESSION_SECRET: ${{ secrets.PREVIEW_SESSION_SECRET }}
         run: |
           COOKIE=$(pnpm tsx scripts/mint-session.ts)
           echo "::add-mask::$COOKIE"

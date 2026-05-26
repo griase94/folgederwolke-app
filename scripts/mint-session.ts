@@ -16,10 +16,12 @@ import { eq } from "drizzle-orm";
 import * as schema from "../src/lib/server/db/schema/index.js";
 import { issueSession } from "../src/lib/server/auth/issue-session.js";
 import { SESSION_COOKIE_NAME } from "../src/lib/server/auth/cookie-names.js";
+import { sign } from "../src/lib/server/auth/cookie-sign.js";
 
 export interface MintOpts {
   email: string;
   directDatabaseUrl: string;
+  secret: string;
 }
 
 export async function mintSession(opts: MintOpts): Promise<string> {
@@ -37,7 +39,7 @@ export async function mintSession(opts: MintOpts): Promise<string> {
       );
     }
     const { token } = await issueSession(db, u.id);
-    return `${SESSION_COOKIE_NAME}=${token}`;
+    return `${SESSION_COOKIE_NAME}=${sign(token, opts.secret)}`;
   } finally {
     await client.end();
   }
@@ -58,9 +60,17 @@ async function main() {
     );
     process.exit(1);
   }
+  const secret = process.env["SESSION_SECRET"];
+  if (!secret) {
+    console.error(
+      "ERROR: SESSION_SECRET required — minted cookies must HMAC-match the deployed app.",
+    );
+    process.exit(1);
+  }
   const out = await mintSession({
     email: process.env["E2E_ADMIN_EMAIL"] || "e2e-admin@folgederwolke.de",
     directDatabaseUrl: url,
+    secret,
   });
   process.stdout.write(out);
 }

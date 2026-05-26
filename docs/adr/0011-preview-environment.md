@@ -53,7 +53,9 @@ no additional paid services.
    `scripts/mint-session.ts` CLI uses it to insert a real session row and
    print the cookie, which the workflow injects via Playwright's
    `context.addCookies`. The magic-link SMTP path is bypassed; the DB path is
-   exercised.
+   exercised. The minted cookie is HMAC-signed with the preview environment's
+   `SESSION_SECRET` (identical to the magic-link flow's signing — `cookie-sign.ts`
+   is shared between `cookies.ts` and `mint-session.ts`).
 
 7. **Branch protection gates on the check.** `main` requires the
    `preview-e2e / e2e` status check to pass on the PR head SHA before merge.
@@ -128,7 +130,9 @@ New files added in this change set:
 
 Modified files:
 
-| Path                           | Change                                                 |
-| ------------------------------ | ------------------------------------------------------ |
-| `src/lib/server/auth/index.ts` | Extract `issueSession()` from `consumeMagicLink`       |
-| `.github/workflows/ci.yml`     | Add `paths-ignore` for docs, cache Playwright browsers |
+| Path                                 | Change                                                        |
+| ------------------------------------ | ------------------------------------------------------------- |
+| `src/lib/server/auth/index.ts`       | Extract `issueSession()` from `consumeMagicLink`              |
+| `src/lib/server/auth/cookies.ts`     | Delegate `sign`/`unsign` to `cookie-sign.ts` (env stays here) |
+| `src/lib/server/auth/cookie-sign.ts` | Pure-Node HMAC sign/unsign — shared by `cookies.ts` + scripts |
+| `.github/workflows/ci.yml`           | Add `paths-ignore` for docs, cache Playwright browsers        |
