@@ -259,6 +259,15 @@ export const actions: Actions = {
       });
     }
 
+    // Night-2 C5-MEM-full: refuse to remind exempt members — they don't
+    // owe anything, so a "you owe €X" mail would be wrong.
+    if (member.beitragExempt) {
+      return fail(422, {
+        action: "send-reminder",
+        error: "Mitglied ist von der Beitragspflicht befreit",
+      });
+    }
+
     // Fetch beitrag for year (to get betrag_cents)
     const beitragRows = await db
       .select()
