@@ -22,6 +22,7 @@ import { canonicalizeEmail } from "$lib/domain/email.js";
 import { ipToPrefix } from "$lib/domain/ip.js";
 import { sendMail } from "$lib/server/mail/index.js";
 import { sha256 } from "./hash.js";
+import { issueSession } from "./issue-session.js";
 import {
   checkIntentCookie,
   clearIntentCookie,
@@ -184,30 +185,7 @@ export async function getMagicLinkByToken(rawToken: string) {
 // Issue session (extracted so the mint-session CLI can call it directly)
 // ---------------------------------------------------------------------------
 
-// Same shape as AuditWriter (audit-log/index.ts) — accepts db or tx handle.
-type SessionWriter = Pick<ReturnType<typeof getDb>, "insert">;
-
-/**
- * Mint a fresh session row for `userId` and return the raw token.
- *
- * Caller is responsible for setting the session cookie (this helper has no
- * access to `cookies`). TTL matches the magic-link flow: 30 days absolute.
- */
-export async function issueSession(
-  dbOrTx: SessionWriter,
-  userId: string,
-): Promise<{ token: string }> {
-  const token = randomBytes(32).toString("base64url");
-  const tokenHash = sha256(token);
-  const now = new Date();
-  await dbOrTx.insert(sessions).values({
-    userId,
-    tokenHash,
-    expiresAt: new Date(now.getTime() + 30 * 86400_000),
-    lastUsedAt: now,
-  });
-  return { token };
-}
+export { issueSession } from "./issue-session.js";
 
 // ---------------------------------------------------------------------------
 // Consume magic link (POST verify) — transactional (MUST-fix #1)

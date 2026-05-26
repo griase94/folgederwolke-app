@@ -8,9 +8,12 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Cookies } from "@sveltejs/kit";
 import { env } from "$lib/server/env.js";
+import { INTENT_COOKIE_NAME, SESSION_COOKIE_NAME } from "./cookie-names.js";
 
-const SESSION_COOKIE = "session";
-const INTENT_COOKIE = "magic_link_intent";
+export { SESSION_COOKIE_NAME } from "./cookie-names.js";
+
+const SESSION_COOKIE = SESSION_COOKIE_NAME;
+const INTENT_COOKIE = INTENT_COOKIE_NAME;
 
 // ---------------------------------------------------------------------------
 // HMAC signing
