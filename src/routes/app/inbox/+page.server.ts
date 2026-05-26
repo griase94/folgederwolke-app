@@ -266,6 +266,10 @@ export const actions: Actions = {
   "inline-approve": async ({ request, locals }) => {
     const actorUserId = locals.session!.user.id;
 
+    if (locals.session?.user.role !== "admin") {
+      return fail(403, { error: "Nur Admins können freigeben." });
+    }
+
     let formData: FormData;
     try {
       formData = await request.formData();
@@ -298,6 +302,10 @@ export const actions: Actions = {
    */
   "inline-reject": async ({ request, locals }) => {
     const actorUserId = locals.session!.user.id;
+
+    if (locals.session?.user.role !== "admin") {
+      return fail(403, { error: "Nur Admins können freigeben." });
+    }
 
     let formData: FormData;
     try {
