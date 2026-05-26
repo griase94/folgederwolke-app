@@ -119,6 +119,23 @@
 		</div>
 	{/if}
 
+	<!-- Night-2 C5-MEM-full — exempt banner sits ABOVE the timeline (or empty
+	     state) so admins still see the Beitragsbefreit context even before
+	     any Beitragsrows exist for this member. -->
+	{#if beitragExempt}
+		<div
+			class="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+			data-testid="beitragsverlauf-exempt-banner"
+		>
+			<p class="font-medium">Beitragspflicht ausgesetzt</p>
+			{#if beitragExemptReason}
+				<p class="mt-0.5 text-xs text-amber-700">
+					Grund: {beitragExemptReason}
+				</p>
+			{/if}
+		</div>
+	{/if}
+
 	<!-- Timeline -->
 	{#if sorted.length === 0}
 		<div class="rounded-xl border border-dashed border-border py-10 text-center">
@@ -144,21 +161,6 @@
 				class="absolute left-[19px] top-4 bottom-4 w-px bg-border"
 				aria-hidden="true"
 			></div>
-
-			{#if beitragExempt}
-				<!-- Night-2 C5-MEM-full — exempt banner above the timeline. -->
-				<div
-					class="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-					data-testid="beitragsverlauf-exempt-banner"
-				>
-					<p class="font-medium">Beitragspflicht ausgesetzt</p>
-					{#if beitragExemptReason}
-						<p class="mt-0.5 text-xs text-amber-700">
-							Grund: {beitragExemptReason}
-						</p>
-					{/if}
-				</div>
-			{/if}
 
 			{#each sorted as b (b.id)}
 				{@const status = rowStatus(b)}
