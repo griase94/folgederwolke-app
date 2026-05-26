@@ -104,6 +104,8 @@
 					<MemberBeitragsTimeline
 						beitrags={data.beitrags}
 						memberId={data.member.id}
+						beitragExempt={data.member.beitragExempt}
+						beitragExemptReason={data.member.beitragExemptReason}
 					/>
 				{/if}
 			</div>
@@ -168,9 +170,12 @@
 		</div>
 		<Button
 			onclick={() => (reminderSheetOpen = true)}
-			disabled={!data.member.email}
+			disabled={!data.member.email || data.member.beitragExempt}
 			class="shrink-0"
 			aria-label="Erinnerungs-Mail vorbereiten für {fullName}"
+			title={data.member.beitragExempt
+				? 'Mitglied ist von der Beitragspflicht befreit'
+				: undefined}
 		>
 			<svg
 				class="mr-2 h-4 w-4"

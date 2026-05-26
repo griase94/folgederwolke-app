@@ -77,6 +77,8 @@ export async function addMember(
     telefon,
     adresse,
     date_of_birth,
+    beitrag_exempt,
+    beitrag_exempt_reason,
   } = result.data;
 
   const insertedRows = await db
@@ -92,6 +94,12 @@ export async function addMember(
       dateOfBirth: date_of_birth || null,
       role,
       eintrittsDatum: eintritts_datum,
+      // Night-2 C5-MEM-full: clear the reason if the flag is off so we
+      // never persist a stale justification for a non-exempt member.
+      beitragExempt: beitrag_exempt,
+      beitragExemptReason: beitrag_exempt
+        ? (beitrag_exempt_reason ?? null)
+        : null,
     })
     .returning({ id: members.id });
 
@@ -100,7 +108,13 @@ export async function addMember(
   await bus.emit("member.created", {
     memberId,
     actorUserId,
-    payload: { vorname, nachname, email: email ?? null, role },
+    payload: {
+      vorname,
+      nachname,
+      email: email ?? null,
+      role,
+      beitragExempt: beitrag_exempt,
+    },
   });
 
   return { ok: true, memberId };
@@ -131,6 +145,8 @@ export async function editMember(
     telefon,
     adresse,
     date_of_birth,
+    beitrag_exempt,
+    beitrag_exempt_reason,
   } = result.data;
 
   await db
@@ -146,6 +162,12 @@ export async function editMember(
       dateOfBirth: date_of_birth || null,
       role,
       eintrittsDatum: eintritts_datum,
+      // Night-2 C5-MEM-full: clearing the flag also clears the reason so we
+      // never leave a stale justification behind on a no-longer-exempt member.
+      beitragExempt: beitrag_exempt,
+      beitragExemptReason: beitrag_exempt
+        ? (beitrag_exempt_reason ?? null)
+        : null,
       updatedAt: new Date(),
     })
     .where(eq(members.id, id));
@@ -153,7 +175,13 @@ export async function editMember(
   await bus.emit("member.updated", {
     memberId: id,
     actorUserId,
-    payload: { vorname, nachname, email: email ?? null, role },
+    payload: {
+      vorname,
+      nachname,
+      email: email ?? null,
+      role,
+      beitragExempt: beitrag_exempt,
+    },
   });
 
   return { ok: true };

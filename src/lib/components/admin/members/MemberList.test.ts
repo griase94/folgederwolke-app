@@ -29,6 +29,8 @@ const sampleMember: MemberView = {
   role: "member",
   eintrittsDatum: "2025-01-15",
   austrittsDatum: null,
+  beitragExempt: false,
+  beitragExemptReason: null,
   isFixture: false,
   createdAt: "2025-01-15",
   beitrags: {

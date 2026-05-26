@@ -30,13 +30,21 @@ export const statusEnum = pgEnum("status", [
   "erstattet",
 ]);
 
-/** Members.role within the Verein. Free-text in legacy; here a closed set. */
+/**
+ * Members.role within the Verein. Free-text in legacy; here a closed set.
+ *
+ * Night-2 C5-MEM-full adds `extern` (non-member contributors, e.g. external
+ * Auslage submitters) and `helfer` (regular helpers who are not yet — or
+ * never were — Vereinsmitglieder but participate in our activities).
+ */
 export const memberRoleEnum = pgEnum("member_role", [
   "vorstand",
   "kassenwart",
   "schriftfuehrer",
   "mitglied",
   "fördermitglied",
+  "extern",
+  "helfer",
 ]);
 
 /**
