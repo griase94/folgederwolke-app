@@ -31,26 +31,29 @@ const PAGE_W = 210 * MM;
 const PAGE_H = 297 * MM;
 const MARGIN_TOP = 10 * MM;
 const MARGIN_BOTTOM = 10 * MM;
+// Andy review v2.5 (2026-05-26): mirror left margin to the right so EVERY
+// element (logo, meta block, table, footer columns) is symmetric. Body sits
+// at 20mm L / 20mm R now.
 const MARGIN_LEFT = 20 * MM;
-const MARGIN_RIGHT = 10 * MM;
+const MARGIN_RIGHT = 20 * MM;
 const CONTENT_W = PAGE_W - MARGIN_LEFT - MARGIN_RIGHT;
 
-// Font sizes (pt)
-// Variant-default; overridden per-variant in renderRechnungV2 (32 for Anton,
-// 40 for Bebas Neue, 42 for editorial Anton).
+// Font sizes (pt) — Andy review v2.5 (2026-05-26): all body fonts down -1pt
+// for a more refined, less "Word document" feel. KEEP at original size:
+//   - SIZE_WORDMARK_DEFAULT (32) — the "RECHNUNG" wordmark
+//   - SIZE_SUBTITLE_BOLD (9) + SIZE_SUBTITLE_ITALIC (8) — the lines under it
+//   - SIZE_SECTION_TITLE (11) — the "RECHNUNG NR. ..." line
 const SIZE_WORDMARK_DEFAULT = 32;
 const SIZE_SUBTITLE_BOLD = 9;
 const SIZE_SUBTITLE_ITALIC = 8;
-const SIZE_ADDRESS = 10;
-const SIZE_META_LABEL = 10;
-const SIZE_META_VALUE = 10;
+const SIZE_ADDRESS = 9;
+const SIZE_META_LABEL = 9;
+const SIZE_META_VALUE = 9;
 const SIZE_SECTION_TITLE = 11;
-const SIZE_BODY = 10;
-// Design review: header + Gesamtsumme labels render at 11pt in reference,
-// one step above the 10pt body — restores hierarchy + makes rosa bands "heavier".
-const SIZE_TABLE_HEADER = 11;
-const SIZE_TABLE_CELL = 10;
-const SIZE_FOOTER = 8;
+const SIZE_BODY = 9;
+const SIZE_TABLE_HEADER = 10;
+const SIZE_TABLE_CELL = 9;
+const SIZE_FOOTER = 7;
 
 // Input contract
 export interface RechnungV2Input {
