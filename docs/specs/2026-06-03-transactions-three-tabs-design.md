@@ -1,254 +1,263 @@
 # Transactions Redesign — Ausgaben / Einnahmen / Spenden as three tabs
 
-**Status:** Design (approved in brainstorming) — ready for implementation plan
-**Date:** 2026-06-03
+**Status:** Design (approved in brainstorming) — rebased onto `origin/main` (Phase 12). Ready for implementation plan.
+**Date:** 2026-06-03 (rev. 2 — reconciled with shipped code)
 **Author:** Andy + Claude (brainstorming session)
 **Primary user:** Julia, Kassenwartin (treasurer) — daily operator, calm-UI preference, year-end close.
+
+> **Baseline note.** This branch (`feat/transactions-three-tabs`) was originally cut from Phase 8; `origin/main` is now at Phase 12 and has _already shipped_ much of the infrastructure this feature needs. This revision builds **on** that shipped code rather than reinventing it. Before implementation, rebase this branch onto `origin/main`. A parallel branch `phase-beitrag-1-datamodel` (membership dues) is **orthogonal** — it touches none of our surfaces (Beiträge live in `member_beitrags`, not `income`); only coordinate migration numbering and treat `members` as read-only.
 
 ---
 
 ## 1. Problem & Goals
 
-The current `/app/transactions` is one merged list with a type-tab header and a half-separate `/spenden` sub-route. Categories aren't enforced, income editing is minimal, beleg handling is loose, there is no coherent year scope, and the "Verein paid it directly" case is clumsy.
+Today `/app/transactions` is one merged list with a type-tab header plus a half-separate `/spenden` sub-route. Categories aren't enforced, income editing is thin, the "Verein paid directly" case is clumsy, and filtering is client-side (fetch-all-then-slice).
 
 **Goals**
 
-- Split transactions into three first-class tabs — **Ausgaben**, **Einnahmen**, **Spenden** — each with its own logic, requirements, and elegant list/entry/detail UX.
-- **Mandatory Kategorie** on Ausgaben + Einnahmen; **Sphäre derived from Kategorie** (no manual override).
-- Elegant, robust, **composable filtering + saved views** (chip-based) shared across tabs.
-- **Mandatory Beleg** on Ausgaben (or an explicit, justified "kein Beleg"); **Rechnung-linked** Einnahmen reflect the link; optional Beleg on other Einnahmen.
-- Mark Ausgaben as paid elegantly; when the **Verein** pays directly, book it as paid immediately from the entry form. Admins can also mark a member/extern expense as already paid.
-- **EÜR and all downstream views** reflect these changes.
-- **Year scope** coherent everywhere — but per-surface, not a single global switch (see §5).
-- Bullet-proof data integrity (GoBD/ADR-aligned), great UX, mobile-friendly. Pragmatic for a ~20-person Verein.
+- Split into three first-class tabs — **Ausgaben**, **Einnahmen**, **Spenden** — each with its own logic, list, entry, and detail UX.
+- **Mandatory Kategorie** on Ausgaben + Einnahmen; **Sphäre strictly derived from Kategorie** (no override in our UI). Spenden derive Kategorie from Spendenart + Zweckbindung.
+- **Bullet-proof, composable filtering + saved views** (chip-based, server-side) shared across tabs.
+- **Mandatory Beleg** on Ausgaben (or an explicit, justified "kein Beleg"); Einnahmen Beleg optional; Rechnung-linked Einnahmen show the link.
+- Elegant mark-as-paid: Verein-direct books paid immediately; admins can mark a member/extern expense already-paid; **bulk** mark-paid.
+- Everything reflects in the (already shipped) EÜR + dashboard.
+- Great, fully responsive UX; pragmatic for a ~20-person Verein.
 
-**Non-goals / deferred** (see §13)
-
-- Analytical multi-year dashboard ("Auswertungen") — fast-follow.
-- Aufwandsspende workflow (Phase 2, schema present, UI gated).
-- Global topbar year picker (explicitly rejected — see §5).
-- Post-Festschreibung sphere_overrides (Phase 2, ADR-0011).
+**Non-goals / deferred** (see §14): analytical multi-year dashboard (**already shipped** — cashflow cards, sphere chips, sparklines, EÜR YoY); Aufwandsspende (Phase 2); partial invoice payments; post-Festschreibung sphere_overrides (Phase 2, ADR-0011).
 
 ---
 
-## 2. Scope decisions (locked)
+## 2. What we REUSE vs BUILD
 
-1. **Wipe all existing transaction data** (Ausgaben + Einnahmen + Spenden). Clean slate; new constraints enforced from day one. No legacy-row escape hatches needed.
-2. **Routing:** flat top-level routes — `/app/ausgaben`, `/app/einnahmen`, `/app/spenden`, with detail at `/app/<kind>/[id]`. Three sidebar entries (replacing the single "Transaktionen").
-3. **Mandatory Kategorie** on Ausgaben + Einnahmen. **Spenden:** no Kategorie picker — derived from Spendenart + Zweckbindung (badge shown).
-4. **Sphäre is derived from the chosen Kategorie and cannot be overridden** in the UI. Spenden sphere is always `ideeller`.
-5. **Year scope:** no global picker. Year-as-filter on lists (default current year, supports "Alle Jahre"); year-in-route for EÜR/Jahresabschluss; "Heute" dashboard always live.
-6. **Edit happens on a dedicated detail route** `/app/<kind>/[id]`, presented as a modal-style surface (header / scrollable body / unified footer).
-7. **Mobile:** lists collapse to cards → tap opens detail; Beleg uses a fold (peek → full-screen viewer).
+### 2.1 Reuse (already shipped on `origin/main` — do not rebuild)
+
+| Capability                                                            | Where it lives                                                                                                                                                                                                                     |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Global year switcher** (`?year=`, topbar segmented + mobile select) | `YearSwitcher.svelte`, `MobileYearPicker.svelte`, `src/lib/domain/year.ts`, `src/lib/server/domain/years.ts`, `/app/+layout.server.ts` (provides `selectedYear`, `availableYears`, `currentYear`, `festgeschriebenBis`)            |
+| **Upload pipeline + Blob + `files` table**                            | `src/lib/server/files/` (`storage.ts`, `upload-pipeline.ts`, `thumbnail.ts`), `files` schema, `belegFileId` FK on all three tx tables, `/api/files/[id]/blob` + `/thumbnail`                                                       |
+| **Client HEIC→JPEG + scan-PDF compression**                           | `src/lib/client/file-compress.ts` (browser-image-compression; pdfjs)                                                                                                                                                               |
+| **Rechnung → income link**                                            | `markInvoiceAsPaid()`, `undoPayment()`, `editInvoice()` in `src/lib/server/domain/invoices.ts`; `invoices.paidByIncomeId` + `bezahltAm`                                                                                            |
+| **Sphere resolver + EÜR + dashboard**                                 | `resolveSphereForKategorie()` (`transaction-pickers.ts`); EÜR workspace `/app/jahresabschluss/[year]/*` (`computeEurYear`, `SphereYoYTable`); dashboard cashflow (`CashflowOverviewSection.svelte`, `src/lib/domain/cashflow.ts`)  |
+| **Tx create/detail helpers**                                          | `createExpense/createIncome/createDonation`, `getTransactionDetail`, `markExpenseAsPaid` (reimbursement), `checkFestschreibungGate`, `listZahlungsarten`, `listApprovedPendingErstattet` (`src/lib/server/domain/transactions.ts`) |
+| **pdfjs-dist** (`^4.10.38`, worker wired)                             | already a client dependency                                                                                                                                                                                                        |
+
+### 2.2 Build (this spec)
+
+Three flat routes + nav; mandatory Kategorie (NOT NULL); the **full** chip-based filter backbone (replacing client-side filtering); entry-form upgrades (Verein auto-paid, "Schon bezahlt" admin toggle, beleg-or-Begründung, Sachspende Wertermittlung, derived-sphere badge); detail-page redesign (Beleg-left + unified footer + mobile fold + **unified pdfjs canvas viewer**); Spenden 3-picker form; per-tab list UIs + KPIs; bulk mark-paid; CSV export of the filtered list; duplicate-as-template; polished empty/error/loading states.
 
 ---
 
-## 3. Data model changes
+## 3. Scope decisions (locked)
 
-> All money in integer cents (ADR-0003). All new app rows carry `source_kind='app'` (ADR-0010). Year via `year_for_booking(gebucht_am)` (ADR-0001). Festschreibung gates writes (ADR-0006). Side effects via event bus (§4.1.1 #2). Audit log append-only (ADR-0004).
+1. **Routing:** flat `/app/ausgaben`, `/app/einnahmen`, `/app/spenden`; detail at `/app/<kind>/[id]`. **Desktop:** three sidebar entries. **Mobile:** keep ONE "Transaktionen" bottom-tab → lands on a **segmented Ausgaben | Einnahmen | Spenden switcher** (the 4-slot mobile bar is already full).
+2. **Year scope:** **adopt the shipped global `?year=` switcher** on all three tabs (lists consume `selectedYear` from layout). Add an **"Alle Jahre"** option **for the lists only**; dashboard/EÜR require a concrete year (coerce `?year=all` → current year, with a one-line note). Keep EÜR's `[year]` path-segment model. Add a **loud stale-year banner** when `selectedYear ≠ currentYear` ("Ansicht: 2024 — nicht das laufende Jahr") and **year-named empty states** ("Keine Buchungen in 2024").
+3. **Mandatory Kategorie** on Ausgaben + Einnahmen (`kategorie_id` NOT NULL + UI required). Spenden: no Kategorie picker — derived.
+4. **Sphäre strictly follows the chosen Kategorie** in our entry/edit forms: set `sphere_snapshot = kategorie.sphere`; **do not apply project sphere-default; do not expose any manual override.** Keep the existing ADR-0008 columns (`sphere_override`, project `sphere_default`) for compatibility but our new forms never set/use them. (Note: this intentionally bypasses `resolveSphereForKategorie`'s project-override branch for new app entries.)
+5. **Edit on the detail route** `/app/<kind>/[id]`, modal-style surface (header / body / unified footer).
+6. **Data:** wipe the Verein's **real prod** transaction data, reseed test fixtures for the new model, preserve invoice↔income integrity (see §15). Enforce new constraints from a clean base.
+7. **Mobile:** lists → cards; Beleg uses a fold (peek → full-screen unified viewer).
 
-### 3.1 `expenses` (Ausgaben)
+---
 
-- `kategorie_id` → **NOT NULL** (was nullable). `kategorie_name_snapshot` stays NOT NULL.
-- `sphere_snapshot` set **server-side from `kategorie.sphere`** at write time. `sphere_override` column remains (ADR-0008) but is **never set by the UI**.
-- **Beleg requirement:** a row must have either `beleg_drive_file_id` **or** a new `beleg_verzicht_grund text` (justification for "kein Beleg vorhanden", e.g. bank fees, GEMA auto-debit). Enforced app-side (and a CHECK: `beleg_drive_file_id IS NOT NULL OR beleg_verzicht_grund IS NOT NULL`). The Begründung is captured in the audit trail.
-- **Direct-paid flow:** when `bezahlt_von_kind='verein'`, or when an admin ticks "Schon bezahlt" for member/extern, the row is created with `status='erstattet'`, `erstattet_am` = chosen date (default today), `zahlungsart_id` set, `approved_at`/`approved_by` set. No Auslagenflow, Erstattungsmail only when there is a member/extern to notify (never for Verein).
+## 4. Data model changes
 
-### 3.2 `income` (Einnahmen)
+> Money in integer cents (ADR-0003); year via `year_for_booking` (ADR-0001); sphere snapshot (ADR-0002); Festschreibung gate (ADR-0006); side effects via event bus; audit append-only (ADR-0004); provenance `source_kind='app'` (ADR-0010). Migrations are additive→backfill→constrain (two-phase, CLAUDE.md), numbered after the highest free index at rebase time (origin/main is at `0025`; the beitrag branch will consume `0026–0028` — coordinate).
 
-- `kategorie_id` → **NOT NULL**. `sphere_snapshot` derived from `kategorie.sphere`.
-- Beleg **optional** (`beleg_drive_file_id` nullable).
-- **Rechnung link:** reuse existing `invoices.paid_by_income_id` (one-way). The list's 🔗 badge derives from a join (`invoices` where `paid_by_income_id = income.id`). When an Einnahme is created from a Rechnung's "Als bezahlt markieren", set `invoices.paid_by_income_id` + `invoices.bezahlt_am`, copy `income.project_id` from the invoice (**locked, not editable**), and prefill Betrag (editable for Teilzahlung) + Kategorie.
+### 4.1 `expenses`
 
-### 3.3 `donations` (Spenden)
+- `kategorie_id` → **NOT NULL** (currently nullable). `kategorie_name_snapshot`, `sphere_snapshot` already NOT NULL.
+- `sphere_snapshot` set server-side from `kategorie.sphere` (no override).
+- **Beleg requirement:** add `beleg_verzicht_grund text` (justification for "kein Beleg vorhanden" — bank fees, GEMA, etc.). CHECK: `beleg_file_id IS NOT NULL OR beleg_verzicht_grund IS NOT NULL`. The Begründung is audit-logged. (Reuses the shipped `belegFileId` FK → `files`.)
+- **Direct-paid:** `bezahlt_von_kind='verein'` (or admin "Schon bezahlt" for member/extern) → create with `status='erstattet'`, `erstattet_am` (default today), `zahlungsart_id`, `approved_at`/`approved_by`; reuse `markExpenseAsPaid` semantics. No Erstattungsmail for Verein; optional mail for member/extern.
 
-- Derived Kategorie: server maps `(spende_kind, zweckbindung_kind)` → a seeded Kategorie row; sets `kategorie_id` + `kategorie_name_snapshot`. `sphere_snapshot='ideeller'` always.
-- `zweckbindung_text` → **required when `zweckbindung_kind='zweckgebunden'`** (app-enforced; CHECK: `zweckbindung_kind='zweckfrei' OR zweckbindung_text IS NOT NULL`).
+### 4.2 `income`
+
+- `kategorie_id` → **NOT NULL**. `sphere_snapshot` from `kategorie.sphere`.
+- Beleg **optional**.
+- **Rechnung link is already built** (`markInvoiceAsPaid` sets `paidByIncomeId`/`bezahltAm` + creates the income row). We only **surface** it: a 🔗 indicator on linked rows (join on `invoices.paidByIncomeId`), and read-only "aus Rechnung FDW-…" context on the detail. No new create-from-Rechnung flow. **No partial payments** (shipped model is full-amount-only).
+
+### 4.3 `donations`
+
+- Derived Kategorie: server maps `(spende_kind, zweckbindung_kind)` → a seeded Kategorie row; sets `kategorie_id` + `kategorie_name_snapshot`; `sphere_snapshot='ideeller'` always.
+- `zweckbindung_text` **required when `zweckbindung_kind='zweckgebunden'`** (CHECK: `zweckbindung_kind='zweckfrei' OR zweckbindung_text IS NOT NULL`).
 - **Sachspende Wertermittlung** — new columns:
-  - `wertermittlung_methode` — new enum `wertermittlung_methode` = (`marktpreis`, `kaufbeleg`, `schaetzung`, `buchwert`). Required when `spende_kind='sachspende'`.
+  - `wertermittlung_methode` — new pgEnum `wertermittlung_methode` = (`marktpreis`, `kaufbeleg`, `schaetzung`, `buchwert`); required when `spende_kind='sachspende'`.
   - `zustand_beschreibung text` — required when `spende_kind='sachspende'`.
-  - `herkunftsbeleg_drive_file_id text` — optional.
-  - The monetary `betrag_cents` holds the **gemeiner Wert** (§ 9 BewG) for Sachspenden.
-- Spender: member (address from member record) **or** external person (Name + Adresse required for the Bescheinigung; Email optional).
-- **Mitgliedsbeiträge are NOT donations** — they never enter `donations` (not spendenabzugsfähig for this Verein; § 10b EStG risk). They remain a separate income/Beitrags workflow.
+  - `herkunftsbeleg_file_id uuid` → `files` — optional (separate from the main `belegFileId`).
+  - `betrag_cents` holds the **gemeiner Wert** (§ 9 BewG) for Sachspenden.
+- Spender: member (address from member record) or external person (Name + Adresse required for the Bescheinigung; Email optional).
+- **Mitgliedsbeiträge are NOT donations** (separate `member_beitrags` workflow — see beitrag branch).
 
-### 3.4 Beleg normalization (images + PDFs)
+### 4.4 `kategorien` reseed
 
-A single upload pipeline produces web-safe **page image(s)** for preview plus keeps the **original** for download:
-
-- **Images** (JPG/PNG): stored as-is + a normalized web preview. **HEIC** (iPhone) converted to JPEG/WebP server-side on upload (or rejected with a clear hint).
-- **PDFs:** server renders page(s) to images (reuse the existing PDF rendering capability used by the invoice pipeline / `pdfBytes`). The viewer always shows **page images**; the original PDF is offered via "Original öffnen ↗" → device-native viewer.
-- The viewer is **format-agnostic at the UI layer** — type-specific logic lives only in this normalization step.
-
-### 3.5 `kategorien` reseed
-
-- Reseed with correct `sphere` per category and `eur_zeile` / `anlage_gem_zeile` filled for the categories actually used (so EÜR mapping works).
-- Seed the **donation-derivation lookup** categories: e.g. "Geldspende zweckfrei", "Geldspende zweckgebunden", "Sachspende" (all `sphere='ideeller'`, `kind='income'`), each with the right Anlage-Gem/EÜR line. The `(spende_kind, zweckbindung_kind) → kategorie` mapping is a documented, unit-tested lookup; seeded as `source_kind='fixture'`.
+- Correct `sphere` per category + `eur_zeile`/`anlage_gem_zeile` for used categories (so EÜR mapping works — `computeEurYear` already consumes these).
+- Seed the donation-derivation lookup categories (`kind='income'`, `sphere='ideeller'`): e.g. "Geldspende zweckfrei", "Geldspende zweckgebunden", "Sachspende", each with its Anlage-Gem/EÜR line. The `(spende_kind, zweckbindung_kind) → kategorie` mapping is a documented, unit-tested lookup, seeded `source_kind='fixture'`.
 
 ---
 
-## 4. Filtering + saved-views backbone (shared, robust)
+## 5. Filtering + saved-views backbone (FULL, shared, robust)
 
-A typed, composable, URL-driven filtering system shared by all three list tabs.
+Typed, composable, URL-driven, **server-side** filtering shared by all three lists. (Replaces today's client-side fetch-all-then-`.slice()` in `listTransactions` — a real scaling bug.)
 
-- **Typed filter registry per tab.** Each filter field declared once: `{ key, label, type, allowedValues }` where `type ∈ {enum-multi, member-picker, date-range, amount-range, boolean}`. The chip bar renders itself from the registry; adding a filter = one registry entry.
-- **URL is the single source of truth.** Filter state serialized to `searchParams`; parsed and **Zod-validated** on load — invalid params degrade to defaults, never crash. Composes with the year param (§5).
-- **Server-side application.** Each filter field maps to one tested SQL `WHERE` predicate. Pagination + counts respect the active filters. (Replaces today's fetch-all-then-filter-client-side, which is a latent scaling bug.)
-- **Views as data.** Built-in presets defined in code (e.g. Ausgaben "Offen zu erstatten"); custom saved views in `localStorage`. Both serialize to/from the same filter-state object. One serializer, one parser.
-- **One shared component, three registries.** Identical interaction across tabs; only the registry differs. Each piece unit-tested.
-- **Chip-based UI** (Linear/Notion/Things style): persistent search box + "+ Filter" field menu + active filters as removable chips (AND-combined) + "Ansichten ▾" presets + "Zurücksetzen" + live match count.
+- **Typed filter registry per tab.** Each field declared once: `{ key, label, type, allowedValues }`, `type ∈ {enum-multi, member-picker, date-range, amount-range, boolean}`. The chip bar renders from the registry; new filter = one entry.
+- **URL is the single source of truth.** Filter state serialized to `searchParams`, **Zod-validated** on load (garbage → defaults, never crash). Composes with the global `?year=` (§6).
+- **Server-side application.** Each field maps to one tested SQL `WHERE` predicate; pagination + counts respect filters.
+- **Saved views as data.** Built-in presets in code (Ausgaben "Offen zu erstatten"; Spenden "Ohne Bescheinigung") **plus custom user-defined views** persisted in `localStorage`. Both serialize to/from the same filter-state object. One serializer/parser.
+- **One shared component, three registries.** Identical interaction across tabs; per-piece unit tests.
+- **Chip UI:** persistent search + "+ Filter" field menu + removable active chips (AND) + "Ansichten ▾" presets/saved + "Zurücksetzen" + live count.
+- **Mobile filter UX:** the chip bar collapses on small screens — year pill + search inline; "+ Filter"/active chips live in a bottom **`sheet`** (avoids chip overflow). (Use the shipped `sheet` component.)
 
-**Per-tab filter fields**
+**Per-tab fields**
 
-- **Ausgaben:** Status (offen/genehmigt/erstattet/abgelehnt), Bezahlt von (Verein/Mitglied/Extern), Kategorie, Monat, Betrag, "Beleg fehlt".
+- **Ausgaben:** Status (offen→`zu_pruefen`/`in_pruefung`, genehmigt→`geprueft`, erstattet, abgelehnt), Bezahlt von (Verein/Mitglied/Extern), Kategorie, Monat, Betrag, "Beleg fehlt".
 - **Einnahmen:** Kategorie, Sphäre, "nur mit Rechnung", Monat, Betrag.
 - **Spenden:** Spendenart, Zweckbindung, Bescheinigung-Status, Spender, Monat, Betrag.
 
-**Year is not a chip** — it's the always-visible year control (§5), to avoid two ways of setting year.
+Year is **not** a chip — it's the shipped global pill (§6), to avoid two ways of setting year.
 
 ---
 
-## 5. Year scope (no global picker)
+## 6. Year scope (adopt shipped global switcher)
 
-Rejected the global topbar picker (hidden cross-page state, mode-error risk given Festschreibung/`year_for_booking`). Instead, each surface owns its year in the way that fits it:
-
-- **Lists** (Ausgaben/Einnahmen/Spenden): an always-visible **year control** (pill) at the left of the filter bar. Defaults to **current Berlin year**; URL-synced `?year=`; supports **"Alle Jahre"**. It is part of filter state but rendered as a distinct prominent control (consistent pill component).
-- **EÜR / Jahresabschluss:** year in the **route** (`/app/jahresabschluss/[year]`) — it is the document's identity. Selecting a year is navigation.
-- **"Heute" dashboard:** **always live / current** — no year control, never pinned to a past year.
-- **Entry/edit forms:** always use real dates (`gebucht_am`, Rechnungsdatum, etc.) — never a view-filter year. No wrong-year bookings possible.
-
-The same **year-pill component** is used on lists (filter) and EÜR (navigation) so the affordance _looks_ identical even though the semantics differ.
+- **Lists** consume `selectedYear` from `/app/+layout.server.ts` (the shipped `?year=`), like the dashboard/Mitglieder/Files already do. Add **"Alle Jahre"** as a list-only switcher value; when active, suppress year-anchored summary rows and use year-named-or-"alle" empty states.
+- **Dashboard / EÜR** require a concrete year; `?year=all` coerces to `currentYear` with a one-line note (never blank KPIs). EÜR keeps its `[year]` path.
+- **Safeguards (both UX experts):** loud, non-dismissible **stale-year banner** when `selectedYear ≠ currentYear`; **year-named empty states** ("Keine Buchungen in 2024", never a bare empty state). The mobile `<select>` is quiet, so the banner is load-bearing.
+- Entry forms keep using real dates (`gebucht_am` authoritative) — the year is a hint; no wrong-year bookings.
 
 ---
 
-## 6. Ausgaben tab
-
-### 6.1 List
-
-- **KPI anchor line:** `<Jahr> · <Summe> · <N> Buchungen`, plus a **"N offen" pill** (approved-not-yet-erstattet) that **disappears when zero** (Julia's "empty inbox" delight). Includes oldest-open age as a look-hole guard (e.g. "3 offen, älteste 18 Tage").
-- **Table columns** (all sortable, click header to toggle; default Datum desc): Datum, ID (business_id, monospace), Bezeichnung (+ Bezahlt-von subtitle), **Bezahlt von**, **Kategorie**, **Sphäre** (colored badge), Betrag (right, tabular), Status (badge), chevron.
-- **Filters:** Status, Bezahlt von (+ shared search). Saved view: **"Offen zu erstatten"** (status=genehmigt & not erstattet).
-- Festgeschriebene rows visually muted, not selectable for edit.
-
-### 6.2 Entry form (sticky-footer modal)
-
-- Fields: Bezeichnung*, Betrag*, Rechnungsdatum, **Kategorie\*** (shows derived Sphäre + EÜR-Zeile hint), **Projekt** (optional), Bezahlt von\*, **Beleg\*** (upload or "Kein Beleg vorhanden" → mandatory Begründung), Kommentar.
-- **Bezahlt von toggle** drives behavior:
-  - **Verein** → green "Direkt als bezahlt buchen" panel (Zahlungsart* + Zahlungsdatum*, default today). Status on save = **erstattet**. No Erstattungsmail.
-  - **Mitglied / Extern** → default goes into the **Auslagenflow** (status `genehmigt`). An **admin-only** "Schon bezahlt?" toggle reveals the same Zahlungsart + Datum panel + optional "per E-Mail benachrichtigen"; status on save = **erstattet**.
-  - Extern reveals Name + IBAN + Email instead of the member picker.
-- **Full member names everywhere** (lists + forms) — "Maria Klingler", not "Maria K.".
-- Footer: unified, actions right; Speichern label reflects the mode ("Speichern" vs "Speichern & als bezahlt buchen").
-
-### 6.3 Auslagenflow integration
-
-The public-form → Audit-Inbox → approve flow stays. On approval, an `expenses` row is created (`status='geprueft'`/`genehmigt`) and **appears in the Ausgaben tab** with that status. Treasurer-direct entries appear with `erstattet` (Verein/already-paid). The Audit Inbox stays a separate route (where un-approved submissions wait). Approved-not-paid items surface via the "Offen zu erstatten" view + the "N offen" pill.
-
----
-
-## 7. Einnahmen tab
+## 7. Ausgaben tab
 
 ### 7.1 List
 
-- **KPI:** anchor line + **Sphären-Split chips** (Ideeller/Vermögen/Zweckbetrieb/Wirtschaftlich totals) — Julia's concern is sphere distribution on income.
-- **Columns:** Datum, ID, Bezeichnung (+ 🔗 badge if Rechnung-linked), Kategorie, Sphäre, Betrag. No status column (income has no workflow).
-- **Filters:** Kategorie, "nur mit Rechnung" (+ search).
+- **KPI anchor:** `<Jahr|Alle> · <Summe> · <N> Buchungen` + a **"N offen" pill** (approved-not-erstattet) that **disappears at zero**, showing oldest-open age ("3 offen · älteste 18 Tage") — the look-hole guard.
+- **Columns (sortable, default Datum desc):** Datum, ID, Bezeichnung (+ Bezahlt-von subtitle), Bezahlt von, Kategorie, Sphäre (colored badge), Betrag (right, tabular), Status (badge), chevron. Mobile → cards (define the card hierarchy + an explicit sort control, since headers vanish).
+- **Filters:** Status, Bezahlt von (+ search). Preset: **"Offen zu erstatten"**.
+- **Bulk:** row multi-select → **"Als bezahlt markieren"** for many at once (pairs with the existing SEPA flow / `listApprovedPendingErstattet`).
+- Festgeschriebene rows muted, not editable.
 
-### 7.2 Entry form
+### 7.2 Entry form (sticky-footer modal)
 
-- **Freie Einnahme** (e.g. Eventfrog ticket sales): Bezeichnung*, Betrag*, Geldeingang\*, **Kategorie\*** (derived Sphäre), **Projekt** (optional), Beleg (**optional**), Kommentar.
-- **Aus Rechnung** (opened from a Rechnung's "Als bezahlt markieren"): read-only 🔗 Rechnung badge; Betrag prefilled (editable for Teilzahlung); Geldeingang\*; Kategorie; **Projekt locked** (from the project-bound Rechnung, shown with 🔒 "durch die Rechnung festgelegt"); Rechnung-PDF counts as the Beleg. Sets `paid_by_income_id` + `bezahlt_am` bidirectionally.
+- Fields: Bezeichnung*, Betrag*, Rechnungsdatum, **Kategorie\*** (derived Sphäre + EÜR-Zeile hint), **Projekt** (optional), Bezahlt von\*, **Beleg\*** (upload or "Kein Beleg vorhanden" → mandatory Begründung), Kommentar.
+- **Bezahlt von** drives behavior — _distinct affordances to avoid the mode-error_:
+  - **Verein** → "Direkt als bezahlt buchen" panel (Zahlungsart* + Datum*, default today). Save → **erstattet**. No mail.
+  - **Mitglied / Extern** → default = Auslagenflow (`genehmigt`). An **admin-only** "Schon bezahlt?" toggle reveals a _visually distinct_ paid panel (Zahlungsart + Datum + optional "per E-Mail benachrichtigen"). Save → **erstattet**. Extern shows Name + IBAN + Email instead of the member picker.
+- **Full member names everywhere** (lists + forms).
+- **Duplicate-as-template:** "Duplizieren" on any Ausgabe detail → pre-filled new entry (recurring Miete/GEMA without a recurrence engine).
+- Footer: unified; Speichern label reflects mode; disabled until dirty.
+
+### 7.3 Auslagenflow integration
+
+Public-form → Belegprüfung (Audit-Inbox) → approve stays. On approval an `expenses` row appears in the Ausgaben tab (`geprueft`); treasurer-direct/Verein entries appear `erstattet`. Belegprüfung stays a separate route; the hand-off boundary: an item leaves the Inbox once approved/rejected (it then lives only in the tab).
 
 ---
 
-## 8. Spenden tab
+## 8. Einnahmen tab
 
 ### 8.1 List
 
-- **KPI:** anchor + **"N ohne Bescheinigung" pill** (disappears at zero) + "M Bescheinigungen versandt". **No fake "Sammelbestätigungs-Fenster" deadline** (there is no statutory cutoff; removed to avoid a false signal).
-- **Columns:** Datum, ID, Spender, Art (Spendenart badge), Zweckbindung, Betrag, **Bescheinigung** (shows B-Nummer when issued, else "ausstehend").
-- **Filters:** Spendenart, Zweckbindung, Bescheinigung-Status, Spender (+ search). Saved view: "Ohne Bescheinigung".
+- **KPI:** anchor + **Sphären-Split chips** (Ideeller/Vermögen/Zweckbetrieb/Wirtschaftlich totals).
+- **Columns:** Datum, ID, Bezeichnung (+ 🔗 if Rechnung-linked), Kategorie, Sphäre, Betrag. No status column.
+- **Filters:** Kategorie, "nur mit Rechnung" (+ search).
 
-### 8.2 Entry form (3 pickers + derived badge)
+### 8.2 Entry form
+
+- **Freie Einnahme** (e.g. Eventfrog): Bezeichnung*, Betrag*, Geldeingang\*, **Kategorie\*** (derived Sphäre), **Projekt** (optional), Beleg (**optional**), Kommentar.
+- **Aus Rechnung** is **not built here** — it's the shipped `markInvoiceAsPaid` on the Rechnung detail. We render the resulting income row with a read-only 🔗 badge (and the locked Projekt comes from the invoice). Full-amount only.
+
+---
+
+## 9. Spenden tab
+
+### 9.1 List
+
+- **KPI:** anchor + **"N ohne Bescheinigung" pill** (disappears at zero) + "M Bescheinigungen versandt". **No fake "Sammelbestätigungs-Fenster" deadline** (no statutory cutoff — removed to avoid a false signal).
+- **Columns:** Datum, ID, Spender, Art, Zweckbindung, Betrag, Bescheinigung (B-Nummer or "ausstehend").
+- **Filters:** Spendenart, Zweckbindung, Bescheinigung-Status, Spender (+ search). Preset: "Ohne Bescheinigung".
+
+### 9.2 Entry form (3 pickers + derived badge)
 
 - **Spendenart\*** (Geldspende / Sachspende / Aufwand — _Aufwand disabled, Phase 2_).
-- **Zweckbindung\*** (zweckfrei / zweckgebunden). Zweckgebunden → reveals **required** Zweckbindungs-Text (§ 55 AO).
-- **Projekt** (optional; relevant for zweckgebundene Mittel / Mittelverwendungsrechnung).
-- **Sachspende** reveals the **Wertermittlungs-block**: Gemeiner Wert* (= Betrag, § 9 BewG), Wertermittlungsmethode*, Zustandsbeschreibung\*, Herkunftsbeleg (optional).
+- **Zweckbindung\*** (zweckfrei / zweckgebunden) → zweckgebunden reveals **required** Zweckbindungs-Text (§ 55 AO).
+- **Projekt** (optional; for zweckgebundene Mittel / Mittelverwendung).
+- **Sachspende** reveals the **Wertermittlungs-block:** Gemeiner Wert* (= Betrag, § 9 BewG), Wertermittlungsmethode*, Zustandsbeschreibung\*, Herkunftsbeleg (optional).
 - **Spender:** Mitglied (address auto-filled) or Externe Person (Name* + Adresse* + Email).
-- **Derived badge:** "Wird gebucht als <Ideeller> · Kategorie <…> · Anlage Gem Zeile <…>". No Kategorie picker. Sphäre always Ideeller.
-- Bescheinigung issuance / Sammelbestätigung remain Bescheinigungs-side concerns (group a donor's year by `spender`/member + Buchungsjahr at print time); no impact on the entry form.
+- **Derived badge:** "Wird gebucht als <Ideeller> · Kategorie <…> · Anlage Gem Zeile <…>". No Kategorie picker. Sphäre always Ideeller. (Render as a styled hint, not debug text.)
+- Bescheinigung issuance / Sammelbestätigung remain Bescheinigungs-side (group a donor's year at print time); not part of the entry form.
 
 ---
 
-## 9. Detail / edit page
+## 10. Detail / edit page
 
-Route-based (`/app/<kind>/[id]`) presented as a modal-style surface (deep-linkable, back-button friendly).
+Route-based (`/app/<kind>/[id]`), modal-style surface (deep-linkable, back-button friendly).
 
-- **Desktop:** sticky header (title, status badge, provenance line, × close) · two-column body — **Beleg large on the left** at natural aspect ratio (contain: portrait fills height, landscape fills width), **fields + Verlauf on the right** (scrollable) · **unified sticky footer** spanning full width — context workflow action (e.g. "Als bezahlt markieren", "Bescheinigung erstellen", Rechnung link) + **Speichern** (disabled until dirty). **No "Verwerfen"** — × / back with an unsaved-changes guard. Fields start with Bezeichnung (no "Details" header).
-- **Mobile:** stacked, Beleg as a **fold** — a "peek card" (top slice of the receipt with fade + "Beleg ansehen ⤢") that opens a **full-screen viewer** (see §10). All fields present; Verlauf collapsible; sticky bottom action bar (workflow action + Speichern).
-- **Festgeschrieben:** all fields read-only, footer save hidden, amber lock notice ("Korrektur nur über Storno") — server-enforced (ADR-0006).
-- Context actions by kind: Ausgabe → "Als bezahlt markieren" (if genehmigt); Einnahme → Rechnung link; Spende → "Bescheinigung erstellen".
+- **Desktop:** sticky header (title, status badge, provenance, × close) · two-column body — **Beleg large on the left** at natural aspect ratio (contain: portrait fills height, landscape fills width) · **fields + Verlauf on the right** (scrollable) · **unified sticky footer** spanning full width: context workflow action (Ausgabe "Als bezahlt markieren"; Einnahme Rechnung link; Spende "Bescheinigung erstellen") + **Speichern** (disabled until dirty). **No "Verwerfen"** — × / back with an unsaved-changes guard. Fields start with Bezeichnung (no "Details" header).
+- **Mobile:** stacked; Beleg as a **fold** — peek card (top slice + fade + "Beleg ansehen ⤢") → full-screen **viewer** (§11). All fields present; Verlauf collapsible; sticky bottom action bar.
+- **Festgeschrieben:** read-only fields, footer save hidden, amber lock notice ("Korrektur nur über Storno") — server-enforced (ADR-0006).
 
 ---
 
-## 10. Beleg viewer (pragmatic, universal)
+## 11. Beleg viewer (unified pdfjs canvas — images + PDFs)
 
-Robust on every browser/device; gestures are progressive enhancement only.
-
-- **Fold (mobile default):** pure-CSS peek card (clipped + gradient). Universal.
-- **Full-screen viewer:** explicit controls — **× Schließen**, **↗ Original öffnen**, **↓ Download**, **+ / −** zoom over a scrollable container, **‹ / ›** page arrows + dots. Pinch-zoom / swipe-dismiss / swipe-pages layer on where supported but are never required.
-- **PDFs** shown as server-rendered page images (not inline pdf.js); "Original öffnen" hands off to the native viewer. **Images** shown directly. (See §3.4.)
+- **Fold (mobile default):** pure-CSS peek card (clipped + gradient). For images, show the thumbnail (`/api/files/[id]/thumbnail`); for PDFs, render page-1 to a small canvas (or the PDF icon as fallback).
+- **Full-screen viewer:** explicit controls — **× Schließen**, **↗ Original öffnen**, **↓ Download**, **+ / −** zoom (scrollable container), **‹ / ›** page nav + dots. Gestures (pinch, swipe-dismiss, swipe-pages) are progressive enhancement; never required.
+- **Rendering:** **images** → `<img>` from `/api/files/[id]/blob` (auth'd). **PDFs** → render pages to an **on-screen `<canvas>`** via `pdfjs-dist` (already a dep) — works on all modern browsers incl. iOS Safari (the OffscreenCanvas limitation in the compression worker does **not** apply to on-screen canvas). Render **lazily, one page at a time** (memory safety). **"Original öffnen" is the graceful fallback** for the rare unrenderable PDF (encrypted/corrupt/huge).
 - **Desktop** shows the Beleg permanently in the left column (no fold).
+- Reuses the shipped `files` table, `belegFileId`, and `/api/files/[id]/blob|thumbnail` routes; no server-side PDF rasterization or server HEIC conversion is introduced (HEIC→JPEG already happens client-side pre-upload).
 
 ---
 
-## 11. EÜR + downstream reflection
+## 12. Exports + downstream reflection
 
-- Mandatory Kategorie + derived `sphere_snapshot` feed the existing EÜR computation (per-sphere, ADR-0002) and Anlage-EÜR / Anlage-Gem line mapping via `kategorie.eur_zeile` / `anlage_gem_zeile`.
-- Donations map to Anlage-Gem via the derived category. Sachspenden carry their Wertermittlung for prüfungssichere documentation.
-- "Heute" dashboard KPIs continue to read live state (current year). The deferred "Auswertungen" surface (§13) will provide multi-year charts.
+- **CSV export of the active filtered list** (per tab) — reuses the §5 server-side WHERE to stream a CSV for the Steuerberaterin. (The EÜR workspace already has its own `transactions.csv` / `bundle.zip` / exports tab; this is the per-tab convenience export.)
+- Mandatory Kategorie + derived `sphere_snapshot` feed the **shipped** EÜR (`computeEurYear`, Anlage-EÜR/Gem mapping) and dashboard cashflow. Sachspenden carry Wertermittlung for prüfungssichere documentation. No EÜR/dashboard redesign — they already exist.
 
 ---
 
-## 12. Visual system
+## 13. Visual system
 
 - **Sphere palette** (reused on lists, detail, EÜR, dashboard): Ideeller = pink (`#fce7f3`/`#9d174d`), Vermögen = blue (`#eff6ff`/`#1e3a8a`), Zweckbetrieb = purple (`#ede9fe`/`#5b21b6`), Wirtschaftlich = amber (`#fef3c7`/`#92400e`).
-- **Status badges** (Ausgaben): offen/zu_pruefen (neutral), genehmigt (blue), erstattet (green), abgelehnt (red).
-- Calm, spacious aesthetic (Things/Linear/Notion); tabular-nums for money; quiet anchor lines; pills that disappear at zero.
-- Sticky-footer modal frame is the shared pattern for all entry forms + the detail surface.
+- **Status badges** (Ausgaben): offen/zu_pruefen (neutral), genehmigt (blue), erstattet (green), abgelehnt (red). Avoid badge-soup: consider Sphäre as a quiet left rule when a row already shows a status badge.
+- **Icons not emoji:** the 🔗/🔒/⤢ glyphs in mockups become icon components in implementation.
+- Calm, spacious aesthetic (Things/Linear/Notion); tabular-nums for money; quiet anchor lines; pills that disappear at zero. Sticky-footer modal frame is the shared pattern for entry forms + detail.
+- **UI primitives to add** (not in the current `ui/` set): combobox/`popover` (the "+ Filter" menu + member-picker), `tooltip` (truncation), `pagination`, multi-select chips, and the mobile filter `sheet` (the `sheet`/`dialog` pair already exists). Flag the "route renders as deep-linkable modal" pattern for design attention.
+- **A11y:** chip keyboard nav (focus + Backspace to remove), `aria-sort` on sortable headers + keyboard sort, ≥44px tap targets (chips, viewer controls, card chevrons), truncation-with-tooltip for long names/Bezeichnung.
 
 ---
 
-## 13. Out of scope / deferred
+## 14. Out of scope / deferred
 
-- **Analytical "Auswertungen / Jahresübersicht" dashboard** (fast-follow): a separate, range-based multi-year surface — grouped Einnahmen-vs-Ausgaben bars per year, one per-sphere stacked bar across years, an EÜR-style exact-cents table, click-a-bar → that year's transactions. Deliberately sparse (no donuts/sparklines/gauges/MoM theatre). Built after the core ships.
-- **Aufwandsspende** workflow (Phase 2; schema present, picker disabled).
-- **Global topbar year picker** (rejected, §5).
+- **Analytical multi-year dashboard** — _already shipped_ (cashflow cards + sphere chips + sparklines; EÜR YoY table). Not rebuilt.
+- **Aufwandsspende** workflow (Phase 2; picker disabled).
+- **Partial invoice payments** (shipped model is full-amount-only; not extended).
 - **Post-Festschreibung sphere_overrides** (Phase 2, ADR-0011).
-
----
-
-## 14. Testing strategy
-
-- **Unit:** filter registry → SQL predicate mapping (per field); URL serialize/parse round-trip + Zod validation of garbage params; `(spende_kind, zweckbindung_kind) → kategorie` derivation; sphere-from-kategorie derivation; beleg-requirement CHECK logic; year defaulting.
-- **Integration (app_runtime identity):** mandatory-Kategorie NOT NULL enforcement; beleg-or-Begründung CHECK; zweckbindung_text CHECK; Verein auto-paid produces `erstattet` + no mail; member "Schon bezahlt" produces `erstattet` + optional mail; Rechnung "Als bezahlt" creates+links income with locked project; Festschreibung read-only gate.
-- **E2E (Playwright, `@phase-N`):** create each kind; filter + saved view; mark-paid flows; Spende Sachspende reveal + Bescheinigung; mobile Beleg fold→viewer; year filter incl. "Alle Jahre"; EÜR reflects new bookings.
-- Hermetic Postgres + reset-test-db seed (incl. reseeded kategorien + donation-derivation fixtures).
 
 ---
 
 ## 15. Migration / rollout
 
-- Additive schema migrations first (new columns, enums, CHECKs as NOT VALID → validate), then the data wipe + kategorien reseed, then code. Follow the two-phase destructive-migration rule (CLAUDE.md): additive ships before code that depends on it; DROP/strict constraints last.
-- Data wipe: truncate `expenses`, `income`, `donations` (and dependent rows) in a controlled migration/seed step; reseed reference data + derivation fixtures.
-- New env/secrets: none anticipated (HEIC/PDF rendering reuses existing storage + PDF capability — confirm during planning).
+- **Two-phase, additive-first** (CLAUDE.md): ship additive migrations (new columns, `wertermittlung_methode` enum, `beleg_verzicht_grund`, `zustand_beschreibung`, `herkunftsbeleg_file_id`; CHECKs as `NOT VALID` then `VALIDATE`) **before** code that depends on them. Make `kategorie_id` NOT NULL only after the data is clean.
+- **Data wipe (prod):** clear the Verein's real `expenses`/`income`/`donations`. **Preserve invoice↔income integrity** — for any invoice with `paidByIncomeId`, either also clear the paid invoices or null the link + reset `bezahltAm` (decide during planning; default: clear the corresponding paid-invoice payment state too so no dangling links). Reseed reference data (`kategorien` incl. donation-derivation fixtures) + test fixtures for the new model.
+- **Migration numbering:** origin/main is at `0025`; the `phase-beitrag-1` branch will land `0026–0028`. Our migrations take the next free indices at rebase time — coordinate to avoid journal collisions.
+- **Generated columns / self-FKs:** preserve the hand-written generated-column tails (`betrag_eur`, `year_of_buchung`) and the festschreibung/`supersedes_id` self-FKs when editing these tables; wipe must respect FK order (donations → expenses via `aufwandsspende_aus_expense_id`).
+- **Routing migration:** `nav-registry.ts` updated (three desktop entries; one mobile "Transaktionen" → segmented switcher). ~14 references to `/app/transactions` (Topbar, KPI/Checklist sections, `sepa/xml.ts`, `events/handlers.ts`, inbox/projekte links, the `[id]/zuwendungsbestaetigung` PDF route, e2e specs) updated + redirects from the old path.
+- **No new env/secrets** anticipated (Beleg reuses Blob + client compression; pdfjs already bundled).
 
 ---
 
-## 16. Open items to confirm during planning
+## 16. Testing strategy
 
-- Exact reuse path for **PDF→page-image** rendering (invoice pipeline reuse vs. a small shared renderer) and **HEIC→JPEG** conversion library/runtime on Vercel.
-- Whether to denormalize the income↔invoice link (add `income.from_invoice_id`) for the 🔗 badge vs. join-on-read.
-- Whether `wertermittlung_methode` is a Postgres enum vs. text (enum recommended).
+- **Unit:** filter registry → SQL predicate (per field); URL serialize/parse round-trip + Zod garbage-param handling; `(spende_kind, zweckbindung_kind) → kategorie` derivation; `sphere = kategorie.sphere` derivation (and that project override is NOT applied in new entries); beleg-or-Begründung CHECK; zweckbindung_text CHECK; "Alle Jahre" / stale-year coercion; pdfjs page-render fallback path.
+- **Integration (app_runtime identity):** NOT NULL kategorie_id enforcement; CHECK constraints; Verein auto-paid → `erstattet` + no mail; member "Schon bezahlt" → `erstattet` + optional mail; bulk mark-paid; reuse of `markExpenseAsPaid`; the income↔invoice link surfacing (read-only); Festschreibung read-only gate; CSV export rows match the filtered query.
+- **E2E (Playwright, `@phase-N`):** create each kind; chip filter + saved view (+ custom saved view); year switch incl. "Alle Jahre" + stale-year banner; bulk mark-paid; Sachspende reveal + Bescheinigung status; mobile fold → unified viewer (image + PDF); duplicate-as-template; EÜR reflects new bookings.
+- Hermetic Postgres + reset-test-db seed (reseeded kategorien + donation-derivation fixtures). Update existing `transactions.spec.ts` / `spenden.spec.ts` / `julia-review.spec.ts` / `dashboard.spec.ts` for the new routes.
+
+---
+
+## 17. Open items to confirm during planning
+
+- Exact prod-data-wipe handling of paid invoices (clear payment state vs null the link).
+- Mobile card information hierarchy + sort affordance (headers vanish on cards).
+- Whether the per-tab CSV export needs the same columns as the EÜR `transactions.csv` (avoid two divergent formats).
 - Final seeded category list + EÜR/Anlage-Gem line numbers (Steuerberater input).
+- Confirm `wertermittlung_methode` as pgEnum (recommended) vs text.
