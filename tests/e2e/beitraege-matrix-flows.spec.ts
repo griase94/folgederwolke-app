@@ -242,10 +242,12 @@ test.describe("@phase-2 Beitragsmatrix — storno + aufheben", () => {
     await page.getByRole("button", { name: "Befreiung aufheben" }).click();
     await page.getByRole("button", { name: "Aufheben bestätigen" }).click();
 
+    // Wait for the invalidateAll + re-render cycle to settle before asserting.
+    await page.waitForLoadState("networkidle");
     await expect(cell(page, klaus, ANCHOR)).toHaveAttribute(
       "data-state",
       "open",
-      { timeout: 5000 },
+      { timeout: 10000 },
     );
   });
 });

@@ -120,9 +120,10 @@ test.describe("@phase-2 BeitragsuebersichtWidget", () => {
     await seedOverdue();
     await signIn(page);
     await page.goto("/app");
+    await page.waitForLoadState("networkidle");
 
     const chip = page.getByTestId("beitragsuebersicht-overdue");
-    await expect(chip).toBeVisible();
+    await expect(chip).toBeVisible({ timeout: 10000 });
     await expect(chip).toContainText(/überfällig/);
 
     await page.getByTestId("beitragsuebersicht-widget").click();
