@@ -59,7 +59,10 @@ vi.mock("drizzle-orm", () => ({
   gte: (col: unknown, val: unknown) => ({ op: "gte", col, val }),
   isNull: (col: unknown) => ({ op: "isNull", col }),
   isNotNull: (col: unknown) => ({ op: "isNotNull", col }),
+  gt: (col: unknown, val: unknown) => ({ op: "gt", col, val }),
   lt: (col: unknown, val: unknown) => ({ op: "lt", col, val }),
+  lte: (col: unknown, val: unknown) => ({ op: "lte", col, val }),
+  or: (...args: unknown[]) => ({ op: "or", args }),
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({
     op: "sql",
     strings,

@@ -27,6 +27,8 @@ import {
   validateEditMember,
 } from "$lib/server/domain/members.js";
 import { bus } from "$lib/server/events/index.js";
+import { berlinYmd } from "$lib/domain/year.js";
+import { requireAdmin } from "$lib/server/domain/require-role.js";
 
 // Default Beitrag rate in cents (69.69 €) — until Einstellungen tab in Phase 4.
 const DEFAULT_BEITRAG_CENTS = 6969n;
@@ -60,7 +62,11 @@ export type MarkBeitragPaidResult = { ok: true } | ActionFailure;
 export async function addMember(
   raw: Record<string, unknown>,
   actorUserId: string | null,
+  actorRole?: string | null,
 ): Promise<AddMemberResult> {
+  const denial = requireAdmin(actorRole);
+  if (denial) return denial;
+
   const result = validateAddMember(raw);
   if (!result.success) {
     return { ok: false, status: 422, errors: result.errors, values: raw };
@@ -127,7 +133,11 @@ export async function addMember(
 export async function editMember(
   raw: Record<string, unknown>,
   actorUserId: string | null,
+  actorRole?: string | null,
 ): Promise<EditMemberResult> {
+  const denial = requireAdmin(actorRole);
+  if (denial) return denial;
+
   const result = validateEditMember(raw);
   if (!result.success) {
     return { ok: false, status: 422, errors: result.errors, values: raw };
@@ -194,7 +204,11 @@ export async function editMember(
 export async function softDeleteMember(
   memberId: string,
   actorUserId: string | null,
+  actorRole?: string | null,
 ): Promise<DeleteMemberResult> {
+  const denial = requireAdmin(actorRole);
+  if (denial) return denial;
+
   if (!memberId) {
     return { ok: false, status: 400, error: "Fehlende Mitglieds-ID" };
   }
@@ -223,7 +237,7 @@ export async function softDeleteMember(
   await db
     .update(members)
     .set({
-      austrittsDatum: new Date().toISOString().slice(0, 10),
+      austrittsDatum: berlinYmd(),
       updatedAt: new Date(),
     })
     .where(eq(members.id, memberId));
@@ -244,7 +258,11 @@ export async function softDeleteMember(
 export async function restoreMember(
   memberId: string,
   actorUserId: string | null,
+  actorRole?: string | null,
 ): Promise<RestoreMemberResult> {
+  const denial = requireAdmin(actorRole);
+  if (denial) return denial;
+
   if (!memberId) {
     return { ok: false, status: 400, error: "Fehlende Mitglieds-ID" };
   }
@@ -296,7 +314,12 @@ export async function markBeitragPaid(
   memberId: string,
   year: number,
   actorUserId: string | null,
+  actorRole?: string | null,
 ): Promise<MarkBeitragPaidResult> {
+  // B2 fix (ADR-0009): admin-only gate.
+  const denial = requireAdmin(actorRole);
+  if (denial) return denial;
+
   if (!memberId || !Number.isFinite(year)) {
     return { ok: false, status: 400, error: "Ungültige Parameter" };
   }
@@ -322,7 +345,7 @@ export async function markBeitragPaid(
     )
     .limit(1);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = berlinYmd();
 
   if (existing.length > 0 && existing[0]) {
     const row = existing[0];

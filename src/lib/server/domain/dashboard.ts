@@ -11,9 +11,12 @@ import {
   count,
   desc,
   eq,
+  gt,
   isNull,
   isNotNull,
   lt,
+  lte,
+  or,
   sql,
   sum,
 } from "drizzle-orm";
@@ -213,6 +216,7 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
     // 3. Open beitrags (paid < due) for current year — count rows + distinct members.
     // Exempt members (beitrag_exempt = true) are excluded: their synthetic
     // unpaid rows must not inflate the "X members owe €Y" KPI.
+    // B3 fix: also exclude members who have left (austrittsDatum <= today).
     db
       .select({
         rowCount: count(),
@@ -225,6 +229,11 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
           eq(memberBeitrags.year, currentYear),
           lt(memberBeitrags.paidCents, memberBeitrags.betragCents),
           eq(members.beitragExempt, false),
+          // B3: austretene Mitglieder not counted (austrittsDatum IS NULL or in future)
+          or(
+            isNull(members.austrittsDatum),
+            gt(members.austrittsDatum, sql`current_date`),
+          ),
         ),
       ),
 
@@ -235,10 +244,20 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
       .where(eq(donations.yearOfBuchung, currentYear)),
 
     // 5. Active members
+    // B4 fix: exclude future-dated Beitritte (eintrittsDatum > today).
+    // A member is "active today" only if eintrittsDatum IS NULL or <= today.
     db
       .select({ value: count() })
       .from(members)
-      .where(isNull(members.austrittsDatum)),
+      .where(
+        and(
+          isNull(members.austrittsDatum),
+          or(
+            isNull(members.eintrittsDatum),
+            lte(members.eintrittsDatum, sql`current_date`),
+          ),
+        ),
+      ),
 
     // 6. WGB Einnahmen YTD (wirtschaftlich sphere, current Berlin year)
     db

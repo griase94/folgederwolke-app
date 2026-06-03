@@ -169,13 +169,14 @@ export const actions: Actions = {
   // ── Edit member ─────────────────────────────────────────────────────────────
   edit: async ({ request, locals, params }) => {
     const userId = locals.session?.user.id ?? null;
+    const userRole = locals.session?.user.role ?? null;
     const formData = await request.formData();
     const raw: Record<string, unknown> = {};
     for (const [k, v] of formData.entries()) raw[k] = v;
     // Fall back to the route param when the form omits the id.
     if (!raw.id && params.id) raw.id = params.id;
 
-    const result = await editMember(raw, userId);
+    const result = await editMember(raw, userId, userRole);
     if (!result.ok) {
       return fail(result.status, {
         action: "edit",
@@ -190,10 +191,11 @@ export const actions: Actions = {
   // ── Soft-delete member ──────────────────────────────────────────────────────
   delete: async ({ request, locals, params }) => {
     const userId = locals.session?.user.id ?? null;
+    const userRole = locals.session?.user.role ?? null;
     const formData = await request.formData();
     const id = formData.get("id")?.toString() || params.id || "";
 
-    const result = await softDeleteMember(id, userId);
+    const result = await softDeleteMember(id, userId, userRole);
     if (!result.ok) {
       return fail(result.status, { action: "delete", error: result.error });
     }
@@ -204,12 +206,13 @@ export const actions: Actions = {
   // ── Mark Beitrag paid ─────────────────────────────────────────────────────
   "mark-beitrag-paid": async ({ request, locals, params }) => {
     const userId = locals.session?.user.id ?? null;
+    const userRole = locals.session?.user.role ?? null;
     const memberId = params.id;
     const formData = await request.formData();
     const yearStr = formData.get("year")?.toString() ?? "";
     const year = parseInt(yearStr, 10);
 
-    const result = await markBeitragPaid(memberId, year, userId);
+    const result = await markBeitragPaid(memberId, year, userId, userRole);
     if (!result.ok) {
       return fail(result.status, {
         action: "mark-beitrag-paid",
