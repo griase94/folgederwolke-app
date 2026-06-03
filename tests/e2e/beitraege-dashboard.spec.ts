@@ -63,9 +63,11 @@ async function seedOverdue(): Promise<void> {
     `;
     // Fälligkeit deep in the past so member a is overdue (past grace).
     await sql`
+      DELETE FROM beitragssatz_by_year WHERE year = ${ANCHOR}
+    `;
+    await sql`
       INSERT INTO beitragssatz_by_year (year, cents, faelligkeit_at)
       VALUES (${ANCHOR}, 6969, '2000-03-31')
-      ON CONFLICT (year) DO UPDATE SET faelligkeit_at = '2000-03-31'
     `;
     await sql`
       INSERT INTO member_beitrags (member_id, year, betrag_cents, paid_cents, gezahlt_am)
@@ -93,10 +95,10 @@ async function seedAllPaid(): Promise<void> {
         (${a}, 'Dash', 'PaidOne', 'dash-a@example.test', 'mitglied', '2020-01-01', true),
         (${b}, 'Dash', 'PaidTwo', 'dash-b@example.test', 'mitglied', '2020-01-01', true)
     `;
+    await sql`DELETE FROM beitragssatz_by_year WHERE year = ${ANCHOR}`;
     await sql`
       INSERT INTO beitragssatz_by_year (year, cents, faelligkeit_at)
       VALUES (${ANCHOR}, 6969, ${`${ANCHOR + 5}-03-31`})
-      ON CONFLICT (year) DO UPDATE SET faelligkeit_at = ${`${ANCHOR + 5}-03-31`}
     `;
     await sql`
       INSERT INTO member_beitrags (member_id, year, betrag_cents, paid_cents, gezahlt_am)
@@ -119,6 +121,9 @@ test.describe("@phase-2 BeitragsuebersichtWidget", () => {
   }) => {
     await seedOverdue();
     await signIn(page);
+    // Navigate directly to /app to ensure a fresh server-side load against the
+    // just-seeded DB state. The sign-in redirect already lands on /app, but an
+    // explicit goto guarantees the load function runs after all seed commits.
     await page.goto("/app");
     await page.waitForLoadState("networkidle");
 
