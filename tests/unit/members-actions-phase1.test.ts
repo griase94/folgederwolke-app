@@ -7,7 +7,8 @@
  * @phase-1
  */
 
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, afterAll } from "vitest";
+import postgres from "postgres";
 import { getDb } from "$lib/server/db/index.js";
 import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
 import { seedMember, seedOpenBeitrag } from "../helpers/db-seed.js";
@@ -299,5 +300,148 @@ describe("@phase-1 setBeitragExempt (Task 1.6 new)", () => {
 
     const row = await getMemberBeitrag(m.id, TEST_YEAR);
     expect(row?.exemptReason).toBe("Härtefall");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Festschreibung-409 gate — all three mutations must reject a closed year
+// ---------------------------------------------------------------------------
+
+/**
+ * Helper: set settings.festgeschrieben_bis via a superuser connection
+ * (bypasses the monotonic-forward trigger so tests can set any value).
+ * Returns a cleanup function that resets it to JSONB null.
+ */
+async function setFestgeschriebenBis(
+  year: number,
+): Promise<() => Promise<void>> {
+  const admin = postgres(process.env["DIRECT_DATABASE_URL"] ?? "", {
+    prepare: false,
+    max: 1,
+  });
+  await admin`
+    INSERT INTO settings (key, value)
+    VALUES ('festgeschrieben_bis', ${year}::jsonb)
+    ON CONFLICT (key) DO UPDATE SET value = ${year}::jsonb
+  `;
+  await admin.end();
+  return async () => {
+    const adminCleanup = postgres(process.env["DIRECT_DATABASE_URL"] ?? "", {
+      prepare: false,
+      max: 1,
+    });
+    try {
+      await adminCleanup`
+        INSERT INTO settings (key, value)
+        VALUES ('festgeschrieben_bis', 'null'::jsonb)
+        ON CONFLICT (key) DO UPDATE SET value = 'null'::jsonb
+      `;
+    } finally {
+      await adminCleanup.end();
+    }
+  };
+}
+
+describe("@phase-1 festschreibung-409 gate (ADR-0006)", () => {
+  // Always reset after the describe block so stray festgeschrieben_bis
+  // does not bleed into other test files.
+  afterAll(async () => {
+    const admin = postgres(process.env["DIRECT_DATABASE_URL"] ?? "", {
+      prepare: false,
+      max: 1,
+    });
+    try {
+      await admin`
+        INSERT INTO settings (key, value)
+        VALUES ('festgeschrieben_bis', 'null'::jsonb)
+        ON CONFLICT (key) DO UPDATE SET value = 'null'::jsonb
+      `;
+    } finally {
+      await admin.end();
+    }
+  });
+
+  it("markBeitragPaid on a festgeschriebenes year returns 409", async () => {
+    const db = getDb();
+    await db
+      .insert(beitragssatzByYear)
+      .values({ year: TEST_YEAR, cents: 6969n })
+      .onConflictDoNothing();
+
+    const m = await seedMember({ name: "FestPaidGate409" });
+    await seedOpenBeitrag({ memberId: m.id, year: TEST_YEAR });
+
+    const cleanup = await setFestgeschriebenBis(TEST_YEAR);
+    try {
+      const result = await markBeitragPaid({
+        memberId: m.id,
+        year: TEST_YEAR,
+        gezahltAm: "2026-03-15",
+        actorUserId: ACTOR_ID,
+        actorRole: "admin",
+      });
+      expect(result.ok).toBe(false);
+      expect((result as { status: number }).status).toBe(409);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("markBeitragUnpaid on a festgeschriebenes year returns 409", async () => {
+    const db = getDb();
+    await db
+      .insert(beitragssatzByYear)
+      .values({ year: TEST_YEAR, cents: 6969n })
+      .onConflictDoNothing();
+
+    const m = await seedMember({ name: "FestUnpaidGate409" });
+    // First mark paid so the row exists
+    await markBeitragPaid({
+      memberId: m.id,
+      year: TEST_YEAR,
+      gezahltAm: "2026-03-15",
+      actorUserId: ACTOR_ID,
+      actorRole: "admin",
+    });
+
+    const cleanup = await setFestgeschriebenBis(TEST_YEAR);
+    try {
+      const result = await markBeitragUnpaid({
+        memberId: m.id,
+        year: TEST_YEAR,
+        actorUserId: ACTOR_ID,
+        actorRole: "admin",
+      });
+      expect(result.ok).toBe(false);
+      expect((result as { status: number }).status).toBe(409);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("setBeitragExempt on a festgeschriebenes year returns 409", async () => {
+    const db = getDb();
+    await db
+      .insert(beitragssatzByYear)
+      .values({ year: TEST_YEAR, cents: 6969n })
+      .onConflictDoNothing();
+
+    const m = await seedMember({ name: "FestExemptGate409" });
+
+    const cleanup = await setFestgeschriebenBis(TEST_YEAR);
+    try {
+      const result = await setBeitragExempt({
+        memberId: m.id,
+        year: TEST_YEAR,
+        exempt: true,
+        reason: "Härtefall",
+        actorUserId: ACTOR_ID,
+        actorRole: "admin",
+      });
+      expect(result.ok).toBe(false);
+      expect((result as { status: number }).status).toBe(409);
+    } finally {
+      await cleanup();
+    }
   });
 });
