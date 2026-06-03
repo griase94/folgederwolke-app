@@ -51,3 +51,35 @@ from a confirmation modal. Result rows are written as audit_log entries.
 Re-running `close_buchhaltungsjahr(2025, ...)` after the year is already
 closed is a no-op (the `WHERE festgeschrieben_at IS NULL` predicate matches
 zero rows). Result: per-table counts of 0.
+
+## Phase 12 Limitations
+
+### Edit-after-issuance gate is workflow-disciplined, not enforced. (2026-05-26)
+
+Phase 12 added `editInvoice` allowing in-place edits while `bezahltAm IS NULL`.
+GoBD Rn. 119 strictly treats issuance (sending to the Kunde) as the immutability
+anchor, not payment receipt. Andy's current workflow ("never edit an invoice
+I've already emailed") is the operational control; the audit_log diff is the
+trail. Upgrade path: add an explicit `issued_at` column + "Als versendet
+markieren" button — deferred to Phase 13.
+
+### Trigger carve-out for payment fields (2026-05-26)
+
+Migration `0025_invoice_festschreibung_payment_carveout.sql`. The festschreibung
+row-level UPDATE trigger now permits UPDATEs that touch ONLY
+`{bezahlt_am, paid_by_income_id, updated_at}` even on festgeschriebene rows.
+Rationale: § 11 EStG (Zufluss/Abfluss) — for cash-basis EÜR, income belongs to
+the **year of receipt**, independent of the invoice's own booking year. A
+Rechnung dated 2025-12-29 paid 2026-01-15 lands in income year 2026; if 2025
+is closed and 2026 is open, the mark-paid UPDATE must succeed. The carve-out
+is a precise column-set whitelist — every substantive invoice field is still
+locked.
+
+### DSGVO Art. 16 — supersedeInvoice now re-reads customers. (2026-05-26)
+
+Previously the supersede copied `customer_name_snapshot` /
+`customer_address_snapshot` from the OLD invoice. As of Phase 12, the supersede
+re-SELECTs from `customers` so a Berichtigungspflicht-driven correction
+actually flows into the Storno-Neuausstellung. Documented here so a future
+reader knows snapshot semantics differ between createInvoice (snapshots at
+create) vs supersedeInvoice (re-reads at supersede).

@@ -30,7 +30,13 @@
 		projects,
 		invoiceNumberPreview,
 		initial,
-		errors = {}
+		errors = {},
+		// Phase 12-B: optional overrides for the edit route. Default values
+		// preserve the /new behaviour exactly — the create route doesn't pass
+		// these.
+		submitAction = '?/create',
+		submitLabel = 'Rechnung erstellen & PDF',
+		submitLabelPending = 'Wird erstellt …'
 	}: {
 		customers: CustomerOpt[];
 		kategorien: KategorieOpt[];
@@ -49,6 +55,9 @@
 			nettoEur: string;
 		};
 		errors?: Record<string, string[]>;
+		submitAction?: string;
+		submitLabel?: string;
+		submitLabelPending?: string;
 	} = $props();
 
 	let customerId = $state('');
@@ -160,7 +169,7 @@
 	<!-- ── Form ───────────────────────────────────────────────────────── -->
 	<form
 		method="POST"
-		action="?/create"
+		action={submitAction}
 		use:enhance={() => {
 			submitting = true;
 			return async ({ update }) => {
@@ -332,7 +341,7 @@
 				disabled={submitting || !customerId || nettoCents <= 0}
 				class="bg-primary text-primary-foreground hover:bg-primary/90"
 			>
-				{submitting ? 'Wird erstellt …' : 'Rechnung erstellen & PDF'}
+				{submitting ? submitLabelPending : submitLabel}
 			</Button>
 		</div>
 	</form>

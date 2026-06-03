@@ -1,7 +1,7 @@
 # Verzeichnis der Verarbeitungstätigkeiten (Art. 30 DSGVO)
 
 **Verantwortlicher:** Folge der Wolke e.V., Westermühlstraße 6, 80469 München  
-**Stand:** 2026-05 (Phase 7.5)  
+**Stand:** 2026-06 (Phase 12)  
 **Erstellt durch:** Andy Griesbeck (Technischer Betreiber)
 
 ---
@@ -42,18 +42,18 @@
 
 ## VVT-3: Buchhaltung (Einnahmen und Ausgaben)
 
-| Feld                      | Inhalt                                                                                                                                                                               |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Bezeichnung**           | GoBD-konforme Einnahmen-Überschuss-Rechnung (EÜR)                                                                                                                                    |
-| **Zweck**                 | Steuerrechtliche Buchführungspflicht (§§ 140–147 AO); Nachweis Gemeinnützigkeit                                                                                                      |
-| **Rechtsgrundlage**       | Art. 6 Abs. 1 lit. c DSGVO (rechtliche Verpflichtung)                                                                                                                                |
-| **Betroffene Personen**   | Kassenwart, Vorstand, Mitglieder (als Kostenstellen), Kunden (Rechnungsempfänger), Lieferanten                                                                                       |
-| **Datenkategorien**       | Name/Firmenname, Adresse, Betrag, Verwendungszweck, Zahlungsweg, Sphäre, Buchungsjahr, Beleg-Referenz                                                                                |
-| **Empfänger**             | Kassenwart, Vorstand (intern); Steuerberater (extern, auf Anfrage); Finanzamt (EÜR-Abgabe); Auftragsverarbeiter: Neon, Vercel (Hosting + Blob für Ausgangsrechnungen/Belege in fra1) |
-| **Drittlandübermittlung** | Nein                                                                                                                                                                                 |
-| **Löschfrist**            | 10 Jahre (§ 147 AO, § 14b UStG) — keine Löschung, nur Anonymisierung wenn möglich                                                                                                    |
-| **TOMs**                  | Siehe [TOM-Katalog](tom-katalog.md)                                                                                                                                                  |
-| **DB-Tabellen**           | `expenses`, `income`, `donations`, `invoices`, `customers`, `kategorien`, `files` (Blob-Index: Belege + Ausgangsrechnungen)                                                          |
+| Feld                      | Inhalt                                                                                                                                                                                                                                  |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Bezeichnung**           | GoBD-konforme Einnahmen-Überschuss-Rechnung (EÜR). Phase 12: unbezahlte Ausgangsrechnungen sind editierbar; jede Änderung wird im hash-chained `audit_log` mit Vor-/Nachher-Diff protokolliert (siehe ADR-0006 "Phase 12 Limitations"). |
+| **Zweck**                 | Steuerrechtliche Buchführungspflicht (§§ 140–147 AO); Nachweis Gemeinnützigkeit                                                                                                                                                         |
+| **Rechtsgrundlage**       | Art. 6 Abs. 1 lit. c DSGVO (rechtliche Verpflichtung)                                                                                                                                                                                   |
+| **Betroffene Personen**   | Kassenwart, Vorstand, Mitglieder (als Kostenstellen), Kunden (Rechnungsempfänger), Lieferanten                                                                                                                                          |
+| **Datenkategorien**       | Name/Firmenname, Adresse, Betrag, Verwendungszweck, Zahlungsweg, Sphäre, Buchungsjahr, Beleg-Referenz                                                                                                                                   |
+| **Empfänger**             | Kassenwart, Vorstand (intern); Steuerberater (extern, auf Anfrage); Finanzamt (EÜR-Abgabe); Auftragsverarbeiter: Neon, Vercel (Hosting + Blob für Ausgangsrechnungen/Belege in fra1)                                                    |
+| **Drittlandübermittlung** | Nein                                                                                                                                                                                                                                    |
+| **Löschfrist**            | 10 Jahre (§ 147 AO, § 14b UStG) — keine Löschung, nur Anonymisierung wenn möglich                                                                                                                                                       |
+| **TOMs**                  | Siehe [TOM-Katalog](tom-katalog.md)                                                                                                                                                                                                     |
+| **DB-Tabellen**           | `expenses`, `income`, `donations`, `invoices`, `customers`, `kategorien`, `files` (Blob-Index: Belege + Ausgangsrechnungen)                                                                                                             |
 
 ---
 
