@@ -190,6 +190,9 @@ export async function dispatchBeitragsreminder(opts: {
         // Exclude Ehrenmitglieder / exempt members — they may have synthetic
         // unpaid rows but must never receive "Sie schulden €X" reminders.
         eq(members.beitragExempt, false),
+        // Phase 1: also exclude per-year befreit rows (member_beitrags.is_exempt).
+        // A member may be exempt for a specific year without the global flag.
+        eq(memberBeitrags.isExempt, false),
         // Only active members (no Austrittsdatum or Austrittsdatum in future)
         or(
           sql`${members.austrittsDatum} IS NULL`,

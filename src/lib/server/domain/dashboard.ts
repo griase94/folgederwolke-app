@@ -96,6 +96,17 @@ export interface DashboardKpis {
   /** Member_beitrags rows open in current Berlin year. */
   openBeitragsCount: number;
   openBeitragsMembers: number;
+  /**
+   * Phase 1 Beitrag summary KPIs (Task 1.7).
+   * paidCount: rows with paidCents = betragCents (fully paid), not exempt.
+   * paidSumCents: sum of paidCents for fully-paid rows.
+   * totalDueCount: all non-exempt rows for the year (paid + unpaid).
+   * exemptCount: per-year is_exempt=true rows.
+   */
+  beitragPaidCount: number;
+  beitragPaidSumCents: bigint;
+  beitragTotalDueCount: number;
+  beitragExemptCount: number;
   /** Donations YTD (current Berlin year) sum in cents. */
   spendenYtdCents: bigint;
   /** Active members (no austrittsDatum). */
@@ -191,6 +202,9 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
     donationsBySphereRows,
     expensesBySphereRows,
     beitragsYtdAgg,
+    beitragPaidAgg,
+    beitragTotalDueAgg,
+    beitragExemptAgg,
   ] = await Promise.all([
     // 1. Open auslagen submissions (no decision yet)
     db
@@ -214,8 +228,9 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
       ),
 
     // 3. Open beitrags (paid < due) for current year — count rows + distinct members.
-    // Exempt members (beitrag_exempt = true) are excluded: their synthetic
-    // unpaid rows must not inflate the "X members owe €Y" KPI.
+    // Exempt members (beitrag_exempt = true on the member OR is_exempt on the
+    // per-year row) are excluded: their synthetic unpaid rows must not inflate
+    // the "X members owe €Y" KPI.
     // B3 fix: also exclude members who have left (austrittsDatum <= today).
     db
       .select({
@@ -229,6 +244,8 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
           eq(memberBeitrags.year, currentYear),
           lt(memberBeitrags.paidCents, memberBeitrags.betragCents),
           eq(members.beitragExempt, false),
+          // Phase 1: also exclude per-year befreit rows.
+          eq(memberBeitrags.isExempt, false),
           // B3: austretene Mitglieder not counted (austrittsDatum IS NULL or in future)
           or(
             isNull(members.austrittsDatum),
@@ -455,6 +472,60 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
           isNotNull(memberBeitrags.gezahltAm),
         ),
       ),
+
+    // 20. Phase 1 — paid beitrag count + sum (paidCents = betragCents, not exempt).
+    // Two-tier exemption (spec §3): effective exempt = members.beitrag_exempt OR
+    // member_beitrags.is_exempt. INNER JOIN to members to exclude globally-exempt
+    // Ehrenmitglieder — without this join they appear in the denominator (query 21)
+    // but never pay, wrongly dragging down the paid-ratio (P1-1 fix).
+    db
+      .select({
+        paidCount: count(),
+        paidSumCents: sum(memberBeitrags.paidCents),
+      })
+      .from(memberBeitrags)
+      .innerJoin(members, eq(memberBeitrags.memberId, members.id))
+      .where(
+        and(
+          eq(memberBeitrags.year, currentYear),
+          sql`${memberBeitrags.paidCents} >= ${memberBeitrags.betragCents}`,
+          eq(memberBeitrags.isExempt, false),
+          eq(members.beitragExempt, false),
+        ),
+      ),
+
+    // 21. Phase 1 — total non-exempt rows for the year (paid + open denominator).
+    // INNER JOIN to members + eq(members.beitragExempt, false) mirrors the cron
+    // reminder query in cron-tasks.ts and excludes globally-exempt Ehrenmitglieder
+    // from the denominator (P1-1 fix).
+    db
+      .select({ totalCount: count() })
+      .from(memberBeitrags)
+      .innerJoin(members, eq(memberBeitrags.memberId, members.id))
+      .where(
+        and(
+          eq(memberBeitrags.year, currentYear),
+          eq(memberBeitrags.isExempt, false),
+          eq(members.beitragExempt, false),
+        ),
+      ),
+
+    // 22. Phase 1 — exempt count: rows where EITHER the per-year flag OR the
+    // global flag is true (spec §3: effective exempt = per-year OR global).
+    // INNER JOIN to members so we can check both flags.
+    db
+      .select({ exemptCount: count() })
+      .from(memberBeitrags)
+      .innerJoin(members, eq(memberBeitrags.memberId, members.id))
+      .where(
+        and(
+          eq(memberBeitrags.year, currentYear),
+          or(
+            eq(memberBeitrags.isExempt, true),
+            eq(members.beitragExempt, true),
+          ),
+        ),
+      ),
   ]);
 
   // § 64 Abs. 3 AO Besteuerungsfreigrenze for wirtschaftlicher Geschäftsbetrieb:
@@ -538,6 +609,11 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
     ),
     openBeitragsCount: openBeitragsAgg[0]?.rowCount ?? 0,
     openBeitragsMembers: Number(openBeitragsAgg[0]?.memberCount ?? 0),
+    // Phase 1 Beitrag summary KPIs (Task 1.7)
+    beitragPaidCount: beitragPaidAgg[0]?.paidCount ?? 0,
+    beitragPaidSumCents: BigInt(beitragPaidAgg[0]?.paidSumCents ?? 0),
+    beitragTotalDueCount: beitragTotalDueAgg[0]?.totalCount ?? 0,
+    beitragExemptCount: beitragExemptAgg[0]?.exemptCount ?? 0,
     spendenYtdCents: BigInt(spendenYtd[0]?.sumCents ?? 0),
     activeMemberCount: activeMembers[0]?.value ?? 0,
     wgb: {

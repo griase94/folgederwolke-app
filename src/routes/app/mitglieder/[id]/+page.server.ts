@@ -27,10 +27,7 @@ import {
 } from "$lib/server/domain/members-actions.js";
 import { sendMail } from "$lib/server/mail/index.js";
 import { env } from "$lib/server/env.js";
-import { berlinYear } from "$lib/domain/year.js";
-
-// Default Beitrag rate in cents (69.69 €) — until Einstellungen tab in Phase 4.
-const DEFAULT_BEITRAG_CENTS = 6969n;
+import { berlinYear, berlinYmd } from "$lib/domain/year.js";
 
 export const load: PageServerLoad = async ({ params }) => {
   const { id } = params;
@@ -102,7 +99,7 @@ export const load: PageServerLoad = async ({ params }) => {
   const defaultReminderYear = openYears[0]?.year ?? currentYear;
   const defaultReminderBetragCents = openYears[0]
     ? Number(openYears[0].betragCents)
-    : Number(DEFAULT_BEITRAG_CENTS);
+    : 6969; // fallback to default Satz (€69,69) when no open year row exists
 
   return {
     member: {
@@ -212,7 +209,14 @@ export const actions: Actions = {
     const yearStr = formData.get("year")?.toString() ?? "";
     const year = parseInt(yearStr, 10);
 
-    const result = await markBeitragPaid(memberId, year, userId, userRole);
+    const gezahltAm = formData.get("gezahlt_am")?.toString() || berlinYmd();
+    const result = await markBeitragPaid({
+      memberId,
+      year,
+      gezahltAm,
+      actorUserId: userId,
+      actorRole: userRole,
+    });
     if (!result.ok) {
       return fail(result.status, {
         action: "mark-beitrag-paid",
@@ -285,7 +289,7 @@ export const actions: Actions = {
 
     const betragCents = beitragRows[0]
       ? Number(beitragRows[0].betragCents)
-      : Number(DEFAULT_BEITRAG_CENTS);
+      : 6969; // fallback to default Satz (€69,69) when no beitrag row exists yet
 
     // Org bank details — env.VEREIN_* is the only source of truth. No
     // string-literal fallbacks: mismatched IBAN/BIC fallbacks were the

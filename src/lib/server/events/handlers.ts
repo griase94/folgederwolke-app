@@ -490,6 +490,71 @@ export function registerHandlers(): void {
     },
   );
 
+  // ── member.beitrag_unpaid ───────────────────────────────────────────────
+  // Storno: a previously-paid Beitrag year was reversed. Re-throws on failure
+  // (audit is critical — mirror the existing beitrag_paid handler pattern).
+  bus.on<EventPayload<"member.beitrag_unpaid">>(
+    "member.beitrag_unpaid",
+    async (payload) => {
+      await logAudit({
+        action: "update",
+        entityKind: "member",
+        entityId: payload.memberId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: {
+          kind: "beitrag_unpaid",
+          year: payload.year,
+          prevPaidCents: payload.prevPaidCents, // number — JSON-safe (P0-F1)
+          prevGezahltAm: payload.prevGezahltAm,
+        },
+      });
+    },
+  );
+
+  // ── member.exempted ─────────────────────────────────────────────────────
+  // Per-year Befreiung granted or revoked. Re-throws on failure.
+  bus.on<EventPayload<"member.exempted">>(
+    "member.exempted",
+    async (payload) => {
+      await logAudit({
+        action: "update",
+        entityKind: "member",
+        entityId: payload.memberId,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: {
+          kind: payload.exempt ? "exempt_granted" : "exempt_revoked",
+          year: payload.year,
+          reason: payload.reason,
+          prevExempt: payload.prevExempt,
+        },
+      });
+    },
+  );
+
+  // ── settings.beitragssatz_changed ──────────────────────────────────────
+  // Annual Beitragssatz was updated. entityKind='settings'. Re-throws.
+  bus.on<EventPayload<"settings.beitragssatz_changed">>(
+    "settings.beitragssatz_changed",
+    async (payload) => {
+      await logAudit({
+        action: "update",
+        entityKind: "settings",
+        entityId: `beitragssatz_${payload.year}`,
+        actorUserId: payload.actorUserId,
+        actorKind: payload.actorUserId ? "user" : "system",
+        payload: {
+          kind: "beitragssatz_changed",
+          year: payload.year,
+          oldCents: payload.oldCents, // number — JSON-safe (P0-F1)
+          newCents: payload.newCents, // number — JSON-safe (P0-F1)
+          decisionNote: payload.decisionNote,
+        },
+      });
+    },
+  );
+
   // ── spende.created ──────────────────────────────────────────────────────
   bus.on<EventPayload<"spende.created">>("spende.created", async (payload) => {
     await logAudit({

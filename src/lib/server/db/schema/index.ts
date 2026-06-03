@@ -6,6 +6,7 @@
  */
 export * from "./enums.js";
 export * from "./audit_log.js";
+export * from "./beitragssatz.js";
 export * from "./auslagen_submissions.js";
 export * from "./customers.js";
 export * from "./donations.js";
