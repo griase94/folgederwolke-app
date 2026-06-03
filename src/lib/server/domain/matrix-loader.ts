@@ -11,69 +11,22 @@
  * Spec §7.1–§7.3 + Plan Task 2.0.
  */
 
-import { and, eq, inArray, or, isNull, lte, gte, sql } from "drizzle-orm";
+import { and, inArray, sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
-import { berlinYmd, berlinYear } from "$lib/domain/year.js";
+import { berlinYmd } from "$lib/domain/year.js";
+import type {
+  CellState,
+  MatrixCell,
+  YearHeader,
+  MatrixMember,
+  MatrixData,
+} from "$lib/domain/beitrag-cell.js";
 
-// ---------------------------------------------------------------------------
-// Types (exported — consumed by UI components)
-// ---------------------------------------------------------------------------
-
-export type CellState =
-  | "paid"
-  | "open"
-  | "overdue"
-  | "exempt"
-  | "permanently_exempt"
-  | "not_applicable_pre_join"
-  | "not_applicable_post_austritt"
-  | "locked_year";
-
-export type MatrixCell = {
-  memberId: string;
-  year: number;
-  state: CellState;
-  /** Year's Beitragssatz in cents (0 if no row and no Satz for year). */
-  betragCents: number;
-  paidCents: number;
-  gezahltAm: string | null;
-  /** Populated only for exempt / permanently_exempt cells. */
-  exemptReason: string | null;
-  /** Populated only when state === "overdue". */
-  daysOverdue: number | null;
-};
-
-export type YearHeader = {
-  year: number;
-  /** Paid cells (excl. exempt / not_applicable). */
-  paidCount: number;
-  /** Denominator: active, non-exempt cells. */
-  totalDueCount: number;
-  paidSumCents: number;
-  exemptCount: number;
-  isLocked: boolean;
-};
-
-export type MatrixMember = {
-  id: string;
-  vorname: string;
-  nachname: string;
-  eintrittsJahr: number;
-  /** null when no Austrittsdatum set (still active). */
-  austrittsJahr: number | null;
-  beitragExempt: boolean;
-  beitragExemptReason: string | null;
-};
-
-export type MatrixData = {
-  members: MatrixMember[];
-  years: number[];
-  cells: MatrixCell[];
-  headers: YearHeader[];
-  festgeschriebenBis: number | null;
-};
+// Re-export the client-safe types so server callers can import everything from
+// one place. The data contract lives in $lib/domain/beitrag-cell.ts.
+export type { CellState, MatrixCell, YearHeader, MatrixMember, MatrixData };
 
 // ---------------------------------------------------------------------------
 // Helpers

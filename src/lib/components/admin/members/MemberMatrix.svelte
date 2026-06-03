@@ -202,6 +202,7 @@
 						{#each years as year (year)}
 							{@const b = member.beitrags[year]}
 							{@const status = b ? beitragStatusFor(b) : 'open'}
+							{@const cellState = status === 'waived' ? 'exempt' : status}
 							<td class="px-4 py-2.5 text-center">
 								{#if status !== 'paid'}
 									<form
@@ -224,11 +225,25 @@
 											disabled={markingKey === `${member.id}-${year}`}
 											class="disabled:opacity-50"
 										>
-											<BeitragsBadge {year} {status} compact={true} />
+											<BeitragsBadge
+												{year}
+												state={cellState}
+												betragCents={b?.betragCents ?? 0}
+												paidCents={b?.paidCents ?? 0}
+												gezahltAm={b?.gezahltAm ?? null}
+												compact
+											/>
 										</button>
 									</form>
 								{:else}
-									<BeitragsBadge {year} {status} compact={true} />
+									<BeitragsBadge
+										{year}
+										state={cellState}
+										betragCents={b?.betragCents ?? 0}
+										paidCents={b?.paidCents ?? 0}
+										gezahltAm={b?.gezahltAm ?? null}
+										compact
+									/>
 								{/if}
 							</td>
 						{/each}

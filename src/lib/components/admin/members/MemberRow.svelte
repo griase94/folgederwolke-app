@@ -99,7 +99,16 @@
 		{#each years as year (year)}
 			{@const b = member.beitrags[year]}
 			{@const status = b ? beitragStatusFor(b) : 'open'}
-			<BeitragsBadge {year} {status} />
+			{@const cellState = status === 'waived' ? 'exempt' : status}
+			<BeitragsBadge
+				{year}
+				state={cellState}
+				betragCents={b?.betragCents ?? 0}
+				paidCents={b?.paidCents ?? 0}
+				gezahltAm={b?.gezahltAm ?? null}
+				exemptReason={member.beitragExemptReason}
+				compact
+			/>
 		{/each}
 	</div>
 
