@@ -33,8 +33,7 @@
 		submitting = false,
 		onPaid,
 		onExempt,
-		onReminder,
-		onCancel
+		onReminder
 	}: {
 		memberId: string;
 		year: number;
@@ -47,6 +46,7 @@
 		onPaid?: (detail: { memberId: string; year: number; gezahltAm: string }) => void;
 		onExempt?: (detail: { memberId: string; year: number; reason: string }) => void;
 		onReminder?: (detail: { memberId: string; year: number }) => void;
+		/** Reserved for explicit cancel wiring; bits-ui Popover handles Esc/outside. */
 		onCancel?: () => void;
 	} = $props();
 
@@ -128,7 +128,6 @@
 		</h2>
 
 		<div class="flex flex-col gap-1.5">
-			<!-- svelte-ignore a11y_label_has_associated_control -->
 			<label
 				class="text-xs font-medium text-muted-foreground"
 				for={`gezahlt-am-${memberId}-${year}`}>Bezahlt am</label
@@ -191,7 +190,6 @@
 		</h2>
 
 		<div class="flex flex-col gap-1.5">
-			<!-- svelte-ignore a11y_label_has_associated_control -->
 			<label
 				class="text-xs font-medium text-muted-foreground"
 				for={`grund-${memberId}-${year}`}>Grund (erforderlich)</label

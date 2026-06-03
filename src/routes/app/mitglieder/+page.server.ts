@@ -325,7 +325,6 @@ export const actions: Actions = {
 
   // ── Task 2.8: Send Beitrag reminder ──────────────────────────────────────────
   "send-reminder": async ({ request, locals }) => {
-    const userId = locals.session?.user.id ?? null;
     const userRole = locals.session?.user.role ?? null;
     // Admin-only gate
     if (userRole !== "admin") {

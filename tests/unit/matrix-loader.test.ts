@@ -12,10 +12,9 @@ import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
 import { memberBeitrags } from "$lib/server/db/schema/members.js";
 import { loadMatrix } from "$lib/server/domain/matrix-loader.js";
 import { seedMember, seedOpenBeitrag } from "../helpers/db-seed.js";
-import { and, eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 
 const TEST_YEAR = 2026;
-const ACTOR_ID = "00000000-0000-4000-8000-000000000099";
 
 // Ensure beitragssatz row exists for our test year
 async function ensureSatz(year: number, cents = 6969n) {
@@ -211,7 +210,7 @@ describe("@phase-2 matrix loader — year-header totals", () => {
       .onConflictDoNothing();
 
     // Create a permanently exempt member
-    const exempt = await seedMember({
+    await seedMember({
       name: "HeaderExempt",
       beitragExempt: true,
       beitragExemptReason: "Ehrenmitglied",
@@ -265,18 +264,9 @@ describe("@phase-2 matrix loader — locked year", () => {
   it("renders locked_year when year <= festgeschriebenBis", async () => {
     await ensureSatz(2023);
     const db = getDb();
-    // Read current festgeschrieben_bis so we can restore it.
-    // The trigger prevents deletion and prevents setting a lower value, so
-    // we set to 2023 (higher than any current value expected in test DB)
-    // and then restore to the original value (or null) after the assertion.
-    const prevRows = await db.execute<{ value: unknown }>(
-      sql`SELECT value FROM settings WHERE key = 'festgeschrieben_bis'`,
-    );
-    const prevValue = (prevRows as { value: unknown }[])[0]?.value ?? null;
-
-    // Only run this test if we can safely raise festgeschrieben_bis temporarily.
-    // Use a dedicated far-past test year (2021) so restoring to prevValue or 0
-    // afterwards doesn't undermine existing festschreibung.
+    // The monotonic trigger forbids lowering festgeschrieben_bis, so we only
+    // ever raise it. Use a far-past test year (2021/2022) that won't interfere
+    // with current-year matrix flows in other specs.
     await ensureSatz(2021);
     await db.execute(
       sql`INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', '2022'::jsonb) ON CONFLICT (key) DO UPDATE SET value = '2022'::jsonb`,

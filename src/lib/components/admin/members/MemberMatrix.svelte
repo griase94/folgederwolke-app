@@ -18,6 +18,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import { Popover, ContextMenu } from 'bits-ui';
+	import { SvelteMap } from 'svelte/reactivity';
 	import Lock from '@lucide/svelte/icons/lock';
 	import MatrixCell from './MatrixCell.svelte';
 	import MarkPaidPopover from './MarkPaidPopover.svelte';
@@ -44,7 +45,7 @@
 
 	// ── Cell lookup ────────────────────────────────────────────────────────────
 	const cellMap = $derived.by(() => {
-		const m = new Map<string, MatrixData['cells'][0]>();
+		const m = new SvelteMap<string, MatrixData['cells'][0]>();
 		for (const c of matrix.cells) m.set(`${c.memberId}:${c.year}`, c);
 		return m;
 	});
@@ -352,13 +353,7 @@
 						class="sticky left-0 z-10 flex min-w-[160px] flex-1 items-center bg-card px-4 py-2.5"
 					>
 						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-						<a
-							href="/app/mitglieder/{member.id}"
-							class="text-sm font-medium text-foreground hover:text-primary {member.austrittsJahr !==
-							null
-								? 'line-through decoration-muted-foreground/40'
-								: ''}"
-						>
+						<a href="/app/mitglieder/{member.id}" class="text-sm font-medium text-foreground hover:text-primary {member.austrittsJahr !== null ? 'line-through decoration-muted-foreground/40' : ''}">
 							{member.nachname}, {member.vorname}
 						</a>
 					</div>

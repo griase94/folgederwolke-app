@@ -26,7 +26,6 @@
 		gezahltAm = null,
 		exemptReason = null,
 		daysOverdue = null,
-		memberName = '',
 		year = 0,
 		compact = false
 	}: {
@@ -36,7 +35,6 @@
 		gezahltAm?: string | null;
 		exemptReason?: string | null;
 		daysOverdue?: number | null;
-		memberName?: string;
 		year?: number;
 		compact?: boolean;
 	} = $props();

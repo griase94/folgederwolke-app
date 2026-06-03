@@ -130,7 +130,6 @@
 		{gezahltAm}
 		{exemptReason}
 		{daysOverdue}
-		{memberName}
 		{compact}
 	/>
 </button>
