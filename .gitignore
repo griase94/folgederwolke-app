@@ -37,3 +37,6 @@ vite.config.ts.timestamp-*
 !.claude/memory/
 !.claude/memory/**
 .env*.local
+
+# Brainstorm visual-companion artifacts
+.superpowers/
