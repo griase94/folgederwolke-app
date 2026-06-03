@@ -62,7 +62,11 @@ export type MarkBeitragPaidResult = { ok: true } | ActionFailure;
 export async function addMember(
   raw: Record<string, unknown>,
   actorUserId: string | null,
+  actorRole?: string | null,
 ): Promise<AddMemberResult> {
+  const denial = requireAdmin(actorRole);
+  if (denial) return denial;
+
   const result = validateAddMember(raw);
   if (!result.success) {
     return { ok: false, status: 422, errors: result.errors, values: raw };
@@ -129,7 +133,11 @@ export async function addMember(
 export async function editMember(
   raw: Record<string, unknown>,
   actorUserId: string | null,
+  actorRole?: string | null,
 ): Promise<EditMemberResult> {
+  const denial = requireAdmin(actorRole);
+  if (denial) return denial;
+
   const result = validateEditMember(raw);
   if (!result.success) {
     return { ok: false, status: 422, errors: result.errors, values: raw };
@@ -196,7 +204,11 @@ export async function editMember(
 export async function softDeleteMember(
   memberId: string,
   actorUserId: string | null,
+  actorRole?: string | null,
 ): Promise<DeleteMemberResult> {
+  const denial = requireAdmin(actorRole);
+  if (denial) return denial;
+
   if (!memberId) {
     return { ok: false, status: 400, error: "Fehlende Mitglieds-ID" };
   }
@@ -246,7 +258,11 @@ export async function softDeleteMember(
 export async function restoreMember(
   memberId: string,
   actorUserId: string | null,
+  actorRole?: string | null,
 ): Promise<RestoreMemberResult> {
+  const denial = requireAdmin(actorRole);
+  if (denial) return denial;
+
   if (!memberId) {
     return { ok: false, status: 400, error: "Fehlende Mitglieds-ID" };
   }

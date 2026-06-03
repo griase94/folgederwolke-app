@@ -127,11 +127,12 @@ export const actions: Actions = {
   // named actions on the same route. AddMemberDialog posts to `?/add`.
   add: async ({ request, locals }) => {
     const userId = locals.session?.user.id ?? null;
+    const userRole = locals.session?.user.role ?? null;
     const formData = await request.formData();
     const raw: Record<string, unknown> = {};
     for (const [k, v] of formData.entries()) raw[k] = v;
 
-    const result = await addMember(raw, userId);
+    const result = await addMember(raw, userId, userRole);
     if (!result.ok) {
       return fail(result.status, {
         action: "add",
@@ -146,11 +147,12 @@ export const actions: Actions = {
   // ── Edit member ─────────────────────────────────────────────────────────────
   edit: async ({ request, locals }) => {
     const userId = locals.session?.user.id ?? null;
+    const userRole = locals.session?.user.role ?? null;
     const formData = await request.formData();
     const raw: Record<string, unknown> = {};
     for (const [k, v] of formData.entries()) raw[k] = v;
 
-    const result = await editMember(raw, userId);
+    const result = await editMember(raw, userId, userRole);
     if (!result.ok) {
       return fail(result.status, {
         action: "edit",
@@ -165,10 +167,11 @@ export const actions: Actions = {
   // ── Soft-delete member ──────────────────────────────────────────────────────
   delete: async ({ request, locals }) => {
     const userId = locals.session?.user.id ?? null;
+    const userRole = locals.session?.user.role ?? null;
     const formData = await request.formData();
     const id = formData.get("id")?.toString() ?? "";
 
-    const result = await softDeleteMember(id, userId);
+    const result = await softDeleteMember(id, userId, userRole);
     if (!result.ok) {
       return fail(result.status, { action: "delete", error: result.error });
     }
@@ -179,10 +182,11 @@ export const actions: Actions = {
   // ── Restore soft-deleted member (undo) ──────────────────────────────────────
   restore: async ({ request, locals }) => {
     const userId = locals.session?.user.id ?? null;
+    const userRole = locals.session?.user.role ?? null;
     const formData = await request.formData();
     const id = formData.get("id")?.toString() ?? "";
 
-    const result = await restoreMember(id, userId);
+    const result = await restoreMember(id, userId, userRole);
     if (!result.ok) {
       return fail(result.status, { action: "restore", error: result.error });
     }
