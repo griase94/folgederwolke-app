@@ -231,7 +231,16 @@ export async function loadMatrix(opts: {
         c.state !== "exempt" &&
         c.state !== "permanently_exempt",
     );
-    const paidCells = applicableCells.filter((c) => c.state === "paid");
+    // For locked_year cells, state derivation stops at the lock check (step 5),
+    // so state never reaches "paid" even when the underlying beitrag IS paid.
+    // Count a locked_year cell as paid when paidCents >= betragCents > 0.
+    const paidCells = applicableCells.filter(
+      (c) =>
+        c.state === "paid" ||
+        (c.state === "locked_year" &&
+          c.betragCents > 0 &&
+          c.paidCents >= c.betragCents),
+    );
 
     return {
       year: y,

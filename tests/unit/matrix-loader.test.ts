@@ -281,4 +281,43 @@ describe("@phase-2 matrix loader — locked year", () => {
     // Do NOT reset festgeschrieben_bis — the monotonic trigger prevents lowering it.
     // The test DB is reset before each full test run so this is safe.
   });
+
+  it("year-header counts a fully-paid locked_year cell as paid (not as 0/N)", async () => {
+    // FIX 3 regression guard: a locked_year cell whose underlying beitrag is
+    // paid (paidCents >= betragCents) must appear in paidCount and paidSumCents.
+    // Before the fix, locked_year cells were excluded from applicableCells (the
+    // denominator) so a fully-paid closed year showed "0/0 bezahlt" instead of
+    // "1/1 bezahlt".
+    await ensureSatz(2021);
+    const db = getDb();
+    await db.execute(
+      sql`INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', '2022'::jsonb) ON CONFLICT (key) DO UPDATE SET value = '2022'::jsonb`,
+    );
+
+    const m = await seedMember({ name: "LockedPaidMember" });
+    // Seed a paid beitrag for the locked year.
+    await db
+      .insert(memberBeitrags)
+      .values({
+        memberId: m.id,
+        year: 2021,
+        betragCents: 6969n,
+        paidCents: 6969n,
+        gezahltAm: "2021-03-15",
+        source: "app",
+      })
+      .onConflictDoNothing();
+
+    const data = await loadMatrix({ years: [2021] });
+    const cell = data.cells.find((c) => c.memberId === m.id && c.year === 2021);
+    // Cell state is still locked_year (festschreibung takes priority in state derivation).
+    expect(cell?.state).toBe("locked_year");
+
+    const header = data.headers.find((h) => h.year === 2021)!;
+    // The paid cell must count in the header totals — NOT show 0/N.
+    expect(header.paidCount).toBeGreaterThanOrEqual(1);
+    expect(header.paidSumCents).toBeGreaterThanOrEqual(6969);
+    // And the denominator must include the locked cell.
+    expect(header.totalDueCount).toBeGreaterThanOrEqual(1);
+  });
 });
