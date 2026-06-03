@@ -24,7 +24,7 @@
 	} = $props();
 
 	const titleId = $derived(`perm-exempt-title-${memberId}-${year}`);
-	const editHref = $derived(`/app/mitglieder/${memberId}/bearbeiten`);
+	const editHref = $derived(`/app/mitglieder/${memberId}`);
 </script>
 
 <div
@@ -45,6 +45,6 @@
 
 	<div class="flex justify-end">
 		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-		<Button variant="outline" size="sm" href={editHref}>Mitglied bearbeiten →</Button>
+		<Button variant="outline" size="sm" href={editHref}>Mitglied öffnen →</Button>
 	</div>
 </div>

@@ -93,10 +93,10 @@ describe("PermanentExemptPopover — read-only (§7.8a)", () => {
     exemptReason: "Ehrenmitglied seit 2018",
   };
 
-  it("shows the permanent Grund and an edit link to the member page", () => {
+  it("shows the permanent Grund and a link to the member detail page", () => {
     render(PermanentExemptPopover, { props: base });
     expect(screen.getByText(/Ehrenmitglied seit 2018/)).toBeTruthy();
-    const link = screen.getByRole("link", { name: /Mitglied bearbeiten/ });
-    expect(link.getAttribute("href")).toBe("/app/mitglieder/m1/bearbeiten");
+    const link = screen.getByRole("link", { name: /Mitglied öffnen/ });
+    expect(link.getAttribute("href")).toBe("/app/mitglieder/m1");
   });
 });
