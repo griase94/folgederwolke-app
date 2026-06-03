@@ -26,12 +26,34 @@ describe("@phase-0 dashboard active-member filters (B3, B4)", () => {
 
     const kpis = await loadDashboardKpis(2026);
 
-    // The openBeitragsMembers count should not include this member who left
-    // We can't assert exact value since other tests may add members, but we
-    // check that loadDashboardKpis runs successfully — the real assertion is
-    // that the SQL query includes the austritts_datum filter (structural test).
-    // The count should be a non-negative integer (basic sanity).
-    expect(kpis.openBeitragsMembers).toBeGreaterThanOrEqual(0);
+    // Mirror the B4 pattern: query the DB directly to get the set of members
+    // that the corrected SQL counts, then assert the austretene member is absent.
+    const { getDb } = await import("$lib/server/db/index.js");
+    const { members } = await import("$lib/server/db/schema/members.js");
+    const { memberBeitrags } = await import("$lib/server/db/schema/members.js");
+    const { eq, isNull, and, lt } = await import("drizzle-orm");
+    const db = getDb();
+
+    // Reproduce the corrected B3 query: members with austritts_datum IS NULL
+    // (still active) who have open beitrags for 2026.
+    const openRows = await db
+      .select({ id: members.id })
+      .from(members)
+      .innerJoin(memberBeitrags, eq(memberBeitrags.memberId, members.id))
+      .where(
+        and(
+          isNull(members.austrittsDatum),
+          eq(memberBeitrags.year, 2026),
+          lt(memberBeitrags.paidCents, memberBeitrags.betragCents),
+        ),
+      );
+
+    // The austretene member must NOT appear in this result.
+    const pastInOpen = openRows.find((r) => r.id === past.id);
+    expect(pastInOpen).toBeUndefined();
+
+    // kpis.openBeitragsMembers (after the B3 fix) must match this filtered count.
+    expect(kpis.openBeitragsMembers).toBe(openRows.length);
   });
 
   it("B3: activeMemberCount excludes members with past austrittsDatum", async () => {
