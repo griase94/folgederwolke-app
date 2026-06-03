@@ -29,6 +29,10 @@
 	// Synced from `member.beitragExempt` whenever the dialog opens (or the
 	// member prop changes) so editing pre-fills the checkbox state.
 	let beitragExempt = $state(false);
+	// Task 2.11 — track the reason text so we can disable submit when permanent
+	// exemption is on but the §55-AO Grund is still empty (client mirror of the
+	// server superRefine + DB CHECK).
+	let beitragExemptReason = $state('');
 
 	function reset() {
 		errors = {};
@@ -37,6 +41,7 @@
 		confirmDelete = false;
 		deleteError = null;
 		beitragExempt = member?.beitragExempt ?? false;
+		beitragExemptReason = member?.beitragExemptReason ?? '';
 	}
 
 	$effect(() => {
@@ -45,8 +50,16 @@
 
 	$effect(() => {
 		// Keep the toggle in sync with the freshly-passed member prop.
-		if (member) beitragExempt = member.beitragExempt ?? false;
+		if (member) {
+			beitragExempt = member.beitragExempt ?? false;
+			beitragExemptReason = member.beitragExemptReason ?? '';
+		}
 	});
+
+	// §55 AO: block submit while exemption is on without a Grund.
+	const exemptReasonMissing = $derived(
+		beitragExempt && beitragExemptReason.trim().length === 0
+	);
 
 	function fieldError(key: string): string | undefined {
 		return errors[key]?.[0];
@@ -281,13 +294,20 @@
 					</label>
 					{#if beitragExempt}
 						<div class="space-y-1">
-							<Label for="edit-exempt-reason">Begründung</Label>
+							<Label for="edit-exempt-reason">Begründung (erforderlich)</Label>
 							<Input
 								id="edit-exempt-reason"
 								name="beitrag_exempt_reason"
 								placeholder="z.B. Ehrenmitglied, Härtefall"
-								value={member.beitragExemptReason ?? ''}
+								aria-required="true"
+								aria-invalid={exemptReasonMissing}
+								bind:value={beitragExemptReason}
 							/>
+							{#if exemptReasonMissing}
+								<p class="text-xs text-destructive" role="alert">
+									Grund erforderlich (§55 AO).
+								</p>
+							{/if}
 						</div>
 					{/if}
 				</div>
@@ -350,7 +370,10 @@
 								</Button>
 							{/snippet}
 						</Dialog.Close>
-						<Button type="submit" disabled={loading || deleteLoading}>
+						<Button
+							type="submit"
+							disabled={loading || deleteLoading || exemptReasonMissing}
+						>
 							{#if loading}
 								<svg class="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
 									<circle

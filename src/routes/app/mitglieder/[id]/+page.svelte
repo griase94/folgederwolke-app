@@ -106,6 +106,12 @@
 						memberId={data.member.id}
 						beitragExempt={data.member.beitragExempt}
 						beitragExemptReason={data.member.beitragExemptReason}
+						eintrittsJahr={data.member.eintrittsDatum
+							? Number(data.member.eintrittsDatum.slice(0, 4))
+							: null}
+						austrittsJahr={data.member.austrittsDatum
+							? Number(data.member.austrittsDatum.slice(0, 4))
+							: null}
 					/>
 				{/if}
 			</div>

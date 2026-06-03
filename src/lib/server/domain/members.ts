@@ -116,12 +116,36 @@ const memberBaseSchema = z.object({
   ),
 });
 
-export const addMemberSchema = memberBaseSchema;
+/**
+ * §55 AO: when permanent exemption is on, a non-empty Grund is required.
+ * Enforced here (server), client-side via disabled-submit, and at the DB via
+ * the members_beitrag_exempt_reason_when_exempt_ck CHECK constraint (Task 2.11).
+ */
+function requireExemptReason(
+  data: { beitrag_exempt: boolean; beitrag_exempt_reason?: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (
+    data.beitrag_exempt &&
+    (!data.beitrag_exempt_reason || data.beitrag_exempt_reason.trim() === "")
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["beitrag_exempt_reason"],
+      message: "Grund erforderlich (§55 AO).",
+    });
+  }
+}
+
+export const addMemberSchema =
+  memberBaseSchema.superRefine(requireExemptReason);
 export type AddMemberInput = z.infer<typeof addMemberSchema>;
 
-export const editMemberSchema = memberBaseSchema.extend({
-  id: z.string().uuid("Ungültige Mitglieds-ID"),
-});
+export const editMemberSchema = memberBaseSchema
+  .extend({
+    id: z.string().uuid("Ungültige Mitglieds-ID"),
+  })
+  .superRefine(requireExemptReason);
 export type EditMemberInput = z.infer<typeof editMemberSchema>;
 
 export function validateAddMember(

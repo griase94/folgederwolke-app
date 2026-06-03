@@ -18,6 +18,8 @@
 
 	// Night-2 C5-MEM-full — exempt toggle drives the optional reason field.
 	let beitragExempt = $state(false);
+	// Task 2.11 — §55 AO Grund required when exemption is on (client mirror).
+	let beitragExemptReason = $state('');
 
 	const todayIso = new Date().toISOString().slice(0, 10);
 
@@ -25,7 +27,12 @@
 		errors = {};
 		loading = false;
 		beitragExempt = false;
+		beitragExemptReason = '';
 	}
+
+	const exemptReasonMissing = $derived(
+		beitragExempt && beitragExemptReason.trim().length === 0
+	);
 
 	function fieldError(key: string): string | undefined {
 		return errors[key]?.[0];
@@ -184,12 +191,20 @@
 				</label>
 				{#if beitragExempt}
 					<div class="space-y-1">
-						<Label for="add-exempt-reason">Begründung</Label>
+						<Label for="add-exempt-reason">Begründung (erforderlich)</Label>
 						<Input
 							id="add-exempt-reason"
 							name="beitrag_exempt_reason"
 							placeholder="z.B. Ehrenmitglied, Härtefall"
+							aria-required="true"
+							aria-invalid={exemptReasonMissing}
+							bind:value={beitragExemptReason}
 						/>
+						{#if exemptReasonMissing}
+							<p class="text-xs text-destructive" role="alert">
+								Grund erforderlich (§55 AO).
+							</p>
+						{/if}
 					</div>
 				{/if}
 			</div>
@@ -208,7 +223,7 @@
 						</Button>
 					{/snippet}
 				</Dialog.Close>
-				<Button type="submit" disabled={loading}>
+				<Button type="submit" disabled={loading || exemptReasonMissing}>
 					{#if loading}
 						<svg class="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
 							<circle
