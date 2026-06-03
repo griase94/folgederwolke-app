@@ -17,8 +17,13 @@ afterEach(() => cleanup());
 function renderCell(
   state: CellState,
   cbs: {
-    onOpenPopover?: ReturnType<typeof vi.fn>;
-    onLocked?: ReturnType<typeof vi.fn>;
+    onOpenPopover?: (detail: {
+      kind: string;
+      memberId: string;
+      year: number;
+      triggerEl: HTMLElement;
+    }) => void;
+    onLocked?: (detail: { year: number }) => void;
   } = {},
   extra: Record<string, unknown> = {},
 ) {
