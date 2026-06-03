@@ -72,6 +72,9 @@
 			offenCents={data.beitragsuebersicht.offenCents}
 			paidMemberCount={data.beitragsuebersicht.paidMemberCount}
 			openMemberCount={data.beitragsuebersicht.openMemberCount}
+			overdueCount={data.beitragsuebersicht.overdueCount}
+			lastPaymentDate={data.beitragsuebersicht.lastPaymentDate}
+			priorYearsUnpaidCount={data.beitragsuebersicht.priorYearsUnpaidCount}
 		/>
 	</div>
 

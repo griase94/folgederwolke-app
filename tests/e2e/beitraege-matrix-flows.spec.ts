@@ -62,10 +62,10 @@ async function seed(): Promise<void> {
     await sql`DELETE FROM member_beitrags`;
     await sql`DELETE FROM members`;
     await sql`
-      INSERT INTO members (id, vorname, nachname, email, role, eintritts_datum)
+      INSERT INTO members (id, vorname, nachname, email, role, eintritts_datum, is_fixture)
       VALUES
-        (${erika}, 'Erika', 'Mustermann', 'erika@example.test', 'mitglied', '2020-01-01'),
-        (${klaus}, 'Klaus', 'Klein',      'klaus@example.test', 'mitglied', '2020-01-01')
+        (${erika}, 'Erika', 'Mustermann', 'erika@example.test', 'mitglied', '2020-01-01', true),
+        (${klaus}, 'Klaus', 'Klein',      'klaus@example.test', 'mitglied', '2020-01-01', true)
     `;
     // Ensure the anchor year has a Beitragssatz row with a FUTURE Fälligkeit
     // so open cells are deterministically "open" (not "overdue") regardless of

@@ -64,11 +64,11 @@ async function seedMatrixTotals(): Promise<void> {
     await sql`DELETE FROM member_beitrags`;
     await sql`DELETE FROM members`;
     await sql`
-      INSERT INTO members (id, vorname, nachname, email, role, eintritts_datum)
+      INSERT INTO members (id, vorname, nachname, email, role, eintritts_datum, is_fixture)
       VALUES
-        (${m1}, 'C5', 'Member One',   'c5-m1@example.test', 'mitglied', '2020-01-01'),
-        (${m2}, 'C5', 'Member Two',   'c5-m2@example.test', 'mitglied', '2020-01-01'),
-        (${m3}, 'C5', 'Member Three', 'c5-m3@example.test', 'mitglied', '2020-01-01')
+        (${m1}, 'C5', 'Member One',   'c5-m1@example.test', 'mitglied', '2020-01-01', true),
+        (${m2}, 'C5', 'Member Two',   'c5-m2@example.test', 'mitglied', '2020-01-01', true),
+        (${m3}, 'C5', 'Member Three', 'c5-m3@example.test', 'mitglied', '2020-01-01', true)
     `;
 
     const now = new Date();

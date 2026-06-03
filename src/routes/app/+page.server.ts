@@ -71,15 +71,31 @@ export const load: PageServerLoad = async ({ url }) => {
     paid_cents: string;
     open_count: string;
     open_cents: string;
+    overdue_count: string;
+    last_payment: string | null;
+    prior_years_unpaid: string;
   }>(sql`
+    WITH grace AS (
+      SELECT COALESCE(NULLIF(value #>> '{}', 'null')::int, 60) AS days
+      FROM settings WHERE key = 'beitrag.overdue_grace_days'
+    )
     SELECT
       (SELECT COUNT(*) FROM members WHERE austritts_datum IS NULL)::text                  AS member_count,
-      COUNT(DISTINCT CASE WHEN paid_cents >= betrag_cents THEN member_id END)::text       AS paid_count,
-      COALESCE(SUM(paid_cents), 0)::text                                                  AS paid_cents,
-      COUNT(DISTINCT CASE WHEN paid_cents <  betrag_cents THEN member_id END)::text       AS open_count,
-      COALESCE(SUM(GREATEST(betrag_cents - paid_cents, 0)), 0)::text                      AS open_cents
-    FROM member_beitrags
-    WHERE year = ${beitragsYear}
+      COUNT(DISTINCT CASE WHEN mb.paid_cents >= mb.betrag_cents THEN mb.member_id END)::text AS paid_count,
+      COALESCE(SUM(mb.paid_cents), 0)::text                                               AS paid_cents,
+      COUNT(DISTINCT CASE WHEN mb.paid_cents <  mb.betrag_cents THEN mb.member_id END)::text AS open_count,
+      COALESCE(SUM(GREATEST(mb.betrag_cents - mb.paid_cents, 0)), 0)::text                AS open_cents,
+      COUNT(DISTINCT CASE
+        WHEN mb.paid_cents < mb.betrag_cents AND mb.is_exempt = false
+         AND current_date > (COALESCE(bs.faelligkeit_at, (${beitragsYear}::text || '-03-31')::date)
+              + (COALESCE((SELECT days FROM grace), 60) || ' days')::interval)
+        THEN mb.member_id END)::text                                                      AS overdue_count,
+      (SELECT MAX(gezahlt_am)::text FROM member_beitrags WHERE year = ${beitragsYear})    AS last_payment,
+      (SELECT COUNT(DISTINCT year) FROM member_beitrags
+        WHERE year < ${beitragsYear} AND paid_cents < betrag_cents AND is_exempt = false)::text AS prior_years_unpaid
+    FROM member_beitrags mb
+    LEFT JOIN beitragssatz_by_year bs ON bs.year = mb.year
+    WHERE mb.year = ${beitragsYear}
   `);
   const br = (
     beitragsRows as unknown as Array<{
@@ -88,6 +104,9 @@ export const load: PageServerLoad = async ({ url }) => {
       paid_cents: string;
       open_count: string;
       open_cents: string;
+      overdue_count: string;
+      last_payment: string | null;
+      prior_years_unpaid: string;
     }>
   )[0] ?? {
     member_count: "0",
@@ -95,6 +114,9 @@ export const load: PageServerLoad = async ({ url }) => {
     paid_cents: "0",
     open_count: "0",
     open_cents: "0",
+    overdue_count: "0",
+    last_payment: null,
+    prior_years_unpaid: "0",
   };
   const beitragsuebersicht = {
     year: beitragsYear,
@@ -103,6 +125,9 @@ export const load: PageServerLoad = async ({ url }) => {
     paidCents: Number(br.paid_cents),
     openMemberCount: Number(br.open_count),
     offenCents: Number(br.open_cents),
+    overdueCount: Number(br.overdue_count),
+    lastPaymentDate: br.last_payment,
+    priorYearsUnpaidCount: Number(br.prior_years_unpaid),
   };
 
   return {
