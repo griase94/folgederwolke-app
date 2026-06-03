@@ -91,7 +91,7 @@ describe("@phase-0 dashboard active-member filters (B3, B4)", () => {
     // seeding the future member — instead, we verify via a DB query directly.
     const { getDb } = await import("$lib/server/db/index.js");
     const { members } = await import("$lib/server/db/schema/members.js");
-    const { eq, isNull, and, lte, sql } = await import("drizzle-orm");
+    const { isNull, and, lte, sql } = await import("drizzle-orm");
     const db = getDb();
 
     // The corrected query excludes future eintrittsDatum but keeps null (unknown)
