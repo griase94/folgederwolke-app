@@ -133,30 +133,42 @@
 	}
 
 	// ── Mutations ────────────────────────────────────────────────────────────────
-	async function post(action: string, fields: Record<string, string>): Promise<boolean> {
+	async function post(
+		action: string,
+		fields: Record<string, string>
+	): Promise<{ ok: boolean; error?: string }> {
 		const fd = new FormData();
 		for (const [k, v] of Object.entries(fields)) fd.set(k, v);
 		try {
 			const res = await fetch(`?/${action}`, { method: 'POST', body: fd });
-			if (!res.ok) return false;
+			if (!res.ok) {
+				try {
+					const json = await res.json();
+					// SvelteKit fail() responses: { type: "failure", data: { error: "..." } }
+					return { ok: false, error: (json?.data?.error as string | undefined) ?? undefined };
+				} catch {
+					return { ok: false };
+				}
+			}
 			const json = await res.json();
 			// SvelteKit action responses: type "success" | "failure"
-			return json.type === 'success';
+			if (json.type === 'success') return { ok: true };
+			return { ok: false, error: (json?.data?.error as string | undefined) ?? undefined };
 		} catch {
-			return false;
+			return { ok: false };
 		}
 	}
 
 	async function handlePaid(detail: { memberId: string; year: number; gezahltAm: string }) {
 		submitting = true;
-		const ok = await post('mark-beitrag-paid', {
+		const result = await post('mark-beitrag-paid', {
 			memberId: detail.memberId,
 			year: String(detail.year),
 			gezahltAm: detail.gezahltAm
 		});
 		submitting = false;
-		if (!ok) {
-			toast.error('Fehler — Zahlung nicht gespeichert.');
+		if (!result.ok) {
+			toast.error(result.error ?? 'Fehler — Zahlung nicht gespeichert.');
 			return;
 		}
 		popoverOpen = false;
@@ -179,15 +191,15 @@
 
 	async function handleExempt(detail: { memberId: string; year: number; reason: string }) {
 		submitting = true;
-		const ok = await post('set-beitrag-exempt', {
+		const result = await post('set-beitrag-exempt', {
 			memberId: detail.memberId,
 			year: String(detail.year),
 			exempt: 'true',
 			reason: detail.reason
 		});
 		submitting = false;
-		if (!ok) {
-			toast.error('Fehler — Befreiung nicht gespeichert.');
+		if (!result.ok) {
+			toast.error(result.error ?? 'Fehler — Befreiung nicht gespeichert.');
 			return;
 		}
 		popoverOpen = false;
@@ -214,13 +226,13 @@
 
 	async function handleStorno(detail: { memberId: string; year: number }) {
 		submitting = true;
-		const ok = await post('mark-beitrag-unpaid', {
+		const result = await post('mark-beitrag-unpaid', {
 			memberId: detail.memberId,
 			year: String(detail.year)
 		});
 		submitting = false;
-		if (!ok) {
-			toast.error('Fehler — Storno nicht möglich.');
+		if (!result.ok) {
+			toast.error(result.error ?? 'Fehler — Storno nicht möglich.');
 			return;
 		}
 		popoverOpen = false;
@@ -233,14 +245,14 @@
 
 	async function handleAufheben(detail: { memberId: string; year: number }) {
 		submitting = true;
-		const ok = await post('set-beitrag-exempt', {
+		const result = await post('set-beitrag-exempt', {
 			memberId: detail.memberId,
 			year: String(detail.year),
 			exempt: 'false'
 		});
 		submitting = false;
-		if (!ok) {
-			toast.error('Fehler — Aufheben nicht möglich.');
+		if (!result.ok) {
+			toast.error(result.error ?? 'Fehler — Aufheben nicht möglich.');
 			return;
 		}
 		popoverOpen = false;
@@ -252,12 +264,12 @@
 	}
 
 	async function handleReminder(detail: { memberId: string; year: number }) {
-		const ok = await post('send-reminder', {
+		const result = await post('send-reminder', {
 			memberId: detail.memberId,
 			year: String(detail.year)
 		});
-		if (!ok) {
-			toast.error('Erinnerung konnte nicht gesendet werden.');
+		if (!result.ok) {
+			toast.error(result.error ?? 'Erinnerung konnte nicht gesendet werden.');
 			return;
 		}
 		toast.success(`Erinnerung an ${memberName(detail.memberId)} gesendet`);
