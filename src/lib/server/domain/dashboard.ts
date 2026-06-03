@@ -96,6 +96,17 @@ export interface DashboardKpis {
   /** Member_beitrags rows open in current Berlin year. */
   openBeitragsCount: number;
   openBeitragsMembers: number;
+  /**
+   * Phase 1 Beitrag summary KPIs (Task 1.7).
+   * paidCount: rows with paidCents = betragCents (fully paid), not exempt.
+   * paidSumCents: sum of paidCents for fully-paid rows.
+   * totalDueCount: all non-exempt rows for the year (paid + unpaid).
+   * exemptCount: per-year is_exempt=true rows.
+   */
+  beitragPaidCount: number;
+  beitragPaidSumCents: bigint;
+  beitragTotalDueCount: number;
+  beitragExemptCount: number;
   /** Donations YTD (current Berlin year) sum in cents. */
   spendenYtdCents: bigint;
   /** Active members (no austrittsDatum). */
@@ -191,6 +202,9 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
     donationsBySphereRows,
     expensesBySphereRows,
     beitragsYtdAgg,
+    beitragPaidAgg,
+    beitragTotalDueAgg,
+    beitragExemptAgg,
   ] = await Promise.all([
     // 1. Open auslagen submissions (no decision yet)
     db
@@ -214,8 +228,9 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
       ),
 
     // 3. Open beitrags (paid < due) for current year — count rows + distinct members.
-    // Exempt members (beitrag_exempt = true) are excluded: their synthetic
-    // unpaid rows must not inflate the "X members owe €Y" KPI.
+    // Exempt members (beitrag_exempt = true on the member OR is_exempt on the
+    // per-year row) are excluded: their synthetic unpaid rows must not inflate
+    // the "X members owe €Y" KPI.
     // B3 fix: also exclude members who have left (austrittsDatum <= today).
     db
       .select({
@@ -229,6 +244,8 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
           eq(memberBeitrags.year, currentYear),
           lt(memberBeitrags.paidCents, memberBeitrags.betragCents),
           eq(members.beitragExempt, false),
+          // Phase 1: also exclude per-year befreit rows.
+          eq(memberBeitrags.isExempt, false),
           // B3: austretene Mitglieder not counted (austrittsDatum IS NULL or in future)
           or(
             isNull(members.austrittsDatum),
@@ -455,6 +472,43 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
           isNotNull(memberBeitrags.gezahltAm),
         ),
       ),
+
+    // 20. Phase 1 — paid beitrag count + sum (paidCents = betragCents, not exempt).
+    db
+      .select({
+        paidCount: count(),
+        paidSumCents: sum(memberBeitrags.paidCents),
+      })
+      .from(memberBeitrags)
+      .where(
+        and(
+          eq(memberBeitrags.year, currentYear),
+          sql`${memberBeitrags.paidCents} >= ${memberBeitrags.betragCents}`,
+          eq(memberBeitrags.isExempt, false),
+        ),
+      ),
+
+    // 21. Phase 1 — total non-exempt rows for the year (paid + open denominator).
+    db
+      .select({ totalCount: count() })
+      .from(memberBeitrags)
+      .where(
+        and(
+          eq(memberBeitrags.year, currentYear),
+          eq(memberBeitrags.isExempt, false),
+        ),
+      ),
+
+    // 22. Phase 1 — per-year exempt count.
+    db
+      .select({ exemptCount: count() })
+      .from(memberBeitrags)
+      .where(
+        and(
+          eq(memberBeitrags.year, currentYear),
+          eq(memberBeitrags.isExempt, true),
+        ),
+      ),
   ]);
 
   // § 64 Abs. 3 AO Besteuerungsfreigrenze for wirtschaftlicher Geschäftsbetrieb:
@@ -538,6 +592,11 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
     ),
     openBeitragsCount: openBeitragsAgg[0]?.rowCount ?? 0,
     openBeitragsMembers: Number(openBeitragsAgg[0]?.memberCount ?? 0),
+    // Phase 1 Beitrag summary KPIs (Task 1.7)
+    beitragPaidCount: beitragPaidAgg[0]?.paidCount ?? 0,
+    beitragPaidSumCents: BigInt(beitragPaidAgg[0]?.paidSumCents ?? 0),
+    beitragTotalDueCount: beitragTotalDueAgg[0]?.totalCount ?? 0,
+    beitragExemptCount: beitragExemptAgg[0]?.exemptCount ?? 0,
     spendenYtdCents: BigInt(spendenYtd[0]?.sumCents ?? 0),
     activeMemberCount: activeMembers[0]?.value ?? 0,
     wgb: {

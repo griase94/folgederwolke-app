@@ -35,7 +35,8 @@ describe("@phase-0 dashboard active-member filters (B3, B4)", () => {
     const db = getDb();
 
     // Reproduce the corrected B3 query: members with austritts_datum IS NULL
-    // (still active) who have open beitrags for 2026.
+    // (still active), not globally exempt, not per-year exempt, who have
+    // open beitrags for 2026. Must mirror the dashboard query exactly.
     const openRows = await db
       .select({ id: members.id })
       .from(members)
@@ -45,6 +46,9 @@ describe("@phase-0 dashboard active-member filters (B3, B4)", () => {
           isNull(members.austrittsDatum),
           eq(memberBeitrags.year, 2026),
           lt(memberBeitrags.paidCents, memberBeitrags.betragCents),
+          eq(members.beitragExempt, false),
+          // Phase 1: also mirror the per-year isExempt filter.
+          eq(memberBeitrags.isExempt, false),
         ),
       );
 

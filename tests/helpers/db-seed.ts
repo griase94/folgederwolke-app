@@ -62,3 +62,28 @@ export async function seedOpenBeitrag(opts: {
     })
     .onConflictDoNothing();
 }
+
+// ---------------------------------------------------------------------------
+// seedPaidBeitrag
+// ---------------------------------------------------------------------------
+
+export async function seedPaidBeitrag(opts: {
+  memberId: string;
+  year: number;
+  cents?: bigint;
+  gezahltAm?: string;
+}): Promise<void> {
+  const db = getDb();
+  const cents = opts.cents ?? 6969n;
+  const gezahltAm = opts.gezahltAm ?? `${opts.year}-03-31`;
+  await db
+    .insert(memberBeitrags)
+    .values({
+      memberId: opts.memberId,
+      year: opts.year,
+      betragCents: cents,
+      paidCents: cents,
+      gezahltAm,
+    })
+    .onConflictDoNothing();
+}
