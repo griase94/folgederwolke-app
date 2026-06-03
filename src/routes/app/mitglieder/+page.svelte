@@ -162,11 +162,7 @@
 
 	<!-- Main view -->
 	{#if data.view === 'matrix'}
-		<MemberMatrix
-			members={filteredMembers}
-			years={data.years}
-			totalsByYear={data.totalsByYear}
-		/>
+		<MemberMatrix matrix={data.matrix} filter={data.filter} />
 	{:else}
 		<MemberList
 			members={filteredMembers}
