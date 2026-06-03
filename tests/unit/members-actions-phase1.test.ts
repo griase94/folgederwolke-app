@@ -9,11 +9,9 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { getDb } from "$lib/server/db/index.js";
-import { memberBeitrags } from "$lib/server/db/schema/members.js";
 import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
 import { seedMember, seedOpenBeitrag } from "../helpers/db-seed.js";
 import { getMemberBeitrag } from "../helpers/queries.js";
-import { and, eq } from "drizzle-orm";
 
 import {
   markBeitragPaid,
