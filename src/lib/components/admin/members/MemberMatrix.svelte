@@ -38,6 +38,10 @@
 	const eur = (cents: number) =>
 		(cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
 
+	// Anchor (current) year sits in the middle of the [anchor-1, anchor, anchor+1]
+	// window. Used to place the single exempt-chip testid on one column.
+	const anchorIndex = $derived(Math.floor(matrix.headers.length / 2));
+
 	// ── Cell lookup ────────────────────────────────────────────────────────────
 	const cellMap = $derived.by(() => {
 		const m = new Map<string, MatrixData['cells'][0]>();
@@ -301,7 +305,7 @@
 			>
 				Mitglied
 			</div>
-			{#each matrix.headers as h (h.year)}
+			{#each matrix.headers as h, hi (h.year)}
 				<div
 					role="columnheader"
 					aria-label={headerAria(h)}
@@ -319,7 +323,11 @@
 					<div class="text-[11px] font-normal leading-tight text-muted-foreground tabular-nums">
 						{eur(h.paidSumCents)}
 						{#if h.exemptCount > 0}
-							· +{h.exemptCount} befreit
+							<!-- Anchor (middle) column carries the testid so the exempt-chip
+							     selector resolves to a single element across the 3-year window. -->
+							<span data-testid={hi === anchorIndex ? 'matrix-header-exempt' : undefined}>
+								· +{h.exemptCount} befreit
+							</span>
 						{/if}
 					</div>
 				</div>

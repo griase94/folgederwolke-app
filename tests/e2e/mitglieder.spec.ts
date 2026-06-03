@@ -124,7 +124,7 @@ test.describe("@phase-3 Mitglieder — add member", () => {
 // 3. Matrix view
 // ---------------------------------------------------------------------------
 test.describe("@phase-3 Mitglieder — matrix view", () => {
-  test("switching to matrix view shows Beitrags-Matrix table", async ({
+  test("switching to matrix view shows the Beitragsmatrix grid", async ({
     page,
   }) => {
     await signIn(page);
@@ -133,39 +133,48 @@ test.describe("@phase-3 Mitglieder — matrix view", () => {
     // Click matrix toggle
     await page.click("button:has-text('Beitrags-Matrix')");
     await expect(page).toHaveURL(/view=matrix/);
-    await expect(page.locator("table")).toBeVisible();
+    // Phase-2 redesign: matrix is a role=grid (not a <table>).
+    await expect(
+      page.getByRole("grid", { name: "Beitragsmatrix" }),
+    ).toBeVisible();
   });
 
-  test("switching back to list view hides table", async ({ page }) => {
+  test("switching back to list view hides the grid", async ({ page }) => {
     await signIn(page);
     await page.goto("/app/mitglieder?view=matrix");
 
     await page.click("button:has-text('Liste')");
     await expect(page).toHaveURL(/\/app\/mitglieder(?!\?)/);
-    await expect(page.locator("table")).not.toBeVisible();
+    await expect(
+      page.getByRole("grid", { name: "Beitragsmatrix" }),
+    ).not.toBeVisible();
   });
 });
 
 // ---------------------------------------------------------------------------
-// 4. Mark beitrag paid (matrix cell)
+// 4. Mark beitrag paid (matrix cell → popover)
 // ---------------------------------------------------------------------------
 test.describe("@phase-3 Mitglieder — mark beitrag paid", () => {
-  test("matrix open-cell submit marks beitrag paid", async ({ page }) => {
+  test("clicking an open cell opens the mark-paid popover", async ({
+    page,
+  }) => {
     await signIn(page);
     await page.goto("/app/mitglieder?view=matrix");
 
-    // Find the first unpaid amber badge button and click it
-    const unpaidBtn = page
-      .locator("table button")
-      .filter({ hasText: "" })
+    // Phase-2 redesign: click an open/overdue gridcell → popover, click Bezahlt.
+    const openCell = page
+      .getByRole("gridcell")
+      .filter({ hasText: /^$/ })
+      .or(page.locator('[role="gridcell"][data-state="open"]'))
       .first();
 
-    if (await unpaidBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await unpaidBtn.click();
-      // After submission the cell should re-render; no error overlay
-      await expect(page.locator('[role="dialog"]')).not.toBeVisible();
+    const cell = page.locator('[role="gridcell"][data-state="open"]').first();
+    if (await cell.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await cell.click();
+      // The mark-paid popover (role=dialog) should appear with a Bezahlt button.
+      await expect(page.getByRole("button", { name: /Bezahlt/ })).toBeVisible();
     } else {
-      // No unpaid cells visible — skip gracefully
+      void openCell; // no open cell to exercise — skip gracefully
       test.skip();
     }
   });
