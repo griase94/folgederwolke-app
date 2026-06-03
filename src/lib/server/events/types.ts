@@ -240,6 +240,53 @@ export type Events = {
   "member.beitrag_paid": MemberEventPayload;
 
   /**
+   * A previously-paid Beitrag year was reversed (storno). Emitted by
+   * markBeitragUnpaid. Audit handler writes action='update' + kind='beitrag_unpaid'.
+   *
+   * P0-F1: prevPaidCents is number (not bigint) — bigint can't JSON-serialize
+   * into the jsonb audit payload.
+   */
+  "member.beitrag_unpaid": {
+    memberId: string;
+    year: number;
+    actorUserId: string | null;
+    /** Previous paid amount in cents (number, NOT bigint — JSON-safe). */
+    prevPaidCents: number;
+    prevGezahltAm: string | null;
+  };
+
+  /**
+   * A per-year Befreiung was granted or revoked via setBeitragExempt.
+   * Audit handler writes action='update' + kind='exempt_granted'|'exempt_revoked'.
+   *
+   * P0-F1: prevPaidCents is NOT included; no cents in this payload.
+   */
+  "member.exempted": {
+    memberId: string;
+    year: number;
+    exempt: boolean;
+    reason: string | null;
+    prevExempt: boolean;
+    actorUserId: string | null;
+  };
+
+  /**
+   * The annual Beitragssatz was changed via setBeitragssatz.
+   * Audit handler writes entityKind='settings', action='update'.
+   *
+   * P0-F1: oldCents/newCents are number (not bigint) — JSON-safe.
+   */
+  "settings.beitragssatz_changed": {
+    year: number;
+    /** Previous cents value, or null if this is a new year entry. */
+    oldCents: number | null;
+    /** New cents value (number, NOT bigint — JSON-safe). */
+    newCents: number;
+    decisionNote: string | null;
+    actorUserId: string | null;
+  };
+
+  /**
    * A new Spende was created via the admin UI. Audit-log handler writes a
    * `donation` row with action='create'. No mail is sent here — the
    * Bescheinigungs-Mail is fired on `spende.bescheinigung_generated`.

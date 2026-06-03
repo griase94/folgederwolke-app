@@ -29,9 +29,7 @@ import {
 import { bus } from "$lib/server/events/index.js";
 import { berlinYmd } from "$lib/domain/year.js";
 import { requireAdmin } from "$lib/server/domain/require-role.js";
-
-// Default Beitrag rate in cents (69.69 €) — until Einstellungen tab in Phase 4.
-const DEFAULT_BEITRAG_CENTS = 6969n;
+import { getBeitragssatz } from "$lib/server/domain/beitragssatz.js";
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -54,6 +52,8 @@ export type DeleteMemberResult = { ok: true } | ActionFailure;
 export type RestoreMemberResult = { ok: true } | ActionFailure;
 
 export type MarkBeitragPaidResult = { ok: true } | ActionFailure;
+export type MarkBeitragUnpaidResult = { ok: true } | ActionFailure;
+export type SetBeitragExemptResult = { ok: true } | ActionFailure;
 
 // ---------------------------------------------------------------------------
 // addMember
@@ -310,13 +310,28 @@ async function fetchFestgeschriebenBis(): Promise<number | null> {
   return null;
 }
 
-export async function markBeitragPaid(
-  memberId: string,
-  year: number,
-  actorUserId: string | null,
-  actorRole?: string | null,
-): Promise<MarkBeitragPaidResult> {
-  // B2 fix (ADR-0009): admin-only gate.
+/**
+ * Mark a Beitrag year as fully paid for a member.
+ *
+ * Refactored for Phase 1 (Task 1.6):
+ * - Named-args signature (no positional args)
+ * - Reads year's Beitragssatz from beitragssatz_by_year (no DEFAULT_BEITRAG_CENTS)
+ * - gezahltAm is explicit — never defaulted server-side (caller passes Berlin-local date)
+ * - Upserts the row: creates it if missing, updates paidCents if it exists
+ *
+ * ADR-0006: rejects mutations on festgeschriebene Jahre.
+ * ADR-0009: admin-only.
+ */
+export async function markBeitragPaid(args: {
+  memberId: string;
+  year: number;
+  gezahltAm: string;
+  actorUserId: string | null;
+  actorRole?: string | null;
+}): Promise<MarkBeitragPaidResult> {
+  const { memberId, year, gezahltAm, actorUserId, actorRole } = args;
+
+  // ADR-0009: admin-only gate.
   const denial = requireAdmin(actorRole);
   if (denial) return denial;
 
@@ -327,17 +342,73 @@ export async function markBeitragPaid(
   // ADR-0006: reject if the target year is festgeschrieben.
   const festgeschriebenBis = await fetchFestgeschriebenBis();
   if (festgeschriebenBis !== null && year <= festgeschriebenBis) {
-    return {
-      ok: false,
-      status: 409,
-      error: "Jahr ist festgeschrieben",
-    };
+    return { ok: false, status: 409, error: "Jahr ist festgeschrieben" };
+  }
+
+  // Phase 1: read Satz from beitragssatz_by_year (no hardcoded default).
+  const cents = await getBeitragssatz(year);
+
+  const db = getDb();
+
+  // Upsert: insert a new row if none exists, update paidCents + gezahltAm if it does.
+  await db
+    .insert(memberBeitrags)
+    .values({
+      memberId,
+      year,
+      betragCents: cents,
+      paidCents: cents,
+      gezahltAm,
+      source: "app",
+    })
+    .onConflictDoUpdate({
+      target: [memberBeitrags.memberId, memberBeitrags.year],
+      set: {
+        paidCents: cents,
+        gezahltAm,
+        updatedAt: sql`now()`,
+      },
+    });
+
+  await bus.emit("member.beitrag_paid", {
+    memberId,
+    actorUserId,
+    payload: { year, gezahltAm },
+  });
+
+  return { ok: true };
+}
+
+/**
+ * Reverse a Beitrag payment (storno). Sets paidCents=0 and gezahltAm=null.
+ *
+ * New for Phase 1 (Task 1.6). Used for corrections and the "Stornieren" button
+ * in the paid-cell popover (Phase 2 UI).
+ *
+ * ADR-0006: rejects mutations on festgeschriebene Jahre.
+ * ADR-0009: admin-only.
+ */
+export async function markBeitragUnpaid(args: {
+  memberId: string;
+  year: number;
+  actorUserId: string | null;
+  actorRole?: string | null;
+}): Promise<MarkBeitragUnpaidResult> {
+  const { memberId, year, actorUserId, actorRole } = args;
+
+  const denial = requireAdmin(actorRole);
+  if (denial) return denial;
+
+  // ADR-0006
+  const festgeschriebenBis = await fetchFestgeschriebenBis();
+  if (festgeschriebenBis !== null && year <= festgeschriebenBis) {
+    return { ok: false, status: 409, error: "Jahr ist festgeschrieben" };
   }
 
   const db = getDb();
 
-  // Upsert: if a row exists update it; otherwise create one at the default rate.
-  const existing = await db
+  // Fetch prev state for audit payload
+  const [prev] = await db
     .select()
     .from(memberBeitrags)
     .where(
@@ -345,32 +416,109 @@ export async function markBeitragPaid(
     )
     .limit(1);
 
-  const today = berlinYmd();
-
-  if (existing.length > 0 && existing[0]) {
-    const row = existing[0];
-    await db
-      .update(memberBeitrags)
-      .set({
-        paidCents: row.betragCents,
-        gezahltAm: today,
-        updatedAt: new Date(),
-      })
-      .where(eq(memberBeitrags.id, row.id));
-  } else {
-    await db.insert(memberBeitrags).values({
-      memberId,
-      year,
-      betragCents: DEFAULT_BEITRAG_CENTS,
-      paidCents: DEFAULT_BEITRAG_CENTS,
-      gezahltAm: today,
-    });
+  if (!prev) {
+    return { ok: false, status: 404, error: "Beitrag nicht gefunden." };
   }
 
-  await bus.emit("member.beitrag_paid", {
+  await db
+    .update(memberBeitrags)
+    .set({ paidCents: 0n, gezahltAm: null, updatedAt: sql`now()` })
+    .where(
+      and(eq(memberBeitrags.memberId, memberId), eq(memberBeitrags.year, year)),
+    );
+
+  await bus.emit("member.beitrag_unpaid", {
     memberId,
+    year,
     actorUserId,
-    payload: { year, gezahltAm: today },
+    // P0-F1: convert bigint to number for JSON-safe audit payload
+    prevPaidCents: Number(prev.paidCents),
+    prevGezahltAm: prev.gezahltAm,
+  });
+
+  return { ok: true };
+}
+
+/**
+ * Grant or revoke a per-year Befreiung from Beitragspflicht.
+ *
+ * New for Phase 1 (Task 1.6). Legal requirement (§55 AO): when exempt=true,
+ * a non-empty reason MUST be provided — enforced at three levels:
+ *   1. Server: returns 400 if reason is empty/missing
+ *   2. DB: CHECK constraint on member_beitrags.exempt_reason (migration 0027)
+ *   3. UI: submit button disabled until reason non-empty (Phase 2)
+ *
+ * ADR-0006: rejects mutations on festgeschriebene Jahre.
+ * ADR-0009: admin-only.
+ */
+export async function setBeitragExempt(args: {
+  memberId: string;
+  year: number;
+  exempt: boolean;
+  reason?: string;
+  actorUserId: string | null;
+  actorRole?: string | null;
+}): Promise<SetBeitragExemptResult> {
+  const { memberId, year, exempt, reason, actorUserId, actorRole } = args;
+
+  const denial = requireAdmin(actorRole);
+  if (denial) return denial;
+
+  // §55 AO: reason required when granting exemption
+  if (exempt && (!reason || reason.trim() === "")) {
+    return { ok: false, status: 400, error: "Grund erforderlich (§55 AO)." };
+  }
+
+  // ADR-0006
+  const festgeschriebenBis = await fetchFestgeschriebenBis();
+  if (festgeschriebenBis !== null && year <= festgeschriebenBis) {
+    return { ok: false, status: 409, error: "Jahr ist festgeschrieben" };
+  }
+
+  // Fetch Satz for the upsert's betragCents
+  const cents = await getBeitragssatz(year);
+
+  const db = getDb();
+
+  // Fetch prev state for audit payload
+  const [prev] = await db
+    .select()
+    .from(memberBeitrags)
+    .where(
+      and(eq(memberBeitrags.memberId, memberId), eq(memberBeitrags.year, year)),
+    )
+    .limit(1);
+
+  const trimmedReason = exempt ? reason!.trim() : null;
+
+  // Upsert: create row if missing, update exempt fields if it exists
+  await db
+    .insert(memberBeitrags)
+    .values({
+      memberId,
+      year,
+      betragCents: cents,
+      paidCents: 0n,
+      isExempt: exempt,
+      exemptReason: trimmedReason,
+      source: "app",
+    })
+    .onConflictDoUpdate({
+      target: [memberBeitrags.memberId, memberBeitrags.year],
+      set: {
+        isExempt: exempt,
+        exemptReason: trimmedReason,
+        updatedAt: sql`now()`,
+      },
+    });
+
+  await bus.emit("member.exempted", {
+    memberId,
+    year,
+    exempt,
+    reason: trimmedReason,
+    prevExempt: prev?.isExempt ?? false,
+    actorUserId,
   });
 
   return { ok: true };
