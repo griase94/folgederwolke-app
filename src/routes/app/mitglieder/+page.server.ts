@@ -29,7 +29,11 @@ import {
   restoreMember,
   markBeitragPaid,
 } from "$lib/server/domain/members-actions.js";
-import { currentBuchungsjahr, selectYearFromUrl } from "$lib/domain/year.js";
+import {
+  berlinYmd,
+  currentBuchungsjahr,
+  selectYearFromUrl,
+} from "$lib/domain/year.js";
 
 export const load: PageServerLoad = async ({ url }) => {
   const db = getDb();
@@ -203,7 +207,14 @@ export const actions: Actions = {
     const yearStr = formData.get("year")?.toString() ?? "";
     const year = parseInt(yearStr, 10);
 
-    const result = await markBeitragPaid(memberId, year, userId, userRole);
+    const gezahltAm = formData.get("gezahlt_am")?.toString() || berlinYmd();
+    const result = await markBeitragPaid({
+      memberId,
+      year,
+      gezahltAm,
+      actorUserId: userId,
+      actorRole: userRole,
+    });
     if (!result.ok) {
       return fail(result.status, {
         action: "mark-beitrag-paid",

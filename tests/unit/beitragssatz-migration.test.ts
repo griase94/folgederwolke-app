@@ -22,15 +22,23 @@ describe("@phase-1 beitragssatz_by_year migration (Task 1.1)", () => {
 
     const currentYear = new Date().getFullYear();
 
-    // Must have at least years 2020 through currentYear+1
-    expect(rows.length).toBeGreaterThanOrEqual(currentYear + 1 - 2020 + 1);
+    // Filter to only the seeded range (2020..currentYear+1) — other tests may
+    // insert far-future years with different cents values for their own purposes.
+    const seededRows = rows.filter(
+      (r) => r.year >= 2020 && r.year <= currentYear + 1,
+    );
 
-    const first = rows[0];
+    // Must have all years 2020 through currentYear+1
+    expect(seededRows.length).toBeGreaterThanOrEqual(
+      currentYear + 1 - 2020 + 1,
+    );
+
+    const first = seededRows[0];
     expect(first?.year).toBe(2020);
-    expect(rows.at(-1)?.year).toBeGreaterThanOrEqual(currentYear + 1);
+    expect(seededRows.at(-1)?.year).toBeGreaterThanOrEqual(currentYear + 1);
 
-    // All seeded rows have the default €69.69
-    for (const row of rows) {
+    // All seeded rows in the canonical range have the default €69.69
+    for (const row of seededRows) {
       expect(row.cents).toBe(6969n);
     }
   });

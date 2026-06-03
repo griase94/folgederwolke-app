@@ -28,12 +28,13 @@ describe("@phase-0 members-actions role gates (B2)", () => {
     const member = await seedMember({ name: "RoleTestMember1" });
     await seedOpenBeitrag({ memberId: member.id, year: 2026 });
 
-    const result = await markBeitragPaid(
-      member.id,
-      2026,
-      MEMBER_SELF_SERVICE_USER_ID_MOCK,
-      "member_self_service",
-    );
+    const result = await markBeitragPaid({
+      memberId: member.id,
+      year: 2026,
+      gezahltAm: "2026-03-15",
+      actorUserId: MEMBER_SELF_SERVICE_USER_ID_MOCK,
+      actorRole: "member_self_service",
+    });
     expect(result.ok).toBe(false);
     expect((result as { ok: false; status: number }).status).toBe(403);
   });
@@ -42,12 +43,13 @@ describe("@phase-0 members-actions role gates (B2)", () => {
     const member = await seedMember({ name: "RoleTestMember2" });
     await seedOpenBeitrag({ memberId: member.id, year: 2026 });
 
-    const result = await markBeitragPaid(
-      member.id,
-      2026,
-      STEUERBERATER_USER_ID_MOCK,
-      "steuerberater",
-    );
+    const result = await markBeitragPaid({
+      memberId: member.id,
+      year: 2026,
+      gezahltAm: "2026-03-15",
+      actorUserId: STEUERBERATER_USER_ID_MOCK,
+      actorRole: "steuerberater",
+    });
     expect(result.ok).toBe(false);
     expect((result as { ok: false; status: number }).status).toBe(403);
   });
@@ -56,12 +58,13 @@ describe("@phase-0 members-actions role gates (B2)", () => {
     const member = await seedMember({ name: "RoleTestMember3" });
     await seedOpenBeitrag({ memberId: member.id, year: 2026 });
 
-    const result = await markBeitragPaid(
-      member.id,
-      2026,
-      ADMIN_USER_ID_MOCK,
-      "admin",
-    );
+    const result = await markBeitragPaid({
+      memberId: member.id,
+      year: 2026,
+      gezahltAm: "2026-03-15",
+      actorUserId: ADMIN_USER_ID_MOCK,
+      actorRole: "admin",
+    });
     expect(result.ok).toBe(true);
   });
 
@@ -69,7 +72,13 @@ describe("@phase-0 members-actions role gates (B2)", () => {
     const member = await seedMember({ name: "RoleTestMember4" });
     await seedOpenBeitrag({ memberId: member.id, year: 2026 });
 
-    const result = await markBeitragPaid(member.id, 2026, null, "admin");
+    const result = await markBeitragPaid({
+      memberId: member.id,
+      year: 2026,
+      gezahltAm: "2026-03-15",
+      actorUserId: null,
+      actorRole: "admin",
+    });
     expect(result.ok).toBe(true);
   });
 
@@ -78,12 +87,13 @@ describe("@phase-0 members-actions role gates (B2)", () => {
     const member = await seedMember({ name: "RoleTestMember5" });
     await seedOpenBeitrag({ memberId: member.id, year: 2026 });
 
-    const result = await markBeitragPaid(
-      member.id,
-      2026,
-      ADMIN_USER_ID_MOCK,
-      undefined,
-    );
+    const result = await markBeitragPaid({
+      memberId: member.id,
+      year: 2026,
+      gezahltAm: "2026-03-15",
+      actorUserId: ADMIN_USER_ID_MOCK,
+      actorRole: undefined,
+    });
     expect(result.ok).toBe(false);
     expect((result as { ok: false; status: number }).status).toBe(403);
   });
