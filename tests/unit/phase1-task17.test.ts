@@ -162,6 +162,51 @@ describe("@phase-1 dashboard beitrag KPIs (Task 1.7)", () => {
     expect(kpis.beitragExemptCount).toBeGreaterThanOrEqual(1);
   });
 
+  it("globally-exempt member (members.beitrag_exempt=true) is excluded from beitragTotalDueCount and beitragPaidCount", async () => {
+    // P1-1 regression: before the fix, queries 20 + 21 only checked
+    // member_beitrags.is_exempt — a globally-exempt Ehrenmitglied with a
+    // materialized row (is_exempt=false, paidCents=0) would be counted in
+    // beitragTotalDueCount (denominator) but never pay, wrongly dragging
+    // down the paid-ratio.
+    //
+    // Strategy: take kpisBefore snapshot FIRST, then seed both
+    //   (a) a globally-exempt Ehrenmitglied with an open row (is_exempt=false), and
+    //   (b) one regular paid member.
+    // Expected deltas: totalDueCount +1 (only regular), paidCount +1 (only regular).
+    // Buggy behaviour: totalDueCount +2 (global-exempt counted in denominator).
+    const db = getDb();
+    await db
+      .insert(beitragssatzByYear)
+      .values({ year: TEST_YEAR, cents: 6969n })
+      .onConflictDoNothing();
+
+    // Snapshot BEFORE seeding either member.
+    const kpisBefore = await loadDashboardKpis(TEST_YEAR);
+
+    // Seed a globally-exempt Ehrenmitglied + their materialized row (is_exempt=false).
+    const ehrenmitglied = await seedMember({
+      name: "GlobalExemptDashTest",
+      beitragExempt: true,
+      beitragExemptReason: "Ehrenmitgliedschaft seit 2010",
+    });
+    await seedOpenBeitrag({ memberId: ehrenmitglied.id, year: TEST_YEAR });
+
+    // Seed one regular non-exempt paid member.
+    const regularPaid = await seedMember({ name: "GlobalExemptDashRegular" });
+    await seedPaidBeitrag({ memberId: regularPaid.id, year: TEST_YEAR });
+
+    const kpisAfter = await loadDashboardKpis(TEST_YEAR);
+
+    // totalDueCount must go up by exactly 1 (only the regular member).
+    // If the buggy query counts ehrenmitglied, delta would be +2.
+    expect(
+      kpisAfter.beitragTotalDueCount - kpisBefore.beitragTotalDueCount,
+    ).toBe(1);
+
+    // paidCount must go up by exactly 1 (only the regular member paid).
+    expect(kpisAfter.beitragPaidCount - kpisBefore.beitragPaidCount).toBe(1);
+  });
+
   it("openBeitragsCount excludes per-year is_exempt rows", async () => {
     const db = getDb();
     await db

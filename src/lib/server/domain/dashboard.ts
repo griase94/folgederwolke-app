@@ -474,39 +474,56 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
       ),
 
     // 20. Phase 1 — paid beitrag count + sum (paidCents = betragCents, not exempt).
+    // Two-tier exemption (spec §3): effective exempt = members.beitrag_exempt OR
+    // member_beitrags.is_exempt. INNER JOIN to members to exclude globally-exempt
+    // Ehrenmitglieder — without this join they appear in the denominator (query 21)
+    // but never pay, wrongly dragging down the paid-ratio (P1-1 fix).
     db
       .select({
         paidCount: count(),
         paidSumCents: sum(memberBeitrags.paidCents),
       })
       .from(memberBeitrags)
+      .innerJoin(members, eq(memberBeitrags.memberId, members.id))
       .where(
         and(
           eq(memberBeitrags.year, currentYear),
           sql`${memberBeitrags.paidCents} >= ${memberBeitrags.betragCents}`,
           eq(memberBeitrags.isExempt, false),
+          eq(members.beitragExempt, false),
         ),
       ),
 
     // 21. Phase 1 — total non-exempt rows for the year (paid + open denominator).
+    // INNER JOIN to members + eq(members.beitragExempt, false) mirrors the cron
+    // reminder query in cron-tasks.ts and excludes globally-exempt Ehrenmitglieder
+    // from the denominator (P1-1 fix).
     db
       .select({ totalCount: count() })
       .from(memberBeitrags)
+      .innerJoin(members, eq(memberBeitrags.memberId, members.id))
       .where(
         and(
           eq(memberBeitrags.year, currentYear),
           eq(memberBeitrags.isExempt, false),
+          eq(members.beitragExempt, false),
         ),
       ),
 
-    // 22. Phase 1 — per-year exempt count.
+    // 22. Phase 1 — exempt count: rows where EITHER the per-year flag OR the
+    // global flag is true (spec §3: effective exempt = per-year OR global).
+    // INNER JOIN to members so we can check both flags.
     db
       .select({ exemptCount: count() })
       .from(memberBeitrags)
+      .innerJoin(members, eq(memberBeitrags.memberId, members.id))
       .where(
         and(
           eq(memberBeitrags.year, currentYear),
-          eq(memberBeitrags.isExempt, true),
+          or(
+            eq(memberBeitrags.isExempt, true),
+            eq(members.beitragExempt, true),
+          ),
         ),
       ),
   ]);
