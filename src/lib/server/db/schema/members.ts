@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  check,
   date,
   index,
   integer,
@@ -22,7 +23,8 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import { memberRoleEnum } from "./enums.js";
+import { memberRoleEnum, sourceKindEnum } from "./enums.js";
+import { income } from "./income.js";
 
 export const members = pgTable(
   "members",
@@ -62,6 +64,14 @@ export const members = pgTable(
     emailCanonicalIdx: index("members_email_canonical_idx").on(
       t.emailCanonical,
     ),
+    /**
+     * Migration 0028: beitrag_exempt_reason must be non-empty when
+     * beitrag_exempt=true (§55 AO requirement).
+     */
+    beitragExemptReasonCk: check(
+      "members_beitrag_exempt_reason_when_exempt_ck",
+      sql`${t.beitragExempt} = false OR (${t.beitragExemptReason} IS NOT NULL AND length(trim(${t.beitragExemptReason})) > 0)`,
+    ),
   }),
 );
 
@@ -94,6 +104,32 @@ export const memberBeitrags = pgTable(
       .default(sql`0`),
     gezahltAm: date("gezahlt_am"),
     notes: text("notes"),
+    /**
+     * Per-year Befreiung from Beitragspflicht.
+     * Effective exemption = members.beitrag_exempt OR member_beitrags.is_exempt.
+     */
+    isExempt: boolean("is_exempt").notNull().default(false),
+    /**
+     * Required when is_exempt=true (§55 AO). CHECK constraint enforces this.
+     * NULL is valid when is_exempt=false.
+     */
+    exemptReason: text("exempt_reason"),
+    /**
+     * Forward-compat: links payment to a specific income row for reconciliation.
+     * No UI in Phase 1.
+     */
+    paidViaIncomeId: uuid("paid_via_income_id").references(() => income.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * Forward-compat only — no UI in Phase 1/2. Reserved for future
+     * Beitragsklassen feature (YAGNI per spec §11).
+     */
+    beitragKlasse: text("beitrag_klasse"),
+    /**
+     * ADR-0010 provenance. Always 'app' for rows created by the admin UI.
+     */
+    source: sourceKindEnum("source").notNull().default("app"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -107,5 +143,9 @@ export const memberBeitrags = pgTable(
       t.year,
     ),
     yearIdx: index("member_beitrags_year_idx").on(t.year),
+    exemptReasonCk: check(
+      "member_beitrags_exempt_reason_when_exempt_ck",
+      sql`${t.isExempt} = false OR (${t.exemptReason} IS NOT NULL AND length(trim(${t.exemptReason})) > 0)`,
+    ),
   }),
 );

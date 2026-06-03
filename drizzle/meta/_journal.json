@@ -183,6 +183,27 @@
       "when": 1780099200000,
       "tag": "0025_invoice_festschreibung_payment_carveout",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1748649600000,
+      "tag": "0026_beitragssatz_by_year",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1748736000000,
+      "tag": "0027_member_beitrags_exempt_extensions",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1748822400000,
+      "tag": "0028_tighten_members_beitrag_exempt_reason",
+      "breakpoints": true
     }
   ]
 }

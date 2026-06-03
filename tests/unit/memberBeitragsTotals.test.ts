@@ -228,7 +228,8 @@ describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
   it("Night-2: exempt members still count toward memberCount (active denominator)", async () => {
     const mut = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
     try {
-      await mut`UPDATE members SET beitrag_exempt = true WHERE id IN (${m1}, ${m2})`;
+      // Migration 0028: beitrag_exempt_reason required when exempt=true (§55 AO)
+      await mut`UPDATE members SET beitrag_exempt = true, beitrag_exempt_reason = 'Test-Befreiung' WHERE id IN (${m1}, ${m2})`;
     } finally {
       await mut.end();
     }
@@ -244,8 +245,10 @@ describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
     // (we count exempt among ACTIVE members only).
     const mut = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
     try {
+      // Migration 0028: beitrag_exempt_reason required when exempt=true (§55 AO)
       await mut`UPDATE members
                 SET beitrag_exempt = true,
+                    beitrag_exempt_reason = 'Test-Befreiung',
                     austritts_datum = '2024-12-31'
                 WHERE id = ${m3}`;
     } finally {
