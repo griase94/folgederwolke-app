@@ -237,7 +237,7 @@ Route-based (`/app/<kind>/[id]`), modal-style surface (deep-linkable, back-butto
 ## 15. Migration / rollout
 
 - **Two-phase, additive-first** (CLAUDE.md): ship additive migrations (new columns, `wertermittlung_methode` enum, `beleg_verzicht_grund`, `zustand_beschreibung`, `herkunftsbeleg_file_id`; CHECKs as `NOT VALID` then `VALIDATE`) **before** code that depends on them. Make `kategorie_id` NOT NULL only after the data is clean.
-- **Data wipe (prod):** clear the Verein's real `expenses`/`income`/`donations`. **Preserve invoice↔income integrity** — for any invoice with `paidByIncomeId`, either also clear the paid invoices or null the link + reset `bezahltAm` (decide during planning; default: clear the corresponding paid-invoice payment state too so no dangling links). Reseed reference data (`kategorien` incl. donation-derivation fixtures) + test fixtures for the new model.
+- **Data wipe (prod):** clear the Verein's real `expenses`/`income`/`donations`. **Invoices are kept** (they are independent Ausgangsrechnung artifacts), but for any invoice whose `paidByIncomeId` points at a wiped income row we **clear its payment state** — set `paidByIncomeId = NULL` and `bezahltAm = NULL`, returning the invoice to "unpaid" — so there are **no dangling links**. (The treasurer can re-run "Als bezahlt markieren" afterwards if needed.) Order: reset invoice payment state → wipe income/expenses/donations (respecting FK order, donations → expenses via `aufwandsspende_aus_expense_id`) → reseed reference data (`kategorien` incl. donation-derivation fixtures) + test fixtures for the new model.
 - **Migration numbering:** origin/main is at `0025`; the `phase-beitrag-1` branch will land `0026–0028`. Our migrations take the next free indices at rebase time — coordinate to avoid journal collisions.
 - **Generated columns / self-FKs:** preserve the hand-written generated-column tails (`betrag_eur`, `year_of_buchung`) and the festschreibung/`supersedes_id` self-FKs when editing these tables; wipe must respect FK order (donations → expenses via `aufwandsspende_aus_expense_id`).
 - **Routing migration:** `nav-registry.ts` updated (three desktop entries; one mobile "Transaktionen" → segmented switcher). ~14 references to `/app/transactions` (Topbar, KPI/Checklist sections, `sepa/xml.ts`, `events/handlers.ts`, inbox/projekte links, the `[id]/zuwendungsbestaetigung` PDF route, e2e specs) updated + redirects from the old path.
@@ -256,7 +256,6 @@ Route-based (`/app/<kind>/[id]`), modal-style surface (deep-linkable, back-butto
 
 ## 17. Open items to confirm during planning
 
-- Exact prod-data-wipe handling of paid invoices (clear payment state vs null the link).
 - Mobile card information hierarchy + sort affordance (headers vanish on cards).
 - Whether the per-tab CSV export needs the same columns as the EÜR `transactions.csv` (avoid two divergent formats).
 - Final seeded category list + EÜR/Anlage-Gem line numbers (Steuerberater input).
