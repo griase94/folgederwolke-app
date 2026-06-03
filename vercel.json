@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/daily-dispatcher",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/year-init",
+      "schedule": "5 23 31 12 *"
     }
   ]
 }
