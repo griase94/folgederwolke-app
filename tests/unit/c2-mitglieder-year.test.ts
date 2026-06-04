@@ -14,6 +14,11 @@ const url = process.env.DIRECT_DATABASE_URL ?? process.env.DATABASE_URL ?? "";
 function makeEvent(searchString: string) {
   return {
     url: new URL(`http://localhost/app/mitglieder${searchString}`),
+    // PR3b: the load now registers a scoped `depends('app:beitrags-matrix')`
+    // dependency (for the optimistic-matrix reconcile). SvelteKit always
+    // supplies `depends` on the LoadEvent; provide a no-op so this fixture
+    // matches the real event shape.
+    depends: () => {},
     locals: {
       session: {
         user: {

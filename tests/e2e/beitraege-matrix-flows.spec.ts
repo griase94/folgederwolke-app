@@ -221,6 +221,38 @@ test.describe("@phase-2 Beitragsmatrix — undo toast keyboard (Task 3.2)", () =
   });
 });
 
+test.describe("@phase-3 Beitragsmatrix — mobile bottom-sheet (PR3b 3.2)", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("on a phone viewport the mark-paid UI opens as a bottom Sheet and flips the cell", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/app/mitglieder?view=matrix&year=${ANCHOR}`);
+
+    const erikaCell = cell(page, erika, ANCHOR);
+    await expect(erikaCell).toHaveAttribute("data-state", "open");
+    await erikaCell.click();
+
+    // Below sm the surface is the bottom Sheet, NOT the anchored popover.
+    const sheet = page.getByTestId("matrix-cell-sheet");
+    await expect(sheet).toBeVisible();
+
+    // The mark-paid content renders inside the sheet — drive it through.
+    const dateInput = page.getByLabel("Bezahlt am");
+    await expect(dateInput).toBeVisible();
+    await dateInput.fill(`${ANCHOR}-05-15`);
+    await page.getByRole("button", { name: /Bezahlt/ }).click();
+
+    // Optimistic flip + reconcile → cell is paid.
+    await expect(cell(page, erika, ANCHOR)).toHaveAttribute(
+      "data-state",
+      "paid",
+      { timeout: 5000 },
+    );
+  });
+});
+
 test.describe("@phase-2 Beitragsmatrix — storno + aufheben", () => {
   test("storno reverts a paid cell to open", async ({ page }) => {
     // Pre-pay Erika so we have a paid cell to storno.
