@@ -477,12 +477,14 @@ export async function listEinnahmenPage(
   const where = conds.length ? and(...conds) : undefined;
 
   // P2-06: correlated LATERAL subquery — references the outer `income.id`, so
-  // it's LATERAL; `.orderBy(createdAt).limit(1)` picks one deterministically.
+  // it's LATERAL; `.orderBy(createdAt, id).limit(1)` picks one deterministically.
+  // The PK is the secondary key so two invoices sharing a `created_at` still
+  // resolve to a stable "first" (Postgres gives no tiebreak otherwise).
   const invLateral = db
     .select({ rechnungBusinessId: invoices.businessId })
     .from(invoices)
     .where(eq(invoices.paidByIncomeId, income.id))
-    .orderBy(invoices.createdAt)
+    .orderBy(invoices.createdAt, invoices.id)
     .limit(1)
     .as("inv");
 
@@ -552,7 +554,6 @@ export async function listSpendenPage(
       .select({
         id: donations.id,
         businessId: donations.businessId,
-        bezeichnung: donations.kategorieNameSnapshot,
         betragCents: donations.betragCents,
         currency: donations.currency,
         gebuchtAm: donations.gebuchtAm,
