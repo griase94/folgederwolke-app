@@ -37,4 +37,8 @@ describe("parseBetragCents", () => {
   it("1.000.000,99 → 100000099 (German thousands × 2)", () => {
     expect(parseBetragCents("1.000.000,99")).toBe(100000099);
   });
+
+  it("-5 → NaN (negatives rejected, not sign-stripped)", () => {
+    expect(parseBetragCents("-5")).toBeNaN();
+  });
 });

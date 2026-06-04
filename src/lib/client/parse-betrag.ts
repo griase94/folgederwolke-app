@@ -17,10 +17,15 @@
  * - No separator: plain integer.
  *   e.g. "1000" → 100000
  *
- * Returns NaN for empty / non-numeric input.
+ * Returns NaN for empty / non-numeric input. A leading or embedded `-`
+ * (negative amount) is rejected as NaN rather than sign-stripped — Auslagen
+ * and bookings are never negative, so "-5" must fail validation, not parse to
+ * 500 cents.
  */
 export function parseBetragCents(raw: string): number {
   if (!raw) return NaN;
+  // Reject negatives outright — never sign-strip "-5" into 500 cents.
+  if (raw.includes("-")) return NaN;
   let cleaned = raw.replace(/[^\d,.]/g, "");
   if (!cleaned) return NaN;
 
