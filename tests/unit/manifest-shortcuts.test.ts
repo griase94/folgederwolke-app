@@ -26,7 +26,13 @@ interface Manifest {
   share_target?: { action: string };
 }
 
-/** Collect all paths that have a +page.svelte or +page.server.ts */
+/**
+ * Collect all paths that have a +page.svelte — i.e. a renderable page route.
+ *
+ * Deliberately requires +page.svelte: a directory with only +page.server.ts
+ * (a server-only endpoint such as /sign-out) is NOT a navigable route, so a
+ * manifest URL pointing at one must fail this guard.
+ */
 function collectRoutes(dir: string, prefix = ""): string[] {
   const routes: string[] = [];
   let entries: string[];
@@ -42,7 +48,7 @@ function collectRoutes(dir: string, prefix = ""): string[] {
       const segment = entry.startsWith("(") && entry.endsWith(")") ? "" : entry;
       const subPrefix = segment ? `${prefix}/${segment}` : prefix;
       routes.push(...collectRoutes(abs, subPrefix));
-    } else if (entry === "+page.svelte" || entry === "+page.server.ts") {
+    } else if (entry === "+page.svelte") {
       const routePath = prefix === "" ? "/" : prefix;
       if (!routes.includes(routePath)) {
         routes.push(routePath);
@@ -67,14 +73,46 @@ function routeExists(urlPath: string, routes: string[]): boolean {
 function routeMatchesPath(routePattern: string, urlPath: string): boolean {
   const routeSegments = routePattern.split("/").filter(Boolean);
   const urlSegments = urlPath.split("/").filter(Boolean);
+  return matchSegments(routeSegments, urlSegments);
+}
 
-  if (routeSegments.length !== urlSegments.length) return false;
+/**
+ * Match a route's segments against a URL's segments, honouring SvelteKit's
+ * dynamic-segment flavours:
+ *  - [param]    — exactly one segment (any value)
+ *  - [[param]]  — optional: zero or one segment
+ *  - [...rest]  — rest: zero or more remaining segments
+ */
+function matchSegments(route: string[], url: string[]): boolean {
+  if (route.length === 0) return url.length === 0;
 
-  return routeSegments.every((seg, i) => {
-    // Dynamic segment: [param] matches anything
-    if (seg.startsWith("[") && seg.endsWith("]")) return true;
-    return seg === urlSegments[i];
-  });
+  const [seg, ...restRoute] = route;
+
+  // Rest param [...x] — consumes zero or more remaining URL segments. Since a
+  // rest param is always the final segment in a SvelteKit route, this matches
+  // whatever is left.
+  if (seg!.startsWith("[...") && seg!.endsWith("]")) {
+    return true;
+  }
+
+  // Optional param [[x]] — try matching zero segments, then one segment.
+  if (seg!.startsWith("[[") && seg!.endsWith("]]")) {
+    if (matchSegments(restRoute, url)) return true; // consumed nothing
+    if (url.length > 0 && matchSegments(restRoute, url.slice(1))) return true;
+    return false;
+  }
+
+  // Past this point we need a URL segment to consume.
+  if (url.length === 0) return false;
+
+  // Required dynamic param [x] — matches any single segment.
+  if (seg!.startsWith("[") && seg!.endsWith("]")) {
+    return matchSegments(restRoute, url.slice(1));
+  }
+
+  // Static segment — must match literally.
+  if (seg !== url[0]) return false;
+  return matchSegments(restRoute, url.slice(1));
 }
 
 function stripQuery(url: string): string {
@@ -125,5 +163,35 @@ describe("manifest.webmanifest — all URLs resolve to real routes", () => {
         ).toBe(true);
       });
     }
+  });
+
+  it("a server-only endpoint (no +page.svelte) is NOT treated as a route", () => {
+    // /sign-out is a form-action-only endpoint with just +page.server.ts.
+    // It must not appear in the collected routes, so a manifest URL pointing
+    // at it would correctly fail this guard.
+    expect(allRoutes).not.toContain("/sign-out");
+    expect(routeExists("/sign-out", allRoutes)).toBe(false);
+  });
+});
+
+describe("routeMatchesPath — dynamic segment flavours", () => {
+  it("matches required [param] against one segment", () => {
+    expect(routeExists("/app/kunden/42", ["/app/kunden/[id]"])).toBe(true);
+    expect(routeExists("/app/kunden", ["/app/kunden/[id]"])).toBe(false);
+    expect(routeExists("/app/kunden/42/x", ["/app/kunden/[id]"])).toBe(false);
+  });
+
+  it("matches optional [[param]] against zero or one segment", () => {
+    const routes = ["/app/[[year]]"];
+    expect(routeExists("/app", routes)).toBe(true);
+    expect(routeExists("/app/2026", routes)).toBe(true);
+    expect(routeExists("/app/2026/extra", routes)).toBe(false);
+  });
+
+  it("matches rest [...param] against zero or more segments", () => {
+    const routes = ["/files/[...path]"];
+    expect(routeExists("/files", routes)).toBe(true);
+    expect(routeExists("/files/a", routes)).toBe(true);
+    expect(routeExists("/files/a/b/c", routes)).toBe(true);
   });
 });
