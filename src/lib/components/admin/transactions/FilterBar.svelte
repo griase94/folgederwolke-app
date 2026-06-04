@@ -45,14 +45,16 @@
 	import { MultiselectChip } from '$lib/components/ui/multiselect-chip/index.js';
 
 	type Option = { value: string; label: string };
+	/** Canonical member-option shape (Phase-3 scaffold + Task-6 `listMemberOptions`). */
+	type MemberOption = { id: string; label: string };
 
 	interface Props {
 		tab: TabKey;
 		state: FilterState;
 		/** Runtime-loaded kategorie options; `value` = kategorie name-snapshot (P2-04). */
 		kategorieOptions?: Option[];
-		/** Runtime-loaded member options for member-picker fields; `value` = member uuid. */
-		memberOptions?: Option[];
+		/** Runtime-loaded member options for member-picker fields; `id` = member uuid. */
+		memberOptions?: MemberOption[];
 		/** Live count of matching rows, shown as the result anchor. */
 		resultCount?: number;
 	}
@@ -91,10 +93,13 @@
 
 	function navigate(next: FilterState) {
 		const qs = serializeFilterState(tab, next);
-		// Preserve any non-filter params already on the URL (e.g. ?year, ?view) by
+		// Preserve non-filter params already on the URL (e.g. ?year, ?sort, ?dir) by
 		// merging: filter params we own are replaced wholesale, others kept.
+		// `page` is owned-and-reset: any filter change can shrink the result set, so
+		// a stale ?page=5 would strand the user past the last page — strip it so
+		// pagination falls back to page 1.
 		const current = new URLSearchParams($page.url.search);
-		const ownedKeys = new Set<string>(['q', 'betragMin', 'betragMax']);
+		const ownedKeys = new Set<string>(['q', 'betragMin', 'betragMax', 'page']);
 		for (const f of FILTER_REGISTRY[tab]) ownedKeys.add(f.key);
 		for (const k of ownedKeys) current.delete(k);
 		const merged = new URLSearchParams(qs);
@@ -162,7 +167,7 @@
 	}
 
 	function memberLabel(id: string): string {
-		return memberOptions.find((o) => o.value === id)?.label ?? id;
+		return memberOptions.find((o) => o.id === id)?.label ?? id;
 	}
 
 	interface Chip {
@@ -483,7 +488,7 @@
 		</div>
 	{:else if field.type === 'member-picker'}
 		<Combobox
-			options={memberOptions}
+			options={memberOptions.map((m) => ({ value: m.id, label: m.label }))}
 			value={filterState.members[field.key] ? [filterState.members[field.key]] : []}
 			multiple={false}
 			ariaLabel={field.label}
