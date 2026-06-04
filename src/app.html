@@ -167,14 +167,18 @@
       aria-hidden so screen readers skip the decorative splash.
     -->
     <div id="fdw-launch" aria-hidden="true">
-      <!-- Cloud + bolt mark (cloud body white→rosa, bolt yellow; no background rect) -->
+      <!-- Brand badge — identical mark to static/favicon.svg (rosa rounded
+           square, white cloud, yellow bolt) so the launch sequence
+           (home-screen icon → iOS splash → this overlay) reads as one
+           consistent mark. -->
       <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 64 64"
         role="img"
         aria-hidden="true"
       >
-        <g fill="#be185d">
+        <rect width="64" height="64" rx="12" fill="#be185d" />
+        <g fill="#ffffff">
           <ellipse cx="22" cy="28" rx="9" ry="7" />
           <ellipse cx="32" cy="24" rx="11" ry="9" />
           <ellipse cx="42" cy="28" rx="9" ry="7" />
