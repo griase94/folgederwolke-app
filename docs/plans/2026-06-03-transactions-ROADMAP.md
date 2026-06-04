@@ -28,11 +28,12 @@ pnpm test --run tests/unit/smoke # or the smallest sanity check; confirm green b
 | 1   | `…phase-1-foundation.md`       | Schema (cols/enum/CHECKs), `kategorie_id` NOT NULL across all write paths, kategorien reseed + donation-derivation lookup + Import sentinel, `kategorieSphere()` helper, showcase seed corpus              | Phase 0    |
 | 2   | `…phase-2-filter-backbone.md`  | Typed filter registry + URL/Zod + server-side WHERE + saved views (shared component, no UI tabs yet)                                                                                                       | 1          |
 | 3   | `…phase-3-routing-nav-year.md` | Flat routes `/app/{ausgaben,einnahmen,spenden}` + `[id]`, nav-registry (3 desktop + 1 mobile segmented), redirects from `/app/transactions`, `selectedYear` consumption + "Alle Jahre" + stale-year banner | 1, 2       |
-| 4   | `…phase-4-ausgaben.md`         | Ausgaben list (KPI/columns/filters/bulk/cards) + entry form (Verein/Mitglied/Extern, beleg-or-Begründung, duplicate-as-template) + Belegprüfung-assigns-Kategorie                                          | 1–3        |
+| 4   | `…phase-4-ausgaben.md`         | Ausgaben list (KPI/columns/filters/bulk/cards) + entry form (Verein/Mitglied/Extern, beleg-or-Begründung, duplicate-as-template) — _Belegprüfung-assigns-Kategorie is extracted to Phase 4.5_              | 1–3        |
 | 5   | `…phase-5-einnahmen.md`        | Einnahmen list (Sphären-split, 🔗) + entry form + Rechnung-link surfacing                                                                                                                                  | 1–3        |
 | 6   | `…phase-6-spenden.md`          | Spenden list (Bescheinigung pill) + 3-picker form + Sachspende Wertermittlung + derived badge                                                                                                              | 1–3        |
+| 4.5 | `…phase-4.5-inbox-kategorie-gate.md` | Belegprüfung/inbox Kategorie gate (Kategorie assigned on approve) — **own standalone merge unit on main AFTER the three C-tabs, NOT inside the C1/Ausgaben worktree**                                | 4–6        |
 | 7   | `…phase-7-detail-viewer.md`    | Shared detail modal surface + unified pdfjs Beleg viewer + mobile fold + Festschreibung read-only                                                                                                          | 4–6        |
-| 8   | `…phase-8-exports-polish.md`   | CSV export of filtered list + empty/error/loading states + a11y pass                                                                                                                                       | 4–7        |
+| 8   | `…phase-8-exports-polish.md`   | CSV export of filtered list (column set MUST match the EÜR `transactions.csv` columns per spec §17) + empty/error/loading states + a11y pass                                                                | 4–7        |
 
 Phases 4/5/6 are independent of each other (parallelizable once 1–3 land). Each phase plan is written **just before** it's executed, pinned to the real signatures produced by earlier phases — except Phases 1–3 (+ the shared-primitives track), written ahead in full to unlock the parallel tab tier.
 
@@ -44,26 +45,29 @@ The 8 phases above are the _dependency_ view. For **execution**, the work factor
 
 ```
 TIER A  (no deps — start immediately, fully concurrent)
-  ├─ A1  Phase 1  Foundation (data/schema/seed)            owns: drizzle/*, schema/*, seed*.ts, import/*, audit-inbox-actions.ts
+  ├─ A1  Phase 1  Foundation (data/schema/seed)            owns: drizzle/*, schema/*, seed*.ts, import/*,
+  │      (incl. transactions.ts — SOLE owner of the createX fns + Import sentinel)      transactions.ts (createX + sentinel)
   ├─ A2  Phase 2 pure engine (registry, URL/Zod, SQL       owns: src/lib/domain/transaction-filters.ts, year.ts,
-  │      builders, year helpers, saved-views)                     src/lib/server/domain/transaction-filter-sql.ts, src/lib/client/saved-views.ts
-  └─ A3  Shared primitives  (NEW track, see below)         owns: src/lib/components/ui/{popover,combobox,tooltip,pagination,money-input,multiselect-chip}/
+  │      builders, year helpers, saved-views)                     src/lib/server/domain/transaction-filter-sql.ts, src/lib/client/saved-views.ts,
+  │                                                                transactions.ts (Tasks 5-6, serialize after A1)
+  └─ A3  Shared primitives  (NEW track, see below)         owns: src/lib/components/ui/{popover,combobox,tooltip,pagination,multiselect-chip}/
         popover/combobox, tooltip, pagination,
-        money-input, multiselect-chip
+        multiselect-chip
   ── sync: A1 must merge before A2's DB-query task (Phase 2 Task 5/6) and before A3 is consumed by tab tests that hit the DB.
 
 TIER B  (after A — the shared kit; can split into B1∥B2∥B3)
   ├─ B1  Phase 2 FilterBar component  (needs A3 popover/combobox/chips)   owns: components/admin/transactions/FilterBar.svelte
   ├─ B2  Phase 3 routing+nav+year     (needs A2 year helpers)             owns: nav-registry.ts, Sidebar/MobileTabBar/Topbar edits,
-  │                                                                              routes/app/{ausgaben,einnahmen,spenden}/ shells, redirect, +layout clamp
+  │                                                                              routes/app/{ausgaben,einnahmen,spenden}/ shells, redirect, +layout clamp,
+  │                                                                              src/lib/server/domain/layout-year.ts (NEW server-side layout year resolver — named layout-year.ts, NOT years.ts, to avoid collision with the pure A2 year.ts)
   └─ B3  Phase 3 shared kit           (needs A2 listXPage shape, A3)      owns: components/admin/transactions/{TransactionListScaffold,
         list scaffold · entry-modal shell + field                              EntryFormShell, fields/*, DetailModalShell, StaleYearBanner}.svelte
         primitives · detail-modal shell · Beleg viewer                          + components/files/BelegViewer.svelte
-  ── Beleg viewer (BelegViewer.svelte) is itself parallel-safe (depends only on A1 files + pdfjs) — can run in A or B.
+  ── BelegViewer.svelte is owned SOLELY by B3 (Phase 3); it depends only on A1 files + pdfjs.
 
 TIER C  (after B — THE parallel tab tier; 3 concurrent worktrees, zero shared files)
   ├─ C1  Phase 4 Ausgaben     owns: routes/app/ausgaben/**  + components/admin/transactions/ausgaben/**
-  │       (incl. the bulk/SEPA components — moved into ausgaben/ in Phase 3 Task 6 since Ausgaben is their sole consumer)
+  │       (incl. the bulk/SEPA components — moved into ausgaben/ in Phase 4 Task 3 since Ausgaben is their sole consumer)
   ├─ C2  Phase 5 Einnahmen    owns: routes/app/einnahmen/** + components/admin/transactions/einnahmen/**
   └─ C3  Phase 6 Spenden      owns: routes/app/spenden/**   + components/admin/transactions/spenden/**
           + components/admin/spenden/**  (SpendeDetailCard, EditSpendeDialog, BescheinigungsPreview, …)
@@ -72,14 +76,19 @@ TIER C  (after B — THE parallel tab tier; 3 concurrent worktrees, zero shared 
           Spenden also RETIRES the old spenden route (AddSpendeDialog/EditSpendeDialog + direct-donations load),
           migrating to EntryFormShell + listSpendenPage; reuses spenden.ts as the action layer. (Most divergent tab — scope accordingly.)
 
-TIER D  (after C)
-  └─ D1  Phase 8 exports + cross-cutting polish (CSV per tab, empty/error/loading states, a11y sweep)
+TIER C.5  (after the three C-tabs merge — its OWN standalone unit, NOT inside the C1/Ausgaben worktree)
+  └─ Phase 4.5  Inbox Kategorie gate   owns: routes/app/inbox/+page.server.ts, routes/app/inbox/[ausId]/+page.server.ts,
+        the Belegprüfung/inbox approve UIs +              their approve UIs, src/lib/server/.../audit-inbox-actions.ts,
+        Kategorie-assignment-on-approve                   tests/.../audit-inbox-actions.test.ts
+  ── HARD MANDATE: this is a standalone merge unit on main that lands AFTER C1/C2/C3, never folded into the C1 worktree.
+
+TIER D  (after C.5)
+  └─ D1  Phase 8 exports + cross-cutting polish (CSV per tab — column set MUST match the EÜR transactions.csv columns per spec §17; empty/error/loading states, a11y sweep)
 ```
 
 **Rules that keep tiers conflict-free**
 
 - **One file = one owner per tier.** The tab tier (C) is only safe because Phase 3 (B) extracts every shared component first; a C-track must never edit a shared file. If a tab needs a shared change, it goes back to B (do not fork).
-- **`transactions.ts` is a contention point** (Phase 1 adds `createX`/sentinel resolves; Phase 2 adds `listXPage`). Sequence those two within Tier A→B or use a worktree + a single rebasing merge; do not edit it from two tracks simultaneously.
 - **Shared primitives (A3) front-loaded:** Phase 2's `FilterBar` (B1) and Phase 3's forms (B3) both need `popover`/`combobox`, `multiselect-chip`, `tooltip`, `pagination`. Build them once in A3 (its own plan, `…phase-A3-shared-primitives.md`) to prevent three half-built copies. **`ui/money` and `ui/date-field` already exist — reuse them; do NOT create a `money-input`.** (Spec §13 lists the missing ones "to add"; A3 must be merged before B1/B3.)
 - **Old god-component (`TransactionsList.svelte`) stays live until Tier C retires it per-tab.** Phase 3 (B) leaves the old `/app/transactions` route working behind a redirect only after the three new routes exist; the SEPA/Bulk/Row/Card components are extracted (not deleted) in B3 so all three tabs reuse them.
 
@@ -95,6 +104,8 @@ TIER D  (after C)
 4. **Execute** task-by-task (subagent-driven; review between tasks).
 5. **Phase-boundary verification** (see Testing approach) + **commit**.
 6. **Continue** to the next phase autonomously: write its plan, repeat.
+
+> **Phase 3 → C-plans gate:** after Phase 3 merges and **before** authoring the C-track tab plans (4/5/6), run `pnpm check` to typecheck the now-locked shared exports and fail fast on any contract drift before the parallel tab tier branches from them.
 
 ---
 

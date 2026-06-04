@@ -114,6 +114,10 @@ it("removes on × click and on Backspace when focused", async () => {
   });
   await u.click(screen.getByRole("button", { name: /entfernen/i }));
   expect(onRemove).toHaveBeenCalledOnce();
+  onRemove.mockClear();
+  await u.tab(); // focus the chip button
+  await u.keyboard("{Backspace}");
+  expect(onRemove).toHaveBeenCalledOnce();
 });
 ```
 
@@ -131,6 +135,32 @@ For truncation-with-tooltip (long member names / Bezeichnung — spec §13 a11y)
 **Files:** Create `src/lib/components/ui/tooltip/{index.ts,tooltip-content.svelte}` (wrap bits-ui `Tooltip`); Test `…/tooltip.test.ts`
 
 - [ ] **Step 1: Failing test** — hover/focus on the trigger reveals the content with `role="tooltip"`; blur hides it.
+
+```ts
+// tooltip.test.ts
+import { render, screen } from "@testing-library/svelte";
+import userEvent from "@testing-library/user-event";
+import { describe, it, expect } from "vitest";
+import TooltipHarness from "./tooltip.test.svelte"; // mounts Root+Trigger+Content with text "Hinweis"
+describe("ui/tooltip", () => {
+  it("shows tooltip on hover and hides on mouse-leave", async () => {
+    const u = userEvent.setup();
+    render(TooltipHarness);
+    await u.hover(screen.getByRole("button", { name: /hover me/i }));
+    expect(await screen.findByRole("tooltip")).toBeTruthy();
+    await u.unhover(screen.getByRole("button", { name: /hover me/i }));
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+  it("shows tooltip on keyboard focus and hides on blur", async () => {
+    const u = userEvent.setup();
+    render(TooltipHarness);
+    await u.tab(); // focus the trigger
+    expect(await screen.findByRole("tooltip")).toBeTruthy();
+    await u.tab(); // blur
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+});
+```
 - [ ] **Step 2: Run → fails.**
 - [ ] **Step 3: Implement** barrel (`Root/Provider/Trigger/Content`) re-exporting bits-ui `Tooltip` + styled `TooltipContent` (`data-slot="tooltip-content"`). Keyboard-focus triggers it (not just hover), for a11y.
 - [ ] **Step 4: Run → passes.**

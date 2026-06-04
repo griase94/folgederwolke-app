@@ -1,10 +1,10 @@
 # Transactions Phase 4 — Ausgaben tab (Tier C1) Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development or executing-plans. Steps use `- [ ]`. Read the ROADMAP (Parallelization map) + spec §7 + §4.6 + §10/§11. **Depends on Phases 1, 2, 3 + track A3 merged.** This is a **Tier-C parallel track** — it owns `routes/app/ausgaben/**` + `components/admin/transactions/ausgaben/**` (incl. the bulk/SEPA components moved here in Phase 3 Task 6) and may run concurrently with Phase 5 (Einnahmen) and Phase 6 (Spenden). **Do not edit shared files** (the Phase-3 kit, `transactions.ts`, `FilterBar`); if a shared change is needed, it goes back to Phase 3. One exception is flagged in Task 6 (Belegprüfung). Branch/worktree: a C1 worktree off the merged Phase-1-2-3 base.
+> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development or executing-plans. Steps use `- [ ]`. Read the ROADMAP (Parallelization map) + spec §7 + §4.6 + §10/§11. **Depends on Phases 1, 2, 3 + track A3 merged.** This is a **Tier-C parallel track** — it owns `routes/app/ausgaben/**` + `components/admin/transactions/ausgaben/**` (incl. the bulk/SEPA components moved here in Phase 3 Task 6) and may run concurrently with Phase 5 (Einnahmen) and Phase 6 (Spenden). **Do not edit shared files** (the Phase-3 kit, `transactions.ts`, `FilterBar`); if a shared change is needed, it goes back to Phase 3. The Belegprüfung Kategorie gate is **NOT** in this worktree — it is extracted into a standalone **Phase 4.5 — Inbox Kategorie gate** unit that merges on `main` after the three C-tabs (see Task 6). Branch/worktree: a C1 worktree off the merged Phase-1-2-3 base.
 
 **Goal:** The Ausgaben tab — list (KPI "N offen" pill + sortable columns incl. Sphäre-left-rule + Status badge), bulk "Als bezahlt markieren" (+ SEPA), the entry form (Verein auto-paid / Mitglied / Extern + admin "Schon bezahlt?" toggle + beleg-or-Begründung), the detail page ("Als bezahlt markieren" + duplicate-as-template), and the Belegprüfung-assigns-Kategorie picker.
 
-**Architecture:** Thin route files binding to the Phase-3 shared kit. `routes/app/ausgaben/+page.server.ts` calls `listAusgabenPage` (Phase 2) + a new `listAusgabenKpi` (this phase) and renders `TransactionListScaffold` with an Ausgaben `kpi` snippet, `columns`, and the `bulk` prop. The entry form uses `EntryFormShell` + an Ausgaben `fields` snippet; its create action calls `createExpense` (Phase 1, which resolves a non-null Kategorie + `kategorieSphere`). Verein (or admin "Schon bezahlt") → created already-`erstattet` (reuse `markExpenseAsPaid` semantics). The detail route uses `DetailModalShell` + `BelegViewer`, with "Als bezahlt markieren" (reuse `markExpenseAsPaid`) and duplicate-as-template (resets payment state).
+**Architecture:** Thin route files binding to the Phase-3 shared kit. `routes/app/ausgaben/+page.server.ts` calls `listAusgabenPage` (Phase 2) + a new `listAusgabenKpi` (this phase) and renders `TransactionListScaffold` with an Ausgaben `kpi` snippet, `columns`, and the `bulk` prop. The entry form uses `EntryFormShell` + an Ausgaben `fields` snippet; its create action calls `createExpense` (Phase 1, which resolves a non-null Kategorie + `kategorieSphere`). Verein → created already-paid via `markExpenseAsPaid` (no mail); admin "Schon bezahlt" on a member/extern row → `markExpenseErstattet` (fires the SEPA-payout confirmation mail). The detail route uses `DetailModalShell` + `BelegViewer`, with "Als bezahlt markieren" (reuse `markExpenseAsPaid`) and duplicate-as-template (resets payment state).
 
 **Tech Stack:** SvelteKit, Drizzle, Vitest (fast lane for pure KPI math; reset lane for DB + component/route tests).
 
@@ -15,9 +15,9 @@
 > **⚠ Review amendments (verified against real code — apply when executing):**
 > - **`markExpenseAsPaid` signature is positional and does NOT mail:** `markExpenseAsPaid(expenseId: string, { datum, zahlartId, actorUserId })` — emits `expense.updated` (audit only). The **"Schon bezahlt" + notify** path (Task 4 case c) must use **`markExpenseErstattet`** (`audit-inbox-actions.ts`): `{ expenseId, chosenDate, zahlungsartId, actorUserId }` — it fires the dedup'd ErstattungsMail via `expense.erstattet`, requires a non-null `zahlungsartId` + an existing `approvedAt`. So: **Verein → `markExpenseAsPaid` (no mail); Mitglied/Extern + Schon-bezahlt → `markExpenseErstattet` (mails).** There is no `notify` knob on `markExpenseAsPaid`.
 > - **`createExpense` invariant:** it always creates `status='geprueft'`, `approvedAt=now()`, `erstattetAm=NULL` (no `status` input). So the Verein two-step `createExpense → markExpenseAsPaid` (guard `WHERE erstattet_am IS NULL`) is correct, single audit per step, no double-pay.
-> - **Task 3 bulk is a behavior CHANGE, not a port:** the old actions return a single `fail(409, "a; b")` and `markExpenseErstattet` mails per row. Implement the new `{ results: {id,status}[] }` shape + decide member-row mailing explicitly.
+> - **Task 3 bulk is a behavior CHANGE, not a port:** the old actions return a single `fail(409, "a; b")` and `markExpenseErstattet` mails per row. Implement the new `{ results: {id,status}[] }` shape. Member-row mailing is **not a decision** — bulk Als-bezahlt always calls `markExpenseErstattet` per row (fires the SEPA-payout confirmation, no knob); the bulk pool is member/extern-only because Verein-direct rows are created already-`erstattet`.
 > - **Task 5 `?/save`:** there is no exported `updateExpense` — port the inline `db.update(expenses)` from the old `[id]/+page.server.ts`, festschreibung-gated; add a test for it. Read `detail.belegFileId`/`belegMimeType`/`belegOriginalName` (Phase 3 Task 4), NOT `belegDriveFileId`.
-> - **Task 6 `approveSubmission`:** adding a required `kategorieId` is a breaking signature change — update the inbox approve call site(s) in lockstep, update the stale "Phase 5" code comment, and have the test supersede Phase 1 Task 9's sentinel assertion (chosen Kategorie instead).
+> - **Task 6 `approveSubmission` (now Phase 4.5, NOT this worktree):** adding a required `kategorieId` is a breaking signature change with **two** call sites — update both `routes/app/inbox/+page.server.ts` AND `routes/app/inbox/[ausId]/+page.server.ts:268` in lockstep, replace the named sentinel at `audit-inbox-actions.ts:342-343`, update the stale "Phase 5" code comment, and have the test supersede Phase 1 Task 9's sentinel assertion (chosen Kategorie instead). Executed in the standalone Phase 4.5 unit that merges on `main` after the three C-tabs.
 > - **Task 1 KPI aging basis:** measure oldest-open age from **`approvedAt`** (state it explicitly so the §4.7 corpus fixture asserts a deterministic number).
 
 ---
@@ -100,7 +100,7 @@ it("shows 'N offen · älteste X Tage' when > 0", () => {
 
 - [ ] **Step 2: Run → fails.** `pnpm test --run tests/unit/ausgaben-page.server.test.ts` then `pnpm test --run src/lib/components/admin/transactions/ausgaben/AusgabenKpi.test.ts`
 
-- [ ] **Step 3: Implement.** `+page.server.ts` `load` (mirrors the Phase-3 shell shape, but Ausgaben-specific): `parseFilterState("ausgaben", url.searchParams)`, year from `await parent()` (`yearScope`), `listAusgabenPage({ state, year, limit, offset })`, `listAusgabenKpi(year)`, `listKategorieOptions("expense")` → options, `listMemberOptions()`, `listApprovedPendingErstattet()` (bulk). `columns.ts` exports the `ColumnDef[]`: Datum, ID (mono), Bezeichnung (+ Bezahlt-von subtitle), Bezahlt von, Kategorie, **Sphäre as a left color-rule** (render snippet, not a filled badge — §13), Betrag (right, `Money`), Status (badge), chevron. `AusgabenKpi.svelte` renders the quiet anchor + the disappearing "N offen" pill. `+page.svelte` renders `<TransactionListScaffold tab="ausgaben" {rows} {total} … kpi={kpiSnippet} columns={ausgabenColumns} bulk={…} detailHrefBase="/app/ausgaben">`.
+- [ ] **Step 3: Implement.** `+page.server.ts` `load` (mirrors the Phase-3 shell shape, but Ausgaben-specific): `parseFilterState("ausgaben", url.searchParams)`, year from `await parent()` (`yearScope`), `listAusgabenPage({ state, year, limit, offset })`, `listAusgabenKpi(year)`, `listKategorieOptions("expense")` → options, `listMemberOptions()`, `listApprovedPendingErstattet()` (bulk). `columns.ts` exports the `ColumnDef[]`: Datum, ID (mono), Bezeichnung (+ Bezahlt-von subtitle), Bezahlt von, Kategorie, **Sphäre as a left color-rule** (render snippet, not a filled badge — §13), Betrag (right, `Money`), Status (badge), chevron. `AusgabenKpi.svelte` renders the quiet anchor + the disappearing "N offen" pill. `+page.svelte` renders `<TransactionListScaffold tab="ausgaben" {rows} {total} … kpi={kpiSnippet} columns={ausgabenColumns} bulk={…} detailHrefBase="/app/ausgaben" newLabel="Neue Ausgabe" newHref="/app/ausgaben/neu">` (UX-01: Phase 3 owns the `newHref`/`newLabel` props + renders the single primary create CTA — desktop top-right of the list header, mobile a sticky/FAB with ≥44px touch target; this tab only passes the German label + href).
 
 - [ ] **Step 4: Run → passes.**
 
@@ -114,7 +114,7 @@ it("shows 'N offen · älteste X Tage' when > 0", () => {
 
 - [ ] **Step 1: Write the failing test** — bulk action marks N expenses paid and returns a per-row result array (ok/festgeschrieben/already-paid), not a single boolean.
 - [ ] **Step 2: Run → fails.**
-- [ ] **Step 3: Implement** the move + the bulk actions returning `{ results: { id, status }[] }`; the BulkActionsBar/PostSepa modals surface the per-row summary toast.
+- [ ] **Step 3: Implement** the move + the bulk actions returning `{ results: { id, status }[] }`; the BulkActionsBar/PostSepa modals surface the per-row summary toast. **Member-row mailing rule (no decision at impl time):** bulk Als-bezahlt calls `markExpenseErstattet({ expenseId, chosenDate, zahlungsartId, actorUserId })` per row — this always fires the SEPA-payout confirmation mail, there is no knob. The bulk pool is member/extern-only (`listApprovedPendingErstattet`) because Verein-direct rows are created already-`erstattet` and never enter the bulk queue.
 - [ ] **Step 4: Run → passes.**
 - [ ] **Step 5: Commit.** `git commit -m "feat(ausgaben): bulk Als-bezahlt + SEPA (moved into ausgaben/, per-row failure summary)"`
 
@@ -126,18 +126,20 @@ The bezahlt-von branching + auto-paid is the trickiest tab logic.
 
 **Files:** Create `routes/app/ausgaben/neu/{+page.server.ts,+page.svelte}` + `components/admin/transactions/ausgaben/AusgabeFields.svelte`; Test `tests/unit/ausgaben-create.server.test.ts` (mocked, mirrors `neu/page.server.test.ts`)
 
-- [ ] **Step 1: Write the failing test** — three cases: (a) `bezahltVonKind=verein` → `createExpense` called then `markExpenseAsPaid` (status erstattet), no member mail; (b) `bezahltVonKind=member` default → status geprueft (Auslagenflow), no auto-pay; (c) `bezahltVonKind=member` + `schonBezahlt=true` (admin) → `markExpenseAsPaid` + optional notify. All assert `kategorieSphere` derivation (no project override) + beleg-or-Begründung validation.
+- [ ] **Step 1: Write the failing test** — three cases: (a) `bezahltVonKind=verein` → `createExpense` called then `markExpenseAsPaid(id, { datum, zahlartId, actorUserId })` (status erstattet), no member mail; (b) `bezahltVonKind=member` default → status geprueft (Auslagenflow), no auto-pay; (c) `bezahltVonKind=member` + `schonBezahlt=true` (admin) → `markExpenseErstattet({ expenseId, chosenDate, zahlungsartId, actorUserId })` (fires the SEPA-payout confirmation mail). All assert `kategorieSphere` derivation (no project override) + beleg-or-Begründung validation.
 
 ```ts
 // ausgaben-create.server.test.ts (mock transactions.ts createExpense/markExpenseAsPaid)
 it("Verein → creates then marks paid (erstattet), no member notify", async () => {
-  /* invoke ?/create with bezahltVonKind=verein, zahlungsart, datum … expect markExpenseAsPaid called, notify=false */
+  /* invoke ?/create with bezahltVonKind=verein, zahlungsart, datum … expect markExpenseAsPaid(id, { datum, zahlartId, actorUserId }) called (no mail) */
 });
 it("Mitglied default → geprueft, no auto-pay", async () => {
   /* … expect markExpenseAsPaid NOT called */
 });
-it("Mitglied + schonBezahlt → marks paid + optional notify", async () => {
-  /* … */
+it("Mitglied + schonBezahlt → marks erstattet (SEPA-payout confirmation mail)", async () => {
+  /* invoke ?/create with bezahltVonKind=member, schonBezahlt=true, zahlungsart, datum …
+     expect markExpenseErstattet called with { expenseId, chosenDate, zahlungsartId, actorUserId };
+     markExpenseAsPaid NOT called (this is the mailing path) */
 });
 it("rejects: neither Beleg nor Begründung", async () => {
   /* expect fail(422) */
@@ -146,7 +148,7 @@ it("rejects: neither Beleg nor Begründung", async () => {
 
 - [ ] **Step 2: Run → fails.** `pnpm test --run tests/unit/ausgaben-create.server.test.ts`
 
-- [ ] **Step 3: Implement.** `AusgabeFields.svelte`: Bezeichnung, Betrag (native number→hidden cents), Rechnungsdatum + Abfluss (`ui/date-field`), `KategoriePicker`+`SphereBadge`, Projekt, the bezahlt-von segmented (Verein/Mitglied/Extern → reveals member-select or Extern Name/IBAN/Email), the **admin-only "Schon bezahlt?" toggle** (revealed for member/extern; reveals Zahlungsart + Datum + notify) — visually distinct from the Verein auto-paid panel (spec §7.2, avoid mode-error), and `BelegUpload` with the "Kein Beleg vorhanden" → Begründung reveal. `+page.server.ts` `?/create`: Zod schema (extend the existing `expenseSchema`); `checkFestschreibungGate`; `allocateBusinessId("A", year)`; `createExpense({ …, kategorieNameSnapshot, /* sphere derived in createExpense via kategorieSphere */ })`; if Verein OR (`schonBezahlt` && admin) → `markExpenseAsPaid({ expenseId, datum, zahlartId, notify })`; `redirect(303, "/app/ausgaben/" + id)`. Renders inside `EntryFormShell`.
+- [ ] **Step 3: Implement.** `AusgabeFields.svelte`: Bezeichnung, Betrag (native number→hidden cents), Rechnungsdatum + Abfluss (`ui/date-field`), `KategoriePicker`+`SphereBadge`, Projekt, the bezahlt-von segmented (Verein/Mitglied/Extern → reveals member-select or Extern Name/IBAN/Email), the **admin-only "Schon bezahlt?" toggle** (revealed for member/extern; reveals Zahlungsart + Datum) — visually distinct from the Verein auto-paid panel (spec §7.2, avoid mode-error), and `BelegUpload` with the "Kein Beleg vorhanden" → Begründung reveal. **Reveal choreography (UX-07):** switching the bezahlt-von mode must NOT lose already-entered Bezeichnung/Betrag/Kategorie/Rechnungsdatum; panels animate in/out without jank and the footer stays pinned by `EntryFormShell`; the "Schon bezahlt" toggle is a reveal WITHIN the Verein/member panel, not a form-resetting mode switch. `+page.server.ts` `?/create`: Zod schema (extend the existing `expenseSchema`); `checkFestschreibungGate`; `allocateBusinessId("A", year)`; `createExpense({ …, kategorieNameSnapshot, /* sphere derived in createExpense via kategorieSphere */ })`; then branch on the payment path: Verein → `markExpenseAsPaid(id, { datum, zahlartId, actorUserId })` (positional, no mail); Mitglied/Extern + `schonBezahlt` && admin → `markExpenseErstattet({ expenseId: id, chosenDate, zahlungsartId, actorUserId })` (fires the SEPA-payout confirmation mail; requires a non-null `zahlungsartId` + an existing `approvedAt`). There is no `notify` knob. `redirect(303, "/app/ausgaben/" + id)`. Renders inside `EntryFormShell`.
 
 - [ ] **Step 4: Run → passes.**
 
@@ -173,7 +175,7 @@ it("duplicate resets payment state (no erstattetAm/zahlungsart/status, no beleg)
 
 - [ ] **Step 2: Run → fails.** `pnpm test --run tests/unit/ausgabe-detail.server.test.ts`
 
-- [ ] **Step 3: Implement.** `[id]/+page.server.ts`: `load` → `getTransactionDetail(params.id, "expense")` (now carries `belegFileId`/`belegMimeType` from Phase 3 Task 4); actions `?/save` (festschreibung-gated update), `?/mark-paid` (`markExpenseAsPaid` + ErstattungsMail), `?/duplicate` (build a prefill from the descriptive fields only → redirect to `/app/ausgaben/neu?prefill=…` or return for client prefill). `AusgabeDetailFields.svelte` = the editable fields. `+page.svelte` renders `<DetailModalShell {detail} {isFestgeschrieben} fields={…} workflowAction={markPaidSnippet} beleg={belegViewerSnippet}>` where `beleg` renders `<BelegViewer fileId={detail.belegFileId} mimeType={detail.belegMimeType} … mode="inline"/>` (or fold on mobile). Festgeschrieben → read-only (shell handles).
+- [ ] **Step 3: Implement.** `[id]/+page.server.ts`: `load` → `getTransactionDetail(params.id, "expense")` (now carries `belegFileId`/`belegMimeType` from Phase 3 Task 4); actions `?/save` (festschreibung-gated update), `?/mark-paid` (`markExpenseAsPaid(id, { datum, zahlartId, actorUserId })` — positional, no-mail path), `?/duplicate` (build a prefill from the descriptive fields only → redirect to `/app/ausgaben/neu?prefill=…` or return for client prefill). `AusgabeDetailFields.svelte` = the editable fields. `+page.svelte` renders `<DetailModalShell {detail} {isFestgeschrieben} fields={…} workflowAction={markPaidSnippet} beleg={belegViewerSnippet}>` where `beleg` renders `<BelegViewer fileId={detail.belegFileId} mimeType={detail.belegMimeType} … mode="inline"/>` (or fold on mobile). Festgeschrieben → read-only (shell handles).
 
 - [ ] **Step 4: Run → passes.**
 
@@ -181,15 +183,21 @@ it("duplicate resets payment state (no erstattetAm/zahlungsart/status, no beleg)
 
 ---
 
-### Task 6: Belegprüfung — require a Kategorie on approval `[model: opus]`
+### Task 6: Belegprüfung Kategorie gate → see **Phase 4.5** (NOT in this C1 worktree) `[model: opus]`
 
-Spec §4.6: the real Kategorie picker on the inbox approval UI (replaces Phase 1's interim sentinel). **⚠ Touches a SHARED route `routes/app/inbox/**`+`audit-inbox-actions.ts` — NOT a C1-owned file.** Safe because no other Tier-C track touches inbox, but **sequence this so it doesn't run concurrently with any other inbox edit\*\*; ideally land it as a small standalone PR before/after the parallel tab work, not inside a racing C1 worktree. Flagged in the ROADMAP.
+Spec §4.6 (the real Kategorie picker on the inbox approval UI, replacing Phase 1's interim sentinel) is **extracted into its own standalone unit, "Phase 4.5 — Inbox Kategorie gate," which merges on `main` AFTER the three C-tabs (C1/Ausgaben, C2/Einnahmen, C3/Spenden) land** — it is **NOT** done inside this C1/Ausgaben worktree. Reason: `approveSubmission` gaining a required `kategorieId` is a **breaking signature change** with two call sites; doing it here would couple inbox edits to the racing C-track. The C1 worktree owns **none** of the inbox/audit files below.
 
-**Files:** Modify `routes/app/inbox/+page.svelte` (+ its approve action) + `src/lib/server/domain/audit-inbox-actions.ts` (`approveSubmission` takes a `kategorieId`); Test `tests/unit/audit-inbox-actions.test.ts` (extend)
+**Phase 4.5 owns (separate unit, sequenced after the C-tabs):**
+- `routes/app/inbox/+page.server.ts` + its approve UI (`routes/app/inbox/+page.svelte`)
+- `routes/app/inbox/[ausId]/+page.server.ts` (call site at `:268`) + its approve UI (`routes/app/inbox/[ausId]/+page.svelte`)
+- `src/lib/server/domain/audit-inbox-actions.ts` (`approveSubmission` takes a required `kategorieId`; the interim sentinel to replace is named at `audit-inbox-actions.ts:342-343`)
+- `tests/unit/audit-inbox-actions.test.ts` (extend; supersede Phase 1 Task 9's sentinel assertion with a chosen-Kategorie assertion)
 
-- [ ] **Step 1: Write the failing test** — `approveSubmission` now requires a real `kategorieId` (rejects/needs it instead of the sentinel); the approved expense carries the chosen Kategorie + derived sphere.
+**Phase 4.5 step outline (for reference — executed in the Phase 4.5 unit, not here):**
+- [ ] **Step 1: Write the failing test** — `approveSubmission` now requires a real `kategorieId` (rejects/needs it instead of the sentinel at `audit-inbox-actions.ts:342-343`); the approved expense carries the chosen Kategorie + derived `kategorieSphere`.
 - [ ] **Step 2: Run → fails.**
-- [ ] **Step 3: Implement** — add a mandatory Kategorie picker (`listKategorieOptions("expense")`) to the inbox approve UI; `approveSubmission({ …, kategorieId })` sets it + `kategorieSphere` sphere; drop the interim sentinel fallback for the interactive path (keep it only for any non-interactive path).
+- [ ] **Step 3: Implement** — add a mandatory Kategorie picker (`listKategorieOptions("expense")`) to **both** inbox approve UIs; update **both** `approveSubmission` call sites in lockstep (`routes/app/inbox/+page.server.ts` AND `routes/app/inbox/[ausId]/+page.server.ts:268`); `approveSubmission({ …, kategorieId })` sets it + derived `kategorieSphere`; replace the interim sentinel at `audit-inbox-actions.ts:342-343` for the interactive path (keep it only for any non-interactive path); update the stale "Phase 5" code comment.
+- [ ] **Step 3b: Confirmation (UX-03).** After `approveSubmission` succeeds, show an inline confirmation/toast linking to `/app/ausgaben/<newExpenseId>` (the `approveSubmission` return value carries the new expense id) so the approved item does not silently teleport out of the inbox.
 - [ ] **Step 4: Run → passes.**
 - [ ] **Step 5: Commit.** `git commit -m "feat(inbox): require Kategorie on Auslage approval (replaces interim sentinel, spec §4.6)"`
 
@@ -197,9 +205,12 @@ Spec §4.6: the real Kategorie picker on the inbox approval UI (replaces Phase 1
 
 ### Task 7: Phase-boundary verification + milestone `[model: opus]`
 
-- [ ] **Step 1: Pure.** `pnpm test:fast --run $(git ls-files 'tests/unit/*ausgaben*' | tr '\n' ' ')` (the pure ones, if any).
-- [ ] **Step 2: DB/route/component.** `pnpm test --run tests/integration/ausgaben-kpi.test.ts tests/unit/ausgaben-page.server.test.ts tests/unit/ausgaben-create.server.test.ts tests/unit/ausgabe-detail.server.test.ts tests/unit/audit-inbox-actions.test.ts src/lib/components/admin/transactions/ausgaben/AusgabenKpi.test.ts`
-- [ ] **Step 3: e2e.** `pnpm test:e2e --grep @phase-4-ausgaben` (create Verein-paid → erstattet; create member → geprueft; bulk mark-paid; duplicate resets; detail mark-paid).
+- [ ] **Step 1: Pure.** Guard the glob so it cannot pass green under `--passWithNoTests` when nothing matches: `files=$(git ls-files 'tests/unit/*ausgaben*'); [ -n "$files" ] && pnpm test:fast --run $files || echo 'no pure tests'`.
+- [ ] **Step 2: DB/route/component.** `pnpm test --run tests/integration/ausgaben-kpi.test.ts tests/unit/ausgaben-page.server.test.ts tests/unit/ausgaben-create.server.test.ts tests/unit/ausgabe-detail.server.test.ts src/lib/components/admin/transactions/ausgaben/AusgabenKpi.test.ts` (`tests/unit/audit-inbox-actions.test.ts` is **not** here — it belongs to the standalone Phase 4.5 unit).
+- [ ] **Step 3: e2e.** `pnpm test:e2e --grep @phase-4-ausgaben` (create Verein-paid → erstattet; create member → geprueft; bulk mark-paid; duplicate resets; detail mark-paid). Add these assertions, all tagged `@phase-4-ausgaben`, with **no extra DB reset**:
+  - **EÜR reflects new bookings (P12-01, the spec's headline E2E):** create an Ausgabe with a real Kategorie, then assert it appears in `/app/jahresabschluss/[year]` in the correct sphere bucket.
+  - **Unsaved-changes guard (P16-03):** dirty the entry form, then assert the guard fires on the **×** close and on **browser-back** exits (skip the lower-risk topbar/mobile-tab exits and iOS-Safari PDF).
+  - **Image fold-viewer (P16-03):** one assertion that an image Beleg renders in the detail fold/inline viewer.
 - [ ] **Step 4: Typecheck + lint.** `pnpm check && pnpm lint`
 - [ ] **Step 5: Tag.** `git tag -f phase-4-ausgaben-complete`
 
@@ -207,7 +218,7 @@ Spec §4.6: the real Kategorie picker on the inbox approval UI (replaces Phase 1
 
 ## Self-Review
 
-1. **Spec §7 coverage:** KPI offen-pill + aging (T1/T2) ✓; sortable columns + Sphäre left-rule + status badge (T2) ✓; bulk Als-bezahlt + per-row failure (T3) ✓; entry Verein/Mitglied/Extern + Schon-bezahlt + beleg-or-Begründung (T4) ✓; detail mark-paid + duplicate-reset (T5) ✓; §4.6 Belegprüfung Kategorie (T6) ✓.
-2. **Parallel-safety:** all files in `routes/app/ausgaben/**` + `components/admin/transactions/ausgaben/**` except T6 (inbox), explicitly flagged + sequenced. KPI in its own `ausgaben-kpi.ts` (not `transactions.ts`). Binds to Phase-3 contracts read-only.
+1. **Spec §7 coverage:** KPI offen-pill + aging (T1/T2) ✓; sortable columns + Sphäre left-rule + status badge (T2) ✓; bulk Als-bezahlt + per-row failure (T3) ✓; entry Verein/Mitglied/Extern + Schon-bezahlt + beleg-or-Begründung (T4) ✓; detail mark-paid + duplicate-reset (T5) ✓; §4.6 Belegprüfung Kategorie → standalone **Phase 4.5** unit (merges on `main` after the three C-tabs, see T6) ✓.
+2. **Parallel-safety:** all files in `routes/app/ausgaben/**` + `components/admin/transactions/ausgaben/**`. The inbox/audit Belegprüfung gate is **not** in this worktree — it is extracted into Phase 4.5 (T6). KPI in its own `ausgaben-kpi.ts` (not `transactions.ts`). Binds to Phase-3 contracts read-only.
 3. **No placeholders:** logic tasks (KPI, auto-paid, duplicate-reset, approval) are full TDD; UI wiring is contract-bound with a component/route test. `listAusgabenPage` row carries `status`/`bezahltVonKind`/`approvedAt` per the Phase-2 projection amendment.
 4. **Old-route cleanup** (deleting the shared `transactions/[id]`, `transactions/neu`, `TransactionsList.svelte`) is **NOT here** — it's a Tier-D (Phase 8) cleanup once all three tabs ship, to keep C-tracks conflict-free.

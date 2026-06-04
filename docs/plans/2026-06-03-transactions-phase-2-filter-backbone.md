@@ -142,7 +142,9 @@ const ZWECKBINDUNG_OPTIONS = [
   { value: "zweckgebunden", label: "Zweckgebunden" },
 ];
 const BESCHEINIGUNG_OPTIONS = [
-  { value: "issued", label: "Versandt" },
+  // P2-03: value is German ("versandt") for consistency; the Task 4 buildSpendenWhere
+  // branches key on "versandt"/"ausstehend". Both selected => no filter predicate.
+  { value: "versandt", label: "Versandt" },
   { value: "ausstehend", label: "Ausstehend" },
 ];
 
@@ -236,7 +238,7 @@ function monthOptions() {
 }
 ```
 
-(Kategorie options for ausgaben/einnahmen are loaded at runtime via `listKategorieOptions(kind)` and injected into the field's `options`; the registry leaves `options` undefined for runtime-loaded fields. Document this in a comment.)
+(Kategorie options for ausgaben/einnahmen are loaded at runtime via `listKategorieOptions(kind)` and injected into the field's `options`; the registry leaves `options` undefined for runtime-loaded fields. Document this in a comment. **SHARED CONTRACT (P2-04):** `listKategorieOptions(kind)` MUST return `{ value: kategorieNameSnapshot, label }` — the option `value` is the kategorie **name-snapshot string**, NOT the kategorie id. This matches the `kategorieNameSnapshot` column the Task 4 WHERE builders feed to `inArray(kategorieNameSnapshot, …)`. State this explicitly in the comment so the loader and the predicate agree.)
 
 - [ ] **Step 4: Run via fast lane → passes.**
 
@@ -349,6 +351,8 @@ export function parseFilterState(
       const id = params.get(f.key);
       if (id && z.uuid().safeParse(id).success) state.members[f.key] = id;
     } else if (f.type === "amount-range") {
+      // P2-01: betragMin/betragMax are FIXED URL param names for the registry field key="betrag".
+      // The registry guarantees ≤1 amount-range field per tab, so these names never collide.
       const min = z.coerce
         .number()
         .int()
@@ -484,7 +488,10 @@ Opus: correctness of the WHERE fragments (incl. the status→enum mapping and th
 ```ts
 // tests/unit/transaction-filter-sql.test.ts
 import { describe, it, expect } from "vitest";
-import { buildAusgabenWhere } from "$lib/server/domain/transaction-filter-sql.js";
+import {
+  buildAusgabenWhere,
+  buildSpendenWhere,
+} from "$lib/server/domain/transaction-filter-sql.js";
 import { parseFilterState } from "$lib/domain/transaction-filters.js";
 
 describe("ausgaben WHERE builder", () => {
@@ -504,6 +511,26 @@ describe("ausgaben WHERE builder", () => {
     );
   });
 });
+
+describe("spenden WHERE builder — bescheinigung", () => {
+  // X-PRAG-02: selecting BOTH bescheinigung states must add NO predicate (= show all).
+  // Only single-state selection narrows the result; both-selected is a no-op filter.
+  it("both 'versandt' + 'ausstehend' selected adds no bescheinigung predicate", () => {
+    const onlyYear = buildSpendenWhere(
+      parseFilterState("spenden", new URLSearchParams("")),
+      2026,
+    );
+    const both = buildSpendenWhere(
+      parseFilterState(
+        "spenden",
+        new URLSearchParams("bescheinigung=versandt,ausstehend"),
+      ),
+      2026,
+    );
+    // Same condition count as the no-filter baseline → no bescheinigung predicate added.
+    expect(both.length).toBe(onlyYear.length);
+  });
+});
 ```
 
 > `new PgDialect().sqlToQuery(condition)` compiles to `{ sql, params }` without a DB connection, so this stays a pure fast-lane test. `inArray(status, [...])` binds the enum values as **params** (not inlined text), which is exactly what we assert on. The contract: status `offen` expands to both `zu_pruefen` and `in_pruefung`. Task 5's DB test is the behavioral backstop.
@@ -515,8 +542,11 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement** builders returning `SQL[]` (one per active field), composed with `and(...)` by the caller (Task 5). Cover: status (with offen→zu_pruefen/in_pruefung mapping), bezahltVon, kategorie (by `kategorieNameSnapshot` IN), monat (EXTRACT), betrag range (betrag_cents), belegFehlt (`beleg_file_id IS NULL AND beleg_verzicht_grund IS NULL`), year (`eq(yearOfBuchung, year)` unless ALL_YEARS), search (ilike), and for einnahmen the **mitRechnung** EXISTS:
 
+> **SHARED CONTRACT (P2-04):** the kategorie filter values in `s.enums.kategorie` are kategorie **name-snapshot strings** (Task 1's `listKategorieOptions(kind)` emits `value = kategorieNameSnapshot`), so the predicate is `inArray(<table>.kategorieNameSnapshot, s.enums.kategorie)` — match against the snapshot column, NOT a kategorie id. Self-review note for Task 9: type the predicate accumulator as `const c: SQL[] = []` and `!`-assert the `belegFehlt` `and(...)` result (`and(...)!`) so the array stays `SQL[]` and doesn't widen to `(SQL | undefined)[]`, which the Task 9 `pnpm check` would otherwise catch.
+
 ```ts
 import { and, eq, gte, lte, ilike, inArray, sql, isNull } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
 import { invoices } from "$lib/server/db/schema/invoices.js";
@@ -533,7 +563,7 @@ const STATUS_MAP: Record<string, string[]> = {
 };
 
 export function buildAusgabenWhere(s: FilterState, year: YearScope) {
-  const c = [];
+  const c: SQL[] = []; // typed SQL[] (not (SQL|undefined)[]) so Task 9 `pnpm check` passes
   if (year !== ALL_YEARS) c.push(eq(expenses.yearOfBuchung, year));
   if (s.search)
     c.push(
@@ -545,6 +575,7 @@ export function buildAusgabenWhere(s: FilterState, year: YearScope) {
   }
   if (s.enums.bezahltVon?.length)
     c.push(inArray(expenses.bezahltVonKind, s.enums.bezahltVon as any));
+  // P2-04: s.enums.kategorie holds kategorieNameSnapshot strings (not ids), per Task 1 contract.
   if (s.enums.kategorie?.length)
     c.push(inArray(expenses.kategorieNameSnapshot, s.enums.kategorie));
   if (s.enums.monat?.length)
@@ -554,21 +585,24 @@ export function buildAusgabenWhere(s: FilterState, year: YearScope) {
         sql`, `,
       )})`,
     );
+  // P2-05: betragCents is int8/bigint — Drizzle requires a BigInt binding, so wrap the JS number.
   if (s.amount.betragMin != null)
     c.push(gte(expenses.betragCents, BigInt(s.amount.betragMin)));
   if (s.amount.betragMax != null)
     c.push(lte(expenses.betragCents, BigInt(s.amount.betragMax)));
   if (s.booleans.belegFehlt)
     c.push(
-      and(isNull(expenses.belegFileId), isNull(expenses.belegVerzichtGrund)),
+      // and(...) is SQL | undefined; `!`-assert because both args are always defined here.
+      and(isNull(expenses.belegFileId), isNull(expenses.belegVerzichtGrund))!,
     );
   return c;
 }
 
 export function buildEinnahmenWhere(s: FilterState, year: YearScope) {
-  const c = [];
+  const c: SQL[] = []; // typed SQL[] so Task 9 `pnpm check` passes
   if (year !== ALL_YEARS) c.push(eq(income.yearOfBuchung, year));
   if (s.search) c.push(ilike(income.bezeichnung, `%${s.search}%`));
+  // P2-04: s.enums.kategorie holds kategorieNameSnapshot strings (not ids), per Task 1 contract.
   if (s.enums.kategorie?.length)
     c.push(inArray(income.kategorieNameSnapshot, s.enums.kategorie));
   if (s.enums.sphaere?.length)
@@ -580,6 +614,7 @@ export function buildEinnahmenWhere(s: FilterState, year: YearScope) {
         sql`, `,
       )})`,
     );
+  // P2-05: betragCents is int8/bigint — wrap the JS number in BigInt() for the Drizzle binding.
   if (s.amount.betragMin != null)
     c.push(gte(income.betragCents, BigInt(s.amount.betragMin)));
   if (s.amount.betragMax != null)
@@ -592,7 +627,7 @@ export function buildEinnahmenWhere(s: FilterState, year: YearScope) {
 }
 
 export function buildSpendenWhere(s: FilterState, year: YearScope) {
-  const c = [];
+  const c: SQL[] = []; // typed SQL[] so Task 9 `pnpm check` passes
   if (year !== ALL_YEARS) c.push(eq(donations.yearOfBuchung, year));
   if (s.search)
     c.push(
@@ -602,14 +637,16 @@ export function buildSpendenWhere(s: FilterState, year: YearScope) {
     c.push(inArray(donations.spendeKind, s.enums.spendenart as any));
   if (s.enums.zweckbindung?.length)
     c.push(inArray(donations.zweckbindungKind, s.enums.zweckbindung as any));
+  // Bescheinigung filter: each branch fires only when ONE state is selected.
+  // Both "versandt" + "ausstehend" selected (or neither) => no predicate added (= no filter).
   if (
-    s.enums.bescheinigung?.includes("issued") &&
+    s.enums.bescheinigung?.includes("versandt") &&
     !s.enums.bescheinigung?.includes("ausstehend")
   )
     c.push(sql`${donations.bescheinigungNr} IS NOT NULL`);
   if (
     s.enums.bescheinigung?.includes("ausstehend") &&
-    !s.enums.bescheinigung?.includes("issued")
+    !s.enums.bescheinigung?.includes("versandt")
   )
     c.push(isNull(donations.bescheinigungNr));
   if (s.members.spender) c.push(eq(donations.memberId, s.members.spender));
@@ -620,6 +657,7 @@ export function buildSpendenWhere(s: FilterState, year: YearScope) {
         sql`, `,
       )})`,
     );
+  // P2-05: betragCents is int8/bigint — wrap the JS number in BigInt() for the Drizzle binding.
   if (s.amount.betragMin != null)
     c.push(gte(donations.betragCents, BigInt(s.amount.betragMin)));
   if (s.amount.betragMax != null)
@@ -747,7 +785,7 @@ export async function listAusgabenPage(opts: {
 
 **Per-tab row projections MUST include each tab's display-specific fields** (so the tab tracks in Tier C render without ever editing `transactions.ts` — parallel-safety):
 - **Ausgaben row:** the base fields + `status`, `bezahltVonKind`, `bezahltVonDisplay`, `erstattetAm`, `belegFileId` (presence), `approvedAt` (for the "offen"/aging logic).
-- **Einnahmen row:** base + `rechnungBusinessId: string | null` via a correlated subquery/left-join on `invoices.paidByIncomeId = income.id` (the 🔗 badge source — there is no income column, so project it here, NOT in the tab).
+- **Einnahmen row:** base + `rechnungBusinessId: string | null` (the 🔗 badge source — there is no income column, so project it here, NOT in the tab). **P2-06:** project it via `LEFT JOIN LATERAL (SELECT … FROM invoices WHERE invoices.paid_by_income_id = income.id ORDER BY <stable key, e.g. invoices.created_at> LIMIT 1) inv ON true` — the LATERAL+`LIMIT 1` makes no-invoice rows yield NULL and multi-invoice rows deterministically take the first one, with NO row duplication. Do NOT use a plain LEFT JOIN (would fan out multi-invoice income into duplicate rows and break the LIMIT/OFFSET count).
 - **Spenden row:** base + `spenderName`, `spendeKind`, `zweckbindungKind`, `bescheinigungNr` (the Bescheinigung-status + Art/Zweckbindung columns).
 Define a `*Row` type per tab next to each `listXPage`; the Phase-3 `TransactionListScaffold` `ColumnDef.render` snippets bind to these fields.
 

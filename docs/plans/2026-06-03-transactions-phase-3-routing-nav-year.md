@@ -63,14 +63,18 @@ describe("nav registry — three tabs", () => {
 
 The shipped layout clamps `?year=all`→current (NaN→fallback→clamp). Lists need the sentinel.
 
-**Files:** Modify `src/routes/app/+layout.server.ts`; Test `tests/unit/layout-year-scope.test.ts` (extract the resolver to a pure fn to test without a full layout harness)
+> **Shared contract PAR-05 (Phase 3 OWNS this file):** the NEW server-side layout year resolver file is named `layout-year.ts` (NOT `years.ts`) to avoid collision with the pure `year.ts`. Path: `src/lib/server/domain/layout-year.ts`.
+
+> **Precondition (P3-04):** before starting, verify the four Phase-2 symbols `year.ts`/this resolver depend on exist — `selectYearFromUrl`, `clampYearToAvailable`/`isStaleYear`, `selectYearOrAllFromUrl`, and `ALL_YEARS` (from `$lib/domain/year.js`). If any are absent, STOP — Phase 2 must merge first. Note: `ALL_YEARS` serializes to `?year=all`.
+
+**Files:** Create `src/lib/server/domain/layout-year.ts`; Modify `src/routes/app/+layout.server.ts`; Test `tests/unit/layout-year-scope.test.ts` (extract the resolver to a pure fn to test without a full layout harness)
 
 - [ ] **Step 1: Write the failing test.**
 
 ```ts
 // tests/unit/layout-year-scope.test.ts
 import { describe, it, expect } from "vitest";
-import { resolveLayoutYear } from "$lib/server/domain/years.js"; // new pure helper
+import { resolveLayoutYear } from "$lib/server/domain/layout-year.js"; // new pure helper (PAR-05)
 import { ALL_YEARS } from "$lib/domain/year.js";
 describe("resolveLayoutYear", () => {
   const avail = [2026, 2025, 2024];
@@ -92,7 +96,7 @@ describe("resolveLayoutYear", () => {
 
 - [ ] **Step 2: Run via fast lane → fails.** `pnpm test:fast --run tests/unit/layout-year-scope.test.ts`
 
-- [ ] **Step 3: Implement** `resolveLayoutYear(params, currentYear, availableYearNumbers): YearScope` in `years.ts`: if `?year=all` → `ALL_YEARS`; else `clampYearToAvailable(selectYearFromUrl(params, currentYear), availableYearNumbers)`. In `+layout.server.ts` expose **both** (so existing consumers don't break — review finding B1): `yearScope` (the `YearScope`, for the three list pages) **and** keep `selectedYear: number` concrete (`yearScope === ALL_YEARS ? currentYear : yearScope`) for the switcher highlight + the dashboard/Mitglieder/EÜR pages that already read `data.selectedYear` as a `number`. Do **not** widen `selectedYear` itself — that would break `Topbar`'s `selectedYear!: number` cast and every existing `=== n` comparison.
+- [ ] **Step 3: Implement** `resolveLayoutYear(params, currentYear, availableYearNumbers): YearScope` in `layout-year.ts` (PAR-05 — NOT `years.ts`): if `?year=all` → `ALL_YEARS`; else `clampYearToAvailable(selectYearFromUrl(params, currentYear), availableYearNumbers)`. In `+layout.server.ts` expose **both** (so existing consumers don't break — review finding B1): `yearScope` (the `YearScope`, for the three list pages) **and** keep `selectedYear: number` concrete (`yearScope === ALL_YEARS ? currentYear : yearScope`) for the switcher highlight + the dashboard/Mitglieder/EÜR pages that already read `data.selectedYear` as a `number`. Do **not** widen `selectedYear` itself — that would break `Topbar`'s `selectedYear!: number` cast and every existing `=== n` comparison.
 
 - [ ] **Step 4: Run via fast lane → passes.** Expected `3 passed`.
 
@@ -240,7 +244,7 @@ describe("BelegViewer", () => {
 
 - [ ] **Step 2: Run → fails.** `pnpm test --run src/lib/components/files/BelegViewer.test.ts`
 
-- [ ] **Step 3: Implement** per spec §11: props `{ fileId, mimeType, originalFilename, mode?: "fold"|"inline" }`. Inline the URL (`` const blobUrl = `/api/files/${fileId}/blob` ``) — no server import. Images → `<img src={blobUrl}>`. PDFs → render page-N to an on-screen `<canvas>` via `pdfjs-dist` (reuse the `?url` worker wiring from `file-compress.ts`: `import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url"`), lazy one page at a time; explicit controls **× / ↗ Original öffnen (`blobUrl`) / ↓ / +/− zoom / ‹ › page + dots**; gestures are progressive enhancement. On render failure → fall back to the "Original öffnen" link. `mode="fold"` = mobile peek card → tap opens full-screen; `mode="inline"` = desktop left-column permanent. CSP already allows `img-src blob: data:` + same-origin worker (no change).
+- [ ] **Step 3: Implement** per spec §11: props `{ fileId, mimeType, originalFilename, mode?: "fold"|"inline" }`. Inline the URL (`` const blobUrl = `/api/files/${fileId}/blob` ``) — no server import. Images → `<img src={blobUrl}>`. PDFs → render page-N to an on-screen `<canvas>` via `pdfjs-dist` (reuse the `?url` worker wiring from `file-compress.ts`: `import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url"`), lazy one page at a time; explicit controls **× / ↗ Original öffnen (`blobUrl`) / ↓ / +/− zoom / ‹ › page + dots**; gestures are progressive enhancement. On render failure → fall back to the "Original öffnen" link. `mode="fold"` = mobile peek card → tap opens full-screen; `mode="inline"` = desktop left-column permanent. **P3-05:** the fold peek renders PDF page-1 to a small canvas (per spec §11) — the PDF icon is ONLY the render-failure fallback, not the default peek. CSP already allows `img-src blob: data:` + same-origin worker (no change).
 
 - [ ] **Step 4: Run → passes.**
 
@@ -275,7 +279,7 @@ it("links to the provided detailHref", () => {
 
 - [ ] **Step 2: Run → fails.** `pnpm test --run src/lib/components/admin/transactions/TransactionRow.test.ts`
 
-- [ ] **Step 3: Implement** the `detailHref` prop on `TransactionRow` + `TransactionCardMobile` (default keeps old behavior for the still-live route). Confirm `BulkActionsBar`/`SepaCopyModal`/`PostSepaMarkErstattetModal` need no change (props already standalone).
+- [ ] **Step 3: Implement** the `detailHref` prop on `TransactionRow` + `TransactionCardMobile` (P3-03: the default MUST keep legacy behavior for the still-live `/app/transactions` route — `` detailHref = `/app/transactions/${row.id}?kind=${row.kind}` `` ; the `?kind=` param is required, do not drop it). Confirm `BulkActionsBar`/`SepaCopyModal`/`PostSepaMarkErstattetModal` need no change (props already standalone).
 
 - [ ] **Step 4: Run → passes.**
 
@@ -285,16 +289,22 @@ it("links to the provided detailHref", () => {
 
 ### Task 7: `TransactionListScaffold.svelte` (shared list shell) — contract-first `[model: opus]`
 
-The shell every tab list renders: year pill + `StaleYearBanner` + KPI slot + `FilterBar` + sortable table (desktop) / cards (mobile) + sort control + pagination + empty/zero-result states.
+The shell every tab list renders: year pill + `StaleYearBanner` + KPI slot + the single primary "create" CTA + `FilterBar` + sortable table (desktop) / cards (mobile) + sort control + pagination + empty/zero-result states.
 
 **Files:** Create `src/lib/components/admin/transactions/TransactionListScaffold.svelte`; Test `…/TransactionListScaffold.test.ts`
 
-- [ ] **Step 1: Write the failing component test** asserting the **contract**: renders the `kpi` snippet, the `FilterBar`, a row per `rows`, a year-named empty state when `rows=[]`, and a pagination control when `total > rows.length`.
+> **Shared contract UX-01 (this task OWNS it):** the scaffold gains two new props `newHref: string` and `newLabel: string` and renders exactly ONE primary "create" CTA — desktop top-right of the list header; mobile a sticky/FAB button with a **min 44px touch target**. Phase 3 defines + renders the CTA here; Phases 4/5/6 only PASS the German label+href (Ausgaben: `newLabel="Neue Ausgabe"` `newHref="/app/ausgaben/neu"`; Einnahmen: `"Neue Einnahme"` `/app/einnahmen/neu`; Spenden: `"Neue Spende"` `/app/spenden/neu`). Do not render a second create button anywhere.
+
+> **Shared contract UX-04 (no-matches empty state):** distinguish the two zero-row cases. When `rows.length===0` AND filters are active, render `"Keine Treffer für die aktuellen Filter"` plus a **"Filter zurücksetzen"** button (clears filters → navigates to the unfiltered list) so mobile never dead-ends; when `rows.length===0` and no filters are active, render the year-named empty state `"Keine Buchungen in {year}"`.
+
+- [ ] **Step 1: Write the failing component test** asserting the **contract**: renders the `kpi` snippet, the single primary CTA (`newLabel`→`newHref`), the `FilterBar`, a row per `rows`, the correct empty state for each zero-row case, and a pagination control when `total > rows.length`.
 
 ```ts
 // TransactionListScaffold.test.ts  (mock $app/navigation + $app/stores)
-it("renders kpi slot + rows + pagination, and a year-named empty state when no rows", () => {
-  // render with rows=[] and selectedYear=2024 → expect "Keine Buchungen in 2024"
+it("renders kpi slot + primary CTA + rows + pagination, and the right empty state when no rows", () => {
+  // render with newLabel="Neue Ausgabe" newHref="/app/ausgaben/neu" → expect a link with that label+href
+  // render with rows=[] + no active filters + selectedYear=2024 → expect "Keine Buchungen in 2024"
+  // render with rows=[] + active filters → expect "Keine Treffer für die aktuellen Filter" AND a "Filter zurücksetzen" button present
   // render with rows=[r1,r2], total=50 → expect 2 rows + a pagination control
 });
 ```
@@ -313,10 +323,12 @@ interface TransactionListScaffoldProps {
   selectedYear: number | "all";
   currentYear: number;
   filterState: FilterState; // from parseFilterState
-  kategorieOptions: { value: string; label: string }[];
+  kategorieOptions: { value: string; label: string }[]; // P2-04: value = kategorie NAME-SNAPSHOT string (matches kategorieNameSnapshot col / inArray WHERE builder), NOT the id
   memberOptions: { id: string; label: string }[];
   columns: ColumnDef[]; // per-tab column config (label, key, sortable, align, render snippet)
   kpi: Snippet; // per-tab KPI strip (Ausgaben pill / Einnahmen split / Spenden bescheinigung)
+  newHref: string; // UX-01: primary create CTA target, e.g. "/app/ausgaben/neu"
+  newLabel: string; // UX-01: German CTA label, e.g. "Neue Ausgabe"
   detailHrefBase: string; // e.g. "/app/ausgaben"
   bulk?: {
     selectedIds: string[];
@@ -327,7 +339,7 @@ interface TransactionListScaffoldProps {
 }
 ```
 
-Renders: `{@render kpi()}` → `<FilterBar tab … state=filterState …>` → `StaleYearBanner` → sortable header (click → `?sort=&dir=` via goto; `aria-sort`) / mobile "Sortieren ▾" → `{#each rows}` `TransactionRow`/`TransactionCardMobile` (href = `${detailHrefBase}/${row.id}`) → `Pagination` (Phase A3 primitive) → year-named empty state ("Keine Buchungen in {year}" / "…für die aktuellen Filter") when `rows.length===0`.
+Renders: a list header with `{@render kpi()}` + the single primary CTA — desktop top-right `<a href={newHref}>{newLabel}</a>`, mobile a sticky/FAB button (min 44px touch target) — → `<FilterBar tab … state=filterState …>` → `StaleYearBanner` → sortable header (click → `?sort=&dir=` via goto; `aria-sort`) / mobile "Sortieren ▾" → `{#each rows}` `TransactionRow`/`TransactionCardMobile` (href = `${detailHrefBase}/${row.id}`) → `Pagination` (Phase A3 primitive) → empty state when `rows.length===0`: if filters are active render `"Keine Treffer für die aktuellen Filter"` + a "Filter zurücksetzen" button (navigates to the unfiltered list), else the year-named `"Keine Buchungen in {year}"`.
 
 - [ ] **Step 4: Run → passes.**
 
@@ -367,7 +379,7 @@ interface EntryFormShellProps {
 }
 ```
 
-Sticky header + scrollable body (`{@render fields()}`) + unified sticky footer (Speichern disabled unless `dirty`; no Verwerfen); `beforeNavigate` dirty-guard. `KategoriePicker` props `{ options, value, onChange, onSphere }` → calls `kategorieSphere(options, name)` (Phase 1) and renders `SphereBadge` (palette §13) + "Anlage EÜR Zeile X" hint. `BelegUpload` wraps the native file input + the "Kein Beleg vorhanden" → Begründung reveal (Ausgaben).
+Sticky header + scrollable body (`{@render fields()}`) + unified sticky footer (Speichern disabled unless `dirty`; no Verwerfen); `beforeNavigate` dirty-guard. **UX-02:** the × (and backdrop) calls `onClose` → navigates to the parent list, behaviorally identical to browser-back; the same `beforeNavigate` unsaved-changes guard fires on both exits (× and back). `KategoriePicker` props `{ options, value, onChange, onSphere }` → calls `kategorieSphere(options, name)` (Phase 1) and renders `SphereBadge` (palette §13) + "Anlage EÜR Zeile X" hint. `BelegUpload` wraps the native file input + the "Kein Beleg vorhanden" → Begründung reveal (Ausgaben).
 
 - [ ] **Step 4: Run → passes.**
 
@@ -393,13 +405,14 @@ interface DetailModalShellProps {
   isFestgeschrieben: boolean;
   beleg?: Snippet; // left column — tab renders <BelegViewer …> (or nothing)
   fields: Snippet; // per-kind editable fields (right)
-  workflowAction?: Snippet; // per-kind footer action (Als bezahlt / Bescheinigung / Rechnung-link)
+  workflowAction?: Snippet; // P3-02: a ZERO-param Snippet — the tab closes over its OWN `saving`/`dirty` (per-kind footer action: Als bezahlt / Bescheinigung / Rechnung-link)
   saving: boolean;
   dirty: boolean;
+  onClose: () => void; // UX-02: × / backdrop → navigates to parent list; guarded if dirty (same beforeNavigate guard as back)
 }
 ```
 
-Desktop: 2-col (`{@render beleg?.()}` left | fields+Verlauf right) + unified sticky footer. Mobile: stacked, the tab passes a `BelegViewer mode="fold"` into `beleg`, sticky bottom action bar. Festgeschrieben → fields read-only, footer save hidden, amber notice "Korrektur nur über Storno (Phase 2)". Audit `detail.timeline` rendered as the Verlauf. `beforeNavigate` dirty-guard (mock `$app/navigation` + `$app/stores` in the test).
+Desktop: 2-col (`{@render beleg?.()}` left | fields+Verlauf right) + unified sticky footer. Mobile: stacked, the tab passes a `BelegViewer mode="fold"` into `beleg`, sticky bottom action bar. Festgeschrieben → fields read-only, footer save hidden, amber notice "Korrektur nur über Storno (Phase 2)". Audit `detail.timeline` rendered as the Verlauf. `beforeNavigate` dirty-guard (mock `$app/navigation` + `$app/stores` in the test). **UX-02:** the × calls `onClose` → navigates to the parent list, behaviorally identical to browser-back; the same `beforeNavigate` unsaved-changes guard fires on both exits (× and back).
 
 - [ ] **Step 4: Run → passes.**
 
@@ -461,7 +474,17 @@ export const load: PageServerLoad = async ({ url, parent }) => {
 };
 ```
 
-`+page.svelte` renders `<TransactionListScaffold tab="ausgaben" … >` with the per-tab `kpi`/`columns` (those land in Phase 4; in Phase 3 ship a minimal KPI + default columns so the route works + the e2e smoke passes). `einnahmen`/`spenden` analogous (`listEinnahmenPage`/`listSpendenPage`, kind `income`; spenden has no kategorie filter-options call). Redirect old route: in `transactions/+page.server.ts` `load`, `redirect(308, "/app/ausgaben")` (preserve any `?year=`/query). Keep the old actions reachable only if still referenced; otherwise the redirect supersedes.
+> **Shared contract P2-04 (`listKategorieOptions`):** the option loader returns `{ value: kategorieNameSnapshot, label }` — the `value` is the kategorie NAME-SNAPSHOT string (matches the `kategorieNameSnapshot` column the filter WHERE builder uses with `inArray`), NOT the kategorie id. Pass it straight to `kategorieOptions`.
+
+`+page.svelte` renders `<TransactionListScaffold tab="ausgaben" … newLabel="Neue Ausgabe" newHref="/app/ausgaben/neu" … >` with the per-tab `kpi`/`columns` (those land in Phase 4; in Phase 3 ship a minimal KPI + default columns so the route works + the e2e smoke passes).
+
+**X-PRAG-04 — per-tab route-shell load differences (do NOT copy the Ausgaben template verbatim):**
+
+- **Ausgaben:** `listAusgabenPage` (kind `expense`); load BOTH `listKategorieOptions("expense")` + `listMemberOptions()`; CTA `"Neue Ausgabe"`→`/app/ausgaben/neu`.
+- **Einnahmen:** `listEinnahmenPage` (kind `income`); load `listKategorieOptions("income")`; **does NOT need `memberOptions`** — omit the `listMemberOptions()` call (pass no `memberOptions`); CTA `"Neue Einnahme"`→`/app/einnahmen/neu`.
+- **Spenden:** `listSpendenPage` (kind `donation`); **does NOT call `listKategorieOptions`** at all (no kategorie filter) — omit it; CTA `"Neue Spende"`→`/app/spenden/neu`.
+
+Redirect old route: in `transactions/+page.server.ts` `load`, `redirect(308, "/app/ausgaben")` (preserve any `?year=`/query). Keep the old actions reachable only if still referenced; otherwise the redirect supersedes.
 
 - [ ] **Step 4: Run → passes.** Plus an e2e smoke: `pnpm test:e2e --grep @phase-3-routing` (a tiny spec: visiting `/app/ausgaben` 200s, `/app/transactions` 308→`/app/ausgaben`).
 

@@ -376,6 +376,8 @@ for (const kind of ["expense", "income"] as const) {
 }
 ```
 
+> **Note (`eur_zeile`/`anlage_gem_zeile` stay null):** Leave the new and existing kategorien' `eur_zeile`/`anlage_gem_zeile` columns null here — intentionally, per spec §4.7/§17 (awaiting Steuerberater input). Do NOT invent Zeile values. The derived-Kategorie badge and the EÜR e2e (later phases) must NOT depend on a non-null Zeile.
+
 - [ ] **Step 4: Run → passes.**
 
 Run: `pnpm test --run tests/unit/seed-kategorien.test.ts`
@@ -409,7 +411,7 @@ import { eq } from "drizzle-orm";
 
 describe("createDonation derives kategorie + sphere", () => {
   it("zweckgebunden Geldspende → 'Geldspende zweckgebunden', ideeller, kategorie_id set", async () => {
-    const businessId = await allocateBusinessId("donation", 2026); // verify prefix/signature in id-allocator.ts during impl
+    const businessId = await allocateBusinessId("S", 2026); // single-letter kind: "S"=donation/Spende, "A"=expense/Ausgabe, "E"=income/Einnahme
     const { id } = await createDonation({
       betragCents: 25000,
       spendeKind: "geldspende",
@@ -511,7 +513,7 @@ const actor = "00000000-0000-0000-0000-000000000000";
 
 describe("create expense/income resolve kategorie_id by name", () => {
   it("expense gets a non-null kategorie_id + derived sphere from 'Bankgebühren'", async () => {
-    const businessId = await allocateBusinessId("expense", 2026);
+    const businessId = await allocateBusinessId("A", 2026); // "A"=expense/Ausgabe
     const { id } = await createExpense({
       bezeichnung: "Kontoführung",
       betragCents: 490,
@@ -532,7 +534,7 @@ describe("create expense/income resolve kategorie_id by name", () => {
     expect(row.sphereSnapshot).toBe("ideeller");
   });
   it("income gets a non-null kategorie_id + derived sphere from 'Eintritt'", async () => {
-    const businessId = await allocateBusinessId("income", 2026);
+    const businessId = await allocateBusinessId("E", 2026); // "E"=income/Einnahme
     const { id } = await createIncome({
       bezeichnung: "Tickets",
       betragCents: 124000,
@@ -624,7 +626,7 @@ Expected: FAIL — returns null / not exported.
 - [ ] **Step 3: Implement.**
   - Export `resolveKategorie`; change its return type to `{ kategorieId: string; sphereSnapshot: Sphere; snapshot: string }` (non-null).
   - Unmatched branch: `kategorieId: ctx.sentinelExpenseKategorieId` / `sentinelIncomeKategorieId` (by kind).
-  - Donation branch (~line 713): set `kategorieId: ctx.sentinelIncomeKategorieId` (keep `kategorieNameSnapshot: "Geldspende (Import)"`; these are `geldspende` so the Sachspende CHECK from Task 11 won't bite — note: do NOT import Sachspende rows without Wertermittlung).
+  - Donation branch (~line 713, the `spendeKind="sachspende"` emit at `transform.ts:692`): the sheet-import donation path carries no Wertermittlung data (legacy sheets have no `wertermittlung_methode`/`zustand_beschreibung`), so **force `spendeKind="geldspende"`** on every imported donation regardless of the legacy "sach" column — this keeps the `donations_sachspende_wertermittlung_ck` CHECK (Task 10) from firing on a Wertermittlung-less row. Set `kategorieId: ctx.sentinelIncomeKategorieId` (keep `kategorieNameSnapshot: "Geldspende (Import)"`).
   - Tighten `ExpenseInsert`/`IncomeInsert`/`DonationInsert.kategorieId` → `string`.
   - In `runner.ts`, resolve the two sentinel ids once (query `kategorien` by `kind` + `name='Unkategorisiert (Import)'`) and thread them into the transform context.
 
@@ -734,6 +736,8 @@ describe("migration 0031 — constraints", () => {
 -- Pre-launch: all transaction data is disposable test data (spec §3/§15).
 -- Reset paid-invoice payment state (semantic; paid_by_income_id has no FK), then wipe.
 -- CASCADE is REQUIRED: member_beitrags.paid_via_income_id → income, auslagen_submissions.approved_expense_id → expenses.
+-- CASCADE COLLATERAL: TRUNCATE … CASCADE also empties member_beitrags AND auslagen_submissions (their FK rows are removed, not just nulled).
+--   Acceptable pre-launch (all data disposable, spec §3/§15): reset-test-db reseeds member_beitrags via seed/fixtures after migrate; if the corpus/fixtures do not repopulate member_beitrags, an empty member_beitrags is acceptable here (Beitrags fixtures are not Phase-1 scope).
 UPDATE "invoices" SET "paid_by_income_id" = NULL, "bezahlt_am" = NULL WHERE "paid_by_income_id" IS NOT NULL;--> statement-breakpoint
 TRUNCATE TABLE "donations", "expenses", "income" CASCADE;
 ```
@@ -846,9 +850,9 @@ describe("showcase seed corpus", () => {
 Run: `pnpm test --run tests/unit/seed-corpus.test.ts`
 Expected: FAIL — empty tables.
 
-- [ ] **Step 3: Implement `seedTransactionCorpus(db)`** per spec §4.7, called from `seedFixtures`. Use `source: "fixture"`; `gebuchtAm` via explicit ISO timestamps across 2024/2025/2026 (no `Date.now()`); resolve `kategorieId` by looking up the real seeded categories by name (use real names: "Miete Location", "Bankgebühren", "GEMA / Abgaben", "Honorar Künstler:innen", "Fahrtkosten (Artists)", "Verpflegung (Event)", "Technik-Miete/-Kauf", "Merch-Einkauf / -Produktion", "Eintritt", "Workshop / Kursgebühr", "Bar-Umsatz", "Merch-Verkauf", "Zuschuss (zweckgebunden)", "Zinsen", "Honorar künstlerische Leistung"); set `kategorieNameSnapshot` + `sphereSnapshot` from those rows. Constraint-satisfying: bank-fee/GEMA rows set `belegVerzichtGrund` (no `belegFileId`); the Sachspende sets `wertermittlungMethode` + `zustandBeschreibung`; zweckgebunden donation sets `zweckbindungText`. Status spread: ≥1 `geprueft` (offen), ≥1 `erstattet`, ≥1 `abgelehnt`; one `geprueft` with an old `gebuchtAm` to drive the aged-open pill. Set `festgeschriebenAt` on the 2024 rows. Donations: Geldspende zweckfrei (with `bescheinigungNr`), Geldspende zweckgebunden (no Bescheinigung), Sachspende. Insert with `onConflictDoNothing({ target: <table>.businessId })`. Use `allocateBusinessId` or fixed `*-2026-9xx` ids reserved for fixtures.
+- [ ] **Step 3: Implement `seedTransactionCorpus(db)`** per spec §4.7, called from `seedFixtures`. Use `source: "fixture"`; `gebuchtAm` via explicit ISO timestamps across 2024/2025/2026 (no `Date.now()`); resolve `kategorieId` by looking up the real seeded categories by name (use real names: "Miete Location", "Bankgebühren", "GEMA / Abgaben", "Honorar Künstler:innen", "Fahrtkosten (Artists)", "Verpflegung (Event)", "Technik-Miete/-Kauf", "Merch-Einkauf / -Produktion", "Eintritt", "Workshop / Kursgebühr", "Bar-Umsatz", "Merch-Verkauf", "Zuschuss (zweckgebunden)", "Zinsen", "Honorar künstlerische Leistung"); set `kategorieNameSnapshot` + `sphereSnapshot` from those rows. Constraint-satisfying: **ALL** showcase-corpus expenses satisfy the new `expenses_beleg_or_grund_ck` CHECK (Task 10) via `belegVerzichtGrund` (e.g. `"Beleg liegt im Ordner — Demo-Daten"`) and set no `belegFileId` — the §4.7 image/PDF "Beleg liegt vor" entries describe the real-world case, not an actually-uploaded file fixture (no real file blobs are seeded here). The Sachspende sets `wertermittlungMethode` + `zustandBeschreibung`; the zweckgebunden donation sets `zweckbindungText`. Status spread: ≥1 `geprueft` (offen), ≥1 `erstattet`, **≥1 expenses row with `status="abgelehnt"` seeded as a direct admin-rejected entry** (this is what the corpus test's `abgelehnt` assertion checks — it is distinct from, and must not be conflated with, the rejected `auslagen_submissions` case, which is a separate Belegprüfung path); one `geprueft` with an old `gebuchtAm` to drive the aged-open pill. Set `festgeschriebenAt` on the 2024 rows. Donations: Geldspende zweckfrei (with `bescheinigungNr`), Geldspende zweckgebunden (no Bescheinigung), Sachspende. Insert with `onConflictDoNothing({ target: <table>.businessId })`. Use `allocateBusinessId` or fixed `*-2026-9xx` ids reserved for fixtures.
 
-> Pending Belegprüfung submissions (spec §4.7) + the one paid invoice→income link are seeded here too if the helpers are readily available; otherwise note them for Phase 4/5 fixture top-ups. Keep the corpus modest (≈10 expenses, ≈8 income, ≈3 donations).
+> **REQUIRED (not optional):** the corpus MUST include the one paid-invoice→income link **plus ≥1 pending and ≥1 rejected Belegprüfung (`auslagen_submissions`) submission** — Phase 5 tests hard-require the invoice→income link, so it cannot be deferred silently. Seed all three here. **If a piece is genuinely unseedable in this phase** (e.g. a helper does not yet exist), do NOT drop it — add an explicit code comment + a line in this step noting that **Phase 5 Task 1 must top up the fixture** with the missing piece, so the dependency is tracked rather than lost. Keep the corpus modest (≈10 expenses, ≈8 income, ≈3 donations).
 
 - [ ] **Step 4: Run → passes.**
 
@@ -903,5 +907,5 @@ Foundation complete: schema, constraints, all-write-path non-null kategorie, der
 
 1. **Spec coverage:** §4.1 expense `beleg_verzicht_grund` (T1) + CHECK (T10) ✓; §4.3 donation Wertermittlung cols+enum (T1) + CHECKs (T10) ✓; §4.4 reseed + derivation + sentinel (T5) ✓; §4.5 `kategorieSphere` no-override (T3) + used in createExpense/Income (T7) + createDonation always ideeller (T6) ✓; §4.6 NOT NULL across **all** write paths — app forms (T7), donations (T6), approval (T9), importer (T8), constraint (T10) ✓; §4.7 corpus (T11) ✓; §15 wipe CASCADE + invoice reset + owner-role (T10) ✓; ROADMAP test-efficiency → fast lane (T2) ✓.
 2. **Placeholder scan:** the only "adapt to real signature" notes are T8's transform `ctx` shape and T9's submission setup — both state the behavioral contract + the real call site; every code step has concrete code. No TBD/TODO.
-3. **Type/signature consistency:** `resolveKategorieByName(kind,name)` defined in T6, reused in T7/T9; `kategorieSphere(kategorien,name)` (T3); `deriveDonationKategorieName(spendeKind,zweckbindungKind)` (T4); migrations 0029/0030/0031 ↔ journal idx 29/30/31. `allocateBusinessId` signature to be confirmed against `id-allocator.ts` at impl time (flagged in T6/T7).
+3. **Type/signature consistency:** `resolveKategorieByName(kind,name)` defined in T6, reused in T7/T9; `kategorieSphere(kategorien,name)` (T3); `deriveDonationKategorieName(spendeKind,zweckbindungKind)` (T4); migrations 0029/0030/0031 ↔ journal idx 29/30/31. `allocateBusinessId(kind, year)` takes the single-letter kind `"S"`/`"A"`/`"E"` (donation/expense/income) — used in T6/T7.
 4. **Ordering:** all four insert-path fixes (T6 donations, T7 expense/income, T8 importer, T9 approval) precede the NOT NULL migration (T10); the corpus (T11) runs after constraints and satisfies all CHECKs; regression check (T12) catches seed-baseline drift.
