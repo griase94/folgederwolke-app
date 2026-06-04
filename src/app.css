@@ -249,6 +249,38 @@
   }
 }
 
+/* ── Confetti particle keyframes (Task 3.1 / spec §6) ──────────────────────
+   Used by BeitragsuebersichtWidget for the one-shot 100%-paid celebration.
+   The @media (prefers-reduced-motion: reduce) block above zeroes animation
+   duration globally, so the Svelte guard in the component is belt-and-suspenders.
+   Particles use CSS custom property --i (0..N-1) for staggered timing + spread. */
+
+@keyframes confetti-fall {
+  0% {
+    opacity: 1;
+    transform: translateY(-8px) translateX(calc((var(--i, 0) - 10) * 6px))
+      rotate(0deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(56px) translateX(calc((var(--i, 0) - 10) * 18px))
+      rotate(calc(var(--i, 0) * 40deg)) scale(0.4);
+  }
+}
+
+@layer utilities {
+  .confetti-particle {
+    position: absolute;
+    top: 20%;
+    left: 50%;
+    width: 6px;
+    height: 6px;
+    border-radius: 1px;
+    pointer-events: none;
+    animation: confetti-fall 700ms calc(var(--i, 0) * 35ms) ease-out both;
+  }
+}
+
 /* Rosa primary ramp — overrides shadcn zinc primary with brand color */
 @theme {
   --color-primary: oklch(0.43 0.2 350); /* ≈ #BE185D rosa */

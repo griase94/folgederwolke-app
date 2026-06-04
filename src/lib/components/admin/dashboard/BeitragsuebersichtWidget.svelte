@@ -10,6 +10,7 @@
 	-open-count / -open) so the C4-DASH-lite E2E suite keeps passing.
 -->
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2';
 
@@ -59,15 +60,71 @@
 			? `/app/mitglieder?view=matrix&year=${year}&filter=ueberfaellig`
 			: `/app/mitglieder?view=matrix&year=${year}`
 	);
+
+	// ── Confetti (Task 3.1 / spec §6 + §16 I1) ────────────────────────────────
+	// Fires ONCE on the transition from <100% → 100%. Skipped entirely when
+	// prefers-reduced-motion: reduce is set (non-negotiable per spec).
+	let showConfetti = $state(false);
+	let prefersReducedMotion = $state(false);
+	// Track the previous allPaid value to detect the transition edge.
+	let prevAllPaid = $state(false);
+
+	// Read the media query on mount (SSR-safe — window is undefined server-side).
+	onMount(() => {
+		const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+		prefersReducedMotion = mq.matches;
+		// Listen for runtime changes (user toggles OS accessibility setting).
+		const handler = (e: MediaQueryListEvent) => {
+			prefersReducedMotion = e.matches;
+		};
+		mq.addEventListener('change', handler);
+		return () => mq.removeEventListener('change', handler);
+	});
+
+	// Reactive: when allPaid transitions false → true, trigger confetti (once).
+	$effect(() => {
+		if (allPaid && !prevAllPaid && !prefersReducedMotion) {
+			showConfetti = true;
+			// Auto-hide after the CSS animation finishes (~700ms + 20*35ms stagger ≈ 1.4s).
+			setTimeout(() => {
+				showConfetti = false;
+			}, 1600);
+		}
+		prevAllPaid = allPaid;
+	});
+
+	// Confetti particle colors — brand-adjacent palette (rosa + emerald + amber).
+	const particleColors = [
+		'#BE185D', // rosa primary
+		'#059669', // emerald-600
+		'#D97706', // amber-600
+		'#7C3AED', // violet-600
+		'#0891B2', // cyan-600
+	];
 </script>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -->
 <a
 	{href}
-	class="block rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-border/60 dark:bg-card/40 dark:hover:bg-muted/30"
+	class="relative block overflow-hidden rounded-xl border border-border bg-card p-5 shadow-sm transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-border/60 dark:bg-card/40 dark:hover:bg-muted/30"
 	data-testid="beitragsuebersicht-widget"
 	data-year={year}
 >
+	<!-- Confetti burst — fires once on <100% → 100% transition. aria-hidden so
+	     screen readers are not interrupted by the decorative animation.
+	     Gated on !prefersReducedMotion (spec §16 I1 / prefers-reduced-motion). -->
+	{#if showConfetti && !prefersReducedMotion}
+		<div class="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
+			{#each { length: 20 } as _, i}
+				<span
+					class="confetti-particle"
+					style:--i={i}
+					style:background-color={particleColors[i % particleColors.length]}
+				></span>
+			{/each}
+		</div>
+	{/if}
+
 	{#if allPaid}
 		<!-- Persistent success state (F17) — no emoji, lucide CheckCircle2 -->
 		<div class="flex items-start gap-2">
