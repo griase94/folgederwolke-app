@@ -19,6 +19,16 @@
  * covered separately by the members-actions unit tests and the @phase-2 e2e
  * flows; this file does NOT exercise or weaken the server.
  *
+ * IMPORTANT — REAL WIRE FORMAT. A `fetch('?/action')` to a SvelteKit form
+ * action returns HTTP 200 even for fail(), and the body is a devalue-encoded
+ * ActionResult string (the failure `data` is itself a devalue STRING, e.g.
+ * `[{"error":1},"<msg>"]`). The component decodes it with `deserialize()` from
+ * `$app/forms`, so these mocks return a Response whose `text()` resolves to a
+ * REAL serialized ActionResult — not a hand-shaped `.json()` object. The
+ * success/failure builders below mirror exactly what SvelteKit puts on the wire
+ * (failure `data` is produced by devalue's `stringify`, confirmed to equal the
+ * literal `[{"error":1},"<msg>"]`).
+ *
  * The mark-paid popover content is rendered via bits-ui Popover.Portal; we
  * drive it through the real cell click → popover → Bezahlt path and assert on
  * the grid cell's data-state, which lives in the main DOM regardless of portals.
@@ -44,6 +54,47 @@ vi.mock("$app/navigation", () => ({
       "invalidateAll() must NOT be called — PR3b reconcile is scoped",
     );
   }),
+}));
+
+// `$app/forms.deserialize` reads `app.decoders` from the SvelteKit CLIENT app
+// singleton, which is only populated after the kit client boots — it isn't, in
+// vitest, so the real export throws "Cannot read properties of undefined". And
+// `devalue` is only a TRANSITIVE dep of kit (not declared here), so Vite refuses
+// to resolve a bare `devalue` import from src/ — importing it would mean adding a
+// new dependency, which the task forbids.
+//
+// So we substitute a FAITHFUL re-implementation of `deserialize` that performs
+// the SAME two steps as production — `JSON.parse(text)` then a devalue decode of
+// `data` — with a tiny, dependency-free `devalueParse` that implements exactly
+// devalue's flat reference-array format for the value shapes our actions emit
+// (objects, strings, numbers, booleans, null, arrays). A unit test below proves
+// it round-trips the exact on-wire string `[{"error":1},"<msg>"]` back to
+// `{error:"<msg>"}`, so the component genuinely exercises the real wire format.
+function devalueParse(encoded: string): unknown {
+  const flat = JSON.parse(encoded) as unknown;
+  if (typeof flat === "number") {
+    // devalue encodes a few singletons as negative indices; -1 === undefined.
+    return undefined;
+  }
+  const values = flat as unknown[];
+  const hydrate = (index: number): unknown => {
+    const node = values[index];
+    if (typeof node === "number") return hydrate(node); // reference
+    if (node === null || typeof node !== "object") return node; // primitive
+    if (Array.isArray(node)) return node.map((i) => hydrate(i as number));
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(node)) out[k] = hydrate(v as number);
+    return out;
+  };
+  return hydrate(0);
+}
+
+vi.mock("$app/forms", () => ({
+  deserialize(text: string) {
+    const parsed = JSON.parse(text) as { data?: unknown };
+    if (parsed.data) parsed.data = devalueParse(parsed.data as string);
+    return parsed;
+  },
 }));
 
 // Capture toast calls so we can assert error/success surfacing.
@@ -109,6 +160,64 @@ function cellEl(): HTMLElement | null {
   );
 }
 
+// ── Real SvelteKit ActionResult wire bodies ─────────────────────────────────
+// A form-action fetch returns HTTP 200 with a devalue-encoded ActionResult.
+// These builders produce exactly that string, so `deserialize()` decodes it the
+// same way it would in the browser.
+function successBody(): string {
+  return JSON.stringify({ type: "success", status: 200, data: null });
+}
+
+/**
+ * devalue-encode a flat `{ error: <string> }` exactly as SvelteKit's `fail()`
+ * does on the wire. devalue emits an array where index 0 is the value graph
+ * (keys → indices) and the rest are the referenced values, so `{error: msg}`
+ * becomes `[{"error":1}, msg]`. We build it by hand (not by importing devalue,
+ * which is only a transitive dep — no new runtime deps) and a unit assertion in
+ * the suite below confirms it round-trips through `deserialize` to the original
+ * object, so this stays honest to the real format.
+ */
+function devalueError(error: string): string {
+  return JSON.stringify([{ error: 1 }, error]);
+}
+
+function failureBody(error: string, status = 400): string {
+  // SvelteKit devalue-encodes the failure `data`; `data` is therefore a STRING.
+  return JSON.stringify({ type: "failure", status, data: devalueError(error) });
+}
+
+/** A fetch mock that resolves to a Response whose text() is `body`. */
+function fetchReturning(body: string, status = 200): typeof fetch {
+  return vi.fn(
+    async () => new Response(body, { status }),
+  ) as unknown as typeof fetch;
+}
+
+/**
+ * A fetch mock whose single in-flight call stays PENDING until `release()` is
+ * called — lets a test observe the synchronous optimistic flip while the POST
+ * is blocked, then drive the resolution (success body / failure body / reject)
+ * and observe the rollback. Mirrors the optimism test's deferred pattern.
+ */
+function deferredFetch(): {
+  fetch: typeof fetch;
+  resolve: (body: string, status?: number) => void;
+  reject: (err: unknown) => void;
+} {
+  let resolveInner: (r: Response) => void = () => {};
+  let rejectInner: (e: unknown) => void = () => {};
+  const pending = new Promise<Response>((res, rej) => {
+    resolveInner = res;
+    rejectInner = rej;
+  });
+  return {
+    fetch: vi.fn(() => pending) as unknown as typeof fetch,
+    resolve: (body: string, status = 200) =>
+      resolveInner(new Response(body, { status })),
+    reject: (err: unknown) => rejectInner(err),
+  };
+}
+
 beforeEach(() => {
   invalidate.mockClear();
   toastError.mockClear();
@@ -138,6 +247,25 @@ async function openMarkPaidAndGetSubmit(): Promise<HTMLButtonElement> {
   return submit as HTMLButtonElement;
 }
 
+describe("test wire-format fixtures match SvelteKit's deserialize", () => {
+  it("failureBody round-trips through deserialize to {error}", async () => {
+    // Use the SAME decoder the component uses, so the fixture can't drift from
+    // the real format. If devalue's shape ever changes, this fails loudly here.
+    const { deserialize } = await import("$app/forms");
+    const result = deserialize(failureBody("Jahr ist festgeschrieben", 409));
+    expect(result.type).toBe("failure");
+    expect((result as { data?: { error?: string } }).data?.error).toBe(
+      "Jahr ist festgeschrieben",
+    );
+  });
+
+  it("successBody round-trips through deserialize to a success result", async () => {
+    const { deserialize } = await import("$app/forms");
+    const result = deserialize(successBody());
+    expect(result.type).toBe("success");
+  });
+});
+
 describe("MemberMatrix — optimistic mark-paid (PR3b 3.1)", () => {
   it("flips the cell to paid SYNCHRONOUSLY, before the server responds", async () => {
     // fetch never resolves → the POST stays in flight for the whole assertion.
@@ -161,19 +289,11 @@ describe("MemberMatrix — optimistic mark-paid (PR3b 3.1)", () => {
     expect(invalidate).not.toHaveBeenCalled();
 
     // Cleanly release the pending fetch so the test tears down without leaks.
-    resolveFetch(
-      new Response(JSON.stringify({ type: "success" }), { status: 200 }),
-    );
+    resolveFetch(new Response(successBody(), { status: 200 }));
   });
 
   it("reconciles via the scoped invalidate key on success (never invalidateAll)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(JSON.stringify({ type: "success" }), { status: 200 }),
-      ),
-    );
+    vi.stubGlobal("fetch", fetchReturning(successBody()));
 
     render(MemberMatrix, { props: { matrix: makeMatrix() } });
     const submit = await openMarkPaidAndGetSubmit();
@@ -188,48 +308,45 @@ describe("MemberMatrix — optimistic mark-paid (PR3b 3.1)", () => {
 });
 
 describe("MemberMatrix — rollback on failure (PR3b 3.1)", () => {
-  it("reverts the cell to open when the POST returns a non-ok (409 Festschreibung)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({ data: { error: "Jahr ist festgeschrieben" } }),
-            {
-              status: 409,
-            },
-          ),
-      ),
-    );
+  it("reverts the cell to open when the POST is a 409 Festschreibung failure (flip → revert)", async () => {
+    // Hold the POST pending so the synchronous optimistic flip is observable,
+    // THEN release a real SvelteKit failure body — HTTP 200 with a devalue-
+    // encoded failure `data` (the 409 the server set lives inside the
+    // ActionResult, not on the HTTP response).
+    const d = deferredFetch();
+    vi.stubGlobal("fetch", d.fetch);
 
     render(MemberMatrix, { props: { matrix: makeMatrix() } });
     const submit = await openMarkPaidAndGetSubmit();
     await fireEvent.click(submit);
     await tick();
-    // Optimistic flip happened first…
+    // Optimistic flip happened FIRST, while the POST is still pending.
     expect(cellEl()?.getAttribute("data-state")).toBe("paid");
 
-    // …then the 409 rolls it back to the exact prior state.
+    // Release the failure → it must roll back to the exact prior state.
+    d.resolve(failureBody("Jahr ist festgeschrieben", 409), 409);
     await waitFor(() =>
       expect(cellEl()?.getAttribute("data-state")).toBe("open"),
     );
-    expect(toastError).toHaveBeenCalled();
+    // The DECODED Festschreibung reason reaches the treasurer (proves deserialize).
+    expect(toastError).toHaveBeenCalledWith("Jahr ist festgeschrieben");
     // A failed mutation must never reconcile a false state.
     expect(invalidate).not.toHaveBeenCalled();
   });
 
-  it("reverts the cell to open when fetch rejects (network error)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        throw new Error("network down");
-      }),
-    );
+  it("reverts the cell to open when fetch rejects (network error) (flip → revert)", async () => {
+    const d = deferredFetch();
+    vi.stubGlobal("fetch", d.fetch);
 
     render(MemberMatrix, { props: { matrix: makeMatrix() } });
     const submit = await openMarkPaidAndGetSubmit();
     await fireEvent.click(submit);
+    await tick();
+    // Optimistic flip happened FIRST, while the POST is still pending.
+    expect(cellEl()?.getAttribute("data-state")).toBe("paid");
 
+    // Reject the transport → the catch in post() returns {ok:false} → rollback.
+    d.reject(new Error("network down"));
     await waitFor(() =>
       expect(cellEl()?.getAttribute("data-state")).toBe("open"),
     );
@@ -237,19 +354,14 @@ describe("MemberMatrix — rollback on failure (PR3b 3.1)", () => {
     expect(invalidate).not.toHaveBeenCalled();
   });
 
-  it("surfaces the server error message on a SvelteKit failure body", async () => {
+  it("surfaces the DECODED server error message on a SvelteKit failure body (deserialize)", async () => {
+    // This is the canary for the deserialize() fix: the failure `data` is a
+    // devalue STRING on the wire. The old hand-rolled `res.json().data.error`
+    // parse yielded undefined here (generic fallback toast); with deserialize()
+    // the real §-level reason reaches the treasurer. Fails-without / passes-with.
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              type: "failure",
-              data: { error: "Ungültige Parameter" },
-            }),
-            { status: 200 },
-          ),
-      ),
+      fetchReturning(failureBody("Ungültige Parameter", 400)),
     );
 
     render(MemberMatrix, { props: { matrix: makeMatrix() } });
@@ -259,6 +371,10 @@ describe("MemberMatrix — rollback on failure (PR3b 3.1)", () => {
     await waitFor(() =>
       expect(cellEl()?.getAttribute("data-state")).toBe("open"),
     );
+    // The EXACT decoded message — not the generic fallback.
     expect(toastError).toHaveBeenCalledWith("Ungültige Parameter");
+    expect(toastError).not.toHaveBeenCalledWith(
+      "Fehler — Zahlung nicht gespeichert.",
+    );
   });
 });
