@@ -31,6 +31,7 @@
 	 * aria-label "X von Y bezahlt, Z Euro erhalten" (§16 B2).
 	 */
 	import { invalidate } from '$app/navigation';
+	import { deserialize } from '$app/forms';
 	import { toast } from 'svelte-sonner';
 	import { Popover, ContextMenu } from 'bits-ui';
 	import { SvelteMap } from 'svelte/reactivity';
@@ -131,6 +132,9 @@
 		activeYear = detail.year;
 		activeTrigger = detail.triggerEl;
 		initialMode = detail.mode ?? 'mark-paid';
+		// Each open starts clean — never carry a stale suppress flag into a new
+		// surface (it must only skip the ONE close-complete that follows a success).
+		suppressTriggerRestore = false;
 		popoverOpen = true;
 	}
 
@@ -173,8 +177,20 @@
 		activeTrigger?.focus();
 	}
 
+	// PR3b #7: the surface's close-complete handler restores focus to the trigger
+	// cell, but on a success path we instead want focusNextOpenCell() to win.
+	// Because close-complete can fire AFTER the awaited reconcile (fast network),
+	// a naive restore would yank focus back and defeat the auto-hop. This flag
+	// makes them mutually exclusive: a successful paid/befreien sets it so the
+	// next close-complete skips the restore (and resets the flag).
+	let suppressTriggerRestore = $state(false);
+
 	function restoreTriggerFocus() {
 		// §16 E1: trigger-cell focus ring after popover close.
+		if (suppressTriggerRestore) {
+			suppressTriggerRestore = false;
+			return;
+		}
 		activeTrigger?.focus();
 	}
 
@@ -195,6 +211,13 @@
 	}
 
 	// ── Mutations ────────────────────────────────────────────────────────────────
+	// A `fetch('?/action')` to a SvelteKit form action ALWAYS returns HTTP 200
+	// (even for fail()/error), and the body is a devalue-encoded ActionResult —
+	// `result.data` for a failure is a devalue STRING, not a plain object. So we
+	// must decode with SvelteKit's canonical `deserialize()`; hand-parsing
+	// `res.json().data.error` silently yields `undefined` in prod (the treasurer
+	// would never see the real Festschreibung/§55 reason). The outer try/catch
+	// maps a genuine transport/network failure to { ok: false }.
 	async function post(
 		action: string,
 		fields: Record<string, string>
@@ -203,19 +226,17 @@
 		for (const [k, v] of Object.entries(fields)) fd.set(k, v);
 		try {
 			const res = await fetch(`?/${action}`, { method: 'POST', body: fd });
-			if (!res.ok) {
-				try {
-					const json = await res.json();
-					// SvelteKit fail() responses: { type: "failure", data: { error: "..." } }
-					return { ok: false, error: (json?.data?.error as string | undefined) ?? undefined };
-				} catch {
-					return { ok: false };
-				}
+			const result = deserialize(await res.text());
+			if (result.type === 'success') return { ok: true };
+			if (result.type === 'failure') {
+				return {
+					ok: false,
+					error: (result.data?.['error'] as string | undefined) ?? undefined
+				};
 			}
-			const json = await res.json();
-			// SvelteKit action responses: type "success" | "failure"
-			if (json.type === 'success') return { ok: true };
-			return { ok: false, error: (json?.data?.error as string | undefined) ?? undefined };
+			// 'error' (an uncaught 500 / thrown error) or 'redirect' — no usable
+			// per-field message; surface a generic failure so we still roll back.
+			return { ok: false };
 		} catch {
 			return { ok: false };
 		}
@@ -259,40 +280,69 @@
 		});
 		hapticSuccess();
 		popoverOpen = false;
+		// In-flight guard: disable submit buttons during the POST (double-submit
+		// protection). Set AFTER the synchronous flip so the flip never waits on it;
+		// cleared in finally regardless of outcome.
+		submitting = true;
 
-		// (b) POST in the background — the server stays the source of truth.
-		const result = await post('mark-beitrag-paid', {
-			memberId: detail.memberId,
-			year: String(detail.year),
-			gezahltAm: detail.gezahltAm
-		});
+		try {
+			// (b) POST in the background — the server stays the source of truth.
+			const result = await post('mark-beitrag-paid', {
+				memberId: detail.memberId,
+				year: String(detail.year),
+				gezahltAm: detail.gezahltAm
+			});
 
-		if (!result.ok) {
-			// Roll back to the exact prior state — never persist a false "paid".
-			rollback(key);
-			hapticError();
-			toast.error(result.error ?? 'Fehler — Zahlung nicht gespeichert.');
-			return;
-		}
-
-		await reconcileAndClear(key);
-		toast.success(`${memberName(detail.memberId)} ${detail.year} als bezahlt markiert`, {
-			duration: 10000,
-			action: {
-				label: 'Rückgängig',
-				onClick: async () => {
-					await post('mark-beitrag-unpaid', {
-						memberId: detail.memberId,
-						year: String(detail.year)
-					});
-					await invalidate('app:beitrags-matrix');
-				}
+			if (!result.ok) {
+				// Roll back to the exact prior state — never persist a false "paid".
+				rollback(key);
+				hapticError();
+				toast.error(result.error ?? 'Fehler — Zahlung nicht gespeichert.');
+				return;
 			}
+
+			await reconcileAndClear(key);
+			toast.success(`${memberName(detail.memberId)} ${detail.year} als bezahlt markiert`, {
+				duration: 10000,
+				action: {
+					label: 'Rückgängig',
+					onClick: () => undoMarkPaid(detail.memberId, detail.year)
+				}
+			});
+			// Focus-hop AFTER reconcile so the re-rendered grid + toast are settled
+			// (the cell already flipped synchronously via the overlay; this is the
+			// §7.4 silent auto-focus nicety, not part of the <16ms flip). Suppress
+			// the close-complete trigger-restore so it can't yank focus back (#7).
+			suppressTriggerRestore = true;
+			focusNextOpenCell();
+		} finally {
+			submitting = false;
+		}
+	}
+
+	// ── Undo handlers (Rückgängig toast action) ──────────────────────────────────
+	// Mirror the main handlers' result-check: surface the server error if the undo
+	// itself fails, and reconcile regardless so the grid always shows the truth.
+	async function undoMarkPaid(memberId: string, year: number) {
+		const result = await post('mark-beitrag-unpaid', { memberId, year: String(year) });
+		if (!result.ok) {
+			hapticError();
+			toast.error(result.error ?? 'Rückgängig fehlgeschlagen.');
+		}
+		await invalidate('app:beitrags-matrix');
+	}
+
+	async function undoExempt(memberId: string, year: number) {
+		const result = await post('set-beitrag-exempt', {
+			memberId,
+			year: String(year),
+			exempt: 'false'
 		});
-		// Focus-hop AFTER reconcile so the re-rendered grid + toast are settled
-		// (the cell already flipped synchronously via the overlay; this is the
-		// §7.4 silent auto-focus nicety, not part of the <16ms flip).
-		focusNextOpenCell();
+		if (!result.ok) {
+			hapticError();
+			toast.error(result.error ?? 'Rückgängig fehlgeschlagen.');
+		}
+		await invalidate('app:beitrags-matrix');
 	}
 
 	async function handleExempt(detail: { memberId: string; year: number; reason: string }) {
@@ -311,41 +361,41 @@
 		});
 		hapticSuccess();
 		popoverOpen = false;
+		submitting = true;
 
-		const result = await post('set-beitrag-exempt', {
-			memberId: detail.memberId,
-			year: String(detail.year),
-			exempt: 'true',
-			reason: detail.reason
-		});
+		try {
+			const result = await post('set-beitrag-exempt', {
+				memberId: detail.memberId,
+				year: String(detail.year),
+				exempt: 'true',
+				reason: detail.reason
+			});
 
-		if (!result.ok) {
-			rollback(key);
-			hapticError();
-			toast.error(result.error ?? 'Fehler — Befreiung nicht gespeichert.');
-			return;
-		}
+			if (!result.ok) {
+				rollback(key);
+				hapticError();
+				toast.error(result.error ?? 'Fehler — Befreiung nicht gespeichert.');
+				return;
+			}
 
-		await reconcileAndClear(key);
-		toast.success(
-			`${memberName(detail.memberId)} für ${detail.year} befreit (Grund: ${detail.reason})`,
-			{
-				duration: 10000,
-				action: {
-					label: 'Rückgängig',
-					onClick: async () => {
-						await post('set-beitrag-exempt', {
-							memberId: detail.memberId,
-							year: String(detail.year),
-							exempt: 'false'
-						});
-						await invalidate('app:beitrags-matrix');
+			await reconcileAndClear(key);
+			toast.success(
+				`${memberName(detail.memberId)} für ${detail.year} befreit (Grund: ${detail.reason})`,
+				{
+					duration: 10000,
+					action: {
+						label: 'Rückgängig',
+						onClick: () => undoExempt(detail.memberId, detail.year)
 					}
 				}
-			}
-		);
-		// Focus-hop after reconcile (see handlePaid). Cell already flipped via overlay.
-		focusNextOpenCell();
+			);
+			// Focus-hop after reconcile (see handlePaid). Cell already flipped via
+			// overlay. Suppress the close-complete trigger-restore (#7).
+			suppressTriggerRestore = true;
+			focusNextOpenCell();
+		} finally {
+			submitting = false;
+		}
 	}
 
 	async function handleStorno(detail: { memberId: string; year: number }) {
@@ -366,24 +416,29 @@
 		});
 		hapticSuccess();
 		popoverOpen = false;
+		submitting = true;
 
-		const result = await post('mark-beitrag-unpaid', {
-			memberId: detail.memberId,
-			year: String(detail.year)
-		});
+		try {
+			const result = await post('mark-beitrag-unpaid', {
+				memberId: detail.memberId,
+				year: String(detail.year)
+			});
 
-		if (!result.ok) {
-			rollback(key);
-			hapticError();
-			toast.error(result.error ?? 'Fehler — Storno nicht möglich.');
-			return;
+			if (!result.ok) {
+				rollback(key);
+				hapticError();
+				toast.error(result.error ?? 'Fehler — Storno nicht möglich.');
+				return;
+			}
+
+			await reconcileAndClear(key);
+			toast.success(`Zahlung ${memberName(detail.memberId)} ${detail.year} storniert`, {
+				duration: 10000
+			});
+			restoreTriggerFocus();
+		} finally {
+			submitting = false;
 		}
-
-		await reconcileAndClear(key);
-		toast.success(`Zahlung ${memberName(detail.memberId)} ${detail.year} storniert`, {
-			duration: 10000
-		});
-		restoreTriggerFocus();
 	}
 
 	async function handleAufheben(detail: { memberId: string; year: number }) {
@@ -402,25 +457,30 @@
 		});
 		hapticSuccess();
 		popoverOpen = false;
+		submitting = true;
 
-		const result = await post('set-beitrag-exempt', {
-			memberId: detail.memberId,
-			year: String(detail.year),
-			exempt: 'false'
-		});
+		try {
+			const result = await post('set-beitrag-exempt', {
+				memberId: detail.memberId,
+				year: String(detail.year),
+				exempt: 'false'
+			});
 
-		if (!result.ok) {
-			rollback(key);
-			hapticError();
-			toast.error(result.error ?? 'Fehler — Aufheben nicht möglich.');
-			return;
+			if (!result.ok) {
+				rollback(key);
+				hapticError();
+				toast.error(result.error ?? 'Fehler — Aufheben nicht möglich.');
+				return;
+			}
+
+			await reconcileAndClear(key);
+			toast.success(`Befreiung ${memberName(detail.memberId)} ${detail.year} aufgehoben`, {
+				duration: 10000
+			});
+			restoreTriggerFocus();
+		} finally {
+			submitting = false;
 		}
-
-		await reconcileAndClear(key);
-		toast.success(`Befreiung ${memberName(detail.memberId)} ${detail.year} aufgehoben`, {
-			duration: 10000
-		});
-		restoreTriggerFocus();
 	}
 
 	async function handleReminder(detail: { memberId: string; year: number }) {
@@ -450,6 +510,25 @@
 	}
 
 	const isOverdueActive = $derived(activeCell?.state === 'overdue');
+
+	// Accessible name for the mobile bottom Sheet (bits-ui Dialog requires a
+	// Title; without one it warns and the dialog has no accessible name). One
+	// label per variant, sr-only — the visible heading lives in the body content.
+	const sheetTitle = $derived.by(() => {
+		const who = activeMemberId ? `${memberName(activeMemberId)} · ${activeYear}` : '';
+		switch (popoverKind) {
+			case 'mark-paid':
+				return `${who} · Beitrag bearbeiten`;
+			case 'paid':
+				return `${who} · Zahlung`;
+			case 'exempt':
+				return `${who} · Befreiung`;
+			case 'permanently_exempt':
+				return `${who} · Dauerhaft befreit`;
+			default:
+				return who;
+		}
+	});
 
 	// Highlight class for the ?filter view.
 	function filterHighlight(state: string): boolean {
@@ -689,6 +768,9 @@
 			class="rounded-t-2xl px-4 pb-[max(env(safe-area-inset-bottom),1rem)]"
 			data-testid="matrix-cell-sheet"
 		>
+			<!-- bits-ui Dialog requires a Title for an accessible name. sr-only so the
+			     visible heading stays inside the variant body. -->
+			<Sheet.Title class="sr-only">{sheetTitle}</Sheet.Title>
 			<div class="mx-auto w-full max-w-md py-2">
 				{@render popoverBody()}
 			</div>
