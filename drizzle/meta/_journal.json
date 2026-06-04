@@ -211,6 +211,20 @@
       "when": 1751500000000,
       "tag": "0029_transactions_redesign_additive",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1751500100000,
+      "tag": "0030_transactions_wipe_disposable",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1751500200000,
+      "tag": "0031_transactions_constraints",
+      "breakpoints": true
     }
   ]
 }

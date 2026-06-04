@@ -62,9 +62,11 @@ export const income = pgTable(
     kommentar: text("kommentar"),
 
     // --- ADR-0002 ---
-    kategorieId: uuid("kategorie_id").references(() => kategorien.id, {
-      onDelete: "restrict",
-    }),
+    kategorieId: uuid("kategorie_id")
+      .notNull()
+      .references(() => kategorien.id, {
+        onDelete: "restrict",
+      }),
     kategorieNameSnapshot: text("kategorie_name_snapshot").notNull(),
     sphereSnapshot: sphereEnum("sphere_snapshot").notNull(),
 

@@ -90,9 +90,11 @@ export const donations = pgTable(
     zweckbindungText: text("zweckbindung_text"),
 
     // --- Kategorie + sphere snapshots (ADR-0002) ---
-    kategorieId: uuid("kategorie_id").references(() => kategorien.id, {
-      onDelete: "restrict",
-    }),
+    kategorieId: uuid("kategorie_id")
+      .notNull()
+      .references(() => kategorien.id, {
+        onDelete: "restrict",
+      }),
     kategorieNameSnapshot: text("kategorie_name_snapshot").notNull(),
     sphereSnapshot: sphereEnum("sphere_snapshot").notNull().default("ideeller"),
 
