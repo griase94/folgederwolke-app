@@ -69,6 +69,14 @@
 		resultCount,
 	}: Props = $props();
 
+	// German display labels for the tab key (the raw key is lowercase + reads off
+	// in UI copy).
+	const TAB_LABEL = {
+		ausgaben: 'Ausgaben',
+		einnahmen: 'Einnahmen',
+		spenden: 'Spenden',
+	} as const;
+
 	// Registry fields for the active tab, with runtime options injected for the
 	// kategorie field (the registry leaves its `options` undefined — P2-04).
 	const fields = $derived(
@@ -351,7 +359,7 @@
 				<Sheet.Content side="bottom" class="max-h-[85vh] overflow-y-auto p-4">
 					<Sheet.Header>
 						<Sheet.Title>Filter</Sheet.Title>
-						<Sheet.Description>Filter für {tab} auswählen.</Sheet.Description>
+						<Sheet.Description>Filter für {TAB_LABEL[tab]} auswählen.</Sheet.Description>
 					</Sheet.Header>
 					<div class="flex flex-col gap-4 py-2">
 						{#each fields as field (field.key)}
