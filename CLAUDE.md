@@ -139,6 +139,26 @@ run `ALTER ROLE app_runtime WITH LOGIN PASSWORD 'app_runtime'` (and the same for
 
 ---
 
+## Worktrees
+
+All git worktrees live in **one dedicated sibling folder**, never sprawled as
+`folgederwolke-app-*` siblings and never inside the repo:
+
+```
+~/Projects/private/folgederwolke/
+├── folgederwolke-app/         ← main checkout (never a worktree target)
+└── worktrees/<branch-slug>/   ← every worktree, one subdir per branch
+```
+
+- **Create:** `git -C <main-checkout> worktree add ../worktrees/<slug> -b <branch> origin/main`
+- **Always base on the latest `origin/main`** — run `git fetch origin` first, then branch
+  from `origin/main`, never from the main checkout's current `HEAD` (it often sits on an
+  unrelated WIP branch, which would pollute the new branch's diff).
+- **Remove when merged:** `git worktree remove <path>` (this only deletes the working
+  directory; the branch ref is retained, so nothing is lost). Then `git worktree prune`.
+- The `worktrees/` folder is a sibling **outside** the repo, so it never pollutes the
+  checkout and needs no `.gitignore` entry.
+
 ## Branch protection
 
 - `main` is protected — PRs only, require passing CI.
