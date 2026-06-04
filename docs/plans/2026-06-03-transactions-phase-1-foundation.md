@@ -14,6 +14,11 @@
 
 **Sentinel category:** one row **"Unkategorisiert (Import)"** seeded for both `kind='expense'` and `kind='income'` (Task 5). It is the non-null fallback for the **importer** (Task 8) and, interim, the **approval path** (Task 9). Phase 4 replaces the approval fallback with a required Kategorie picker; the importer keeps it permanently.
 
+> **⚠ Review amendments (post-tab-plan parallel review — these unblock Phases 5 & 6, do NOT skip):**
+> - **Task 6 (`createDonation`) MUST widen `CreateDonationInput` + the insert** to accept & persist `wertermittlungMethode`, `zustandBeschreibung`, `herkunftsbelegFileId`, **and** `belegFileId`. Otherwise every **Sachspende** created through the Phase-6 form violates the `donations_sachspende_wertermittlung_ck` CHECK added in Task 10 (both columns NOT NULL for `spende_kind='sachspende'`) → INSERT fails. Add a Task-6 test asserting a Sachspende persists `wertermittlungMethode` + `zustandBeschreibung`. The Phase-6 tab is a pure consumer and cannot fix this (it doesn't own `transactions.ts`).
+> - **Task 7 (`createIncome`) MUST add `belegFileId` to `CreateIncomeInput` + the insert** (the `income` table has the column; the create fn currently drops it) — else "Beleg optional" on the Einnahmen form silently can't save. (`createExpense` already accepts `belegFileId`.)
+> - **Task 9 / spenden field removal:** Phase 6 removes legacy `kategorie_id`/`sache_*` from the Spenden input schema. The legacy assertions in **`tests/unit/spenden.test.ts`** (`validateSpendeInput`) reference those fields — update/retire them here (Phase 1 owns the schema change's blast radius) or in Phase 6 Task 4; do not leave them dangling.
+
 ---
 
 ### Task 1: New enum + additive columns (migration 0029 + schema) `[model: opus]`

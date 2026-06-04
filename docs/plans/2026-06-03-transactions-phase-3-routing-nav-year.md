@@ -171,6 +171,8 @@ describe("getTransactionDetail per-kind fields", () => {
 
 - [ ] **Step 3: Implement.** Extend `TransactionDetail` with: `belegFileId: string | null`, `belegMimeType: string | null`, and the donation fields `zweckbindungKind`, `zweckbindungText`, `spenderAdresse`, `wertermittlungMethode`, `zustandBeschreibung`, `herkunftsbelegFileId` (all nullable; only populated for `kind="donation"`). In `getTransactionDetail`, left-join `files` on the kind's `belegFileId` (select `files.mimeType`) and select the donation columns in the donation branch. All additive — existing `[id]` consumers + `TransactionDetailPanel` keep working unchanged.
 
+> **⚠ Review amendment (also thread these — Phases 5 & 6 read them off `detail`):** add `belegOriginalName: string | null` from the Blob `files.originalFilename` (for the `BelegViewer` filename header) and, **for income**, `rechnungBusinessId: string | null` (correlated subquery on `invoices.paidByIncomeId = income.id` → the linked invoice's `business_id`). Phase 5's read-only "aus Rechnung FDW-…" detail context reads `detail.rechnungBusinessId`; without threading it here, Phase 5 would be forced to import `invoices` in an einnahmen-owned file (forbidden). Tabs read `detail.belegFileId`/`belegMimeType`/`belegOriginalName` — NOT the legacy `belegDriveFileId`.
+
 - [ ] **Step 4: Run → passes.**
 
 - [ ] **Step 5: Commit.** `git commit -m "feat(tx): thread belegFileId + mimeType through getTransactionDetail (for §11 viewer)"`

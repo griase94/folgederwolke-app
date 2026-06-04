@@ -14,6 +14,14 @@
 
 > **⚠ Cross-phase dependency to verify before starting:** the einnahmen row projection from `listEinnahmenPage` (Phase 2) MUST include `rechnungBusinessId: string | null` (the left-join on `invoices.paidByIncomeId = income.id`). This is the only data the 🔗 badge + detail context line consume. If Phase 2 has not landed that field, the 🔗 surfacing in Tasks 2 + 5 is blocked — do not add the join yourself (it is Phase-2-owned); raise it back to Phase 2. Flagged again in the Self-Review.
 
+> **⚠ Review amendments (verified against real code — apply when executing):**
+> - **Drop `memberOptions` from the Einnahmen `load`** — Einnahmen has no member filter (spec §8.1 = Kategorie, "nur mit Rechnung", search). Pass `memberOptions: []` to `TransactionListScaffold` (or omit if optional). Remove `listMemberOptions` from the deps list above.
+> - **`createIncome` now persists `belegFileId`** — Phase 1 (review-amended Task 7) widens `CreateIncomeInput` + the insert with `belegFileId`, so "Beleg optional" actually saves. Task 3's test should assert a *provided* Beleg persists (not only "succeeds without one").
+> - **Detail 🔗 context reads `detail.rechnungBusinessId`** — now threaded into `getTransactionDetail` for income by Phase 3 Task 4 (review-amended). Do NOT import `invoices` in any einnahmen-owned file.
+> - **Sphere derivation:** the create action recomputes sphere server-side via `resolveSphereForKategorie({ kategorien: listKategorieOptions("income") result, kategorieName, projectSphereOverride: null })` — never trust a client-sent sphere; `projectSphereOverride: null` enforces "no override" (§4.5). (`createIncome` resolves it internally if you pass only `kategorieNameSnapshot`; confirm which during impl.)
+> - **`BelegViewer` filename** comes from `detail.belegOriginalName` (Phase 3 Task 4), not a non-existent `belegOriginalFilename`.
+> - **CI tag:** `@phase-5-einnahmen` won't be picked up by CI's cumulative grep until that pattern is extended (a Phase-8/cleanup concern); fine for local.
+
 ---
 
 ### Task 1: `listEinnahmenKpi` — total + count + Sphären-Split buckets `[model: opus]`
