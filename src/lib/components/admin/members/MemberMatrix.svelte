@@ -20,6 +20,8 @@
 	import { Popover, ContextMenu } from 'bits-ui';
 	import { SvelteMap } from 'svelte/reactivity';
 	import Lock from '@lucide/svelte/icons/lock';
+	import Users from '@lucide/svelte/icons/users';
+	import { EmptyState } from '$lib/components/ui/empty-state/index.js';
 	import MatrixCell from './MatrixCell.svelte';
 	import MarkPaidPopover from './MarkPaidPopover.svelte';
 	import PaidCellPopover from './PaidCellPopover.svelte';
@@ -361,9 +363,18 @@
 
 		<!-- Member rows -->
 		{#if matrix.members.length === 0}
+			<!-- aria-hidden on the decorative EmptyState inner elements; the row/gridcell
+			     ARIA structure stays intact for assistive-technology grid navigation. -->
 			<div role="row" class="flex">
-				<div role="gridcell" class="flex-1 px-4 py-8 text-center text-sm text-muted-foreground">
-					Noch keine Mitglieder
+				<div role="gridcell" class="flex-1 px-2 py-4">
+					<EmptyState
+						title="Noch keine Mitglieder"
+						description="Füge das erste Mitglied hinzu, um Beiträge zu verwalten."
+					>
+						{#snippet icon()}
+							<Users size={32} aria-hidden="true" />
+						{/snippet}
+					</EmptyState>
 				</div>
 			</div>
 		{:else}
