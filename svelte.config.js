@@ -12,7 +12,7 @@ const config = {
       filename.split(/[/\\]/).includes("node_modules") ? undefined : true,
   },
   kit: {
-    adapter: isVercel ? adapterVercel() : adapterNode(),
+    adapter: isVercel ? adapterVercel({ regions: ["fra1"] }) : adapterNode(),
     // CSP via SvelteKit: auto-mode adds nonces/hashes for SvelteKit's own inline
     // hydration scripts. We define the rest of the directives here so the framework
     // emits one coherent header (rather than the manual one previously set in
