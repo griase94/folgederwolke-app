@@ -23,6 +23,7 @@ import { getDb } from "$lib/server/db/index.js";
 import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
+import { members } from "$lib/server/db/schema/members.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -210,6 +211,35 @@ export async function loadRecentKategorieUsage(
     });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// listMemberOptions — DB helper
+// ---------------------------------------------------------------------------
+
+export interface MemberOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * Loads all members as picker options for the member-picker filter fields
+ * (spender / bezahlt-von). Returns full names, sorted by nachname then vorname.
+ */
+export async function listMemberOptions(): Promise<MemberOption[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: members.id,
+      vorname: members.vorname,
+      nachname: members.nachname,
+    })
+    .from(members)
+    .orderBy(members.nachname, members.vorname);
+  return rows.map((m) => ({
+    id: m.id,
+    label: `${m.vorname} ${m.nachname}`.trim(),
+  }));
 }
 
 // (avoid unused-import lint when ts checks isNull above for future filters)
