@@ -392,26 +392,13 @@ export const actions = {
         const gate = await checkFestschreibungGate(year);
         if (!gate.ok) return fail(gate.status, { error: gate.error });
 
-        // C2-TAX: derive kategorieNameSnapshot from the selected Kategorie
-        // (was hardcoded to 'Spende'). When the user picks a real kategorie
-        // we want the snapshot to match — the form sends `kategorieId` and
-        // we look up the live name; falls back to the form-supplied snapshot
-        // (or the schema default 'Spende') when no kategorie was picked.
-        let kategorieNameSnapshot = parsed.data.kategorieNameSnapshot;
-        if (raw.kategorieId && typeof raw.kategorieId === "string") {
-          const incomeKategorien = await listKategorieOptions("income");
-          const selected = incomeKategorien.find(
-            (k) => k.id === raw.kategorieId,
-          );
-          if (selected) {
-            kategorieNameSnapshot = selected.name;
-          }
-        }
-
+        // §4.3-4.5: kategorie + sphere are DERIVED inside createDonation from
+        // (spendeKind, zweckbindungKind) — no longer hand-derived here. We pass
+        // the donation shape (+ any Wertermittlung fields the form sends) and
+        // let the domain layer resolve the seeded income kategorie + sphere.
         const businessId = await allocateBusinessId("S", year);
         const result = await createDonation({
           ...parsed.data,
-          kategorieNameSnapshot,
           businessId,
           actorUserId: user.id,
         });

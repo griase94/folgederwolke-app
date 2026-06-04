@@ -16,7 +16,10 @@ import { getDb } from "$lib/server/db/index.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
 import { donations } from "$lib/server/db/schema/donations.js";
+import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
+import { deriveDonationKategorieName } from "$lib/domain/spenden-kategorie.js";
+import type { Sphere } from "$lib/domain/sphere.js";
 import { zahlungsarten } from "$lib/server/db/schema/zahlungsarten.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { bus } from "$lib/server/events/index.js";
@@ -618,8 +621,11 @@ export interface CreateDonationInput {
   betragCents: number;
   currency?: string;
   zugewendetAm?: string | null;
+  // NOTE: kategorieId/kategorieNameSnapshot/sphereSnapshot are now DERIVED
+  // server-side from (spendeKind, zweckbindungKind) — these legacy fields are
+  // accepted-but-ignored so existing callers don't break (spec §4.3-4.5).
   kategorieId?: string | null;
-  kategorieNameSnapshot: string;
+  kategorieNameSnapshot?: string;
   sphereSnapshot?: "ideeller" | "vermoegen" | "zweckbetrieb" | "wirtschaftlich";
   memberId?: string | null;
   spenderName?: string | null;
@@ -628,6 +634,17 @@ export interface CreateDonationInput {
   spendeKind?: "geldspende" | "sachspende" | "aufwandsspende";
   zweckbindungKind?: "zweckfrei" | "zweckgebunden";
   zweckbindungText?: string | null;
+  // SPEC-02 Sachspende Wertermittlung (all optional, persisted as-passed).
+  wertermittlungMethode?:
+    | "marktpreis"
+    | "kaufbeleg"
+    | "schaetzung"
+    | "buchwert"
+    | null;
+  zustandBeschreibung?: string | null;
+  herkunftsbelegFileId?: string | null;
+  belegFileId?: string | null;
+  betriebsvermoegen?: boolean;
   projectId?: string | null;
   actorUserId: string;
   businessId: string;
@@ -717,10 +734,40 @@ export async function createIncome(
   return row;
 }
 
+/**
+ * Resolve a seeded Kategorie by (kind, name) → { id, sphere, name }.
+ * Throws if not found — donation derivation relies on the seed having
+ * installed the income kategorien (spec §4.3/§4.4).
+ */
+export async function resolveKategorieByName(
+  kind: "expense" | "income",
+  name: string,
+): Promise<{ id: string; sphere: Sphere; name: string }> {
+  const db = getDb();
+  const [row] = await db
+    .select({
+      id: kategorien.id,
+      sphere: kategorien.sphere,
+      name: kategorien.name,
+    })
+    .from(kategorien)
+    .where(and(eq(kategorien.kind, kind), eq(kategorien.name, name)))
+    .limit(1);
+  if (!row) throw new Error(`Kategorie not found: ${kind}/${name}`);
+  return row;
+}
+
 export async function createDonation(
   input: CreateDonationInput,
 ): Promise<{ id: string; businessId: string }> {
   const db = getDb();
+  // §4.3-4.5: kategorie + sphere are DERIVED server-side from the donation
+  // shape — never trusted from the caller. Sphere is always "ideeller".
+  const kategorieName = deriveDonationKategorieName(
+    input.spendeKind ?? "geldspende",
+    input.zweckbindungKind ?? "zweckfrei",
+  );
+  const kat = await resolveKategorieByName("income", kategorieName);
   const [row] = await db
     .insert(donations)
     .values({
@@ -729,9 +776,9 @@ export async function createDonation(
       betragCents: BigInt(input.betragCents),
       currency: input.currency ?? "EUR",
       zugewendetAm: input.zugewendetAm ?? null,
-      kategorieId: input.kategorieId ?? null,
-      kategorieNameSnapshot: input.kategorieNameSnapshot,
-      sphereSnapshot: input.sphereSnapshot ?? "ideeller",
+      kategorieId: kat.id,
+      kategorieNameSnapshot: kat.name,
+      sphereSnapshot: "ideeller",
       memberId: input.memberId ?? null,
       spenderName: input.spenderName ?? null,
       spenderEmail: input.spenderEmail ?? null,
@@ -739,6 +786,13 @@ export async function createDonation(
       spendeKind: input.spendeKind ?? "geldspende",
       zweckbindungKind: input.zweckbindungKind ?? "zweckfrei",
       zweckbindungText: input.zweckbindungText ?? null,
+      // SPEC-02 Sachspende Wertermittlung — persist as passed so the
+      // Task-10 donations_sachspende_wertermittlung_ck CHECK will be satisfied.
+      wertermittlungMethode: input.wertermittlungMethode ?? null,
+      zustandBeschreibung: input.zustandBeschreibung ?? null,
+      herkunftsbelegFileId: input.herkunftsbelegFileId ?? null,
+      belegFileId: input.belegFileId ?? null,
+      betriebsvermoegen: input.betriebsvermoegen ?? false,
       projectId: input.projectId ?? null,
       createdByUserId: input.actorUserId,
     })
