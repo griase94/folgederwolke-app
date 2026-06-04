@@ -247,8 +247,11 @@ year-close) should be ordered last in `testDir` or wrapped in `test.describe.ser
 ### Tags + CI grep
 
 - Tag new E2E tests with `@phase-N` matching the current phase.
-- CI runs cumulative E2E grep: `@phase-0|@phase-1|@phase-2` (will expand
-  in future phases as latent bugs in phase-3+ tests get triaged).
+- CI runs a cumulative E2E grep (see `.github/workflows/ci.yml`): currently
+  `@phase-0|@phase-1|@phase-2|@phase-3|@phase-9`. The grep widens as each
+  phase's suite is triaged green; phases 4–8 remain dormant until then. The
+  `tests/unit/ci-e2e-grep.test.ts` meta-test guards that every shipped spec
+  carries a tag covered (or intentionally not yet covered) by this grep.
 
 ### Watch mode
 
