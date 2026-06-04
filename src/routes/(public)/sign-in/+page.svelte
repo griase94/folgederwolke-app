@@ -46,6 +46,27 @@
 
 <main class="flex min-h-screen items-center justify-center px-4">
 	<div class="w-full max-w-sm space-y-6">
+		<!-- Brand header — same markup as the landing page (+page.svelte) -->
+		<div class="flex flex-col items-center text-center">
+			<div
+				class="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10"
+				aria-hidden="true"
+			>
+				<svg
+					class="h-9 w-9 text-primary"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.75"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<path d="M17.5 19a4.5 4.5 0 1 0 0-9 6 6 0 0 0-11.6-1.5A4 4 0 0 0 6 19z" />
+				</svg>
+			</div>
+			<p class="text-lg font-bold tracking-tight text-foreground">Folge der Wolke e.V.</p>
+		</div>
+
 		<div class="space-y-1">
 			<h1 class="text-2xl font-bold tracking-tight">Anmelden</h1>
 			<p class="text-muted-foreground text-sm">
