@@ -15,7 +15,7 @@
 **Sentinel category:** one row **"Unkategorisiert (Import)"** seeded for both `kind='expense'` and `kind='income'` (Task 5). It is the non-null fallback for the **importer** (Task 8) and, interim, the **approval path** (Task 9). Phase 4 replaces the approval fallback with a required Kategorie picker; the importer keeps it permanently.
 
 > **⚠ Review amendments (post-tab-plan parallel review — these unblock Phases 5 & 6, do NOT skip):**
-> - **Task 6 (`createDonation`) MUST widen `CreateDonationInput` + the insert** to accept & persist `wertermittlungMethode`, `zustandBeschreibung`, `herkunftsbelegFileId`, **and** `belegFileId`. Otherwise every **Sachspende** created through the Phase-6 form violates the `donations_sachspende_wertermittlung_ck` CHECK added in Task 10 (both columns NOT NULL for `spende_kind='sachspende'`) → INSERT fails. Add a Task-6 test asserting a Sachspende persists `wertermittlungMethode` + `zustandBeschreibung`. The Phase-6 tab is a pure consumer and cannot fix this (it doesn't own `transactions.ts`).
+> - **Task 6 (`createDonation`) MUST widen `CreateDonationInput` + the insert** to accept & persist `wertermittlungMethode`, `zustandBeschreibung`, `herkunftsbelegFileId`, `belegFileId`, **and** `betriebsvermoegen` (optional boolean, defaults to the column default `false` when omitted — SPEC-02). Otherwise every **Sachspende** created through the Phase-6 form violates the `donations_sachspende_wertermittlung_ck` CHECK added in Task 10 (both columns NOT NULL for `spende_kind='sachspende'`) → INSERT fails. Add a Task-6 test asserting a Sachspende persists `wertermittlungMethode` + `zustandBeschreibung` (+ `betriebsvermoegen` when passed `true`). The Phase-6 tab is a pure consumer and cannot fix this (it doesn't own `transactions.ts`).
 > - **Task 7 (`createIncome`) MUST add `belegFileId` to `CreateIncomeInput` + the insert** (the `income` table has the column; the create fn currently drops it) — else "Beleg optional" on the Einnahmen form silently can't save. (`createExpense` already accepts `belegFileId`.)
 > - **Task 9 / spenden field removal:** Phase 6 removes legacy `kategorie_id`/`sache_*` from the Spenden input schema. The legacy assertions in **`tests/unit/spenden.test.ts`** (`validateSpendeInput`) reference those fields — update/retire them here (Phase 1 owns the schema change's blast radius) or in Phase 6 Task 4; do not leave them dangling.
 
@@ -46,7 +46,7 @@ describe("migration 0029 — additive columns", () => {
       column_name: string;
     }>(sql`
       SELECT table_name, column_name FROM information_schema.columns
-      WHERE (table_name = 'donations' AND column_name IN ('wertermittlung_methode','zustand_beschreibung','herkunftsbeleg_file_id'))
+      WHERE (table_name = 'donations' AND column_name IN ('wertermittlung_methode','zustand_beschreibung','herkunftsbeleg_file_id','betriebsvermoegen'))
          OR (table_name = 'expenses'  AND column_name = 'beleg_verzicht_grund')`);
     const names = (cols as { table_name: string; column_name: string }[]).map(
       (c) => `${c.table_name}.${c.column_name}`,
@@ -56,6 +56,7 @@ describe("migration 0029 — additive columns", () => {
         "donations.wertermittlung_methode",
         "donations.zustand_beschreibung",
         "donations.herkunftsbeleg_file_id",
+        "donations.betriebsvermoegen",
         "expenses.beleg_verzicht_grund",
       ]),
     );
@@ -80,8 +81,11 @@ CREATE TYPE "wertermittlung_methode" AS ENUM ('marktpreis', 'kaufbeleg', 'schaet
 ALTER TABLE "donations" ADD COLUMN "wertermittlung_methode" "wertermittlung_methode";--> statement-breakpoint
 ALTER TABLE "donations" ADD COLUMN "zustand_beschreibung" text;--> statement-breakpoint
 ALTER TABLE "donations" ADD COLUMN "herkunftsbeleg_file_id" uuid REFERENCES "files"("id") ON DELETE restrict;--> statement-breakpoint
+ALTER TABLE "donations" ADD COLUMN "betriebsvermoegen" boolean NOT NULL DEFAULT false;--> statement-breakpoint
 ALTER TABLE "expenses" ADD COLUMN "beleg_verzicht_grund" text;
 ```
+
+> **SPEC-02 (`betriebsvermoegen`):** `false` = Privatvermögen (the default for the typical private Sachspende), `true` = aus Betriebsvermögen — selects the Muster-Zuwendungsbestätigung legal-text branch (§4.3). It is a flag only (no Teilwert engine). `NOT NULL DEFAULT false` is safe pre-wipe and means Geldspenden simply carry `false`.
 
 - [ ] **Step 3: Append the journal entry** (`drizzle/meta/_journal.json`, `entries` array). Use a fixed epoch greater than the last entry (no `Date.now()`):
 
@@ -108,10 +112,11 @@ export const wertermittlungMethodeEnum = pgEnum("wertermittlung_methode", [
 ```
 
 ```ts
-// donations.ts — import { wertermittlungMethodeEnum } + ensure files imported; add columns:
+// donations.ts — import { wertermittlungMethodeEnum } + ensure files + `boolean` imported; add columns:
 wertermittlungMethode: wertermittlungMethodeEnum("wertermittlung_methode"),
 zustandBeschreibung: text("zustand_beschreibung"),
 herkunftsbelegFileId: uuid("herkunftsbeleg_file_id").references(() => files.id, { onDelete: "restrict" }),
+betriebsvermoegen: boolean("betriebsvermoegen").notNull().default(false),
 ```
 
 ```ts
