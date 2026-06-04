@@ -34,7 +34,50 @@ pnpm test --run tests/unit/smoke # or the smallest sanity check; confirm green b
 | 7   | `…phase-7-detail-viewer.md`    | Shared detail modal surface + unified pdfjs Beleg viewer + mobile fold + Festschreibung read-only                                                                                                          | 4–6        |
 | 8   | `…phase-8-exports-polish.md`   | CSV export of filtered list + empty/error/loading states + a11y pass                                                                                                                                       | 4–7        |
 
-Phases 4/5/6 are independent of each other (parallelizable once 1–3 land). Each phase plan is written **just before** it's executed, pinned to the real signatures produced by earlier phases — except Phase 1, written now in full.
+Phases 4/5/6 are independent of each other (parallelizable once 1–3 land). Each phase plan is written **just before** it's executed, pinned to the real signatures produced by earlier phases — except Phases 1–3 (+ the shared-primitives track), written ahead in full to unlock the parallel tab tier.
+
+---
+
+## Parallelization map (maximize concurrent implementation)
+
+The 8 phases above are the _dependency_ view. For **execution**, the work factors into tiers; everything inside a tier runs concurrently (separate worktrees, disjoint file ownership → no merge conflicts). The single biggest win is the **tab tier (4∥5∥6)**, which only becomes conflict-free once the shared kit (Phase 3) owns every cross-tab component.
+
+```
+TIER A  (no deps — start immediately, fully concurrent)
+  ├─ A1  Phase 1  Foundation (data/schema/seed)            owns: drizzle/*, schema/*, seed*.ts, import/*, audit-inbox-actions.ts
+  ├─ A2  Phase 2 pure engine (registry, URL/Zod, SQL       owns: src/lib/domain/transaction-filters.ts, year.ts,
+  │      builders, year helpers, saved-views)                     src/lib/server/domain/transaction-filter-sql.ts, src/lib/client/saved-views.ts
+  └─ A3  Shared primitives  (NEW track, see below)         owns: src/lib/components/ui/{popover,combobox,tooltip,pagination,money-input,multiselect-chip}/
+        popover/combobox, tooltip, pagination,
+        money-input, multiselect-chip
+  ── sync: A1 must merge before A2's DB-query task (Phase 2 Task 5/6) and before A3 is consumed by tab tests that hit the DB.
+
+TIER B  (after A — the shared kit; can split into B1∥B2∥B3)
+  ├─ B1  Phase 2 FilterBar component  (needs A3 popover/combobox/chips)   owns: components/admin/transactions/FilterBar.svelte
+  ├─ B2  Phase 3 routing+nav+year     (needs A2 year helpers)             owns: nav-registry.ts, Sidebar/MobileTabBar/Topbar edits,
+  │                                                                              routes/app/{ausgaben,einnahmen,spenden}/ shells, redirect, +layout clamp
+  └─ B3  Phase 3 shared kit           (needs A2 listXPage shape, A3)      owns: components/admin/transactions/{TransactionListScaffold,
+        list scaffold · entry-modal shell + field                              EntryFormShell, fields/*, DetailModalShell, StaleYearBanner}.svelte
+        primitives · detail-modal shell · Beleg viewer                          + components/files/BelegViewer.svelte
+  ── Beleg viewer (BelegViewer.svelte) is itself parallel-safe (depends only on A1 files + pdfjs) — can run in A or B.
+
+TIER C  (after B — THE parallel tab tier; 3 concurrent worktrees, zero shared files)
+  ├─ C1  Phase 4 Ausgaben     owns ONLY: routes/app/ausgaben/**  + components/admin/transactions/ausgaben/*
+  ├─ C2  Phase 5 Einnahmen    owns ONLY: routes/app/einnahmen/** + components/admin/transactions/einnahmen/*
+  └─ C3  Phase 6 Spenden      owns ONLY: routes/app/spenden/**   + components/admin/transactions/spenden/* (+ keep zuwendungsbestaetigung)
+
+TIER D  (after C)
+  └─ D1  Phase 8 exports + cross-cutting polish (CSV per tab, empty/error/loading states, a11y sweep)
+```
+
+**Rules that keep tiers conflict-free**
+
+- **One file = one owner per tier.** The tab tier (C) is only safe because Phase 3 (B) extracts every shared component first; a C-track must never edit a shared file. If a tab needs a shared change, it goes back to B (do not fork).
+- **`transactions.ts` is a contention point** (Phase 1 adds `createX`/sentinel resolves; Phase 2 adds `listXPage`). Sequence those two within Tier A→B or use a worktree + a single rebasing merge; do not edit it from two tracks simultaneously.
+- **Shared primitives (A3) front-loaded:** Phase 2's `FilterBar` (B1) and Phase 3's forms (B3) both need popover/combobox/multiselect-chip/money-input. Building them once in A3 prevents three half-built copies. (Spec §13 lists these as "to add.")
+- **Old god-component (`TransactionsList.svelte`) stays live until Tier C retires it per-tab.** Phase 3 (B) leaves the old `/app/transactions` route working behind a redirect only after the three new routes exist; the SEPA/Bulk/Row/Card components are extracted (not deleted) in B3 so all three tabs reuse them.
+
+**Just-in-time vs ahead-of-time:** Phases 1, 2, 3 and the A3 primitives track are planned **now** (their inputs exist). Tabs 4/5/6 are planned **against Phase 3's locked exports** (written immediately after Phase 3 review passes — same author, cross-checked for contract consistency, so no drift). Phase 8 is planned last.
 
 ---
 
