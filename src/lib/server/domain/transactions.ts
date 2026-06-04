@@ -16,6 +16,7 @@ import { getDb } from "$lib/server/db/index.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
 import { donations } from "$lib/server/db/schema/donations.js";
+import { invoices } from "$lib/server/db/schema/invoices.js";
 import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
 import { deriveDonationKategorieName } from "$lib/domain/spenden-kategorie.js";
@@ -23,6 +24,13 @@ import type { Sphere } from "$lib/domain/sphere.js";
 import { zahlungsarten } from "$lib/server/db/schema/zahlungsarten.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { bus } from "$lib/server/events/index.js";
+import { ALL_YEARS, type YearScope } from "$lib/domain/year.js";
+import type { FilterState } from "$lib/domain/transaction-filters.js";
+import {
+  buildAusgabenWhere,
+  buildEinnahmenWhere,
+  buildSpendenWhere,
+} from "$lib/server/domain/transaction-filter-sql.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -132,6 +140,14 @@ export interface ListTransactionsOptions {
   offset?: number;
 }
 
+/**
+ * @deprecated Phase 2: the merged view paginates in-memory (`.slice()`) after
+ * fetching every matching row from all three tables — it does NOT scale.
+ * Prefer the per-tab paginated queries `listAusgabenPage` /
+ * `listEinnahmenPage` / `listSpendenPage` (real SQL LIMIT/OFFSET + COUNT),
+ * defined below. Kept only until the Phase-3 three-tab route replaces the
+ * merged route that still calls this.
+ */
 export async function listTransactions(
   opts: ListTransactionsOptions = {},
 ): Promise<{ rows: TransactionRow[]; total: number }> {
@@ -323,6 +339,266 @@ export async function listTransactions(
 
   const total = allRows.length;
   return { rows: allRows.slice(offset, offset + limit), total };
+}
+
+// ---------------------------------------------------------------------------
+// Per-tab paginated queries (Phase 2, Task 5) — real SQL LIMIT/OFFSET + COUNT.
+//
+// These REPLACE the merged-view `.slice()`-in-memory pagination above: each
+// function pushes the page window AND the total COUNT into Postgres, so the
+// query cost no longer scales with the full table size.
+//
+// Composition contract (Task-4 review): the `buildXWhere` builders return an
+// `SQL[]` that can be EMPTY (e.g. ALL_YEARS + no active filters). We therefore
+// compose `conds.length ? and(...conds) : undefined` and pass that straight to
+// `.where(...)` — Drizzle treats `.where(undefined)` as "no filter" (all rows).
+// NEVER `and(...conds)!` on a possibly-empty array (it would throw at runtime).
+// The COUNT query reuses the SAME `where` so `total` matches the filtered set.
+//
+// Per-tab row projections carry each tab's display-specific fields so the
+// Phase-3 Tier-C tab tracks render without ever editing this file.
+// ---------------------------------------------------------------------------
+
+export interface PageOptions {
+  state: FilterState;
+  year: YearScope;
+  limit: number;
+  offset: number;
+}
+
+/** Shared base columns every per-tab row projection includes. */
+interface BaseTxRow {
+  id: string;
+  businessId: string;
+  bezeichnung: string;
+  betragCents: number;
+  currency: string;
+  /** ISO timestamp string. */
+  gebuchtAm: string;
+  sphereSnapshot: string;
+  kategorieNameSnapshot: string;
+  yearOfBuchung: number | null;
+  festgeschriebenAt: string | null;
+}
+
+// ── Ausgaben ────────────────────────────────────────────────────────────────
+
+/** Ausgaben tab row: base + the Status / Bezahlt-von / Erstattung / Beleg fields. */
+export interface AusgabenRow extends BaseTxRow {
+  status: string;
+  bezahltVonKind: string;
+  bezahltVonDisplay: string;
+  erstattetAm: string | null;
+  /** Presence is what the Beleg column needs (the FK uuid, or null). */
+  belegFileId: string | null;
+  approvedAt: string | null;
+}
+
+export async function listAusgabenPage(
+  opts: PageOptions,
+): Promise<{ rows: AusgabenRow[]; total: number }> {
+  const db = getDb();
+  const conds = buildAusgabenWhere(opts.state, opts.year);
+  const where = conds.length ? and(...conds) : undefined;
+  const [rows, countRows] = await Promise.all([
+    db
+      .select({
+        id: expenses.id,
+        businessId: expenses.businessId,
+        bezeichnung: expenses.bezeichnung,
+        betragCents: expenses.betragCents,
+        currency: expenses.currency,
+        gebuchtAm: expenses.gebuchtAm,
+        sphereSnapshot: expenses.sphereSnapshot,
+        kategorieNameSnapshot: expenses.kategorieNameSnapshot,
+        yearOfBuchung: expenses.yearOfBuchung,
+        festgeschriebenAt: expenses.festgeschriebenAt,
+        status: expenses.status,
+        bezahltVonKind: expenses.bezahltVonKind,
+        bezahltVonDisplay: expenses.bezahltVonDisplay,
+        erstattetAm: expenses.erstattetAm,
+        belegFileId: expenses.belegFileId,
+        approvedAt: expenses.approvedAt,
+      })
+      .from(expenses)
+      .where(where)
+      .orderBy(desc(expenses.gebuchtAm))
+      .limit(opts.limit)
+      .offset(opts.offset),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(expenses)
+      .where(where),
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  return {
+    rows: rows.map((r) => ({
+      id: r.id,
+      businessId: r.businessId,
+      bezeichnung: r.bezeichnung,
+      betragCents: Number(r.betragCents),
+      currency: r.currency,
+      gebuchtAm: formatTs(r.gebuchtAm)!,
+      sphereSnapshot: r.sphereSnapshot,
+      kategorieNameSnapshot: r.kategorieNameSnapshot,
+      yearOfBuchung: r.yearOfBuchung ?? null,
+      festgeschriebenAt: formatTs(r.festgeschriebenAt),
+      status: r.status,
+      bezahltVonKind: r.bezahltVonKind,
+      bezahltVonDisplay: r.bezahltVonDisplay,
+      erstattetAm: r.erstattetAm ?? null,
+      belegFileId: r.belegFileId ?? null,
+      approvedAt: formatTs(r.approvedAt),
+    })),
+    total,
+  };
+}
+
+// ── Einnahmen ─────────────────────────────────────────────────────────────
+
+/**
+ * Einnahmen tab row: base + `rechnungBusinessId` — the 🔗 badge source. Income
+ * has no invoice column, so it's projected via a LEFT JOIN LATERAL (P2-06): a
+ * `… LIMIT 1` correlated subquery over `invoices.paid_by_income_id`, ordered by
+ * a stable key (`invoices.created_at`). The LATERAL + LIMIT 1 makes no-invoice
+ * rows yield NULL and multi-invoice rows deterministically take the first one,
+ * with NO row fan-out (a plain LEFT JOIN would duplicate multi-invoice income
+ * and break the LIMIT/OFFSET window + COUNT).
+ */
+export interface EinnahmenRow extends BaseTxRow {
+  rechnungBusinessId: string | null;
+}
+
+export async function listEinnahmenPage(
+  opts: PageOptions,
+): Promise<{ rows: EinnahmenRow[]; total: number }> {
+  const db = getDb();
+  const conds = buildEinnahmenWhere(opts.state, opts.year);
+  const where = conds.length ? and(...conds) : undefined;
+
+  // P2-06: correlated LATERAL subquery — references the outer `income.id`, so
+  // it's LATERAL; `.orderBy(createdAt).limit(1)` picks one deterministically.
+  const invLateral = db
+    .select({ rechnungBusinessId: invoices.businessId })
+    .from(invoices)
+    .where(eq(invoices.paidByIncomeId, income.id))
+    .orderBy(invoices.createdAt)
+    .limit(1)
+    .as("inv");
+
+  const [rows, countRows] = await Promise.all([
+    db
+      .select({
+        id: income.id,
+        businessId: income.businessId,
+        bezeichnung: income.bezeichnung,
+        betragCents: income.betragCents,
+        currency: income.currency,
+        gebuchtAm: income.gebuchtAm,
+        sphereSnapshot: income.sphereSnapshot,
+        kategorieNameSnapshot: income.kategorieNameSnapshot,
+        yearOfBuchung: income.yearOfBuchung,
+        festgeschriebenAt: income.festgeschriebenAt,
+        rechnungBusinessId: invLateral.rechnungBusinessId,
+      })
+      .from(income)
+      .leftJoinLateral(invLateral, sql`true`)
+      .where(where)
+      .orderBy(desc(income.gebuchtAm))
+      .limit(opts.limit)
+      .offset(opts.offset),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(income)
+      .where(where),
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  return {
+    rows: rows.map((r) => ({
+      id: r.id,
+      businessId: r.businessId,
+      bezeichnung: r.bezeichnung,
+      betragCents: Number(r.betragCents),
+      currency: r.currency,
+      gebuchtAm: formatTs(r.gebuchtAm)!,
+      sphereSnapshot: r.sphereSnapshot,
+      kategorieNameSnapshot: r.kategorieNameSnapshot,
+      yearOfBuchung: r.yearOfBuchung ?? null,
+      festgeschriebenAt: formatTs(r.festgeschriebenAt),
+      rechnungBusinessId: r.rechnungBusinessId ?? null,
+    })),
+    total,
+  };
+}
+
+// ── Spenden ─────────────────────────────────────────────────────────────────
+
+/** Spenden tab row: base + Spender / Art / Zweckbindung / Bescheinigung fields. */
+export interface SpendenRow extends BaseTxRow {
+  spenderName: string | null;
+  spendeKind: string;
+  zweckbindungKind: string;
+  bescheinigungNr: string | null;
+}
+
+export async function listSpendenPage(
+  opts: PageOptions,
+): Promise<{ rows: SpendenRow[]; total: number }> {
+  const db = getDb();
+  const conds = buildSpendenWhere(opts.state, opts.year);
+  const where = conds.length ? and(...conds) : undefined;
+  const [rows, countRows] = await Promise.all([
+    db
+      .select({
+        id: donations.id,
+        businessId: donations.businessId,
+        bezeichnung: donations.kategorieNameSnapshot,
+        betragCents: donations.betragCents,
+        currency: donations.currency,
+        gebuchtAm: donations.gebuchtAm,
+        sphereSnapshot: donations.sphereSnapshot,
+        kategorieNameSnapshot: donations.kategorieNameSnapshot,
+        yearOfBuchung: donations.yearOfBuchung,
+        festgeschriebenAt: donations.festgeschriebenAt,
+        spenderName: donations.spenderName,
+        spendeKind: donations.spendeKind,
+        zweckbindungKind: donations.zweckbindungKind,
+        bescheinigungNr: donations.bescheinigungNr,
+      })
+      .from(donations)
+      .where(where)
+      .orderBy(desc(donations.gebuchtAm))
+      .limit(opts.limit)
+      .offset(opts.offset),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(donations)
+      .where(where),
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  return {
+    rows: rows.map((r) => ({
+      id: r.id,
+      businessId: r.businessId,
+      // Spenden have no `bezeichnung` column — surface a human label like the
+      // merged view does, falling back to the kategorie snapshot.
+      bezeichnung: r.spenderName
+        ? `Spende von ${r.spenderName}`
+        : r.kategorieNameSnapshot,
+      betragCents: Number(r.betragCents),
+      currency: r.currency,
+      gebuchtAm: formatTs(r.gebuchtAm)!,
+      sphereSnapshot: r.sphereSnapshot,
+      kategorieNameSnapshot: r.kategorieNameSnapshot,
+      yearOfBuchung: r.yearOfBuchung ?? null,
+      festgeschriebenAt: formatTs(r.festgeschriebenAt),
+      spenderName: r.spenderName ?? null,
+      spendeKind: r.spendeKind,
+      zweckbindungKind: r.zweckbindungKind,
+      bescheinigungNr: r.bescheinigungNr ?? null,
+    })),
+    total,
+  };
 }
 
 // ---------------------------------------------------------------------------
