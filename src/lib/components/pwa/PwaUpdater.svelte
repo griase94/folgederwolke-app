@@ -38,9 +38,9 @@
 	import { afterNavigate } from '$app/navigation';
 
 	if (browser && 'serviceWorker' in navigator) {
-		// One-time best-effort purge of the legacy fdw-api-runtime cache that
-		// previously held PII (member/customer API responses). Safe to run on
-		// every load — caches.delete is a no-op when the cache doesn't exist.
+		// Best-effort purge on every app load — a no-op once the legacy cache
+		// is gone. Drops the fdw-api-runtime cache that previously held PII
+		// (member/customer API responses).
 		if ('caches' in window) {
 			void caches.delete('fdw-api-runtime').catch(() => {});
 		}

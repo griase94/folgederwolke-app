@@ -12,6 +12,8 @@ const config = {
       filename.split(/[/\\]/).includes("node_modules") ? undefined : true,
   },
   kit: {
+    // regions:["fra1"] co-locates compute with the Neon EU/Frankfurt region
+    // (and the fra1 Vercel Blob store) to cut DB round-trip latency.
     adapter: isVercel ? adapterVercel({ regions: ["fra1"] }) : adapterNode(),
     // CSP via SvelteKit: auto-mode adds nonces/hashes for SvelteKit's own inline
     // hydration scripts. We define the rest of the directives here so the framework
