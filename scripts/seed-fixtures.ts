@@ -180,7 +180,10 @@ export async function seedFixtures(db: Db): Promise<void> {
 
 // No `Date.now()` — explicit ISO timestamps across 2024 / 2025 / 2026.
 const T2024 = "2024-05-15T10:00:00Z";
-const T2024_OLD = "2024-02-03T09:00:00Z"; // aged-open pill driver (geprueft)
+const T2024_OLD = "2024-02-03T09:00:00Z"; // festgeschrieben 2024 row
+// Aged (early-2025, NOT festgeschrieben) member Auslage still awaiting
+// reimbursement — drives the aged "offen zu erstatten" pill correctly.
+const T2025_EARLY = "2025-01-20T09:00:00Z";
 const T2025 = "2025-07-20T12:00:00Z";
 const T2026 = "2026-03-10T14:30:00Z";
 
@@ -194,16 +197,26 @@ type ExpenseFixture = {
   betragCents: bigint;
   gebuchtAm: string;
   status: (typeof schema.expenses.$inferInsert)["status"];
-  bezahltVonDisplay: string;
+  /**
+   * bezahlt_von discriminator. Verein-typical costs (Miete, GEMA, Technik) are
+   * paid by the Verein; member-typical Auslagen (Fahrtkosten, Honorar fronted
+   * by a member) are 'member' and carry a real fixture member's id — these are
+   * the rows that drive the "offen zu erstatten" reimbursement UX.
+   */
+  bezahltVon: { kind: "verein" } | { kind: "member"; memberEmail: string };
   /** 2024 rows are festgeschrieben at insert time. */
   festgeschriebenAt?: string;
+  /** Approval timestamp — set on geprueft/erstattet member Auslagen. */
+  approvedAt?: string;
   erstattetAm?: string;
+  /** Zahlungsart label for the reimbursement transfer (erstattet rows). */
+  zahlungsartLabel?: string;
   rejectedReason?: string;
   kommentar?: string;
 };
 
 const EXPENSE_FIXTURES: ExpenseFixture[] = [
-  // ideeller
+  // ideeller — Verein-paid
   {
     businessId: "A-2024-901",
     bezeichnung: "Kontoführung Q1 2024",
@@ -212,10 +225,10 @@ const EXPENSE_FIXTURES: ExpenseFixture[] = [
     gebuchtAm: T2024,
     status: "erstattet",
     erstattetAm: "2024-06-01",
-    bezahltVonDisplay: "Verein",
+    bezahltVon: { kind: "verein" },
     festgeschriebenAt: T2024,
   },
-  // zweckbetrieb — aged-open geprueft (2024_OLD) to drive the aged-open pill
+  // zweckbetrieb — Verein-paid, festgeschrieben 2024
   {
     businessId: "A-2024-902",
     bezeichnung: "Saalmiete Probenwochenende",
@@ -223,11 +236,10 @@ const EXPENSE_FIXTURES: ExpenseFixture[] = [
     betragCents: 85000n,
     gebuchtAm: T2024_OLD,
     status: "geprueft",
-    bezahltVonDisplay: "Verein",
+    bezahltVon: { kind: "verein" },
     festgeschriebenAt: T2024_OLD,
-    kommentar: "Alt-offener Posten — treibt die Aged-Open-Pill.",
   },
-  // zweckbetrieb
+  // zweckbetrieb — Verein-paid
   {
     businessId: "A-2025-903",
     bezeichnung: "GEMA-Abgabe Sommerfest",
@@ -235,29 +247,36 @@ const EXPENSE_FIXTURES: ExpenseFixture[] = [
     betragCents: 24050n,
     gebuchtAm: T2025,
     status: "geprueft",
-    bezahltVonDisplay: "Verein",
+    bezahltVon: { kind: "verein" },
   },
+  // zweckbetrieb — MEMBER-paid, reimbursed (approved + erstattet + Zahlungsart).
   {
     businessId: "A-2025-904",
-    bezeichnung: "Honorar DJ-Set",
+    bezeichnung: "Honorar DJ-Set (von Maria ausgelegt)",
     kategorieName: "Honorar Künstler:innen",
     betragCents: 50000n,
     gebuchtAm: T2025,
     status: "erstattet",
+    bezahltVon: { kind: "member", memberEmail: "maria.mueller@example.org" },
+    approvedAt: "2025-07-25T10:00:00Z",
     erstattetAm: "2025-08-05",
-    bezahltVonDisplay: "Maria M.",
+    zahlungsartLabel: "Banküberweisung",
   },
+  // zweckbetrieb — MEMBER-paid, AGED + approved but NOT yet reimbursed →
+  // genuine "offen zu erstatten" (Felix is owed money). Drives the aged-open
+  // pill. NOT festgeschrieben (early-2025), so it can still be reimbursed.
   {
     businessId: "A-2025-905",
-    bezeichnung: "Bahnfahrt Künstler:in München",
+    bezeichnung: "Bahnfahrt Künstler:in München (von Felix ausgelegt)",
     kategorieName: "Fahrtkosten (Artists)",
     betragCents: 6780n,
-    gebuchtAm: T2025,
-    status: "erstattet",
-    erstattetAm: "2025-08-05",
-    bezahltVonDisplay: "Felix B.",
+    gebuchtAm: T2025_EARLY,
+    status: "geprueft",
+    bezahltVon: { kind: "member", memberEmail: "felix.bauer@example.org" },
+    approvedAt: "2025-01-25T10:00:00Z",
+    kommentar: "Alt-offener Posten — Felix wartet auf Erstattung.",
   },
-  // zweckbetrieb — direct admin-rejected expense (distinct from a rejected
+  // zweckbetrieb — MEMBER-paid, direct admin-rejected (distinct from a rejected
   // auslagen_submission; this is the row the corpus test's `abgelehnt`
   // assertion checks).
   {
@@ -269,8 +288,9 @@ const EXPENSE_FIXTURES: ExpenseFixture[] = [
     status: "abgelehnt",
     rejectedReason:
       "Doppelte Einreichung — bereits über A-2025-904 abgerechnet.",
-    bezahltVonDisplay: "Lara K.",
+    bezahltVon: { kind: "member", memberEmail: "lara.koehler@example.org" },
   },
+  // zweckbetrieb — Verein-paid
   {
     businessId: "A-2026-907",
     bezeichnung: "Lichtanlage-Miete",
@@ -278,8 +298,9 @@ const EXPENSE_FIXTURES: ExpenseFixture[] = [
     betragCents: 42000n,
     gebuchtAm: T2026,
     status: "zu_pruefen",
-    bezahltVonDisplay: "Verein",
+    bezahltVon: { kind: "verein" },
   },
+  // zweckbetrieb — Verein-paid
   {
     businessId: "A-2026-908",
     bezeichnung: "Anfahrt Eventtag",
@@ -287,9 +308,9 @@ const EXPENSE_FIXTURES: ExpenseFixture[] = [
     betragCents: 9900n,
     gebuchtAm: T2026,
     status: "geprueft",
-    bezahltVonDisplay: "Verein",
+    bezahltVon: { kind: "verein" },
   },
-  // wirtschaftlich
+  // wirtschaftlich — Verein-paid
   {
     businessId: "A-2026-909",
     bezeichnung: "Merch-Druck Shirts",
@@ -297,8 +318,9 @@ const EXPENSE_FIXTURES: ExpenseFixture[] = [
     betragCents: 31500n,
     gebuchtAm: T2026,
     status: "geprueft",
-    bezahltVonDisplay: "Verein",
+    bezahltVon: { kind: "verein" },
   },
+  // ideeller — Verein-paid
   {
     businessId: "A-2026-910",
     bezeichnung: "Software-Abo Buchhaltung",
@@ -306,7 +328,7 @@ const EXPENSE_FIXTURES: ExpenseFixture[] = [
     betragCents: 1190n,
     gebuchtAm: T2026,
     status: "zu_pruefen",
-    bezahltVonDisplay: "Verein",
+    bezahltVon: { kind: "verein" },
   },
 ];
 
@@ -426,6 +448,47 @@ async function resolveKategorien(
   return map;
 }
 
+/**
+ * Resolves seeded fixture members by canonical email into
+ * email→{id, displayName}. Throws if any requested member is missing — a
+ * member-paid expense whose member can't be found would otherwise violate
+ * expenses_bezahlt_von_union_ck (member kind needs a non-null member id).
+ */
+async function resolveMembers(
+  db: Db,
+  emails: string[],
+): Promise<Map<string, { id: string; displayName: string }>> {
+  const canon = emails.map((e) => canonicalizeEmail(e));
+  const rows = await db
+    .select({
+      id: schema.members.id,
+      emailCanonical: schema.members.emailCanonical,
+      vorname: schema.members.vorname,
+      nachname: schema.members.nachname,
+    })
+    .from(schema.members)
+    .where(
+      and(
+        eq(schema.members.isFixture, true),
+        inArray(schema.members.emailCanonical, canon),
+      ),
+    );
+  const map = new Map<string, { id: string; displayName: string }>();
+  for (const r of rows) {
+    map.set(r.emailCanonical, {
+      id: r.id,
+      displayName: `${r.vorname} ${r.nachname}`,
+    });
+  }
+  const missing = emails.filter((e) => !map.has(canonicalizeEmail(e)));
+  if (missing.length > 0) {
+    throw new Error(
+      `seedTransactionCorpus: fixture members missing: ${missing.join(", ")}`,
+    );
+  }
+  return map;
+}
+
 export async function seedTransactionCorpus(db: Db): Promise<void> {
   console.log("seed-fixtures: transaction corpus …");
 
@@ -435,8 +498,41 @@ export async function seedTransactionCorpus(db: Db): Promise<void> {
     "expense",
     EXPENSE_FIXTURES.map((e) => e.kategorieName),
   );
+  // Real fixture members fronting member-paid Auslagen.
+  const memberEmails = EXPENSE_FIXTURES.flatMap((e) =>
+    e.bezahltVon.kind === "member" ? [e.bezahltVon.memberEmail] : [],
+  );
+  const members =
+    memberEmails.length > 0
+      ? await resolveMembers(db, memberEmails)
+      : new Map<string, { id: string; displayName: string }>();
+  // Zahlungsart for reimbursement transfers (resolved by label).
+  const zahlungsartLabels = [
+    ...new Set(
+      EXPENSE_FIXTURES.flatMap((e) =>
+        e.zahlungsartLabel ? [e.zahlungsartLabel] : [],
+      ),
+    ),
+  ];
+  const zahlungsarten = new Map<string, string>();
+  for (const label of zahlungsartLabels) {
+    const [row] = await db
+      .select({ id: schema.zahlungsarten.id })
+      .from(schema.zahlungsarten)
+      .where(eq(schema.zahlungsarten.label, label))
+      .limit(1);
+    if (!row) {
+      throw new Error(`seedTransactionCorpus: zahlungsart missing: ${label}`);
+    }
+    zahlungsarten.set(label, row.id);
+  }
+
   for (const e of EXPENSE_FIXTURES) {
     const kat = expenseCats.get(e.kategorieName)!;
+    const member =
+      e.bezahltVon.kind === "member"
+        ? members.get(canonicalizeEmail(e.bezahltVon.memberEmail))!
+        : null;
     await db
       .insert(schema.expenses)
       .values({
@@ -449,12 +545,19 @@ export async function seedTransactionCorpus(db: Db): Promise<void> {
         kategorieId: kat.id,
         kategorieNameSnapshot: e.kategorieName,
         sphereSnapshot: kat.sphere,
-        bezahltVonKind: "verein",
-        bezahltVonDisplay: e.bezahltVonDisplay,
+        // bezahlt_von discriminated union (expenses_bezahlt_von_union_ck):
+        // member → member id set + extern fields null; verein → all null.
+        bezahltVonKind: e.bezahltVon.kind,
+        bezahltVonMemberId: member?.id ?? null,
+        bezahltVonDisplay: member ? member.displayName : "Verein",
         // expenses_beleg_or_grund_ck: Belegverzicht, no real file blob.
         belegVerzichtGrund: BELEG_VERZICHT,
         status: e.status,
+        approvedAt: e.approvedAt ? new Date(e.approvedAt) : null,
         erstattetAm: e.erstattetAm ?? null,
+        zahlungsartId: e.zahlungsartLabel
+          ? (zahlungsarten.get(e.zahlungsartLabel) ?? null)
+          : null,
         rejectedReason: e.rejectedReason ?? null,
         rejectedAt: e.status === "abgelehnt" ? new Date(e.gebuchtAm) : null,
         festgeschriebenAt: e.festgeschriebenAt
@@ -596,10 +699,8 @@ export async function seedTransactionCorpus(db: Db): Promise<void> {
         ),
       )
       .limit(1);
-    const invoiceKat = await resolveKategorien(db, "income", [
-      "Honorar künstlerische Leistung",
-    ]);
-    const kat = invoiceKat.get("Honorar künstlerische Leistung")!;
+    // Reuse the already-resolved income kategorie (no extra round-trip).
+    const kat = incomeCats.get("Honorar künstlerische Leistung")!;
     if (customer) {
       await db
         .insert(schema.invoices)

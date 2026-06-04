@@ -73,4 +73,25 @@ describe.skipIf(!dbConfigured)("showcase seed corpus", () => {
     );
     expect((y as unknown[]).length).toBeGreaterThanOrEqual(2);
   });
+
+  it("paid invoice links to its income receipt (guards the re-seed fallback)", async () => {
+    const db = getDb();
+    const rows = await db.execute<{
+      paid_by_income_id: string | null;
+      income_business_id: string | null;
+    }>(
+      sql`SELECT i.paid_by_income_id, inc.business_id AS income_business_id
+          FROM invoices i
+          LEFT JOIN income inc ON inc.id = i.paid_by_income_id
+          WHERE i.business_id = 'FDW-2026-901'`,
+    );
+    const arr = rows as {
+      paid_by_income_id: string | null;
+      income_business_id: string | null;
+    }[];
+    expect(arr).toHaveLength(1);
+    const [invoice] = arr;
+    expect(invoice?.paid_by_income_id).not.toBeNull();
+    expect(invoice?.income_business_id).toBe("E-2026-905");
+  });
 });
