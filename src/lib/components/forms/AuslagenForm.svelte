@@ -645,12 +645,18 @@
 					Bitte alle Pflichtfelder ausfüllen.
 				</p>
 			{/if}
+			{#if submitDisabled && !isSubmitting}
+				<p id="submit-hint" class="text-muted-foreground mb-2 text-center text-xs">
+					Bitte zuerst einen Beleg hochladen und das Belegdatum angeben.
+				</p>
+			{/if}
 			<Button
 				type="submit"
 				class="w-full"
 				size="lg"
 				disabled={submitDisabled}
 				aria-busy={isSubmitting}
+				aria-describedby={submitDisabled && !isSubmitting ? 'submit-hint' : undefined}
 				data-testid="auslage-submit"
 			>
 				{#if isSubmitting}
