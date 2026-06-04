@@ -1,4 +1,6 @@
 // src/lib/domain/transaction-filters.ts
+import { z } from "zod";
+
 export type TabKey = "ausgaben" | "einnahmen" | "spenden";
 export type FilterType =
   | "enum-multi"
@@ -127,6 +129,80 @@ export const FILTER_REGISTRY: Record<TabKey, FilterFieldDef[]> = {
     { key: "betrag", label: "Betrag", type: "amount-range" },
   ],
 };
+
+export interface FilterState {
+  search?: string;
+  enums: Record<string, string[]>; // key -> selected enum values (incl. monat, kategorie, status, …)
+  members: Record<string, string>; // member-picker key -> member id (uuid)
+  amount: { betragMin?: number; betragMax?: number };
+  booleans: Record<string, boolean>; // e.g. belegFehlt, mitRechnung
+}
+
+export function parseFilterState(
+  tab: TabKey,
+  params: URLSearchParams,
+): FilterState {
+  const fields = FILTER_REGISTRY[tab];
+  const state: FilterState = {
+    enums: {},
+    members: {},
+    amount: {},
+    booleans: {},
+  };
+  const search = params.get("q") ?? undefined;
+  if (search && search.trim()) state.search = search.trim().slice(0, 200);
+
+  for (const f of fields) {
+    const raw = params.get(f.key);
+    if (f.type === "enum-multi") {
+      const allowed = f.options ? new Set(f.options.map((o) => o.value)) : null; // null = runtime-loaded (kategorie); accept any non-empty token
+      const vals = (raw ?? "")
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean)
+        .filter((v) => (allowed ? allowed.has(v) : v.length <= 64));
+      if (vals.length) state.enums[f.key] = vals;
+    } else if (f.type === "boolean") {
+      if (raw === "true") state.booleans[f.key] = true;
+    } else if (f.type === "member-picker") {
+      const id = params.get(f.key);
+      if (id && z.uuid().safeParse(id).success) state.members[f.key] = id;
+    } else if (f.type === "amount-range") {
+      // P2-01: betragMin/betragMax are FIXED URL param names for the registry field key="betrag".
+      // The registry guarantees ≤1 amount-range field per tab, so these names never collide.
+      const min = z.coerce
+        .number()
+        .int()
+        .nonnegative()
+        .safeParse(params.get("betragMin"));
+      const max = z.coerce
+        .number()
+        .int()
+        .nonnegative()
+        .safeParse(params.get("betragMax"));
+      if (min.success && params.get("betragMin") !== null)
+        state.amount.betragMin = min.data;
+      if (max.success && params.get("betragMax") !== null)
+        state.amount.betragMax = max.data;
+    }
+  }
+  return state;
+}
+
+export function serializeFilterState(tab: TabKey, state: FilterState): string {
+  const p = new URLSearchParams();
+  if (state.search) p.set("q", state.search);
+  for (const [k, vals] of Object.entries(state.enums))
+    if (vals.length) p.set(k, vals.join(","));
+  for (const [k, id] of Object.entries(state.members)) if (id) p.set(k, id);
+  for (const [k, on] of Object.entries(state.booleans))
+    if (on) p.set(k, "true");
+  if (state.amount.betragMin != null)
+    p.set("betragMin", String(state.amount.betragMin));
+  if (state.amount.betragMax != null)
+    p.set("betragMax", String(state.amount.betragMax));
+  return p.toString();
+}
 
 function monthOptions() {
   const names = [
