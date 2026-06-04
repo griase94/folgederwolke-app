@@ -1,240 +1,520 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
-	import BeitragsBadge from './BeitragsBadge.svelte';
-	import {
-		beitragStatusFor,
-		type MemberView,
-		type MemberBeitragsTotals
-	} from '$lib/domain/members.js';
+	/**
+	 * MemberMatrix — Beitragsmatrix (Task 2.7 rewire).
+	 *
+	 * Renders the per-(member, year) grid via MatrixCell, driven by the
+	 * server-computed MatrixData (Task 2.0 loader). A single controlled bits-ui
+	 * Popover renders one of four variants (mark-paid / paid / exempt /
+	 * permanently-exempt) anchored to the clicked cell. A ContextMenu wrapper
+	 * (Task 2.3a) gives a right-click shortcut to bezahlt / befreien / Erinnerung.
+	 *
+	 * After a successful mutation the popover closes, data is invalidated, and
+	 * focus silently hops to the next open/overdue cell (spec §7.4 auto-focus,
+	 * no marathon chip). Locked-year cells fire a role="alert" toast.
+	 *
+	 * ARIA: role="grid" / "row" / "gridcell" (§16 A2); year-headers carry an
+	 * aria-label "X von Y bezahlt, Z Euro erhalten" (§16 B2).
+	 */
+	import { invalidateAll } from '$app/navigation';
+	import { toast } from 'svelte-sonner';
+	import { Popover, ContextMenu } from 'bits-ui';
+	import { SvelteMap } from 'svelte/reactivity';
+	import Lock from '@lucide/svelte/icons/lock';
+	import MatrixCell from './MatrixCell.svelte';
+	import MarkPaidPopover from './MarkPaidPopover.svelte';
+	import PaidCellPopover from './PaidCellPopover.svelte';
+	import ExemptCellPopover from './ExemptCellPopover.svelte';
+	import PermanentExemptPopover from './PermanentExemptPopover.svelte';
+	import type { MatrixData, PopoverKind } from '$lib/domain/beitrag-cell.js';
 
 	let {
-		members,
-		years,
-		totalsByYear = {}
+		matrix,
+		filter = null
 	}: {
-		members: MemberView[];
-		years: number[];
-		/** C5-MEM-lite — per-year aggregates for the header line. */
-		totalsByYear?: Record<number, MemberBeitragsTotals>;
+		matrix: MatrixData;
+		/** ?filter=ueberfaellig|offen — highlights matching cells. */
+		filter?: 'ueberfaellig' | 'offen' | null;
 	} = $props();
 
-	let compact = $state(false);
-	let sortBy = $state<'name' | 'status'>('name');
-	let markingKey = $state<string | null>(null);
+	const eur = (cents: number) =>
+		(cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
 
-	// C5-MEM-lite — active year for the €-summen header. The default tracks
-	// the middle year in the window (the anchor / current Buchungsjahr) so the
-	// header lands on "today" out of the box. Once the user clicks a tab the
-	// explicit selection sticks until the prop window slides past it.
-	let activeYearOverride = $state<number | null>(null);
-	const defaultYear = $derived(years[Math.floor(years.length / 2)] ?? new Date().getFullYear());
-	const activeYear = $derived(
-		activeYearOverride !== null && years.includes(activeYearOverride)
-			? activeYearOverride
-			: defaultYear
-	);
+	// Anchor (current) year sits in the middle of the [anchor-1, anchor, anchor+1]
+	// window. Used to place the single exempt-chip testid on one column.
+	const anchorIndex = $derived(Math.floor(matrix.headers.length / 2));
 
-	function fmtEur(cents: number): string {
-		return (cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+	// ── Cell lookup ────────────────────────────────────────────────────────────
+	const cellMap = $derived.by(() => {
+		const m = new SvelteMap<string, MatrixData['cells'][0]>();
+		for (const c of matrix.cells) m.set(`${c.memberId}:${c.year}`, c);
+		return m;
+	});
+
+	function cellFor(memberId: string, year: number) {
+		return cellMap.get(`${memberId}:${year}`);
 	}
 
-	const headerTotals = $derived<MemberBeitragsTotals>(
-		totalsByYear[activeYear] ?? {
-			memberCount: 0,
-			exemptCount: 0,
-			paidCents: 0,
-			offenCents: 0
-		}
-	);
-
-	// Count paid per year
-	function paidCount(year: number): number {
-		return members.filter((m) => {
-			const b = m.beitrags[year];
-			return b && beitragStatusFor(b) === 'paid';
-		}).length;
+	function memberName(memberId: string): string {
+		const mem = matrix.members.find((m) => m.id === memberId);
+		return mem ? `${mem.vorname} ${mem.nachname}` : '';
 	}
 
-	const sorted = $derived(
-		[...members].sort((a, b) => {
-			if (sortBy === 'name') {
-				return (a.nachname + a.vorname).localeCompare(b.nachname + b.vorname, 'de');
+	// ── Popover state (single controlled popover anchored to the active cell) ───
+	let popoverOpen = $state(false);
+	let popoverKind = $state<Exclude<PopoverKind, null>>('mark-paid');
+	let activeMemberId = $state('');
+	let activeYear = $state(0);
+	let activeTrigger = $state<HTMLElement | null>(null);
+	let initialMode = $state<'mark-paid' | 'befreien'>('mark-paid');
+	let submitting = $state(false);
+
+	const activeCell = $derived(
+		activeMemberId && activeYear ? cellFor(activeMemberId, activeYear) : undefined
+	);
+	const isLocked = $derived(
+		matrix.festgeschriebenBis !== null && activeYear <= matrix.festgeschriebenBis
+	);
+
+	function openPopover(detail: {
+		kind: Exclude<PopoverKind, null>;
+		memberId: string;
+		year: number;
+		triggerEl: HTMLElement;
+		mode?: 'mark-paid' | 'befreien';
+	}) {
+		popoverKind = detail.kind;
+		activeMemberId = detail.memberId;
+		activeYear = detail.year;
+		activeTrigger = detail.triggerEl;
+		initialMode = detail.mode ?? 'mark-paid';
+		popoverOpen = true;
+	}
+
+	function handleLocked(detail: { year: number }) {
+		toast.error(`Jahr ${detail.year} festgeschrieben — Änderungen nicht möglich`);
+	}
+
+	// ── Auto-focus chain (silent) ───────────────────────────────────────────────
+	// After a successful submit, hop focus to the next open/overdue cell.
+	let gridEl = $state<HTMLElement | null>(null);
+
+	function focusNextOpenCell() {
+		if (!gridEl) return;
+		const cells = Array.from(
+			gridEl.querySelectorAll<HTMLButtonElement>('[role="gridcell"]')
+		);
+		const startIdx = cells.findIndex(
+			(c) =>
+				c.dataset.memberId === activeMemberId && Number(c.dataset.year) === activeYear
+		);
+		// Search forward from the cell after the one we just acted on.
+		for (let i = startIdx + 1; i < cells.length; i++) {
+			const s = cells[i]?.dataset.state;
+			if (s === 'open' || s === 'overdue') {
+				cells[i]?.focus();
+				return;
 			}
-			// Sort by number of unpaid beitrags descending (most unpaid first)
-			const aUnpaid = years.filter((y) => {
-				const bm = a.beitrags[y];
-				return !bm || beitragStatusFor(bm) !== 'paid';
-			}).length;
-			const bUnpaid = years.filter((y) => {
-				const bm = b.beitrags[y];
-				return !bm || beitragStatusFor(bm) !== 'paid';
-			}).length;
-			return bUnpaid - aUnpaid;
-		})
-	);
+		}
+		// Wrap to the beginning if nothing after.
+		for (let i = 0; i <= startIdx && i < cells.length; i++) {
+			const s = cells[i]?.dataset.state;
+			if (s === 'open' || s === 'overdue') {
+				cells[i]?.focus();
+				return;
+			}
+		}
+		// No open cell left — restore focus to the trigger.
+		activeTrigger?.focus();
+	}
+
+	function restoreTriggerFocus() {
+		// §16 E1: trigger-cell focus ring after popover close.
+		activeTrigger?.focus();
+	}
+
+	// ── Mutations ────────────────────────────────────────────────────────────────
+	async function post(
+		action: string,
+		fields: Record<string, string>
+	): Promise<{ ok: boolean; error?: string }> {
+		const fd = new FormData();
+		for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+		try {
+			const res = await fetch(`?/${action}`, { method: 'POST', body: fd });
+			if (!res.ok) {
+				try {
+					const json = await res.json();
+					// SvelteKit fail() responses: { type: "failure", data: { error: "..." } }
+					return { ok: false, error: (json?.data?.error as string | undefined) ?? undefined };
+				} catch {
+					return { ok: false };
+				}
+			}
+			const json = await res.json();
+			// SvelteKit action responses: type "success" | "failure"
+			if (json.type === 'success') return { ok: true };
+			return { ok: false, error: (json?.data?.error as string | undefined) ?? undefined };
+		} catch {
+			return { ok: false };
+		}
+	}
+
+	async function handlePaid(detail: { memberId: string; year: number; gezahltAm: string }) {
+		submitting = true;
+		const result = await post('mark-beitrag-paid', {
+			memberId: detail.memberId,
+			year: String(detail.year),
+			gezahltAm: detail.gezahltAm
+		});
+		submitting = false;
+		if (!result.ok) {
+			toast.error(result.error ?? 'Fehler — Zahlung nicht gespeichert.');
+			return;
+		}
+		popoverOpen = false;
+		await invalidateAll();
+		toast.success(`${memberName(detail.memberId)} ${detail.year} als bezahlt markiert`, {
+			duration: 10000,
+			action: {
+				label: 'Rückgängig',
+				onClick: async () => {
+					await post('mark-beitrag-unpaid', {
+						memberId: detail.memberId,
+						year: String(detail.year)
+					});
+					await invalidateAll();
+				}
+			}
+		});
+		focusNextOpenCell();
+	}
+
+	async function handleExempt(detail: { memberId: string; year: number; reason: string }) {
+		submitting = true;
+		const result = await post('set-beitrag-exempt', {
+			memberId: detail.memberId,
+			year: String(detail.year),
+			exempt: 'true',
+			reason: detail.reason
+		});
+		submitting = false;
+		if (!result.ok) {
+			toast.error(result.error ?? 'Fehler — Befreiung nicht gespeichert.');
+			return;
+		}
+		popoverOpen = false;
+		await invalidateAll();
+		toast.success(
+			`${memberName(detail.memberId)} für ${detail.year} befreit (Grund: ${detail.reason})`,
+			{
+				duration: 10000,
+				action: {
+					label: 'Rückgängig',
+					onClick: async () => {
+						await post('set-beitrag-exempt', {
+							memberId: detail.memberId,
+							year: String(detail.year),
+							exempt: 'false'
+						});
+						await invalidateAll();
+					}
+				}
+			}
+		);
+		focusNextOpenCell();
+	}
+
+	async function handleStorno(detail: { memberId: string; year: number }) {
+		submitting = true;
+		const result = await post('mark-beitrag-unpaid', {
+			memberId: detail.memberId,
+			year: String(detail.year)
+		});
+		submitting = false;
+		if (!result.ok) {
+			toast.error(result.error ?? 'Fehler — Storno nicht möglich.');
+			return;
+		}
+		popoverOpen = false;
+		await invalidateAll();
+		toast.success(`Zahlung ${memberName(detail.memberId)} ${detail.year} storniert`, {
+			duration: 10000
+		});
+		restoreTriggerFocus();
+	}
+
+	async function handleAufheben(detail: { memberId: string; year: number }) {
+		submitting = true;
+		const result = await post('set-beitrag-exempt', {
+			memberId: detail.memberId,
+			year: String(detail.year),
+			exempt: 'false'
+		});
+		submitting = false;
+		if (!result.ok) {
+			toast.error(result.error ?? 'Fehler — Aufheben nicht möglich.');
+			return;
+		}
+		popoverOpen = false;
+		await invalidateAll();
+		toast.success(`Befreiung ${memberName(detail.memberId)} ${detail.year} aufgehoben`, {
+			duration: 10000
+		});
+		restoreTriggerFocus();
+	}
+
+	async function handleReminder(detail: { memberId: string; year: number }) {
+		const result = await post('send-reminder', {
+			memberId: detail.memberId,
+			year: String(detail.year)
+		});
+		if (!result.ok) {
+			toast.error(result.error ?? 'Erinnerung konnte nicht gesendet werden.');
+			return;
+		}
+		toast.success(`Erinnerung an ${memberName(detail.memberId)} gesendet`);
+	}
+
+	// ── Context-menu (right-click) shortcuts (Task 2.3a / §7.11) ─────────────────
+	function ctxBezahlt(memberId: string, year: number, triggerEl: HTMLElement) {
+		openPopover({ kind: 'mark-paid', memberId, year, triggerEl, mode: 'mark-paid' });
+	}
+	function ctxBefreien(memberId: string, year: number, triggerEl: HTMLElement) {
+		openPopover({ kind: 'mark-paid', memberId, year, triggerEl, mode: 'befreien' });
+	}
+
+	// Header aria-label per §16 B2.
+	function headerAria(h: MatrixData['headers'][0]): string {
+		return `${h.paidCount} von ${h.totalDueCount} bezahlt, ${eur(h.paidSumCents)} erhalten`;
+	}
+
+	const isOverdueActive = $derived(activeCell?.state === 'overdue');
+
+	// Highlight class for the ?filter view.
+	function filterHighlight(state: string): boolean {
+		if (filter === 'ueberfaellig') return state === 'overdue';
+		if (filter === 'offen') return state === 'open' || state === 'overdue';
+		return false;
+	}
 </script>
 
 <div class="overflow-x-auto rounded-xl border border-border">
-	<!-- C5-MEM-lite — per-year tab switcher for the €-summen header -->
-	<div
-		class="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-2 text-xs"
-		role="tablist"
-		aria-label="Buchungsjahr für Beitrags-Summen"
-	>
-		<span class="text-muted-foreground">Jahr:</span>
-		{#each years as y (y)}
-			<button
-				type="button"
-				role="tab"
-				aria-selected={activeYear === y}
-				onclick={() => (activeYearOverride = y)}
-				class="rounded px-2 py-0.5 font-medium transition-colors {activeYear === y
-					? 'bg-primary text-primary-foreground'
-					: 'text-muted-foreground hover:bg-muted dark:text-muted-foreground'}"
-				data-testid="matrix-year-tab"
-				data-year={y}
-			>
-				{y}
-			</button>
-		{/each}
-	</div>
-
-	<!-- C5-MEM-lite — €-summen header: {N} Mitglieder · {X €} offen · {Y €} bezahlt
-	     C5-MEM-full Night-2 — append a `{N} befreit` chip when exemptCount > 0 -->
-	<div
-		class="border-b border-border bg-card px-4 py-3 dark:bg-card/60"
-		data-testid="matrix-header-totals"
-		data-year={activeYear}
-	>
-		<p class="text-sm font-medium text-foreground tabular-nums">
-			<span data-testid="matrix-header-mitglieder">{headerTotals.memberCount} Mitglieder</span>
-			<span class="text-muted-foreground">·</span>
-			<span data-testid="matrix-header-offen">{fmtEur(headerTotals.offenCents)} offen</span>
-			<span class="text-muted-foreground">·</span>
-			<span data-testid="matrix-header-bezahlt">{fmtEur(headerTotals.paidCents)} bezahlt</span>
-			{#if headerTotals.exemptCount > 0}
-				<span
-					data-testid="matrix-header-exempt"
-					class="ml-3 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-900 dark:text-amber-100"
-					title="Aktive Mitglieder mit ausgesetzter Beitragspflicht"
-				>
-					{headerTotals.exemptCount} befreit
-				</span>
-			{/if}
-		</p>
-	</div>
-
-	<!-- Controls -->
-	<div
-		class="flex items-center justify-between gap-3 border-b border-border bg-muted/30 px-4 py-2"
-	>
-		<div class="flex items-center gap-2 text-sm">
-			<span class="text-muted-foreground">Sortieren:</span>
-			<button
-				type="button"
-				onclick={() => (sortBy = 'name')}
-				class="rounded px-2 py-0.5 text-xs font-medium transition-colors {sortBy === 'name'
-					? 'bg-primary text-primary-foreground'
-					: 'text-muted-foreground hover:bg-muted'}"
-			>
-				Name
-			</button>
-			<button
-				type="button"
-				onclick={() => (sortBy = 'status')}
-				class="rounded px-2 py-0.5 text-xs font-medium transition-colors {sortBy === 'status'
-					? 'bg-primary text-primary-foreground'
-					: 'text-muted-foreground hover:bg-muted'}"
-			>
-				Status
-			</button>
-		</div>
-		<button
-			type="button"
-			onclick={() => (compact = !compact)}
-			class="text-xs text-muted-foreground hover:text-foreground"
-			aria-pressed={compact}
+	{#if filter}
+		<div
+			class="border-b border-border bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
+			role="status"
 		>
-			{compact ? 'Normal' : 'Kompakt'}
-		</button>
-	</div>
+			Gefiltert: {filter === 'ueberfaellig' ? 'überfällige' : 'offene'} Beiträge hervorgehoben
+		</div>
+	{/if}
 
-	<table class="w-full min-w-[500px] text-sm">
-		<thead>
-			<tr class="border-b border-border bg-muted/50">
-				<th
-					class="sticky left-0 z-10 bg-muted/50 px-4 py-2.5 text-left font-semibold text-foreground backdrop-blur-sm"
-					scope="col"
+	<!-- role=grid wrapper. Each member is a row; cells are gridcells. -->
+	<div bind:this={gridEl} role="grid" aria-label="Beitragsmatrix" class="min-w-[500px]">
+		<!-- Header row -->
+		<div role="row" class="flex border-b border-border bg-muted/50">
+			<div
+				role="columnheader"
+				class="sticky left-0 z-10 flex min-w-[160px] flex-1 items-center bg-muted/50 px-4 py-2.5 text-left text-sm font-semibold text-foreground"
+			>
+				Mitglied
+			</div>
+			{#each matrix.headers as h, hi (h.year)}
+				<div
+					role="columnheader"
+					aria-label={headerAria(h)}
+					class="flex min-w-[120px] flex-col items-center px-4 py-2.5 text-center"
 				>
-					Mitglied
-				</th>
-				{#each years as year (year)}
-					<th class="px-4 py-2.5 text-center font-semibold text-foreground" scope="col">
-						<div>{year}</div>
-						<div class="text-xs font-normal text-muted-foreground">
-							{paidCount(year)}/{members.length} bezahlt
-						</div>
-					</th>
-				{/each}
-			</tr>
-		</thead>
-		<tbody>
-			{#if sorted.length === 0}
-				<tr>
-					<td colspan={years.length + 1} class="px-4 py-8 text-center text-muted-foreground">
-						Noch keine Mitglieder
-					</td>
-				</tr>
-			{:else}
-				{#each sorted as member (member.id)}
-					<tr
-						class="border-b border-border transition-colors last:border-0 hover:bg-muted/20 {compact
-							? 'text-xs'
-							: ''}"
+					<div class="flex items-center gap-1 text-sm font-semibold text-foreground">
+						{h.year}
+						{#if h.isLocked}
+							<Lock size={12} class="text-muted-foreground" aria-label="Festgeschrieben" />
+						{/if}
+					</div>
+					<div class="text-[11px] font-normal leading-tight text-muted-foreground tabular-nums">
+						{h.paidCount}/{h.totalDueCount} bezahlt
+					</div>
+					<div class="text-[11px] font-normal leading-tight text-muted-foreground tabular-nums">
+						{eur(h.paidSumCents)}
+						{#if h.exemptCount > 0}
+							<!-- Anchor (middle) column carries the testid so the exempt-chip
+							     selector resolves to a single element across the 3-year window. -->
+							<span data-testid={hi === anchorIndex ? 'matrix-header-exempt' : undefined}>
+								· +{h.exemptCount} befreit
+							</span>
+						{/if}
+					</div>
+				</div>
+			{/each}
+		</div>
+
+		<!-- Member rows -->
+		{#if matrix.members.length === 0}
+			<div role="row" class="flex">
+				<div role="gridcell" class="flex-1 px-4 py-8 text-center text-sm text-muted-foreground">
+					Noch keine Mitglieder
+				</div>
+			</div>
+		{:else}
+			{#each matrix.members as member (member.id)}
+				<div
+					role="row"
+					class="flex border-b border-border transition-colors last:border-0 hover:bg-muted/20"
+				>
+					<div
+						role="rowheader"
+						class="sticky left-0 z-10 flex min-w-[160px] flex-1 items-center bg-card px-4 py-2.5"
 					>
-						<td class="sticky left-0 z-10 bg-card px-4 py-2.5 backdrop-blur-sm">
-							<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-							<a href="/app/mitglieder/{member.id}" class="font-medium text-foreground hover:text-primary">{member.nachname}, {member.vorname}</a>
-							{#if member.austrittsDatum}
-								<span class="ml-1 text-xs text-destructive">(ausgetreten)</span>
-							{/if}
-						</td>
-						{#each years as year (year)}
-							{@const b = member.beitrags[year]}
-							{@const status = b ? beitragStatusFor(b) : 'open'}
-							<td class="px-4 py-2.5 text-center">
-								{#if status !== 'paid'}
-									<form
-										method="POST"
-										action="?/mark-beitrag-paid"
-										use:enhance={() => {
-											markingKey = `${member.id}-${year}`;
-											return async ({ update }) => {
-												await update();
-												markingKey = null;
-											};
-										}}
-										class="inline"
-									>
-										<input type="hidden" name="member_id" value={member.id} />
-										<input type="hidden" name="year" value={year} />
-										<button
-											type="submit"
-											aria-label={`Beitrag ${year} für ${member.vorname} ${member.nachname} als bezahlt markieren`}
-											disabled={markingKey === `${member.id}-${year}`}
-											class="disabled:opacity-50"
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<a href="/app/mitglieder/{member.id}" class="text-sm font-medium text-foreground hover:text-primary {member.austrittsJahr !== null ? 'line-through decoration-muted-foreground/40' : ''}">
+							{member.nachname}, {member.vorname}
+						</a>
+					</div>
+					{#each matrix.years as year (year)}
+						{@const cell = cellFor(member.id, year)}
+						{@const state = cell?.state ?? 'open'}
+						{@const canCtx = state === 'open' || state === 'overdue'}
+						<div
+							class="flex min-w-[120px] items-center justify-center px-4 py-2.5 {filterHighlight(
+								state
+							)
+								? 'bg-amber-50/60 dark:bg-amber-950/20'
+								: ''}"
+						>
+							{#if canCtx}
+								<ContextMenu.Root>
+									<ContextMenu.Trigger>
+										<MatrixCell
+											{state}
+											memberId={member.id}
+											{year}
+											memberName={`${member.vorname} ${member.nachname}`}
+											betragCents={cell?.betragCents ?? 0}
+											paidCents={cell?.paidCents ?? 0}
+											gezahltAm={cell?.gezahltAm ?? null}
+											exemptReason={cell?.exemptReason ?? null}
+											daysOverdue={cell?.daysOverdue ?? null}
+											compact
+											onOpenPopover={openPopover}
+											onLocked={handleLocked}
+										/>
+									</ContextMenu.Trigger>
+									<ContextMenu.Portal>
+										<ContextMenu.Content
+											class="z-50 min-w-[180px] rounded-md border border-border bg-popover p-1 shadow-md"
 										>
-											<BeitragsBadge {year} {status} compact={true} />
-										</button>
-									</form>
-								{:else}
-									<BeitragsBadge {year} {status} compact={true} />
-								{/if}
-							</td>
-						{/each}
-					</tr>
-				{/each}
-			{/if}
-		</tbody>
-	</table>
+											<ContextMenu.Item
+												class="flex cursor-pointer items-center rounded px-2 py-1.5 text-sm outline-none hover:bg-muted focus:bg-muted"
+												onSelect={() => {
+													const el = gridEl?.querySelector<HTMLElement>(
+														`[data-member-id="${member.id}"][data-year="${year}"]`
+													);
+													if (el) ctxBezahlt(member.id, year, el);
+												}}
+											>
+												Bezahlt
+											</ContextMenu.Item>
+											<ContextMenu.Item
+												class="flex cursor-pointer items-center rounded px-2 py-1.5 text-sm outline-none hover:bg-muted focus:bg-muted"
+												onSelect={() => {
+													const el = gridEl?.querySelector<HTMLElement>(
+														`[data-member-id="${member.id}"][data-year="${year}"]`
+													);
+													if (el) ctxBefreien(member.id, year, el);
+												}}
+											>
+												Befreien
+											</ContextMenu.Item>
+											{#if state === 'overdue'}
+												<ContextMenu.Item
+													class="flex cursor-pointer items-center rounded px-2 py-1.5 text-sm outline-none hover:bg-muted focus:bg-muted"
+													onSelect={() => handleReminder({ memberId: member.id, year })}
+												>
+													Erinnerung senden
+												</ContextMenu.Item>
+											{/if}
+										</ContextMenu.Content>
+									</ContextMenu.Portal>
+								</ContextMenu.Root>
+							{:else}
+								<MatrixCell
+									{state}
+									memberId={member.id}
+									{year}
+									memberName={`${member.vorname} ${member.nachname}`}
+									betragCents={cell?.betragCents ?? 0}
+									paidCents={cell?.paidCents ?? 0}
+									gezahltAm={cell?.gezahltAm ?? null}
+									exemptReason={cell?.exemptReason ?? null}
+									daysOverdue={cell?.daysOverdue ?? null}
+									compact
+									onOpenPopover={openPopover}
+									onLocked={handleLocked}
+								/>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			{/each}
+		{/if}
+	</div>
 </div>
+
+<!-- Single controlled popover, anchored to the active trigger cell. -->
+<Popover.Root bind:open={popoverOpen} onOpenChangeComplete={(o) => { if (!o) restoreTriggerFocus(); }}>
+	<Popover.Portal>
+		<Popover.Content
+			customAnchor={activeTrigger}
+			side="bottom"
+			align="center"
+			sideOffset={6}
+			class="z-50 rounded-lg border border-border bg-popover p-3 shadow-lg outline-none"
+		>
+			{#if activeCell}
+				{#if popoverKind === 'mark-paid'}
+					<MarkPaidPopover
+						memberId={activeMemberId}
+						year={activeYear}
+						memberName={memberName(activeMemberId)}
+						betragCents={activeCell.betragCents}
+						isOverdue={isOverdueActive}
+						{isLocked}
+						{initialMode}
+						{submitting}
+						onPaid={handlePaid}
+						onExempt={handleExempt}
+						onReminder={handleReminder}
+						onCancel={() => (popoverOpen = false)}
+					/>
+				{:else if popoverKind === 'paid'}
+					<PaidCellPopover
+						memberId={activeMemberId}
+						year={activeYear}
+						memberName={memberName(activeMemberId)}
+						betragCents={activeCell.betragCents}
+						gezahltAm={activeCell.gezahltAm}
+						{isLocked}
+						{submitting}
+						onStorno={handleStorno}
+					/>
+				{:else if popoverKind === 'exempt'}
+					<ExemptCellPopover
+						memberId={activeMemberId}
+						year={activeYear}
+						memberName={memberName(activeMemberId)}
+						exemptReason={activeCell.exemptReason}
+						{isLocked}
+						{submitting}
+						onAufheben={handleAufheben}
+					/>
+				{:else if popoverKind === 'permanently_exempt'}
+					<PermanentExemptPopover
+						memberId={activeMemberId}
+						year={activeYear}
+						memberName={memberName(activeMemberId)}
+						exemptReason={activeCell.exemptReason}
+					/>
+				{/if}
+			{/if}
+		</Popover.Content>
+	</Popover.Portal>
+</Popover.Root>

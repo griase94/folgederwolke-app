@@ -535,13 +535,18 @@ export function registerHandlers(): void {
 
   // ── settings.beitragssatz_changed ──────────────────────────────────────
   // Annual Beitragssatz was updated. entityKind='settings'. Re-throws.
+  //
+  // audit_log.entity_id is a uuid column, but a Beitragssatz row is keyed by
+  // year (integer), not a uuid. Leave entity_id null and carry the year in the
+  // payload (Phase-2 fix: the original handler wrote a non-uuid string here,
+  // which the uuid column rejected at INSERT time).
   bus.on<EventPayload<"settings.beitragssatz_changed">>(
     "settings.beitragssatz_changed",
     async (payload) => {
       await logAudit({
         action: "update",
         entityKind: "settings",
-        entityId: `beitragssatz_${payload.year}`,
+        entityId: null,
         actorUserId: payload.actorUserId,
         actorKind: payload.actorUserId ? "user" : "system",
         payload: {

@@ -51,14 +51,22 @@ describe("validateAddMember — Night-2 role + exempt extensions", () => {
     if (r.success) expect(r.data.beitrag_exempt).toBe(false);
   });
 
-  it("coerces 'on' checkbox value to true", () => {
-    const r = validateAddMember({ ...baseInput, beitrag_exempt: "on" });
+  it("coerces 'on' checkbox value to true (with required reason — §55 AO)", () => {
+    const r = validateAddMember({
+      ...baseInput,
+      beitrag_exempt: "on",
+      beitrag_exempt_reason: "Ehrenmitglied",
+    });
     expect(r.success).toBe(true);
     if (r.success) expect(r.data.beitrag_exempt).toBe(true);
   });
 
-  it("accepts direct boolean true (programmatic call)", () => {
-    const r = validateAddMember({ ...baseInput, beitrag_exempt: true });
+  it("accepts direct boolean true (programmatic call, with reason)", () => {
+    const r = validateAddMember({
+      ...baseInput,
+      beitrag_exempt: true,
+      beitrag_exempt_reason: "Härtefall",
+    });
     expect(r.success).toBe(true);
     if (r.success) expect(r.data.beitrag_exempt).toBe(true);
   });
@@ -74,10 +82,21 @@ describe("validateAddMember — Night-2 role + exempt extensions", () => {
       expect(r.data.beitrag_exempt_reason).toBe("Ehrenmitglied seit 2020");
   });
 
-  it("normalises empty beitrag_exempt_reason to undefined", () => {
+  it("rejects exempt=true with an empty reason (§55 AO, Task 2.11)", () => {
     const r = validateAddMember({
       ...baseInput,
       beitrag_exempt: "on",
+      beitrag_exempt_reason: "",
+    });
+    expect(r.success).toBe(false);
+    if (!r.success)
+      expect(r.errors["beitrag_exempt_reason"]?.[0]).toMatch(/§55 AO/);
+  });
+
+  it("allows exempt=false with an empty reason (reason ignored)", () => {
+    const r = validateAddMember({
+      ...baseInput,
+      beitrag_exempt: "off",
       beitrag_exempt_reason: "",
     });
     expect(r.success).toBe(true);

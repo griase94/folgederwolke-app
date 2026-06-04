@@ -24,26 +24,41 @@
 		beitrags,
 		memberId,
 		beitragExempt = false,
-		beitragExemptReason = null
+		beitragExemptReason = null,
+		eintrittsJahr = null,
+		austrittsJahr = null
 	}: {
 		beitrags: BeitragRow[];
 		memberId: string;
 		beitragExempt?: boolean;
 		beitragExemptReason?: string | null;
+		/** Hide rows before this join year (§17 C5b / spec §9). */
+		eintrittsJahr?: number | null;
+		/** Hide rows after this leave year. */
+		austrittsJahr?: number | null;
 	} = $props();
 
+	// §9 / §17 C5b — only show years the member was actually in the Verein.
+	const visibleBeitrags = $derived(
+		beitrags.filter(
+			(b) =>
+				(eintrittsJahr === null || b.year >= eintrittsJahr) &&
+				(austrittsJahr === null || b.year <= austrittsJahr)
+		)
+	);
+
 	// Sorted newest first (server already orders this, but be explicit)
-	const sorted = $derived([...beitrags].sort((a, b) => b.year - a.year));
+	const sorted = $derived([...visibleBeitrags].sort((a, b) => b.year - a.year));
 
 	const totalPaidCents = $derived(
-		beitrags.reduce((sum, b) => sum + Math.min(b.paidCents, b.betragCents), 0)
+		visibleBeitrags.reduce((sum, b) => sum + Math.min(b.paidCents, b.betragCents), 0)
 	);
 	// Night-2 C5-MEM-full: exempt members don't owe anything — clamp `open`
 	// to zero so the summary matches the matrix aggregate.
 	const totalOpenCents = $derived(
 		beitragExempt
 			? 0
-			: beitrags.reduce((sum, b) => sum + Math.max(0, b.betragCents - b.paidCents), 0)
+			: visibleBeitrags.reduce((sum, b) => sum + Math.max(0, b.betragCents - b.paidCents), 0)
 	);
 
 	function fmtEur(cents: number): string {

@@ -28,7 +28,10 @@ import {
   softDeleteMember,
   restoreMember,
   markBeitragPaid,
+  markBeitragUnpaid,
+  setBeitragExempt,
 } from "$lib/server/domain/members-actions.js";
+import { loadMatrix } from "$lib/server/domain/matrix-loader.js";
 import {
   berlinYmd,
   currentBuchungsjahr,
@@ -38,6 +41,10 @@ import {
 export const load: PageServerLoad = async ({ url }) => {
   const db = getDb();
   const view = url.searchParams.get("view") === "matrix" ? "matrix" : "list";
+  const filter = url.searchParams.get("filter") as
+    | "ueberfaellig"
+    | "offen"
+    | null;
   // C2-2: anchor the Beitragsmatrix on ?year= (selected year ± 1). Falls back
   // to the current Buchungsjahr when ?year is absent or malformed.
   const anchorYear = selectYearFromUrl(url.searchParams, currentBuchungsjahr());
@@ -82,10 +89,16 @@ export const load: PageServerLoad = async ({ url }) => {
     totalsByYear[y] = totalsArr[i] as MemberBeitragsTotals;
   });
 
+  // Task 2.0: matrix loader — per-cell state + year-header totals + filter support.
+  // Loaded in parallel with legacy data to keep backward compat during Phase 2 transition.
+  const matrix = await loadMatrix({ years });
+
   return {
     view,
+    filter,
     years,
     totalsByYear,
+    matrix,
     members: allMembers.map((m) => ({
       id: m.id,
       vorname: m.vorname,
@@ -203,11 +216,27 @@ export const actions: Actions = {
     const userId = locals.session?.user.id ?? null;
     const userRole = locals.session?.user.role ?? null;
     const formData = await request.formData();
-    const memberId = formData.get("member_id")?.toString() ?? "";
+    // Accept both "memberId" (new popover) and "member_id" (legacy form) field names
+    const memberId =
+      formData.get("memberId")?.toString() ||
+      formData.get("member_id")?.toString() ||
+      "";
     const yearStr = formData.get("year")?.toString() ?? "";
     const year = parseInt(yearStr, 10);
 
-    const gezahltAm = formData.get("gezahlt_am")?.toString() || berlinYmd();
+    // Accept "gezahltAm" (new popover) or "gezahlt_am" (legacy) field names
+    const gezahltAm =
+      formData.get("gezahltAm")?.toString() ||
+      formData.get("gezahlt_am")?.toString() ||
+      berlinYmd();
+
+    if (!memberId || !Number.isFinite(year)) {
+      return fail(400, {
+        action: "mark-beitrag-paid",
+        error: "Ungültige Parameter",
+      });
+    }
+
     const result = await markBeitragPaid({
       memberId,
       year,
@@ -223,5 +252,182 @@ export const actions: Actions = {
     }
 
     return { action: "mark-beitrag-paid", success: true };
+  },
+
+  // ── Task 2.8: Mark Beitrag unpaid (storno) ──────────────────────────────────
+  "mark-beitrag-unpaid": async ({ request, locals }) => {
+    const userId = locals.session?.user.id ?? null;
+    const userRole = locals.session?.user.role ?? null;
+    const formData = await request.formData();
+    const memberId = formData.get("memberId")?.toString() ?? "";
+    const yearStr = formData.get("year")?.toString() ?? "";
+    const year = parseInt(yearStr, 10);
+
+    if (!memberId || !Number.isFinite(year)) {
+      return fail(400, {
+        action: "mark-beitrag-unpaid",
+        error: "Ungültige Parameter",
+      });
+    }
+
+    const result = await markBeitragUnpaid({
+      memberId,
+      year,
+      actorUserId: userId,
+      actorRole: userRole,
+    });
+    if (!result.ok) {
+      return fail(result.status, {
+        action: "mark-beitrag-unpaid",
+        error: result.error,
+      });
+    }
+
+    return { action: "mark-beitrag-unpaid", success: true };
+  },
+
+  // ── Task 2.8: Set Beitrag exempt (per-year) ──────────────────────────────────
+  "set-beitrag-exempt": async ({ request, locals }) => {
+    const userId = locals.session?.user.id ?? null;
+    const userRole = locals.session?.user.role ?? null;
+    const formData = await request.formData();
+    const memberId = formData.get("memberId")?.toString() ?? "";
+    const yearStr = formData.get("year")?.toString() ?? "";
+    const year = parseInt(yearStr, 10);
+    const exemptStr = formData.get("exempt")?.toString() ?? "true";
+    const exempt = exemptStr === "true" || exemptStr === "on";
+    const reason = formData.get("reason")?.toString() ?? "";
+
+    if (!memberId || !Number.isFinite(year)) {
+      return fail(400, {
+        action: "set-beitrag-exempt",
+        error: "Ungültige Parameter",
+      });
+    }
+
+    const result = await setBeitragExempt({
+      memberId,
+      year,
+      exempt,
+      reason: exempt ? reason : undefined,
+      actorUserId: userId,
+      actorRole: userRole,
+    });
+    if (!result.ok) {
+      return fail(result.status, {
+        action: "set-beitrag-exempt",
+        error: result.error,
+      });
+    }
+
+    return { action: "set-beitrag-exempt", success: true };
+  },
+
+  // ── Task 2.8: Send Beitrag reminder ──────────────────────────────────────────
+  "send-reminder": async ({ request, locals }) => {
+    const userRole = locals.session?.user.role ?? null;
+    // Admin-only gate
+    if (userRole !== "admin") {
+      return fail(403, { action: "send-reminder", error: "Nur Admins." });
+    }
+    const formData = await request.formData();
+    const memberId = formData.get("memberId")?.toString() ?? "";
+    const yearStr = formData.get("year")?.toString() ?? "";
+    const year = parseInt(yearStr, 10);
+
+    if (!memberId || !Number.isFinite(year)) {
+      return fail(400, {
+        action: "send-reminder",
+        error: "Ungültige Parameter",
+      });
+    }
+
+    // Delegate to the member-detail send-reminder logic (same implementation)
+    // by calling the action on [id]/+page.server.ts would require a request —
+    // instead inline the minimal path here.
+    const db = getDb();
+    const { env } = await import("$lib/server/env.js");
+    const { sendMail } = await import("$lib/server/mail/index.js");
+    const { members: membersTable, memberBeitrags: memberBeitragsTable } =
+      await import("$lib/server/db/schema/members.js");
+    const { eq, and } = await import("drizzle-orm");
+
+    const [member] = await db
+      .select()
+      .from(membersTable)
+      .where(eq(membersTable.id, memberId))
+      .limit(1);
+
+    if (!member) {
+      return fail(404, {
+        action: "send-reminder",
+        error: "Mitglied nicht gefunden",
+      });
+    }
+    if (!member.email) {
+      return fail(422, {
+        action: "send-reminder",
+        error: "Keine E-Mail-Adresse hinterlegt",
+      });
+    }
+    if (member.beitragExempt) {
+      return fail(422, {
+        action: "send-reminder",
+        error: "Mitglied ist von der Beitragspflicht befreit",
+      });
+    }
+
+    const [beitragRow] = await db
+      .select()
+      .from(memberBeitragsTable)
+      .where(
+        and(
+          eq(memberBeitragsTable.memberId, memberId),
+          eq(memberBeitragsTable.year, year),
+        ),
+      )
+      .limit(1);
+
+    const betragCents = beitragRow ? Number(beitragRow.betragCents) : 6969;
+
+    const iban = env.VEREIN_IBAN;
+    const bic = env.VEREIN_BIC;
+    const bank = env.VEREIN_BANK;
+    const empfaenger = env.VEREIN_NAME;
+    if (!iban || !bic || !bank || !empfaenger) {
+      return fail(500, {
+        action: "send-reminder",
+        error: "Vereins-Bankdaten nicht konfiguriert",
+      });
+    }
+
+    try {
+      await sendMail({
+        template: "beitrag_reminder",
+        entity_kind: "member",
+        entity_id: memberId,
+        to: member.email,
+        props: {
+          vorname: member.vorname,
+          nachname: member.nachname,
+          jahr: year,
+          betragCents,
+          iban,
+          bic,
+          bank,
+          empfaenger,
+        },
+      });
+      return {
+        action: "send-reminder",
+        success: true,
+        vorname: member.vorname,
+      };
+    } catch {
+      return fail(500, {
+        action: "send-reminder",
+        error: "Mail konnte nicht gesendet werden",
+      });
+    }
   },
 };
