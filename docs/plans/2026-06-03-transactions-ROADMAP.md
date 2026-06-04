@@ -62,9 +62,15 @@ TIER B  (after A — the shared kit; can split into B1∥B2∥B3)
   ── Beleg viewer (BelegViewer.svelte) is itself parallel-safe (depends only on A1 files + pdfjs) — can run in A or B.
 
 TIER C  (after B — THE parallel tab tier; 3 concurrent worktrees, zero shared files)
-  ├─ C1  Phase 4 Ausgaben     owns ONLY: routes/app/ausgaben/**  + components/admin/transactions/ausgaben/*
-  ├─ C2  Phase 5 Einnahmen    owns ONLY: routes/app/einnahmen/** + components/admin/transactions/einnahmen/*
-  └─ C3  Phase 6 Spenden      owns ONLY: routes/app/spenden/**   + components/admin/transactions/spenden/* (+ keep zuwendungsbestaetigung)
+  ├─ C1  Phase 4 Ausgaben     owns: routes/app/ausgaben/**  + components/admin/transactions/ausgaben/**
+  │       (incl. the bulk/SEPA components — moved into ausgaben/ in Phase 3 Task 6 since Ausgaben is their sole consumer)
+  ├─ C2  Phase 5 Einnahmen    owns: routes/app/einnahmen/** + components/admin/transactions/einnahmen/**
+  └─ C3  Phase 6 Spenden      owns: routes/app/spenden/**   + components/admin/transactions/spenden/**
+          + components/admin/spenden/**  (SpendeDetailCard, EditSpendeDialog, BescheinigungsPreview, …)
+          + src/lib/server/domain/spenden.ts  (createSpende/editSpende/allocateBescheinigung — donation-only, safe to edit here)
+          + MOVE routes/app/transactions/[id]/zuwendungsbestaetigung/** → routes/app/spenden/[id]/zuwendungsbestaetigung/**
+          Spenden also RETIRES the old spenden route (AddSpendeDialog/EditSpendeDialog + direct-donations load),
+          migrating to EntryFormShell + listSpendenPage; reuses spenden.ts as the action layer. (Most divergent tab — scope accordingly.)
 
 TIER D  (after C)
   └─ D1  Phase 8 exports + cross-cutting polish (CSV per tab, empty/error/loading states, a11y sweep)
@@ -74,7 +80,7 @@ TIER D  (after C)
 
 - **One file = one owner per tier.** The tab tier (C) is only safe because Phase 3 (B) extracts every shared component first; a C-track must never edit a shared file. If a tab needs a shared change, it goes back to B (do not fork).
 - **`transactions.ts` is a contention point** (Phase 1 adds `createX`/sentinel resolves; Phase 2 adds `listXPage`). Sequence those two within Tier A→B or use a worktree + a single rebasing merge; do not edit it from two tracks simultaneously.
-- **Shared primitives (A3) front-loaded:** Phase 2's `FilterBar` (B1) and Phase 3's forms (B3) both need popover/combobox/multiselect-chip/money-input. Building them once in A3 prevents three half-built copies. (Spec §13 lists these as "to add.")
+- **Shared primitives (A3) front-loaded:** Phase 2's `FilterBar` (B1) and Phase 3's forms (B3) both need `popover`/`combobox`, `multiselect-chip`, `tooltip`, `pagination`. Build them once in A3 (its own plan, `…phase-A3-shared-primitives.md`) to prevent three half-built copies. **`ui/money` and `ui/date-field` already exist — reuse them; do NOT create a `money-input`.** (Spec §13 lists the missing ones "to add"; A3 must be merged before B1/B3.)
 - **Old god-component (`TransactionsList.svelte`) stays live until Tier C retires it per-tab.** Phase 3 (B) leaves the old `/app/transactions` route working behind a redirect only after the three new routes exist; the SEPA/Bulk/Row/Card components are extracted (not deleted) in B3 so all three tabs reuse them.
 
 **Just-in-time vs ahead-of-time:** Phases 1, 2, 3 and the A3 primitives track are planned **now** (their inputs exist). Tabs 4/5/6 are planned **against Phase 3's locked exports** (written immediately after Phase 3 review passes — same author, cross-checked for contract consistency, so no drift). Phase 8 is planned last.

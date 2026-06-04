@@ -1,6 +1,6 @@
 # Transactions Phase 3 — Routing + Nav + Year + Shared Kit Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development (recommended) or superpowers:executing-plans. Steps use `- [ ]`. Read the ROADMAP (esp. the **Parallelization map**) + spec (§3 routing, §6 year, §7/§9 list, §10 detail, §11 viewer, §13 visual). **Depends on Phase 1** (schema, kategorieSphere, seed corpus) **and Phase 2** (FilterBar, `parseFilterState`/`serializeFilterState`, `listAusgabenPage/listEinnahmenPage/listSpendenPage`, `selectYearOrAllFromUrl`/`ALL_YEARS`/`isStaleYear`, saved-views) **and the shared-primitives track A3** (`ui/popover`+combobox, `ui/tooltip`, `ui/pagination`, `ui/money-input`, `ui/multiselect-chip`). Branch: `feat/transactions-three-tabs-v2`.
+> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development (recommended) or superpowers:executing-plans. Steps use `- [ ]`. Read the ROADMAP (esp. the **Parallelization map**) + spec (§3 routing, §6 year, §7/§9 list, §10 detail, §11 viewer, §13 visual). **Depends on Phase 1** (schema, kategorieSphere, seed corpus) **and Phase 2** (FilterBar, `parseFilterState`/`serializeFilterState`, `listAusgabenPage/listEinnahmenPage/listSpendenPage`, `selectYearOrAllFromUrl`/`ALL_YEARS`/`isStaleYear`, saved-views) **and the shared-primitives track A3** (`ui/popover`+combobox, `ui/tooltip`, `ui/pagination`, `ui/multiselect-chip`). **`ui/money` + `ui/date-field` already exist — reuse them; do not create a money-input.** Branch: `feat/transactions-three-tabs-v2`.
 
 **Goal:** Stand up the three flat routes + nav + global-year wiring, and build the **shared UI kit** every tab reuses — so Phases 4/5/6 (Ausgaben/Einnahmen/Spenden) can be implemented fully in parallel, each touching only its own route dir. This phase owns all cross-tab components; a tab track must never edit a shared file.
 
@@ -92,7 +92,7 @@ describe("resolveLayoutYear", () => {
 
 - [ ] **Step 2: Run via fast lane → fails.** `pnpm test:fast --run tests/unit/layout-year-scope.test.ts`
 
-- [ ] **Step 3: Implement** `resolveLayoutYear(params, currentYear, availableYearNumbers)` in `years.ts`: if `?year=all` → `ALL_YEARS`; else `clampYearToAvailable(selectYearFromUrl(params, currentYear), availableYearNumbers)`. Use it in `+layout.server.ts` so `selectedYear: number | "all"`. (Downstream `data.selectedYear` type widens to `YearScope`; the year-switcher gets an "Alle Jahre" option in Task 3.)
+- [ ] **Step 3: Implement** `resolveLayoutYear(params, currentYear, availableYearNumbers): YearScope` in `years.ts`: if `?year=all` → `ALL_YEARS`; else `clampYearToAvailable(selectYearFromUrl(params, currentYear), availableYearNumbers)`. In `+layout.server.ts` expose **both** (so existing consumers don't break — review finding B1): `yearScope` (the `YearScope`, for the three list pages) **and** keep `selectedYear: number` concrete (`yearScope === ALL_YEARS ? currentYear : yearScope`) for the switcher highlight + the dashboard/Mitglieder/EÜR pages that already read `data.selectedYear` as a `number`. Do **not** widen `selectedYear` itself — that would break `Topbar`'s `selectedYear!: number` cast and every existing `=== n` comparison.
 
 - [ ] **Step 4: Run via fast lane → passes.** Expected `3 passed`.
 
@@ -102,7 +102,7 @@ describe("resolveLayoutYear", () => {
 
 ### Task 3: `StaleYearBanner` + "Alle Jahre" switcher option `[model: sonnet]`
 
-**Files:** Create `src/lib/components/admin/StaleYearBanner.svelte`; Modify `YearSwitcher.svelte` + `MobileYearPicker.svelte` (append an "Alle" option, **lists only** — gated by a prop); Test `src/lib/components/admin/StaleYearBanner.test.ts`
+**Files:** Create `src/lib/components/admin/StaleYearBanner.svelte`; Modify `YearSwitcher.svelte` + `MobileYearPicker.svelte` (append an "Alle" option, **lists only** — gated by a prop) **and their change handlers + `Topbar.handleYearChange`** to pass the `"all"` sentinel through (review B1: today both switchers do `parseInt`+`isFinite`, which silently drops `"all"`); Test `src/lib/components/admin/StaleYearBanner.test.ts`
 
 - [ ] **Step 1: Write the failing component test.**
 
@@ -129,7 +129,7 @@ describe("StaleYearBanner", () => {
 
 - [ ] **Step 2: Run → fails.** `pnpm test --run src/lib/components/admin/StaleYearBanner.test.ts` (reset lane — component mount needs setupFiles).
 
-- [ ] **Step 3: Implement** `StaleYearBanner` using `isStaleYear(selectedYear, currentYear)` (Phase 2) — non-dismissible amber `role="status"` "Ansicht: {year} — nicht das laufende Jahr". Add an `allowAllYears` prop path to `YearSwitcher`/`MobileYearPicker` that appends an `{ value: "all", label: "Alle Jahre" }` option (only the three list pages pass it; dashboard/EÜR do not). The switchers already use `SegmentedControl` (string values) — "all" flows through `handleYearChange` → `?year=all`.
+- [ ] **Step 3: Implement** `StaleYearBanner` using `isStaleYear(yearScope, currentYear)` (Phase 2) — non-dismissible amber `role="status"` "Ansicht: {year} — nicht das laufende Jahr". Add an `allowAllYears` prop to `YearSwitcher`/`MobileYearPicker` that appends `{ value: "all", label: "Alle Jahre" }` (only the three list pages pass it). **Edit the change handlers** in `YearSwitcher.svelte`, `MobileYearPicker.svelte`, and `Topbar.handleYearChange` so the value `"all"` is passed through verbatim (skip the `parseInt`/`isFinite` numeric coercion for it) → `goto(?year=all)`; numeric values keep their current path. The switcher highlights "Alle Jahre" when the active `?year` is `all` (compare on the raw string, not the parsed number).
 
 - [ ] **Step 4: Run → passes.** Expected `2 passed`.
 
@@ -137,35 +137,39 @@ describe("StaleYearBanner", () => {
 
 ---
 
-### Task 4: Detail query — thread `belegFileId` + `mimeType` `[model: opus]`
+### Task 4: Detail query — thread Beleg + ALL per-kind detail fields `[model: opus]`
 
-`TransactionDetail` exposes only `belegDriveFileId`/`belegOriginalName` — the §11 viewer needs the Blob `belegFileId` + mime. (Pure-data prerequisite for the shared DetailModalShell + BelegViewer.)
+`TransactionDetail` lacks the Blob `belegFileId`/mime (§11 viewer) **and** the donation detail fields the Spenden detail surface needs (`zweckbindungText`, `spenderAdresse`, `wertermittlungMethode`, `zustandBeschreibung`, `herkunftsbelegFileId`). Threading them ALL here (Phase-3-owned, purely additive) is what lets the Spenden tab (C3) populate its detail **without editing `transactions.ts`** — review parallel-safety blocker B1.
 
 **Files:** Modify `src/lib/server/domain/transactions.ts` (`TransactionDetail` + `getTransactionDetail` join to `files`); Test `tests/integration/detail-beleg.test.ts`
 
-- [ ] **Step 1: Write the failing test** (DB; corpus seeds an expense with a Beleg — or seed one in the test).
+- [ ] **Step 1: Write the failing test** — **self-arranging** (do not assume a seeded Beleg expense exists; review S2): insert a `files` row + an expense with `belegFileId` (via the admin/owner pool, like other integration tests), then assert. Also assert a seeded Sachspende exposes `wertermittlungMethode` + `zustandBeschreibung`.
 
 ```ts
 // tests/integration/detail-beleg.test.ts
 import { describe, it, expect } from "vitest";
 import { getTransactionDetail } from "$lib/server/domain/transactions.js";
-// arrange: pick a seeded expense id that has belegFileId (corpus) ...
-describe("getTransactionDetail beleg", () => {
-  it("returns belegFileId + belegMimeType when a Beleg file is attached", async () => {
-    const detail = await getTransactionDetail(
-      SEEDED_EXPENSE_WITH_BELEG_ID,
-      "expense",
-    );
-    expect(detail).toBeTruthy();
-    expect(detail!).toHaveProperty("belegFileId");
-    expect(detail!).toHaveProperty("belegMimeType");
+// arrange (self-contained): INSERT files row + expenses row with beleg_file_id via admin pool …
+describe("getTransactionDetail per-kind fields", () => {
+  it("expense: returns belegFileId + belegMimeType when a Beleg file is attached", async () => {
+    const detail = await getTransactionDetail(insertedExpenseId, "expense");
+    expect(detail).toMatchObject({
+      belegFileId: expect.any(String),
+      belegMimeType: expect.any(String),
+    });
+  });
+  it("donation: exposes zweckbindungText + Sachspende Wertermittlung fields", async () => {
+    const detail = await getTransactionDetail(seededSachspendeId, "donation");
+    expect(detail!).toHaveProperty("wertermittlungMethode");
+    expect(detail!).toHaveProperty("zustandBeschreibung");
+    expect(detail!).toHaveProperty("zweckbindungText");
   });
 });
 ```
 
 - [ ] **Step 2: Run → fails.** `pnpm test --run tests/integration/detail-beleg.test.ts`
 
-- [ ] **Step 3: Implement.** Add `belegFileId: string | null` + `belegMimeType: string | null` to `TransactionDetail`; in `getTransactionDetail`, left-join `files` on the kind's `belegFileId` and select `files.mimeType`. (Phase 1's seed corpus must attach a Beleg file to ≥1 expense — if not, add a file fixture; note this back to Phase 1's corpus task if missing.)
+- [ ] **Step 3: Implement.** Extend `TransactionDetail` with: `belegFileId: string | null`, `belegMimeType: string | null`, and the donation fields `zweckbindungKind`, `zweckbindungText`, `spenderAdresse`, `wertermittlungMethode`, `zustandBeschreibung`, `herkunftsbelegFileId` (all nullable; only populated for `kind="donation"`). In `getTransactionDetail`, left-join `files` on the kind's `belegFileId` (select `files.mimeType`) and select the donation columns in the donation branch. All additive — existing `[id]` consumers + `TransactionDetailPanel` keep working unchanged.
 
 - [ ] **Step 4: Run → passes.**
 
@@ -179,7 +183,9 @@ Parallel-safe (depends only on Phase 1 `files` + pdfjs). Spec §11.
 
 **Files:** Create `src/lib/components/files/BelegViewer.svelte`; Test `src/lib/components/files/BelegViewer.test.ts`
 
-- [ ] **Step 1: Write the failing component test** (mock pdfjs; assert image path renders `<img>`, pdf path renders a `<canvas>` + controls, and the "Original öffnen" link uses `fileViewUrl`).
+> **Client-import constraint (review S1):** `fileViewUrl`/`fileThumbnailUrl` live in `$lib/server/files/storage.ts` (imports `$lib/server/env`) — they **cannot** be imported into a client `.svelte` component (SvelteKit hard error). `BelegViewer` must **inline** the URL: `` const blobUrl = `/api/files/${fileId}/blob` `` (and `/thumbnail`). Do not import the server helper.
+
+- [ ] **Step 1: Write the failing component test** (mock pdfjs; assert image path renders `<img>`, pdf path renders a `<canvas>` + controls, and the "Original öffnen" link points at `/api/files/<id>/blob`).
 
 ```ts
 // BelegViewer.test.ts
@@ -232,7 +238,7 @@ describe("BelegViewer", () => {
 
 - [ ] **Step 2: Run → fails.** `pnpm test --run src/lib/components/files/BelegViewer.test.ts`
 
-- [ ] **Step 3: Implement** per spec §11: props `{ fileId, mimeType, originalFilename, mode?: "fold"|"inline" }`. Images → `<img src={fileViewUrl(fileId)}>`. PDFs → render page-N to an on-screen `<canvas>` via `pdfjs-dist` (reuse the `?url` worker wiring from `file-compress.ts`: `import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url"`), lazy one page at a time; explicit controls **× / ↗ Original öffnen (`fileViewUrl`) / ↓ / +/− zoom / ‹ › page + dots**; gestures are progressive enhancement. On render failure → fall back to the "Original öffnen" link. `mode="fold"` = mobile peek card → tap opens full-screen; `mode="inline"` = desktop left-column permanent. CSP already allows `img-src blob: data:` + same-origin worker (no change).
+- [ ] **Step 3: Implement** per spec §11: props `{ fileId, mimeType, originalFilename, mode?: "fold"|"inline" }`. Inline the URL (`` const blobUrl = `/api/files/${fileId}/blob` ``) — no server import. Images → `<img src={blobUrl}>`. PDFs → render page-N to an on-screen `<canvas>` via `pdfjs-dist` (reuse the `?url` worker wiring from `file-compress.ts`: `import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url"`), lazy one page at a time; explicit controls **× / ↗ Original öffnen (`blobUrl`) / ↓ / +/− zoom / ‹ › page + dots**; gestures are progressive enhancement. On render failure → fall back to the "Original öffnen" link. `mode="fold"` = mobile peek card → tap opens full-screen; `mode="inline"` = desktop left-column permanent. CSP already allows `img-src blob: data:` + same-origin worker (no change).
 
 - [ ] **Step 4: Run → passes.**
 
@@ -329,7 +335,7 @@ Renders: `{@render kpi()}` → `<FilterBar tab … state=filterState …>` → `
 
 ### Task 8: `EntryFormShell.svelte` + shared field primitives — contract-first `[model: opus]`
 
-The sticky-footer modal shell + reusable fields (Bezeichnung, MoneyInput, DateField, KategoriePicker+SphereBadge, BelegUpload, Kommentar). Per-tab fields (bezahlt-von, Sachspende block, etc.) are injected by 4/5/6 via a snippet.
+The sticky-footer modal shell + reusable fields. Money via the **existing** `ui/money` (display) + a native `<input type=number step=0.01>` mirrored to a hidden cents field (the established `neu` pattern); dates via the **existing** `ui/date-field`; plus new `KategoriePicker`+`SphereBadge`, `BelegUpload`. Per-tab fields (bezahlt-von, Sachspende block, etc.) are injected by 4/5/6 via a snippet.
 
 **Files:** Create `src/lib/components/admin/transactions/EntryFormShell.svelte` + `fields/{KategoriePicker,SphereBadge,BelegUpload}.svelte`; Test the shell + KategoriePicker
 
@@ -373,24 +379,25 @@ Beleg-left (BelegViewer) + fields-right + unified footer; festschreibung read-on
 
 **Files:** Create `src/lib/components/admin/transactions/DetailModalShell.svelte`; Test `…/DetailModalShell.test.ts`
 
-- [ ] **Step 1: Write the failing test** — renders `BelegViewer` on the left when `belegFileId` set, the `fields` snippet on the right, a unified footer with the `workflowAction` snippet + Speichern, and a read-only lock notice when `isFestgeschrieben`.
+- [ ] **Step 1: Write the failing test** — renders the `beleg` snippet on the left when provided, the `fields` snippet on the right, a unified footer with the `workflowAction` snippet + Speichern, and a read-only lock notice when `isFestgeschrieben`.
 
 - [ ] **Step 2: Run → fails.**
 
-- [ ] **Step 3: Implement** contract:
+- [ ] **Step 3: Implement** contract — the shell does **not** reach into `detail.belegFileId`; the tab supplies a `beleg` snippet (review S2), so Spenden can render its `belegFileId` OR the `herkunftsbelegFileId` (or both) via `BelegViewer`:
 
 ```ts
 interface DetailModalShellProps {
-  detail: TransactionDetail; // incl. belegFileId + belegMimeType (Task 4)
+  detail: TransactionDetail; // shared subset (incl. belegFileId/mime + per-kind fields from Task 4)
   isFestgeschrieben: boolean;
-  fields: Snippet; // per-kind editable fields
+  beleg?: Snippet; // left column — tab renders <BelegViewer …> (or nothing)
+  fields: Snippet; // per-kind editable fields (right)
   workflowAction?: Snippet; // per-kind footer action (Als bezahlt / Bescheinigung / Rechnung-link)
   saving: boolean;
   dirty: boolean;
 }
 ```
 
-Desktop: 2-col (BelegViewer `mode="inline"` left | fields+Verlauf right) + unified sticky footer. Mobile: stacked, BelegViewer `mode="fold"`, sticky bottom action bar. Festgeschrieben → fields read-only, footer save hidden, amber notice "Korrektur nur über Storno (Phase 2)". Audit `detail.timeline` rendered as the Verlauf.
+Desktop: 2-col (`{@render beleg?.()}` left | fields+Verlauf right) + unified sticky footer. Mobile: stacked, the tab passes a `BelegViewer mode="fold"` into `beleg`, sticky bottom action bar. Festgeschrieben → fields read-only, footer save hidden, amber notice "Korrektur nur über Storno (Phase 2)". Audit `detail.timeline` rendered as the Verlauf. `beforeNavigate` dirty-guard (mock `$app/navigation` + `$app/stores` in the test).
 
 - [ ] **Step 4: Run → passes.**
 
@@ -401,6 +408,8 @@ Desktop: 2-col (BelegViewer `mode="inline"` left | fields+Verlauf right) + unifi
 ### Task 10: Route shells + redirect `[model: opus]`
 
 The three flat list routes (thin — consume `listXPage` + render scaffold) + redirect the old path. Detail routes (`/app/<tab>/[id]`) are created per-tab in Phases 4/5/6 (they need per-kind content); Phase 3 provides only the shells/components.
+
+> **Bescheinigung route (review B2):** `routes/app/transactions/[id]/zuwendungsbestaetigung/{+page.server.ts,+page.svelte,pdf/+server.ts}` sits under the redirected path and would go dead. It is **moved** to `routes/app/spenden/[id]/zuwendungsbestaetigung/` as part of **Phase 6 (C3)** — Phase 3 only redirects the list page, not this route. Until Phase 6 moves it, keep the old `transactions/[id]/zuwendungsbestaetigung/` route file in place (the 308 is on `transactions/+page.server.ts` only, so the nested route still resolves). C3 owns this move + `components/admin/spenden/**`.
 
 **Files:** Create `src/routes/app/ausgaben/+page.server.ts` + `+page.svelte`, same for `einnahmen` + `spenden`; Modify/redirect `src/routes/app/transactions/+page.server.ts`; Test `tests/unit/ausgaben-route.server.test.ts` (mocked action/load pattern) + an e2e smoke
 
@@ -477,4 +486,5 @@ Shared kit + routing + year are in place. **Tier C unlocks:** Phases 4/5/6 can n
 2. **Placeholder scan:** component tasks are intentionally contract-first (props + one contract test) per the granularity note — not placeholders; T4/T10 flag a Phase-1-corpus dependency (a Beleg-attached expense) with a concrete "note back to Phase 1" — bounded. No TBD.
 3. **Type/signature consistency:** `TransactionListScaffold`/`EntryFormShell`/`DetailModalShell`/`BelegViewer` prop contracts are the Tier-C binding surface and are referenced consistently; `resolveLayoutYear`/`YearScope`/`ALL_YEARS` (T2) align with Phase 2; `listXPage` shape matches Phase 2 Task 5.
 4. **Parallel-safety:** every shared component is created here and owned by Phase 3; Tier-C tabs touch only their own dirs (stated in T11). `TransactionRow` gains `detailHref` so per-tab routes reuse it without forking.
-5. **Open dependency for Phases 4/5/6:** per-tab KPI snippet, column config, per-kind entry fields, per-kind detail fields + workflow action, and the per-tab detail route `/app/<tab>/[id]/+page.server.ts`. A3 primitives (popover/combobox/tooltip/pagination/money-input/multiselect-chip) must be merged before T7/T8 and before Phase 2's FilterBar.
+5. **Open dependency for Phases 4/5/6:** per-tab KPI snippet, column config, per-kind entry fields, per-kind detail fields + workflow action, and the per-tab detail route `/app/<tab>/[id]/+page.server.ts`. A3 primitives (popover/combobox/tooltip/pagination/multiselect-chip — NOT money/date-field, which exist) must be merged before T7/T8 and before Phase 2's FilterBar.
+6. **Parallel-safety (review-fixed):** Task 4 threads ALL per-kind detail fields (incl. donation) so Spenden never edits `transactions.ts`; `DetailModalShell` takes a `beleg` snippet (not `detail.belegFileId`) so Spenden can show its Herkunftsbeleg; the bulk/SEPA components move into `transactions/ausgaben/` (C1-owned); the `zuwendungsbestaetigung` route + `admin/spenden/**` + `spenden.ts` are assigned to C3 (Phase 6) with the old-route retirement scoped there. Ausgaben + Einnahmen + Spenden are now conflict-free parallel tracks. Year widening is avoided: layout exposes `yearScope` (lists) **and** a concrete `selectedYear` (existing consumers); the switchers + `Topbar.handleYearChange` are edited to pass the `"all"` sentinel.
