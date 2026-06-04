@@ -50,6 +50,7 @@ describe.skipIf(!dbConfigured)("migration 0031 constraints", () => {
         name: "Migration 0031 Test",
       })
       .returning({ id: users.id });
+    if (!u) throw new Error("failed to seed actor user");
     ACTOR = u.id;
 
     // A real Beleg file so the positive control on expenses_beleg_or_grund_ck
@@ -70,6 +71,7 @@ describe.skipIf(!dbConfigured)("migration 0031 constraints", () => {
         uploadedByUserId: ACTOR,
       })
       .returning({ id: files.id });
+    if (!f) throw new Error("failed to seed beleg file");
     BELEG_FILE_ID = f.id;
   });
 

@@ -55,6 +55,16 @@ vi.mock("$lib/server/domain/id-allocator.js", () => ({
   allocateBusinessId: vi.fn().mockResolvedValue("E-2026-007"),
 }));
 
+// P1-T10/T12: markInvoiceAsPaid falls back to resolveKategorieByName ONLY when
+// the invoice carries no kategorieId. Mock it so the fallback branch is unit-
+// testable without a DB (and so importing invoices.ts doesn't pull the real
+// transactions module's full dependency graph).
+const mockResolveKategorieByName = vi.fn();
+vi.mock("$lib/server/domain/transactions.js", () => ({
+  resolveKategorieByName: (...args: unknown[]) =>
+    mockResolveKategorieByName(...args),
+}));
+
 vi.mock("$lib/server/files/storage.js", () => ({
   getFileStorage: vi.fn().mockResolvedValue(null),
 }));
@@ -326,6 +336,19 @@ describe("markInvoiceAsPaid — happy path", () => {
     expect(txUpdateImpl).toHaveBeenCalledOnce();
     expect(logAudit).toHaveBeenCalledTimes(2);
 
+    // P1-T10/T12: income.kategorie_id is NOT NULL. markInvoiceAsPaid must
+    // write a NON-null kategorie copied from the invoice (its kategorieId is
+    // set here), never NULL. Guards the invoice→income payment path that
+    // Phase 5's 🔗 surfacing relies on at runtime.
+    const incomeValues = txInsertValues.mock.calls[0]![0] as {
+      kategorieId: string | null;
+      kategorieNameSnapshot: string;
+      sphereSnapshot: string;
+    };
+    expect(incomeValues.kategorieId).toBe(KATEGORIE_ID);
+    expect(incomeValues.kategorieNameSnapshot).toBe("Spende");
+    expect(incomeValues.sphereSnapshot).toBe("ideeller");
+
     // First audit: kind='paid' on the invoice.
     const auditCalls = vi.mocked(logAudit).mock.calls;
     const invoiceAudit = auditCalls[0]![0] as unknown as {
@@ -354,6 +377,56 @@ describe("markInvoiceAsPaid — happy path", () => {
     expect(incomeAudit.entityId).toBe(INCOME_ID_NEW);
     expect(incomeAudit.payload.kind).toBe("created_from_invoice");
     expect(incomeAudit.payload.invoiceId).toBe(INVOICE_ID);
+  });
+
+  it("falls back to resolveKategorieByName when the invoice has no kategorieId", async () => {
+    // An older/imported invoice may carry only the snapshot name, no FK.
+    queueSelectResults(
+      [invoiceRow({ kategorieId: null })], // invoice lookup (no kategorie_id)
+      [], // successor lookup → none
+    );
+    const RESOLVED_KAT_ID = "66666666-6666-4666-8666-666666666666";
+    mockResolveKategorieByName.mockResolvedValue({
+      id: RESOLVED_KAT_ID,
+      name: "Spende",
+      sphere: "ideeller",
+    });
+
+    const txInsertReturning = vi
+      .fn()
+      .mockResolvedValue([{ id: INCOME_ID_NEW }]);
+    const txInsertValues = vi
+      .fn()
+      .mockReturnValue({ returning: txInsertReturning });
+    const txInsertImpl = vi.fn().mockReturnValue({ values: txInsertValues });
+    const txUpdateWhere = vi.fn().mockResolvedValue(undefined);
+    const txUpdateSet = vi.fn().mockReturnValue({ where: txUpdateWhere });
+    const txUpdateImpl = vi.fn().mockReturnValue({ set: txUpdateSet });
+    mockTransaction.mockImplementation(
+      async (cb: (tx: unknown) => Promise<unknown>) => {
+        return cb({ update: txUpdateImpl, insert: txInsertImpl });
+      },
+    );
+
+    const result = await markInvoiceAsPaid(
+      INVOICE_ID,
+      todayBerlinIso(),
+      ACTOR_ID,
+    );
+    expect(result.ok).toBe(true);
+
+    // Resolved by NAME (income kind) from the invoice's snapshot.
+    expect(mockResolveKategorieByName).toHaveBeenCalledWith("income", "Spende");
+
+    // The income row gets the RESOLVED non-null kategorie — never NULL.
+    const incomeValues = txInsertValues.mock.calls[0]![0] as {
+      kategorieId: string | null;
+      kategorieNameSnapshot: string;
+      sphereSnapshot: string;
+    };
+    expect(incomeValues.kategorieId).toBe(RESOLVED_KAT_ID);
+    expect(incomeValues.kategorieNameSnapshot).toBe("Spende");
+    expect(incomeValues.sphereSnapshot).toBe("ideeller");
   });
 });
 

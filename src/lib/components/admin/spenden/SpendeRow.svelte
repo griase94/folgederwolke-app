@@ -17,7 +17,8 @@
 		bescheinigungNr: string | null;
 		bescheinigungAusgestelltAm: string | null;
 		bescheidTyp: 'geldspende' | 'sachspende' | 'aufwandsspende' | 'sammelbestaetigung' | null;
-		kategorieId: string | null;
+		// P1-T10/T12: donations.kategorie_id is now NOT NULL (see SpendenList).
+		kategorieId: string;
 		kategorieNameSnapshot: string;
 		sphereSnapshot: 'ideeller' | 'vermoegen' | 'zweckbetrieb' | 'wirtschaftlich';
 		festgeschriebenAt: string | null;

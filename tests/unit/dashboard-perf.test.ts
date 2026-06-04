@@ -82,11 +82,15 @@ describe.skipIf(!dbConfigured)(
           sphere_snapshot: ke.sphere,
           bezahlt_von_kind: "verein" as const,
           bezahlt_von_display: "Vereinskasse (perf)",
+          // P1-T10: expenses_beleg_or_grund_ck requires either a Beleg or a
+          // Belegverzicht-Begründung. These synthetic perf rows carry no file,
+          // so give them a Verzicht-Grund to satisfy the CHECK.
+          beleg_verzicht_grund: "perf fixture — kein Beleg",
         };
       });
 
       await sql`INSERT INTO income ${sql(incomeRows, "business_id", "gebucht_am", "betrag_cents", "bezeichnung", "kategorie_id", "kategorie_name_snapshot", "sphere_snapshot")}`;
-      await sql`INSERT INTO expenses ${sql(expenseRows, "business_id", "gebucht_am", "betrag_cents", "bezeichnung", "kategorie_id", "kategorie_name_snapshot", "sphere_snapshot", "bezahlt_von_kind", "bezahlt_von_display")}`;
+      await sql`INSERT INTO expenses ${sql(expenseRows, "business_id", "gebucht_am", "betrag_cents", "bezeichnung", "kategorie_id", "kategorie_name_snapshot", "sphere_snapshot", "bezahlt_von_kind", "bezahlt_von_display", "beleg_verzicht_grund")}`;
     }, 30_000);
 
     afterAll(async () => {

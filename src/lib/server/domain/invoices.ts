@@ -35,6 +35,7 @@ import { projects } from "$lib/server/db/schema/projects.js";
 import { files } from "$lib/server/db/schema/files.js";
 import { income } from "$lib/server/db/schema/income.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
+import { resolveKategorieByName } from "$lib/server/domain/transactions.js";
 import { getFileStorage, type FileStorage } from "$lib/server/files/storage.js";
 import { berlinYear } from "$lib/domain/year.js";
 import { bus } from "$lib/server/events/index.js";
@@ -1094,6 +1095,30 @@ export async function markInvoiceAsPaid(
   const betragCentsBig = inv.bruttoCents;
   const betragCents = Number(betragCentsBig);
 
+  // P1-T10/T12: income.kategorie_id is now NOT NULL. A Rechnung is revenue,
+  // so its Kategorie IS an income Kategorie — reuse it. The invoice always
+  // carries a non-null kategorie_name_snapshot + sphere_snapshot; kategorie_id
+  // itself is nullable (e.g. an older/imported invoice). Prefer the invoice's
+  // own kategorie_id when present; otherwise re-resolve the income Kategorie by
+  // its snapshot name so we still write a real, non-null FK (never NULL, never
+  // the Import sentinel — the invoice has a genuine Kategorie).
+  let incomeKategorieId: string;
+  let incomeKategorieName: string;
+  let incomeSphere: typeof inv.sphereSnapshot;
+  if (inv.kategorieId) {
+    incomeKategorieId = inv.kategorieId;
+    incomeKategorieName = inv.kategorieNameSnapshot;
+    incomeSphere = inv.sphereSnapshot;
+  } else {
+    const kat = await resolveKategorieByName(
+      "income",
+      inv.kategorieNameSnapshot,
+    );
+    incomeKategorieId = kat.id;
+    incomeKategorieName = kat.name;
+    incomeSphere = kat.sphere;
+  }
+
   const txResult = await db.transaction(async (tx) => {
     const [incomeRow] = await tx
       .insert(income)
@@ -1106,9 +1131,9 @@ export async function markInvoiceAsPaid(
         betragCents: betragCentsBig,
         currency: "EUR",
         bezeichnung: `Zahlung Rechnung ${invoiceBusinessId}`,
-        kategorieId: inv.kategorieId ?? null,
-        kategorieNameSnapshot: inv.kategorieNameSnapshot,
-        sphereSnapshot: inv.sphereSnapshot,
+        kategorieId: incomeKategorieId,
+        kategorieNameSnapshot: incomeKategorieName,
+        sphereSnapshot: incomeSphere,
         createdByUserId: actorUserId,
       })
       .returning({ id: income.id });

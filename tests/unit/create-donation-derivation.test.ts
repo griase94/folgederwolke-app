@@ -38,6 +38,7 @@ describe.skipIf(!dbConfigured)(
           name: "Donation Derivation Test",
         })
         .returning({ id: users.id });
+      if (!u) throw new Error("failed to seed actor user");
       ACTOR = u.id;
     });
     it("zweckgebunden Geldspende → 'Geldspende zweckgebunden', ideeller, kategorie_id set", async () => {
@@ -59,6 +60,7 @@ describe.skipIf(!dbConfigured)(
         .limit(1);
 
       expect(row).toBeDefined();
+      if (!row) throw new Error("donation row not found");
       expect(row.kategorieNameSnapshot).toBe("Geldspende zweckgebunden");
       expect(row.sphereSnapshot).toBe("ideeller");
       expect(row.kategorieId).not.toBeNull();
@@ -84,6 +86,7 @@ describe.skipIf(!dbConfigured)(
         .limit(1);
 
       expect(row).toBeDefined();
+      if (!row) throw new Error("donation row not found");
       expect(row.kategorieNameSnapshot).toBe("Sachspende");
       expect(row.sphereSnapshot).toBe("ideeller");
       expect(row.kategorieId).not.toBeNull();

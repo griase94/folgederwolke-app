@@ -50,6 +50,7 @@ describe.skipIf(!dbConfigured)(
           name: "Expense/Income Kategorie Test",
         })
         .returning({ id: users.id });
+      if (!u) throw new Error("failed to seed actor user");
       ACTOR = u.id;
 
       const [f] = await getDb()
@@ -68,6 +69,7 @@ describe.skipIf(!dbConfigured)(
           uploadedByUserId: ACTOR,
         })
         .returning({ id: files.id });
+      if (!f) throw new Error("failed to seed beleg file");
       BELEG_FILE_ID = f.id;
     });
 
@@ -79,10 +81,13 @@ describe.skipIf(!dbConfigured)(
         kategorieNameSnapshot: "Bankgebühren",
         bezahltVonKind: "verein",
         bezahltVonDisplay: "Verein",
-        belegVerzichtGrund: "Kontoführungsgebühr",
+        // createExpense persists ONLY belegFileId (it never reads a
+        // belegVerzichtGrund input), so a Beleg is the only way to satisfy
+        // expenses_beleg_or_grund_ck from this path. Attach the seeded file.
+        belegFileId: BELEG_FILE_ID,
         actorUserId: ACTOR,
         businessId,
-      } as any);
+      });
 
       const [row] = await getDb()
         .select()
@@ -91,6 +96,7 @@ describe.skipIf(!dbConfigured)(
         .limit(1);
 
       expect(row).toBeDefined();
+      if (!row) throw new Error("expense row not found");
       expect(row.kategorieId).not.toBeNull();
       expect(row.sphereSnapshot).toBe("ideeller");
       expect(row.kategorieNameSnapshot).toBe("Bankgebühren");
@@ -104,7 +110,7 @@ describe.skipIf(!dbConfigured)(
         kategorieNameSnapshot: "Eintritt",
         actorUserId: ACTOR,
         businessId,
-      } as any);
+      });
 
       const [row] = await getDb()
         .select()
@@ -113,6 +119,7 @@ describe.skipIf(!dbConfigured)(
         .limit(1);
 
       expect(row).toBeDefined();
+      if (!row) throw new Error("income row not found");
       expect(row.kategorieId).not.toBeNull();
       expect(row.sphereSnapshot).toBe("zweckbetrieb");
       expect(row.kategorieNameSnapshot).toBe("Eintritt");
@@ -127,7 +134,7 @@ describe.skipIf(!dbConfigured)(
         belegFileId: BELEG_FILE_ID,
         actorUserId: ACTOR,
         businessId,
-      } as any);
+      });
 
       const [row] = await getDb()
         .select()
@@ -136,6 +143,7 @@ describe.skipIf(!dbConfigured)(
         .limit(1);
 
       expect(row).toBeDefined();
+      if (!row) throw new Error("income row not found");
       expect(row.belegFileId).toBe(BELEG_FILE_ID);
     });
   },

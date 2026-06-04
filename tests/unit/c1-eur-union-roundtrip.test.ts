@@ -35,6 +35,16 @@ describe.skipIf(!dbConfigured)(
       >`SELECT id, name FROM kategorien WHERE kind='income' AND sphere='ideeller' LIMIT 1`;
       if (!k) throw new Error("c1-union: missing ideeller income kategorie");
 
+      // P1-T10: donations.kategorie_id is now NOT NULL. A Geldspende's
+      // Kategorie is the seeded income kategorie "Geldspende zweckfrei".
+      const [kd] = await sql<
+        { id: string; name: string }[]
+      >`SELECT id, name FROM kategorien
+        WHERE kind='income' AND name='Geldspende zweckfrei' LIMIT 1`;
+      if (!kd) {
+        throw new Error("c1-union: missing 'Geldspende zweckfrei' kategorie");
+      }
+
       // 1 income (10000 cents = 100 €)
       await sql`
         INSERT INTO income (
@@ -56,14 +66,15 @@ describe.skipIf(!dbConfigured)(
       await sql`
         INSERT INTO donations (
           business_id, gebucht_am, betrag_cents, spender_name,
-          kategorie_name_snapshot, sphere_snapshot,
+          kategorie_id, kategorie_name_snapshot, sphere_snapshot,
           spende_kind, zweckbindung_kind
         ) VALUES (
           ${DON_BID},
           ${`${YEAR}-04-15 10:00:00+01`},
           50000,
           'c1 union spender',
-          'Geldspende',
+          ${kd.id},
+          ${kd.name},
           'ideeller',
           'geldspende',
           'zweckfrei'
