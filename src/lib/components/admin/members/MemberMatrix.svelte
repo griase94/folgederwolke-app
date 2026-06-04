@@ -20,6 +20,8 @@
 	import { Popover, ContextMenu } from 'bits-ui';
 	import { SvelteMap } from 'svelte/reactivity';
 	import Lock from '@lucide/svelte/icons/lock';
+	import Users from '@lucide/svelte/icons/users';
+	import { EmptyState } from '$lib/components/ui/empty-state/index.js';
 	import MatrixCell from './MatrixCell.svelte';
 	import MarkPaidPopover from './MarkPaidPopover.svelte';
 	import PaidCellPopover from './PaidCellPopover.svelte';
@@ -132,6 +134,14 @@
 		activeTrigger?.focus();
 	}
 
+	// ── Haptic feedback (Task 3.2 / spec §16 J1) ─────────────────────────────
+	// navigator.vibrate is not available on all browsers/devices. Always guard.
+	function hapticSuccess() {
+		if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+			navigator.vibrate(10);
+		}
+	}
+
 	// ── Mutations ────────────────────────────────────────────────────────────────
 	async function post(
 		action: string,
@@ -172,6 +182,7 @@
 			return;
 		}
 		popoverOpen = false;
+		hapticSuccess();
 		await invalidateAll();
 		toast.success(`${memberName(detail.memberId)} ${detail.year} als bezahlt markiert`, {
 			duration: 10000,
@@ -203,6 +214,7 @@
 			return;
 		}
 		popoverOpen = false;
+		hapticSuccess();
 		await invalidateAll();
 		toast.success(
 			`${memberName(detail.memberId)} für ${detail.year} befreit (Grund: ${detail.reason})`,
@@ -236,6 +248,7 @@
 			return;
 		}
 		popoverOpen = false;
+		hapticSuccess();
 		await invalidateAll();
 		toast.success(`Zahlung ${memberName(detail.memberId)} ${detail.year} storniert`, {
 			duration: 10000
@@ -256,6 +269,7 @@
 			return;
 		}
 		popoverOpen = false;
+		hapticSuccess();
 		await invalidateAll();
 		toast.success(`Befreiung ${memberName(detail.memberId)} ${detail.year} aufgehoben`, {
 			duration: 10000
@@ -349,9 +363,18 @@
 
 		<!-- Member rows -->
 		{#if matrix.members.length === 0}
+			<!-- aria-hidden on the decorative EmptyState inner elements; the row/gridcell
+			     ARIA structure stays intact for assistive-technology grid navigation. -->
 			<div role="row" class="flex">
-				<div role="gridcell" class="flex-1 px-4 py-8 text-center text-sm text-muted-foreground">
-					Noch keine Mitglieder
+				<div role="gridcell" class="flex-1 px-2 py-4">
+					<EmptyState
+						title="Noch keine Mitglieder"
+						description="Füge das erste Mitglied hinzu, um Beiträge zu verwalten."
+					>
+						{#snippet icon()}
+							<Users size={32} aria-hidden="true" />
+						{/snippet}
+					</EmptyState>
 				</div>
 			</div>
 		{:else}
