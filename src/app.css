@@ -325,6 +325,22 @@
   }
 }
 
+/* ── Long-list performance (Task 3.5) ───────────────────────────────────────
+   content-visibility: auto defers paint/layout of off-screen rows until the
+   browser decides they are close to the viewport, significantly reducing
+   initial render work for long lists. contain-intrinsic-size gives the browser
+   a size estimate so the scrollbar height stays stable even when rows are
+   skipped — set close to the actual rendered row height to minimise reflow.
+
+   .fdw-cv-row — used on MemberMatrix member rows (~48px) and RecentActivity
+   items (~48px). */
+@layer utilities {
+  .fdw-cv-row {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 48px;
+  }
+}
+
 /* Rosa primary ramp — overrides shadcn zinc primary with brand color */
 @theme {
   --color-primary: oklch(0.43 0.2 350); /* ≈ #BE185D rosa */
