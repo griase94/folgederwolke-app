@@ -10,4 +10,5 @@ export interface MultiselectChipProps {
   label: string;
   value: string;
   onRemove: () => void;
+  class?: string;
 }

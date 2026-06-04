@@ -1,12 +1,16 @@
 <script lang="ts">
+	import { cn } from "$lib/utils.js";
+
 	let {
 		label,
 		value,
 		onRemove,
+		class: className,
 	}: {
 		label: string;
 		value: string;
 		onRemove: () => void;
+		class?: string;
 	} = $props();
 
 	function onKeyDown(e: KeyboardEvent) {
@@ -25,7 +29,10 @@
 -->
 <span
 	data-slot="filter-chip"
-	class="inline-flex items-center gap-1 rounded-full border border-border bg-secondary px-2 py-0.5 text-sm"
+	class={cn(
+		"inline-flex items-center gap-1 rounded-full border border-border bg-secondary px-2 py-0.5 text-sm",
+		className
+	)}
 >
 	<span class="text-muted-foreground">{label}</span>
 	<span class="font-medium">{value}</span>
