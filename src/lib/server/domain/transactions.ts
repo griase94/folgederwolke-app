@@ -600,6 +600,10 @@ export interface CreateExpenseInput {
   projectId?: string | null;
   /** C2-TAX: FK into the normalized `files` table for the attached Beleg. */
   belegFileId?: string | null;
+  // P1 (spec §4.1): "Kein Beleg vorhanden → Begründung". An expense satisfies
+  // expenses_beleg_or_grund_ck by EITHER a belegFileId OR a Verzicht-Begründung.
+  // Persist this so Phase 4's Ausgaben form can save the no-Beleg case.
+  belegVerzichtGrund?: string | null;
   actorUserId: string;
   businessId: string;
 }
@@ -695,6 +699,9 @@ export async function createExpense(
       projectId: input.projectId ?? null,
       // C2-TAX: FK into the normalized `files` table for the attached Beleg.
       belegFileId: input.belegFileId ?? null,
+      // P1 (spec §4.1): persist the Verzicht-Begründung so the kein-Beleg case
+      // satisfies expenses_beleg_or_grund_ck without an attached file.
+      belegVerzichtGrund: input.belegVerzichtGrund ?? null,
       status: "geprueft",
       approvedAt: new Date(),
       approvedByUserId: input.actorUserId,
