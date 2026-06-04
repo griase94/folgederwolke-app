@@ -115,7 +115,7 @@
 	     Gated on !prefersReducedMotion (spec §16 I1 / prefers-reduced-motion). -->
 	{#if showConfetti && !prefersReducedMotion}
 		<div class="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-			{#each { length: 20 } as _, i}
+			{#each { length: 20 } as _, i (i)}
 				<span
 					class="confetti-particle"
 					style:--i={i}
