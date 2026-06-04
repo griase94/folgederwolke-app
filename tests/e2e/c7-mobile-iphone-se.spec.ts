@@ -46,7 +46,9 @@ async function signIn(
   ]);
 }
 
-test.use({ ...devices["iPhone SE"] });
+// devices["iPhone SE"] sets defaultBrowserType: "webkit"; CI only installs
+// Chromium, so override browserName to "chromium".
+test.use({ ...devices["iPhone SE"], browserName: "chromium" });
 
 test.beforeEach(async () => {
   if (!process.env["DATABASE_URL"]) {

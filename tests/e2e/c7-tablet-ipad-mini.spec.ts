@@ -45,7 +45,9 @@ async function signIn(
   ]);
 }
 
-test.use({ ...devices["iPad Mini"] });
+// devices["iPad Mini"] sets defaultBrowserType: "webkit"; CI only installs
+// Chromium, so override browserName to "chromium".
+test.use({ ...devices["iPad Mini"], browserName: "chromium" });
 
 test.beforeEach(async () => {
   if (!process.env["DATABASE_URL"]) {
