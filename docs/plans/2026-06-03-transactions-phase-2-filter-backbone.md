@@ -745,6 +745,12 @@ export async function listAusgabenPage(opts: {
 // listEinnahmenPage / listSpendenPage analogous with their builders + projections.
 ```
 
+**Per-tab row projections MUST include each tab's display-specific fields** (so the tab tracks in Tier C render without ever editing `transactions.ts` — parallel-safety):
+- **Ausgaben row:** the base fields + `status`, `bezahltVonKind`, `bezahltVonDisplay`, `erstattetAm`, `belegFileId` (presence), `approvedAt` (for the "offen"/aging logic).
+- **Einnahmen row:** base + `rechnungBusinessId: string | null` via a correlated subquery/left-join on `invoices.paidByIncomeId = income.id` (the 🔗 badge source — there is no income column, so project it here, NOT in the tab).
+- **Spenden row:** base + `spenderName`, `spendeKind`, `zweckbindungKind`, `bescheinigungNr` (the Bescheinigung-status + Art/Zweckbindung columns).
+Define a `*Row` type per tab next to each `listXPage`; the Phase-3 `TransactionListScaffold` `ColumnDef.render` snippets bind to these fields.
+
 - [ ] **Step 4: Run → passes.**
 
 Run: `pnpm test --run tests/integration/transaction-list-queries.test.ts`
