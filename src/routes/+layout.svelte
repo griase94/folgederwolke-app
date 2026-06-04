@@ -6,12 +6,36 @@
 	import PwaUpdater from '$lib/components/pwa/PwaUpdater.svelte';
 	import { injectSpeedInsights } from '@vercel/speed-insights/sveltekit';
 	import { page } from '$app/state';
+	import { onNavigate } from '$app/navigation';
 
 	let { children, data }: { children: Snippet; data: LayoutData } = $props();
 	// Favicon links live in src/app.html (PM-001 fix): a multi-format set
 	// (favicon.svg + favicon-16.png + favicon-32.png + favicon.ico). We
 	// deliberately do NOT import a logo asset here — the previous code
 	// imported the Svelte default favicon, which leaked into every tab.
+
+	// D) View Transitions — progressive enhancement for cross-route navigation.
+	// Wraps SvelteKit's navigation lifecycle in document.startViewTransition()
+	// so the browser renders a smooth 150ms cross-fade between pages.
+	// Guards:
+	//   - typeof document check for SSR safety (onNavigate can run server-side
+	//     in some SvelteKit versions, but we guard anyway for belt-and-suspenders)
+	//   - document.startViewTransition existence check (unsupported browsers
+	//     simply skip this; navigation proceeds normally)
+	//   - prefers-reduced-motion: if the user has requested reduced motion we
+	//     skip the transition entirely so the CSS @keyframes never play
+	// The #fdw-launch overlay is removed via onMount (before any navigate fires),
+	// so view transitions never interact with it.
+	onNavigate((navigation) => {
+		if (typeof document === 'undefined' || !document.startViewTransition) return;
+		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		return new Promise((resolve) => {
+			document.startViewTransition(async () => {
+				resolve();
+				await navigation.complete;
+			});
+		});
+	});
 
 	// A) Vercel Speed Insights — RUM beacon served from /_vercel/speed-insights/*
 	// (same-origin), so existing script-src/connect-src 'self' covers it.
