@@ -178,3 +178,15 @@ export const mailStatusEnum = pgEnum("mail_status", [
   "bounced",
   "failed",
 ]);
+
+/**
+ * Wertermittlungs-Methode for Sachspenden — how the donation's value was
+ * established (SPEC-02 Wertermittlung). Drives the Zuwendungsbestätigung
+ * legal-text branch.
+ */
+export const wertermittlungMethodeEnum = pgEnum("wertermittlung_methode", [
+  "marktpreis",
+  "kaufbeleg",
+  "schaetzung",
+  "buchwert",
+]);

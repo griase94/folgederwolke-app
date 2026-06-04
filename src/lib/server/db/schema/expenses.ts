@@ -147,6 +147,11 @@ export const expenses = pgTable(
     belegFileId: uuid("beleg_file_id").references(() => files.id, {
       onDelete: "restrict",
     }),
+    /**
+     * Free-text reason a Beleg is absent (Eigenbeleg / Belegverzicht), additive
+     * via migration 0029. NULL when a Beleg is present.
+     */
+    belegVerzichtGrund: text("beleg_verzicht_grund"),
 
     // --- Workflow status (Inbox → Geprüft → Erstattet) ---
     status: statusEnum("status").notNull().default("zu_pruefen"),
