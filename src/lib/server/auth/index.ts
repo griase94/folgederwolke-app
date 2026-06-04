@@ -318,16 +318,57 @@ export async function resolveSession(
   const db = getDb();
   const tokenHash = sha256(rawToken);
 
-  const row = await db.query.sessions.findFirst({
-    where: eq(sessions.tokenHash, tokenHash),
-  });
-  if (!row) return null;
+  // PR1 latency: single JOIN replaces two serial round-trips (sessions lookup
+  // then users lookup). All security checks below are byte-for-byte identical
+  // to the original two-query path.
+  const rows = await db
+    .select({
+      // session fields
+      sessionId: sessions.id,
+      sessionUserId: sessions.userId,
+      sessionTokenHash: sessions.tokenHash,
+      sessionIssuedAt: sessions.issuedAt,
+      sessionLastUsedAt: sessions.lastUsedAt,
+      sessionExpiresAt: sessions.expiresAt,
+      sessionRevokedAt: sessions.revokedAt,
+      sessionDeviceFingerprint: sessions.deviceFingerprint,
+      // user fields
+      userId: users.id,
+      userEmail: users.email,
+      userEmailCanonical: users.emailCanonical,
+      userName: users.name,
+      userRole: users.role,
+      userDisabledAt: users.disabledAt,
+      userCreatedAt: users.createdAt,
+      userUpdatedAt: users.updatedAt,
+    })
+    .from(sessions)
+    .innerJoin(users, eq(users.id, sessions.userId))
+    .where(eq(sessions.tokenHash, tokenHash))
+    .limit(1);
+
+  const joined = rows[0];
+  if (!joined) return null;
+
+  // Reconstruct the session row shape expected by the rest of this function
+  // (same shape as sessions.$inferSelect).
+  const row: typeof sessions.$inferSelect = {
+    id: joined.sessionId,
+    userId: joined.sessionUserId,
+    tokenHash: joined.sessionTokenHash,
+    issuedAt: joined.sessionIssuedAt,
+    lastUsedAt: joined.sessionLastUsedAt,
+    expiresAt: joined.sessionExpiresAt,
+    revokedAt: joined.sessionRevokedAt,
+    deviceFingerprint: joined.sessionDeviceFingerprint,
+  };
 
   const now = Date.now();
   const idleMs = now - row.lastUsedAt.getTime();
   const absMs = now - row.issuedAt.getTime();
 
-  // Idle (7d) + absolute (30d) enforcement (MUST-fix #4)
+  // Idle (7d) + absolute (30d) enforcement (MUST-fix #4) — stays awaited
+  // (correctness: must complete before returning null).
   if (
     idleMs > 7 * 86400_000 ||
     absMs > 30 * 86400_000 ||
@@ -338,23 +379,25 @@ export async function resolveSession(
     return null;
   }
 
-  // Debounced touch: only update lastUsedAt if >60s since last write
+  // PR1 latency: non-blocking touch — fire-and-forget so the debounced write
+  // never gates the first byte. The >60s guard is preserved exactly.
+  // Expiry deletes (above) remain awaited; only this benign touch is void'd.
   if (idleMs > 60_000) {
-    await db
+    void db
       .update(sessions)
       .set({ lastUsedAt: new Date() })
-      .where(eq(sessions.id, row.id));
+      .where(eq(sessions.id, row.id))
+      .catch(() => {
+        // Swallow — a missed touch means the next request re-touches; idle
+        // timeout is still enforced via lastUsedAt from the JOIN read above.
+      });
   }
-
-  const user = await db.query.users.findFirst({
-    where: eq(users.id, row.userId),
-  });
-  if (!user) return null;
 
   // Re-check the admin allowlist on every request. Without this, removing
   // a user from ADMIN_EMAILS has no effect for up to 30 days (the session
   // absolute lifetime). Flagged by the 2026-05-19 security review (CRIT-3).
-  if (!isAdminEmail(user.emailCanonical)) {
+  // Stays awaited (correctness: must complete before returning null).
+  if (!isAdminEmail(joined.userEmailCanonical)) {
     await db.delete(sessions).where(eq(sessions.id, row.id));
     clearSessionCookie(cookies);
     return null;
@@ -363,11 +406,11 @@ export async function resolveSession(
   return {
     session: row,
     user: {
-      id: user.id,
-      email: user.email,
-      emailCanonical: user.emailCanonical,
-      name: user.name,
-      role: user.role,
+      id: joined.userId,
+      email: joined.userEmail,
+      emailCanonical: joined.userEmailCanonical,
+      name: joined.userName,
+      role: joined.userRole,
     },
   };
 }

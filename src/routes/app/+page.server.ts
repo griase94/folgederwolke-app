@@ -13,6 +13,11 @@
  *   cashflow                 — 2-card headline + 4-chip block (year-scoped)
  *   The ?year=NNNN URL param scopes the cashflow + WGB to a fiscal year
  *   (C2 year-switcher contract).
+ *
+ * PR1 latency optimisations:
+ *   - beitragsRows moved INTO the Promise.all fan-out (was serial tail).
+ *   - festgeschriebenBis read removed — taken from layout data via parent()
+ *     to avoid duplicating the settings read already done in +layout.server.ts.
  */
 
 import type { PageServerLoad } from "./$types.js";
@@ -25,47 +30,15 @@ import { getDb } from "$lib/server/db/index.js";
 import { sql } from "drizzle-orm";
 import { berlinYear } from "$lib/domain/year.js";
 
-/**
- * Read `settings.festgeschrieben_bis` for the C3-4 year-lock badge.
- * Returns the year as a number, or `null` when not set / unparseable.
- * Kept local to the dashboard load so we don't introduce a cross-domain
- * dependency just for this one read.
- */
-async function fetchFestgeschriebenBis(): Promise<number | null> {
-  const db = getDb();
-  const rows = await db.execute<{ value: unknown }>(
-    sql`SELECT value FROM settings WHERE key = 'festgeschrieben_bis'`,
-  );
-  const row = (rows as { value: unknown }[])[0];
-  if (!row) return null;
-  const v = row.value;
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (typeof v === "string") {
-    const parsed = Number(v.replace(/^"|"$/g, ""));
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, parent }) => {
   const yearParam = url.searchParams.get("year");
   const yearArg = yearParam ? parseInt(yearParam, 10) : undefined;
   const year = Number.isFinite(yearArg) ? yearArg : undefined;
 
-  const [kpis, recentActivity, festgeschriebenBis, topProjekte] =
-    await Promise.all([
-      loadDashboardKpis(year),
-      loadRecentActivity(),
-      fetchFestgeschriebenBis(),
-      topActiveProjects(5),
-    ]);
-
-  // C4-DASH-lite: load Beiträge totals for the dashboard widget (O-3/M-1).
-  // We inline the aggregation here; once C5-MEM-lite's `memberBeitragsTotals`
-  // helper lands, the post-Wave-1 integration test compares numbers and a
-  // follow-up swaps this block for the shared helper.
+  // PR1: beitragsRows moved inside the fan-out so all four queries run in
+  // parallel (was: awaited after the Promise.all — a serial tail round-trip).
   const beitragsYear = berlinYear();
-  const beitragsRows = await getDb().execute<{
+  const beitragsQuery = getDb().execute<{
     member_count: string;
     paid_count: string;
     paid_cents: string;
@@ -97,6 +70,19 @@ export const load: PageServerLoad = async ({ url }) => {
     LEFT JOIN beitragssatz_by_year bs ON bs.year = mb.year
     WHERE mb.year = ${beitragsYear}
   `);
+
+  // PR1: festgeschriebenBis is already read by +layout.server.ts for every
+  // /app/* request — pull it from parent() instead of issuing a duplicate
+  // settings read. The parent() call resolves from already-computed layout
+  // data and does NOT cause an additional round-trip.
+  const [kpis, recentActivity, topProjekte, beitragsRows, layoutData] =
+    await Promise.all([
+      loadDashboardKpis(year),
+      loadRecentActivity(),
+      topActiveProjects(5),
+      beitragsQuery,
+      parent(),
+    ]);
   const br = (
     beitragsRows as unknown as Array<{
       member_count: string;
@@ -142,7 +128,8 @@ export const load: PageServerLoad = async ({ url }) => {
     // C3 cashflow block — all values are plain numbers (no BigInt).
     cashflow: kpis.cashflow,
     // C3-4 (cycle 2): year-lock signal for the cashflow header badge.
-    festgeschriebenBis,
+    // PR1: taken from layout data (no extra round-trip).
+    festgeschriebenBis: layoutData.festgeschriebenBis,
     // C4-DASH-lite: BeitragsuebersichtWidget data.
     beitragsuebersicht,
     // C1-PRJ-B/C: top 5 active projects by |saldo| for the dashboard widget.

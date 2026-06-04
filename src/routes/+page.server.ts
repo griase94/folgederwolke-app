@@ -19,12 +19,12 @@
 import { redirect } from "@sveltejs/kit";
 import type { PageServerLoad } from "./$types.js";
 import { isPublicFormEnabled } from "$lib/server/env.js";
-import { resolveSession } from "$lib/server/auth/index.js";
 
-export const load: PageServerLoad = async ({ cookies }) => {
-  const session = await resolveSession(cookies).catch(() => null);
-
-  if (session) {
+export const load: PageServerLoad = async ({ locals }) => {
+  // hooks.server.ts already called resolveSession and populated locals.session
+  // for this same request — read it here instead of making a second DB
+  // round-trip (PR1 latency optimisation).
+  if (locals.session) {
     throw redirect(302, "/app");
   }
 
