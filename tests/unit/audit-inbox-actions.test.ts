@@ -67,6 +67,17 @@ interface ExpenseRow {
   externName: string | null;
   externIban: string | null;
   externEmail: string | null;
+  kategorieId: string | null;
+  kategorieNameSnapshot: string | null;
+}
+
+// P1-T9: the seeded per-kind "Unkategorisiert (Import)" sentinel kategorie
+// (Task 5) that approveSubmission resolves to fill a non-null kategorie_id.
+interface KategorieRow {
+  id: string;
+  kind: "expense" | "income";
+  name: string;
+  sphere: string;
 }
 
 interface MemberRow {
@@ -78,6 +89,11 @@ interface MemberRow {
 const submissionsStore = new Map<string, SubmissionRow>();
 const expensesStore = new Map<string, ExpenseRow>();
 const membersStore = new Map<string, MemberRow>();
+// P1-T9: kategorien store, seeded each test with the expense Import sentinel
+// so approveSubmission's sentinel resolution finds a row.
+const kategorienStore = new Map<string, KategorieRow>();
+const IMPORT_SENTINEL_NAME = "Unkategorisiert (Import)";
+let importSentinelId = "";
 // festBis = null → no festschreibung.
 let festBisOverride: number | null = null;
 
@@ -136,6 +152,8 @@ function makeExpense(overrides: Partial<ExpenseRow> = {}): ExpenseRow {
     externName: null,
     externIban: null,
     externEmail: null,
+    kategorieId: null,
+    kategorieNameSnapshot: null,
     ...overrides,
   };
   expensesStore.set(id, row);
@@ -147,8 +165,12 @@ function makeExpense(overrides: Partial<ExpenseRow> = {}): ExpenseRow {
 // ---------------------------------------------------------------------------
 
 interface PendingSelect {
-  table: "submissions" | "expenses" | "members";
-  whereField?: keyof SubmissionRow | keyof ExpenseRow | keyof MemberRow;
+  table: "submissions" | "expenses" | "members" | "kategorien";
+  whereField?:
+    | keyof SubmissionRow
+    | keyof ExpenseRow
+    | keyof MemberRow
+    | keyof KategorieRow;
   whereValue?: unknown;
 }
 
@@ -158,8 +180,11 @@ function makeDbFake() {
     const chain = {
       from(table: { _kind?: string } & Record<string, unknown>) {
         ctx.table =
-          (table._kind as "submissions" | "expenses" | "members") ??
-          "submissions";
+          (table._kind as
+            | "submissions"
+            | "expenses"
+            | "members"
+            | "kategorien") ?? "submissions";
         return chain;
       },
       where(cond: { field: string; value: unknown }) {
@@ -185,6 +210,16 @@ function makeDbFake() {
           rows = [...expensesStore.values()].filter((r) =>
             ctx.whereField
               ? r[ctx.whereField as keyof ExpenseRow] === ctx.whereValue
+              : true,
+          );
+        } else if (ctx.table === "kategorien") {
+          // P1-T9: the sentinel resolution does
+          // where(and(eq(kind,…), eq(name,…))). The `and(...)` mock collapses
+          // to its first arg (the kind eq), so we filter by kind only — the
+          // store holds a single expense sentinel, so this is unambiguous.
+          rows = [...kategorienStore.values()].filter((r) =>
+            ctx.whereField
+              ? r[ctx.whereField as keyof KategorieRow] === ctx.whereValue
               : true,
           );
         } else {
@@ -247,6 +282,11 @@ function makeDbFake() {
               (ctx.values.bezahltVonMemberId as string | null) ?? null,
             externEmail: (ctx.values.externEmail as string | null) ?? null,
             externName: (ctx.values.externName as string | null) ?? null,
+            // P1-T9: thread the kategorie fields the INSERT sets so the test
+            // can assert a non-null kategorie_id on the stored expense.
+            kategorieId: (ctx.values.kategorieId as string | null) ?? null,
+            kategorieNameSnapshot:
+              (ctx.values.kategorieNameSnapshot as string | null) ?? null,
           });
           return Promise.resolve([{ id: row.id, businessId: row.businessId }]);
         }
@@ -398,6 +438,19 @@ vi.mock("$lib/server/db/schema/zahlungsarten.js", () => ({
   zahlungsarten: { _kind: "zahlungsarten" },
 }));
 
+// P1-T9: approveSubmission resolves the expense Import sentinel via
+// select().from(kategorien).where(and(eq(kind), eq(name))). Mock the schema
+// shape so the fake's `from` tags the table correctly.
+vi.mock("$lib/server/db/schema/kategorien.js", () => ({
+  kategorien: {
+    _kind: "kategorien",
+    id: "id",
+    kind: "kind",
+    name: "name",
+    sphere: "sphere",
+  },
+}));
+
 // Make drizzle's `eq(col, val)` and `and(...)` return shapes our update/select
 // `where` helpers can read.
 vi.mock("drizzle-orm", async () => {
@@ -438,10 +491,20 @@ beforeEach(() => {
   submissionsStore.clear();
   expensesStore.clear();
   membersStore.clear();
+  kategorienStore.clear();
   emitMock.mockClear();
   festBisOverride = null;
   nextExpenseId = 1;
   uniqueViolationOnNextInsert = false;
+
+  // P1-T9: seed the expense Import sentinel (Task 5 seeds this for real).
+  importSentinelId = "kat-import-expense";
+  kategorienStore.set(importSentinelId, {
+    id: importSentinelId,
+    kind: "expense",
+    name: IMPORT_SENTINEL_NAME,
+    sphere: "ideeller",
+  });
 });
 
 afterEach(() => {
@@ -569,6 +632,30 @@ describe("approveSubmission — idempotency", () => {
     expect(exp.bezahltVonKind).toBe("extern");
     expect(exp.externName).toBe("Lea Mustermann");
     expect(exp.externEmail).toBe("lea@example.com");
+  });
+
+  it("sets a non-null kategorie_id (interim Import sentinel)", async () => {
+    // arrange: a pending submission via the existing in-memory helper.
+    const sub = makeSubmission({ businessId: "AUS-2026-009" });
+
+    // act
+    const result = await approveSubmission({
+      submissionId: sub.id,
+      actorUserId: "admin-1",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // assert: the approved expense carries the seeded sentinel's id, and the
+    // snapshot is CONSISTENT with the resolved sentinel name (not the old
+    // hardcoded "(Unkategorisiert)" placeholder).
+    const [row] = [...expensesStore.values()].filter(
+      (r) => r.id === result.expenseId,
+    );
+    expect(row).toBeDefined();
+    expect(row!.kategorieId).not.toBeNull();
+    expect(row!.kategorieId).toBe(importSentinelId);
+    expect(row!.kategorieNameSnapshot).toBe(IMPORT_SENTINEL_NAME);
   });
 });
 

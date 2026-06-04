@@ -24,6 +24,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
+import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { sentMails } from "$lib/server/db/schema/mails.js";
 import { bus } from "$lib/server/events/index.js";
@@ -190,6 +191,50 @@ function buchungsjahrForSubmission(rechnungsdatum: string | null): number {
 }
 
 // ---------------------------------------------------------------------------
+// Interim Import-sentinel kategorie (spec §4.6)
+// ---------------------------------------------------------------------------
+
+/** Per-kind "Unkategorisiert (Import)" sentinel name (seeded by Task 5). */
+const IMPORT_SENTINEL_NAME = "Unkategorisiert (Import)";
+
+/**
+ * Resolve the seeded expense "Unkategorisiert (Import)" sentinel kategorie
+ * → { id, name }. Inline query (mirrors import/runner.ts) rather than
+ * importing `resolveKategorieByName` from transactions.ts: there is no import
+ * cycle today (transactions.ts does not import this module), but the inline
+ * query keeps this module's dependency surface minimal and matches the
+ * established runner.ts precedent for exactly this sentinel.
+ *
+ * Throws if missing — without it we cannot guarantee a non-null kategorie_id
+ * (the NOT NULL constraint lands in a later task), so failing loudly beats
+ * silently writing nulls.
+ */
+async function fetchImportSentinelKategorie(): Promise<{
+  id: string;
+  name: string;
+}> {
+  const db = getDb();
+  const rows = await db
+    .select({ id: kategorien.id, name: kategorien.name })
+    .from(kategorien)
+    .where(
+      and(
+        eq(kategorien.kind, "expense"),
+        eq(kategorien.name, IMPORT_SENTINEL_NAME),
+      ),
+    )
+    .limit(1);
+  const row = rows[0];
+  if (!row) {
+    throw new Error(
+      `Import-Sentinel "${IMPORT_SENTINEL_NAME}" (kind=expense) fehlt in kategorien.` +
+        ` Seed (Task 5) muss vor der Freigabe laufen.`,
+    );
+  }
+  return row;
+}
+
+// ---------------------------------------------------------------------------
 // approveSubmission
 // ---------------------------------------------------------------------------
 
@@ -318,6 +363,14 @@ export async function approveSubmission(
   const expenseBusinessId = submission.businessId;
   const bezahltVonKind = submission.bezahltVonKind;
 
+  // Interim — the standalone Phase 4.5 (Inbox Kategorie gate) replaces this
+  // with a required Kategorie picker on approval (spec §4.6).
+  // Resolve the expense Import sentinel ONCE so the INSERT can set a non-null
+  // kategorie_id (closes the null path before the NOT NULL constraint lands
+  // in a later task). Resolved outside the tx — a missing sentinel is a hard
+  // config error, not a per-row condition.
+  const sentinel = await fetchImportSentinelKategorie();
+
   type ApproveTxResult =
     | { kind: "created"; id: string; businessId: string }
     | { kind: "existed"; id: string; businessId: string };
@@ -337,9 +390,13 @@ export async function approveSubmission(
           currency: submission.currency,
           bezeichnung: submission.bezeichnung,
           kommentar: submission.kommentar ?? null,
-          // ADR-0002 snapshots — placeholders until the admin assigns
-          // kategorie + sphere on the transaction detail page (Phase 5).
-          kategorieNameSnapshot: "(Unkategorisiert)",
+          // Interim — the standalone Phase 4.5 (Inbox Kategorie gate) replaces
+          // this with a required Kategorie picker on approval (spec §4.6).
+          // Set a non-null kategorie_id via the Import sentinel; the snapshot
+          // uses the resolved sentinel name so id + snapshot stay CONSISTENT
+          // (supersedes the old hardcoded "(Unkategorisiert)" placeholder).
+          kategorieId: sentinel.id,
+          kategorieNameSnapshot: sentinel.name,
           sphereSnapshot: "ideeller",
           // ADR-0007: copy discriminator + extern fields verbatim.
           bezahltVonKind: bezahltVonKind,
@@ -490,10 +547,11 @@ export async function approveSubmission(
       vorname: submitterVorname,
       bezeichnung: submission.bezeichnung,
       betragCents: Number(submission.betragCents),
-      // The kategorie is snapshotted as "(Unkategorisiert)" at approval time
-      // (same placeholder used in the expense INSERT above). The admin can
-      // re-categorise later on the transaction detail page.
-      kategorie: "(Unkategorisiert)",
+      // The kategorie is snapshotted as the Import sentinel at approval time
+      // (same value used in the expense INSERT above, kept CONSISTENT). The
+      // standalone Phase 4.5 Kategorie gate replaces this with the picked
+      // Kategorie (spec §4.6).
+      kategorie: sentinel.name,
       decidedAt: new Date().toISOString(),
       decidedByUserId: actorUserId,
       send_attempt: sendAttempt,
