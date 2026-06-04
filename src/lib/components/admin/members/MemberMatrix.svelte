@@ -259,7 +259,6 @@
 		});
 		hapticSuccess();
 		popoverOpen = false;
-		focusNextOpenCell();
 
 		// (b) POST in the background — the server stays the source of truth.
 		const result = await post('mark-beitrag-paid', {
@@ -290,6 +289,10 @@
 				}
 			}
 		});
+		// Focus-hop AFTER reconcile so the re-rendered grid + toast are settled
+		// (the cell already flipped synchronously via the overlay; this is the
+		// §7.4 silent auto-focus nicety, not part of the <16ms flip).
+		focusNextOpenCell();
 	}
 
 	async function handleExempt(detail: { memberId: string; year: number; reason: string }) {
@@ -308,7 +311,6 @@
 		});
 		hapticSuccess();
 		popoverOpen = false;
-		focusNextOpenCell();
 
 		const result = await post('set-beitrag-exempt', {
 			memberId: detail.memberId,
@@ -342,6 +344,8 @@
 				}
 			}
 		);
+		// Focus-hop after reconcile (see handlePaid). Cell already flipped via overlay.
+		focusNextOpenCell();
 	}
 
 	async function handleStorno(detail: { memberId: string; year: number }) {
