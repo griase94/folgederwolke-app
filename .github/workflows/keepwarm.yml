@@ -1,0 +1,47 @@
+name: keep-warm
+
+# Pings /healthz every ~10 minutes during Berlin daytime to prevent Neon
+# scale-to-zero from adding a cold-start penalty to the first real request
+# of the day. The /healthz endpoint executes a trivial SELECT 1, which is
+# enough to keep the Neon compute warm.
+#
+# GH cron is UTC. Berlin is UTC+1 (CET) in winter, UTC+2 (CEST) in summer.
+# Using */10 5-20 covers ~07:00–22:00 CET and ~07:00–22:00 CEST respectively,
+# which is conservative but safe for both halves of the year.
+# Weekdays only (1-6 Mon–Sat) — the Verein is unlikely to have Sunday
+# activity that warrants keeping compute live.
+#
+# URL: hard-coded to the stable production alias confirmed in post-deploy-smoke.yml.
+# If the production alias ever changes, update KEEPWARM_URL below or set the
+# Actions variable `KEEPWARM_URL` in the repo settings (Settings → Variables →
+# Actions) to override — the step is a no-op when the variable is empty,
+# so the workflow is safe to merge before any variable is set.
+
+on:
+  schedule:
+    - cron: "*/10 5-20 * * 1-6"
+  # Allow manual trigger for testing
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping /healthz
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Ping production healthz
+        # Use vars.KEEPWARM_URL if set (override), otherwise fall back to the
+        # hard-coded stable alias. The step is a no-op when both are empty.
+        env:
+          OVERRIDE_URL: ${{ vars.KEEPWARM_URL }}
+        run: |
+          TARGET_URL="${OVERRIDE_URL:-https://folgederwolke-app.vercel.app/healthz}"
+          if [ -z "$TARGET_URL" ]; then
+            echo "No KEEPWARM_URL configured and no hard-coded fallback — skipping."
+            exit 0
+          fi
+          echo "Pinging: $TARGET_URL"
+          # --max-time 20: bail if Neon doesn't resume within 20s (transient).
+          # || true: never fail the workflow on a transient non-200 response.
+          curl -fsS --max-time 20 "$TARGET_URL" -o /dev/null -w "HTTP %{http_code}\n" || true
