@@ -25,7 +25,18 @@ export type BerichtRow = {
   exemptReason: string | null;
 };
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
+  // Defense-in-depth (ADR-0009): the Kassenbericht exposes every member's
+  // payment status, so gate it explicitly to Vorstand (admin) + Kassenprüfer
+  // (steuerberater) rather than relying solely on the session allowlist.
+  const role = locals.session?.user.role;
+  if (role !== "admin" && role !== "steuerberater") {
+    error(
+      403,
+      "Nur Vorstand und Kassenprüfer dürfen den Kassenbericht öffnen.",
+    );
+  }
+
   const year = parseInt(params.year, 10);
   if (!Number.isFinite(year) || year < 2000 || year > 2100) {
     error(400, `Ungültiges Jahr: ${params.year}`);
