@@ -132,6 +132,14 @@
 		activeTrigger?.focus();
 	}
 
+	// ── Haptic feedback (Task 3.2 / spec §16 J1) ─────────────────────────────
+	// navigator.vibrate is not available on all browsers/devices. Always guard.
+	function hapticSuccess() {
+		if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+			navigator.vibrate(10);
+		}
+	}
+
 	// ── Mutations ────────────────────────────────────────────────────────────────
 	async function post(
 		action: string,
@@ -172,6 +180,7 @@
 			return;
 		}
 		popoverOpen = false;
+		hapticSuccess();
 		await invalidateAll();
 		toast.success(`${memberName(detail.memberId)} ${detail.year} als bezahlt markiert`, {
 			duration: 10000,
@@ -203,6 +212,7 @@
 			return;
 		}
 		popoverOpen = false;
+		hapticSuccess();
 		await invalidateAll();
 		toast.success(
 			`${memberName(detail.memberId)} für ${detail.year} befreit (Grund: ${detail.reason})`,
@@ -236,6 +246,7 @@
 			return;
 		}
 		popoverOpen = false;
+		hapticSuccess();
 		await invalidateAll();
 		toast.success(`Zahlung ${memberName(detail.memberId)} ${detail.year} storniert`, {
 			duration: 10000
@@ -256,6 +267,7 @@
 			return;
 		}
 		popoverOpen = false;
+		hapticSuccess();
 		await invalidateAll();
 		toast.success(`Befreiung ${memberName(detail.memberId)} ${detail.year} aufgehoben`, {
 			duration: 10000
