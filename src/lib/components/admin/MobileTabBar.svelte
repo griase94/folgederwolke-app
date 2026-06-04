@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { mobileTabItems } from './nav-registry.js';
+	import { mobileTabItems, mobileTransaktionenActive } from './nav-registry.js';
 	import FabBottomSheet from './FabBottomSheet.svelte';
 	import MoreSheet from './MoreSheet.svelte';
 
@@ -19,6 +19,9 @@
 			'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z',
 		CreditCard:
 			'M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2zM2 11h20',
+		MinusCircle: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM8 12h8',
+		PlusCircle: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM8 12h8M12 8v8',
+		Gift: 'M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z',
 		Inbox:
 			'M22 12h-6l-2 3H10l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z',
 	};
@@ -50,7 +53,10 @@
 	aria-label="Mobile Navigation"
 >
 	{#each mobileTabItems as item (item.href)}
-		{@const active = isActive(item.href)}
+		{@const active =
+			item.href === '/app/ausgaben'
+				? mobileTransaktionenActive($page.url.pathname)
+				: isActive(item.href)}
 		<!-- eslint-disable svelte/no-navigation-without-resolve -->
 		<a
 			href={item.href}

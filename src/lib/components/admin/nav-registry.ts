@@ -76,11 +76,27 @@ export const navItems: NavItem[] = [
     mobileTab: 2,
     group: "main",
   },
+  // ── Transactions: three flat desktop tabs (Phase 3) ─────────────────────
+  // Ausgaben carries the single mobile "Transaktionen" entry (mobileTab: 3);
+  // its active state on the mobile bar spans all three routes via
+  // mobileTransaktionenActive(). Einnahmen + Spenden have no mobileTab.
   {
     label: "Transaktionen",
-    href: "/app/transactions",
-    icon: "CreditCard",
+    href: "/app/ausgaben",
+    icon: "MinusCircle",
     mobileTab: 3,
+    group: "main",
+  },
+  {
+    label: "Einnahmen",
+    href: "/app/einnahmen",
+    icon: "PlusCircle",
+    group: "main",
+  },
+  {
+    label: "Spenden",
+    href: "/app/spenden",
+    icon: "Gift",
     group: "main",
   },
   {
@@ -139,3 +155,16 @@ export const mainNavItems = navItems.filter((item) => item.group === "main");
 
 /** Items for the collapsible "Mehr" sidebar section. */
 export const moreNavItems = navItems.filter((item) => item.group === "more");
+
+/**
+ * Mobile "Transaktionen" tab active-predicate.
+ *
+ * The single mobile entry (`/app/ausgaben`) stands in for all three flat
+ * transaction routes, so the bottom-bar cell must light up on any of them
+ * (and their detail routes) — not just `startsWith(item.href)`.
+ */
+export function mobileTransaktionenActive(path: string): boolean {
+  return ["/app/ausgaben", "/app/einnahmen", "/app/spenden"].some(
+    (h) => path === h || path.startsWith(h + "/"),
+  );
+}
