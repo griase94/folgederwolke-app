@@ -4,6 +4,7 @@
 	import { beforeNavigate } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import DateField from '$lib/components/ui/date-field/DateField.svelte';
+	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 	import type { PageData, ActionData } from './$types.js';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -225,15 +226,14 @@
 					<span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">€</span>
 					<input
 						id="betragCents-display"
-						type="number"
-						step="0.01"
-						min="0.01"
+						type="text"
+						inputmode="decimal"
 						required
 						placeholder="0,00"
 						oninput={(e) => {
-							const v = parseFloat((e.target as HTMLInputElement).value) || 0;
+							const cents = parseBetragCents((e.target as HTMLInputElement).value);
 							const hidden = document.querySelector<HTMLInputElement>('input[name="betragCents"]');
-							if (hidden) hidden.value = String(Math.round(v * 100));
+							if (hidden) hidden.value = String(Number.isFinite(cents) ? cents : 0);
 						}}
 						class="w-full rounded-md border border-border bg-background py-2 pr-3 pl-8 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 					/>
@@ -350,12 +350,15 @@
 							<input
 								name="externName"
 								type="text"
+								autocomplete="name"
 								placeholder="Name"
 								class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 							/>
 							<input
 								name="externIban"
 								type="text"
+								inputmode="text"
+								autocomplete="off"
 								placeholder="IBAN"
 								class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-primary focus:outline-none"
 							/>
