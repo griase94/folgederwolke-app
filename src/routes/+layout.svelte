@@ -5,6 +5,7 @@
 	import type { LayoutData } from './$types.js';
 	import PwaUpdater from '$lib/components/pwa/PwaUpdater.svelte';
 	import { injectSpeedInsights } from '@vercel/speed-insights/sveltekit';
+	import { page } from '$app/state';
 
 	let { children, data }: { children: Snippet; data: LayoutData } = $props();
 	// Favicon links live in src/app.html (PM-001 fix): a multi-format set
@@ -31,7 +32,10 @@
 			const domContentLoaded = nav ? Math.round(nav.domContentLoadedEventEnd) : null;
 
 			const hydrated = Math.round(performance.now());
-			const route = window.location.pathname;
+			// Route PATTERN (e.g. /app/mitglieder/[id]), never the concrete path —
+			// avoids writing member/entity UUIDs into the vitals log (DSGVO). This
+			// matches what the Speed Insights SDK itself records.
+			const route = page.route?.id ?? null;
 
 			const payload = { fcp, ttfb, domContentLoaded, hydrated, route, source: 'layout' };
 

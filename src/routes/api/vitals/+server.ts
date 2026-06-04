@@ -14,10 +14,36 @@ import type { RequestHandler } from "./$types.js";
  * All values are milliseconds (integers) or null when the browser did not
  * provide the measurement (e.g. FCP is null on sub-frame navigations).
  */
+interface VitalsBody {
+  fcp?: unknown;
+  ttfb?: unknown;
+  domContentLoaded?: unknown;
+  hydrated?: unknown;
+  route?: unknown;
+  source?: unknown;
+}
+
+/** Coerce to a finite rounded number, else null. */
+function ms(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? Math.round(v) : null;
+}
+
 export const POST: RequestHandler = async ({ request }) => {
   try {
-    const body: unknown = await request.json();
-    console.log("[vitals]", JSON.stringify(body));
+    const body = (await request.json()) as VitalsBody;
+    // Allowlist only — never echo the raw body. This caps the log line size
+    // and guarantees no unexpected/identifying fields are persisted. `route`
+    // is expected to be a route PATTERN (e.g. /app/mitglieder/[id]); it is
+    // length-capped defensively in case a caller sends something else.
+    const safe = {
+      fcp: ms(body.fcp),
+      ttfb: ms(body.ttfb),
+      domContentLoaded: ms(body.domContentLoaded),
+      hydrated: ms(body.hydrated),
+      route: typeof body.route === "string" ? body.route.slice(0, 128) : null,
+      source: typeof body.source === "string" ? body.source.slice(0, 32) : null,
+    };
+    console.log("[vitals]", JSON.stringify(safe));
   } catch {
     // Malformed body — still return 204 so the client-side fetch doesn't
     // surface a console error.
