@@ -41,6 +41,6 @@
 		class="fixed inset-x-0 top-0 z-50 bg-primary/10 px-4 py-2 text-center text-xs font-medium text-primary shadow-sm backdrop-blur"
 		style="padding-top: calc(env(safe-area-inset-top, 0px) + 0.5rem);"
 	>
-		Offline — Eingaben werden gespeichert und gesendet, sobald du wieder online bist.
+		Offline — Deine Eingaben bleiben als Entwurf gespeichert. Bitte sende das Formular erneut ab, sobald du wieder Empfang hast.
 	</div>
 {/if}
