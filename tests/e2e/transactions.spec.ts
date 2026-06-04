@@ -107,8 +107,10 @@ test.describe("Transactions neu page @phase-5", () => {
   test("form validation: empty bezeichnung prevents submit @phase-5", async ({
     page,
   }) => {
-    // Fill betrag but leave bezeichnung empty
-    await page.locator('input[type="number"]').first().fill("10");
+    // Fill betrag but leave bezeichnung empty.
+    // Betrag is a type=text inputmode=decimal field (mobile keyboard fix) —
+    // locate by its label, not the old input[type=number] selector.
+    await page.getByLabel(/betrag/i).fill("10");
     await page.getByRole("button", { name: /erfassen/i }).click();
     // HTML5 required validation kicks in — form not submitted
     await expect(page).toHaveURL(/\/app\/transactions\/neu/);

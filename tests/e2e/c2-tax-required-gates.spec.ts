@@ -79,7 +79,9 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     if (page.url().includes("/sign-in")) test.skip();
 
     await page.getByLabel(/bezeichnung/i).fill("Test");
-    await page.locator('input[type="number"]').first().fill("10");
+    // Betrag is a type=text inputmode=decimal field (mobile keyboard fix) —
+    // locate by its label, not the old input[type=number] selector.
+    await page.getByLabel(/betrag/i).fill("10");
     // Fill the date fields so only Beleg is missing.
     // C6-FORM (Night-2 E4): the date inputs are now DateField primitives — they
     // accept TT.MM.JJJJ display text and commit ISO to the hidden mirror onBlur.
