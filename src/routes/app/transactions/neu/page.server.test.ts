@@ -4,23 +4,22 @@
  *
  * Unit tests for the /app/transactions/neu `create` action — cluster C4.
  *
- * Cycle-2 finding (PR #45 B1): the action handler re-resolves the sphere
- * server-side from the picked Kategorie (good, fixes the original tampering
- * hole), but it hardcoded `projectSphereOverride: null` at both call sites
- * (expense + income). That silently broke ADR-0008 — a project with a
- * `sphereDefault` was supposed to override the Kategorie's default sphere,
- * and the canonical pattern lives in invoices.ts:234-243.
+ * P1-T7 (spec §4.5): sphere derivation moved OUT of this action and INTO the
+ * domain create fns. createExpense/createIncome now resolve the picked
+ * Kategorie by NAME and derive sphere STRICTLY from it — there is NO project
+ * `sphereDefault` override anymore (the cycle-2 ADR-0008 override added in
+ * PR #45 B1 is intentionally removed by Phase-1). The action's remaining job
+ * is to validate input and FORWARD the picked kategorieNameSnapshot to the
+ * domain layer; it must not hand-compute/forward a project-override sphere.
  *
- * Bar-Pop-up motivating example: a "Verpflegung" expense (Kategorie default
- * sphere = ideeller) booked on the Bar-Pop-up project (sphereDefault =
- * wirtschaftlich) MUST land in sphere=wirtschaftlich, otherwise the EÜR
- * splits the wirtschaftlich Geschäftsbetrieb incorrectly.
+ * The actual sphere-derivation contract (expense→ideeller etc.) is owned and
+ * DB-verified by tests/unit/create-expense-income-kategorie.test.ts. These
+ * mock-based tests only assert the action's forwarding behavior.
  *
  * Strategy: mock every dependency the action touches so we can drive the
  * handler with a synthesized FormData + locals.session, then assert on the
- * `sphereSnapshot` arg captured by the createExpense / createIncome mocks.
- * We don't need a real DB here — the picker logic (resolveSphereForKategorie)
- * is pure, and the action's job is to feed it the right inputs.
+ * args captured by the createExpense / createIncome mocks. We don't need a
+ * real DB here — the action's job is to feed the domain fn the right inputs.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -268,10 +267,20 @@ beforeEach(() => {
 
 const BAR_POPUP_PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 
-describe("/app/transactions/neu — create action honors ADR-0008", () => {
-  it("expense: project.sphereDefault overrides the Kategorie's default sphere", async () => {
-    // ARRANGE — Verpflegung Kategorie defaults to ideeller; Bar-Pop-up
-    // Projekt forces wirtschaftlich. ADR-0008 says project override wins.
+// P1-T7 (spec §4.5) UPDATE: sphere derivation moved OUT of this action and
+// INTO the domain create fns (createExpense/createIncome resolve the picked
+// Kategorie by name and derive sphere STRICTLY from it — NO project override).
+// The cycle-2 ADR-0008 project-override behavior is intentionally removed by
+// Phase-1 §4.5. These mock-based tests therefore no longer assert a
+// server-computed sphereSnapshot (that contract is now owned + DB-verified by
+// tests/unit/create-expense-income-kategorie.test.ts). What this action MUST
+// still do is forward the validated kategorieNameSnapshot to the domain fn and
+// NOT hand-compute/forward a project-override sphere.
+describe("/app/transactions/neu — create action forwards Kategorie name (§4.5)", () => {
+  it("expense: forwards kategorieNameSnapshot; does not compute a project-override sphere", async () => {
+    // A project with a sphereDefault is set, but §4.5 STRICT means the action
+    // must NOT translate it into a sphereSnapshot override — sphere is the
+    // Kategorie's, derived inside createExpense.
     projectStore.set(BAR_POPUP_PROJECT_ID, {
       id: BAR_POPUP_PROJECT_ID,
       sphereDefault: "wirtschaftlich",
@@ -283,7 +292,7 @@ describe("/app/transactions/neu — create action honors ADR-0008", () => {
       betragCents: "2350",
       currency: "EUR",
       kategorieNameSnapshot: "Verpflegung",
-      sphereSnapshot: "ideeller", // tampered/stale client value — server must ignore
+      sphereSnapshot: "ideeller", // tampered/stale client value — domain ignores it
       bezahltVonKind: "verein",
       bezahltVonDisplay: "Verein",
       projectId: BAR_POPUP_PROJECT_ID,
@@ -296,44 +305,21 @@ describe("/app/transactions/neu — create action honors ADR-0008", () => {
     // ACT
     const result = await runCreate(event);
 
-    // ASSERT — redirect on success, and the booking landed in wirtschaftlich.
+    // ASSERT — redirect on success; the action forwards the picked Kategorie
+    // name and does NOT inject a project-override "wirtschaftlich" sphere.
     expect(result.fail).toBeUndefined();
     expect(result.redirect?.status).toBe(303);
     expect(createExpenseMock).toHaveBeenCalledTimes(1);
     const callArg = createExpenseMock.mock.calls[0]?.[0] as {
-      sphereSnapshot: string;
+      kategorieNameSnapshot: string;
+      sphereSnapshot?: string;
     };
-    expect(callArg.sphereSnapshot).toBe("wirtschaftlich");
+    expect(callArg.kategorieNameSnapshot).toBe("Verpflegung");
+    // §4.5: no project-override sphere is computed/forwarded by the caller.
+    expect(callArg.sphereSnapshot).not.toBe("wirtschaftlich");
   });
 
-  it("expense: no project → falls back to the Kategorie's default sphere", async () => {
-    // Sanity check that the override is conditional, not unconditional.
-    const event = makeEvent({
-      type: "expense",
-      bezeichnung: "Bürobedarf",
-      betragCents: "1000",
-      currency: "EUR",
-      kategorieNameSnapshot: "Verpflegung",
-      sphereSnapshot: "ideeller",
-      bezahltVonKind: "verein",
-      bezahltVonDisplay: "Verein",
-      // C2-TAX: rechnungsdatum + abfluss_datum + beleg are now required.
-      rechnungsdatum: "2026-05-01",
-      abfluss_datum: "2026-05-02",
-      beleg: mkBelegFile(),
-    });
-
-    const result = await runCreate(event);
-
-    expect(result.fail).toBeUndefined();
-    expect(createExpenseMock).toHaveBeenCalledTimes(1);
-    const callArg = createExpenseMock.mock.calls[0]?.[0] as {
-      sphereSnapshot: string;
-    };
-    expect(callArg.sphereSnapshot).toBe("ideeller");
-  });
-
-  it("income: project.sphereDefault overrides the Kategorie's default sphere", async () => {
+  it("income: forwards kategorieNameSnapshot; does not compute a project-override sphere", async () => {
     projectStore.set(BAR_POPUP_PROJECT_ID, {
       id: BAR_POPUP_PROJECT_ID,
       sphereDefault: "wirtschaftlich",
@@ -355,9 +341,11 @@ describe("/app/transactions/neu — create action honors ADR-0008", () => {
     expect(result.redirect?.status).toBe(303);
     expect(createIncomeMock).toHaveBeenCalledTimes(1);
     const callArg = createIncomeMock.mock.calls[0]?.[0] as {
-      sphereSnapshot: string;
+      kategorieNameSnapshot: string;
+      sphereSnapshot?: string;
     };
-    expect(callArg.sphereSnapshot).toBe("wirtschaftlich");
+    expect(callArg.kategorieNameSnapshot).toBe("Honorar");
+    expect(callArg.sphereSnapshot).not.toBe("wirtschaftlich");
   });
 });
 

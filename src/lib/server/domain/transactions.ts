@@ -588,7 +588,9 @@ export interface CreateExpenseInput {
   kommentar?: string | null;
   kategorieId?: string | null;
   kategorieNameSnapshot: string;
-  sphereSnapshot: "ideeller" | "vermoegen" | "zweckbetrieb" | "wirtschaftlich";
+  // P1-T7 (spec §4.5): sphere is now DERIVED from the resolved kategorie —
+  // STRICT (no project override). Accepted-but-ignored for caller parity.
+  sphereSnapshot?: "ideeller" | "vermoegen" | "zweckbetrieb" | "wirtschaftlich";
   bezahltVonKind: "verein" | "member" | "extern";
   bezahltVonMemberId?: string | null;
   bezahltVonDisplay: string;
@@ -611,8 +613,14 @@ export interface CreateIncomeInput {
   kommentar?: string | null;
   kategorieId?: string | null;
   kategorieNameSnapshot: string;
-  sphereSnapshot: "ideeller" | "vermoegen" | "zweckbetrieb" | "wirtschaftlich";
+  // P1-T7 (spec §4.5): sphere is now DERIVED from the resolved kategorie —
+  // STRICT (no project override). Accepted-but-ignored for caller parity.
+  sphereSnapshot?: "ideeller" | "vermoegen" | "zweckbetrieb" | "wirtschaftlich";
   projectId?: string | null;
+  // P1-T7 (spec §4.6): the `income.beleg_file_id` column already existed but
+  // createIncome dropped it — persist it so "Beleg optional" on the Einnahmen
+  // form (Phase 5) can actually save the attached Beleg.
+  belegFileId?: string | null;
   actorUserId: string;
   businessId: string;
 }
@@ -654,6 +662,13 @@ export async function createExpense(
   input: CreateExpenseInput,
 ): Promise<{ id: string; businessId: string }> {
   const db = getDb();
+  // P1-T7 (spec §4.5): resolve a non-null kategorie by NAME and derive sphere
+  // STRICTLY from it (no project override). Closes the null-kategorie_id path
+  // before the NOT NULL constraint lands in a later task.
+  const kat = await resolveKategorieByName(
+    "expense",
+    input.kategorieNameSnapshot,
+  );
   const [row] = await db
     .insert(expenses)
     .values({
@@ -666,9 +681,9 @@ export async function createExpense(
       // C2-TAX: persist the cash-out date per EÜR §11 EStG.
       abflussDatum: input.abflussDatum ?? null,
       kommentar: input.kommentar ?? null,
-      kategorieId: input.kategorieId ?? null,
-      kategorieNameSnapshot: input.kategorieNameSnapshot,
-      sphereSnapshot: input.sphereSnapshot,
+      kategorieId: kat.id,
+      kategorieNameSnapshot: kat.name,
+      sphereSnapshot: kat.sphere,
       bezahltVonKind: input.bezahltVonKind,
       bezahltVonMemberId: input.bezahltVonMemberId ?? null,
       bezahltVonDisplay: input.bezahltVonDisplay,
@@ -702,6 +717,13 @@ export async function createIncome(
   input: CreateIncomeInput,
 ): Promise<{ id: string; businessId: string }> {
   const db = getDb();
+  // P1-T7 (spec §4.5): resolve a non-null kategorie by NAME and derive sphere
+  // STRICTLY from it (no project override). Closes the null-kategorie_id path
+  // before the NOT NULL constraint lands in a later task.
+  const kat = await resolveKategorieByName(
+    "income",
+    input.kategorieNameSnapshot,
+  );
   const [row] = await db
     .insert(income)
     .values({
@@ -713,10 +735,13 @@ export async function createIncome(
       geldEingangDatum: input.geldEingangDatum ?? null,
       rechnungsdatum: input.rechnungsdatum ?? null,
       kommentar: input.kommentar ?? null,
-      kategorieId: input.kategorieId ?? null,
-      kategorieNameSnapshot: input.kategorieNameSnapshot,
-      sphereSnapshot: input.sphereSnapshot,
+      kategorieId: kat.id,
+      kategorieNameSnapshot: kat.name,
+      sphereSnapshot: kat.sphere,
       projectId: input.projectId ?? null,
+      // P1-T7 (spec §4.6): persist the Beleg FK — the column existed but the
+      // fn previously dropped it (Phase 5 "Beleg optional" depends on this).
+      belegFileId: input.belegFileId ?? null,
       createdByUserId: input.actorUserId,
     })
     .returning({ id: income.id, businessId: income.businessId });

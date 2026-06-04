@@ -10,10 +10,11 @@
  *
  * actions:
  *   ?/create — create expense | income | donation based on type picker.
- *              Sphere is re-resolved server-side from the picked Kategorie
- *              (resolveSphereForKategorie) so a tampered body cannot
- *              mis-classify the booking. Redirects to
- *              /app/transactions/[id]?kind=<kind> on success.
+ *              Sphere is re-resolved server-side INSIDE the domain create fns
+ *              (createExpense/createIncome resolve the picked Kategorie by name
+ *              and derive sphere STRICTLY from it — spec §4.5, no project
+ *              override) so a tampered body cannot mis-classify the booking.
+ *              Redirects to /app/transactions/[id]?kind=<kind> on success.
  */
 
 import { fail, redirect } from "@sveltejs/kit";
@@ -30,13 +31,12 @@ import {
   listKategorieOptions,
   loadRecentKategorieUsage,
   pickDefaultKategorieName,
-  resolveSphereForKategorie,
 } from "$lib/server/domain/transaction-pickers.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { projects } from "$lib/server/db/schema/projects.js";
-import { asc, eq, isNull } from "drizzle-orm";
+import { asc, isNull } from "drizzle-orm";
 import { parseKindFromUrl } from "$lib/domain/transaction-kind-url.js";
 import { handleAuslageUpload } from "$lib/server/files/handleAuslageUpload.js";
 
@@ -270,27 +270,11 @@ export const actions = {
           });
         }
 
-        // Sphere is server-truth: re-derive from the picked kategorie so a
-        // tampered form body cannot mis-classify the booking. When a project
-        // is attached, its `sphereDefault` overrides the kategorie default
-        // (ADR-0008) — mirrors the canonical pattern in invoices.ts:234-243.
-        const expenseKategorien = await listKategorieOptions("expense");
-        const db = getDb();
-        const project = parsed.data.projectId
-          ? ((
-              await db
-                .select({ sphereDefault: projects.sphereDefault })
-                .from(projects)
-                .where(eq(projects.id, parsed.data.projectId))
-                .limit(1)
-            )[0] ?? null)
-          : null;
-        const sphereSnapshot = resolveSphereForKategorie({
-          kategorien: expenseKategorien,
-          kategorieName: parsed.data.kategorieNameSnapshot,
-          projectSphereOverride: project?.sphereDefault ?? null,
-        });
-
+        // P1-T7 (spec §4.5): sphere is now derived server-side INSIDE
+        // createExpense, STRICTLY from the resolved kategorie (no project
+        // override). We pass kategorieNameSnapshot (already validated, never
+        // "(Unkategorisiert)") and let the domain layer resolve kategorie +
+        // sphere — a tampered body still cannot mis-classify the booking.
         const gate = await checkFestschreibungGate(year);
         if (!gate.ok) return fail(gate.status, { error: gate.error });
 
@@ -324,7 +308,6 @@ export const actions = {
           // domain layer uses camelCase per Drizzle convention).
           abflussDatum: parsed.data.abfluss_datum,
           belegFileId,
-          sphereSnapshot,
           businessId,
           actorUserId: user.id,
           bezahltVonDisplay:
@@ -347,30 +330,16 @@ export const actions = {
           });
         }
 
-        const incomeKategorien = await listKategorieOptions("income");
-        const db = getDb();
-        const project = parsed.data.projectId
-          ? ((
-              await db
-                .select({ sphereDefault: projects.sphereDefault })
-                .from(projects)
-                .where(eq(projects.id, parsed.data.projectId))
-                .limit(1)
-            )[0] ?? null)
-          : null;
-        const sphereSnapshot = resolveSphereForKategorie({
-          kategorien: incomeKategorien,
-          kategorieName: parsed.data.kategorieNameSnapshot,
-          projectSphereOverride: project?.sphereDefault ?? null,
-        });
-
+        // P1-T7 (spec §4.5): sphere is derived server-side INSIDE createIncome,
+        // STRICTLY from the resolved kategorie (no project override). We pass
+        // kategorieNameSnapshot (already validated) and let the domain layer
+        // resolve kategorie + sphere.
         const gate = await checkFestschreibungGate(year);
         if (!gate.ok) return fail(gate.status, { error: gate.error });
 
         const businessId = await allocateBusinessId("E", year);
         const result = await createIncome({
           ...parsed.data,
-          sphereSnapshot,
           businessId,
           actorUserId: user.id,
         });
