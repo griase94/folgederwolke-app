@@ -45,6 +45,7 @@
     "@types/jszip": "^3.4.1",
     "@types/node": "^25.9.0",
     "@types/nodemailer": "^8.0.0",
+    "@vercel/speed-insights": "^2.0.0",
     "@vite-pwa/sveltekit": "^1.1.0",
     "@vitest/coverage-v8": "^4.1.6",
     "bits-ui": "^2.18.1",
