@@ -60,7 +60,9 @@ async function signIn(
 }
 
 // ─── File-scope: iPhone 12 emulation applies to every test below ────────
-test.use({ ...devices["iPhone 12"] });
+// devices["iPhone 12"] sets defaultBrowserType: "webkit"; CI only installs
+// Chromium (.github/workflows/ci.yml), so override browserName to "chromium".
+test.use({ ...devices["iPhone 12"], browserName: "chromium" });
 
 test.beforeEach(async () => {
   if (!process.env["DATABASE_URL"]) {
