@@ -1,7 +1,3 @@
-// Vite worker URL — use ?url suffix (NOT new URL trick which doesn't resolve node_modules assets)
-import workerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import * as pdfjs from "pdfjs-dist";
-
 interface PdfWorkerHost {
   GlobalWorkerOptions: { workerSrc: string };
   getDocument: (args: { data: Uint8Array }) => {
@@ -23,13 +19,13 @@ interface PdfPage {
   cleanup?: () => void;
 }
 
-const pdf = pdfjs as unknown as PdfWorkerHost;
-pdf.GlobalWorkerOptions.workerSrc = workerSrc;
-
 const COMPRESS_THRESHOLD = 1.5 * 1024 * 1024;
 const PDF_TEXT_RICH_THRESHOLD = 400;
 const TARGET_DPI = 150;
 const JPEG_QUALITY = 0.7;
+
+// Guard: workerSrc is only set once across multiple calls to compressPdfIfScan.
+let pdfjsWorkerSrcSet = false;
 
 export interface CompressOptions {
   onProgress?: (info: {
@@ -84,9 +80,23 @@ async function compressPdfIfScan(
   file: File,
   opts: CompressOptions,
 ): Promise<File> {
+  // Lazy-load pdfjs-dist only when we actually need to process a PDF.
+  // This keeps pdfjs out of the initial chunk for every route that imports
+  // BelegUpload (including the public Auslage form). Mirror the pattern used
+  // for browser-image-compression and pdf-lib above.
+  const pdfjs = (await import("pdfjs-dist")) as unknown as PdfWorkerHost;
+  if (!pdfjsWorkerSrcSet) {
+    // Vite worker URL — use ?url suffix (NOT new URL trick which doesn't
+    // resolve node_modules assets).
+    const workerSrc = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url"))
+      .default as string;
+    pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+    pdfjsWorkerSrcSet = true;
+  }
+
   const { PDFDocument } = await import("pdf-lib");
   const buf = await file.arrayBuffer();
-  const srcDoc: PdfDocument = await pdf.getDocument({
+  const srcDoc: PdfDocument = await pdfjs.getDocument({
     data: new Uint8Array(buf),
   }).promise;
 

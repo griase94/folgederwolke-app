@@ -38,6 +38,13 @@
 	import { afterNavigate } from '$app/navigation';
 
 	if (browser && 'serviceWorker' in navigator) {
+		// One-time best-effort purge of the legacy fdw-api-runtime cache that
+		// previously held PII (member/customer API responses). Safe to run on
+		// every load — caches.delete is a no-op when the cache doesn't exist.
+		if ('caches' in window) {
+			void caches.delete('fdw-api-runtime').catch(() => {});
+		}
+
 		navigator.serviceWorker
 			.register('/sw.js', { scope: '/' })
 			.then((registration) => {
