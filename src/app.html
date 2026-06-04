@@ -15,13 +15,66 @@
       dark-mode device the webview paints a black canvas during the cold-start /
       SSR wait. This inline rule (parsed before the head placeholder below)
       makes that frame white (matching the app surface), so the gap reads as a
-      brief blank rather than a black screen. (An instant cached-shell launch is
-      a separate, measured Tier 2 follow-up.)
+      brief blank rather than a black screen.
+
+      Branded launch overlay (#fdw-launch): covers the frame during cold-start
+      with the rosa cloud+bolt mark on a white background (seamless white-with-
+      brand sequence). Removed via onMount in +layout.svelte once hydration runs.
+      FAILSAFE: CSS animation fades the overlay away after 10 s in case JS never
+      runs (error / disabled) so it cannot cover the app permanently.
+      No inline <script> — CSP blocks it (script-src 'self' only).
     -->
     <style>
       html {
         background-color: #fff;
         color-scheme: light;
+      }
+
+      /* ── Branded launch overlay (Task 2.1) ─────────────────────────────────
+         Covers the viewport during cold-start / SSR wait with the brand mark.
+         Removed by +layout.svelte onMount after hydration (0.2 s fade).
+         FAILSAFE: auto-hides after 10 s via fdw-launch-auto-hide animation. */
+      #fdw-launch {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #fff;
+        /* FAILSAFE: fade to invisible after 10 s if JS never runs */
+        animation: fdw-launch-auto-hide 0.3s ease-out 10s forwards;
+      }
+
+      #fdw-launch svg {
+        width: 96px;
+        height: 96px;
+        /* Subtle calm pulse (opacity shimmer) */
+        animation: fdw-launch-pulse 2s ease-in-out infinite;
+      }
+
+      @keyframes fdw-launch-pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.6;
+        }
+      }
+
+      @keyframes fdw-launch-auto-hide {
+        to {
+          opacity: 0;
+          visibility: hidden;
+        }
+      }
+
+      /* Respect prefers-reduced-motion: disable the pulse, keep the failsafe */
+      @media (prefers-reduced-motion: reduce) {
+        #fdw-launch svg {
+          animation: none;
+        }
       }
     </style>
 
@@ -47,6 +100,32 @@
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">
+    <!--
+      Branded launch overlay — visible during cold-start before hydration.
+      Removed by +layout.svelte onMount (0.2 s opacity fade then DOM remove).
+      FAILSAFE: CSS auto-hides it after 10 s if JS never runs.
+      aria-hidden so screen readers skip the decorative splash.
+    -->
+    <div id="fdw-launch" aria-hidden="true">
+      <!-- Cloud + bolt mark (cloud body white→rosa, bolt yellow; no background rect) -->
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 64 64"
+        role="img"
+        aria-hidden="true"
+      >
+        <g fill="#be185d">
+          <ellipse cx="22" cy="28" rx="9" ry="7" />
+          <ellipse cx="32" cy="24" rx="11" ry="9" />
+          <ellipse cx="42" cy="28" rx="9" ry="7" />
+          <rect x="16" y="28" width="32" height="8" rx="4" />
+        </g>
+        <polygon
+          points="34,30 26,46 32,46 28,56 42,38 35,38 40,30"
+          fill="#facc15"
+        />
+      </svg>
+    </div>
     <div style="display: contents">%sveltekit.body%</div>
   </body>
 </html>

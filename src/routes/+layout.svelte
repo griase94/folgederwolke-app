@@ -18,6 +18,19 @@
 	// No-ops outside Vercel deployments and in dev.
 	injectSpeedInsights();
 
+	// C) Remove the branded launch overlay (#fdw-launch from app.html) once
+	// the app has hydrated. Fade out over 0.2 s then detach the DOM node.
+	// The overlay has a CSS failsafe auto-hide after 10 s even if this never
+	// runs (JS error / disabled). onMount is browser-only — no SSR concern.
+	onMount(() => {
+		const el = document.getElementById('fdw-launch');
+		if (el) {
+			el.style.transition = 'opacity 0.2s ease-out';
+			el.style.opacity = '0';
+			setTimeout(() => el.remove(), 220);
+		}
+	});
+
 	// B) First-paint + hydration beacon posted to /api/vitals.
 	// Uses browser Performance API — no inline <script> needed (CSP-safe).
 	onMount(() => {
