@@ -80,6 +80,14 @@ export interface TransformContext {
   projects: ReadonlyArray<ProjectLookup>;
   /** Stable provenance marker — runner sets this once per run. */
   sourceTag: string;
+  /**
+   * Permanent fallback kategorie for unmatched legacy rows — the
+   * "Unkategorisiert (Import)" sentinel seeded per kind (Task 5). The importer
+   * is a write-path that must NEVER persist a null kategorie_id once the NOT
+   * NULL constraint lands (spec §4.6); unmatched rows resolve to these ids.
+   */
+  sentinelExpenseKategorieId: string;
+  sentinelIncomeKategorieId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -104,7 +112,7 @@ export interface ExpenseInsert {
   currency: string;
   bezeichnung: string;
   kommentar: string | null;
-  kategorieId: string | null;
+  kategorieId: string;
   kategorieNameSnapshot: string;
   sphereSnapshot: Sphere;
   projectId: string | null;
@@ -130,7 +138,7 @@ export interface IncomeInsert {
   currency: string;
   bezeichnung: string;
   kommentar: string | null;
-  kategorieId: string | null;
+  kategorieId: string;
   kategorieNameSnapshot: string;
   sphereSnapshot: Sphere;
   projectId: string | null;
@@ -149,7 +157,7 @@ export interface DonationInsert {
   spenderAdresse: string | null;
   spenderEmail: string | null;
   spendeKind: "geldspende" | "sachspende" | "aufwandsspende";
-  kategorieId: string | null;
+  kategorieId: string;
   kategorieNameSnapshot: string;
   sphereSnapshot: Sphere;
   bescheinigungNr: string | null;
@@ -683,14 +691,13 @@ function transformSpenden(
         ? (raw[cols.bescheinigungNr] ?? "").trim() || null
         : null;
 
-    // Resolve spende_kind from the legacy "Spendeart" column.
-    const spendeartRaw =
-      cols.spendeart >= 0
-        ? (raw[cols.spendeart] ?? "").trim().toLowerCase()
-        : "";
-    let spendeKind: DonationInsert["spendeKind"] = "geldspende";
-    if (spendeartRaw.includes("sach")) spendeKind = "sachspende";
-    else if (spendeartRaw.includes("aufwand")) spendeKind = "aufwandsspende";
+    // P1-01: sheet-import donations carry NO Wertermittlung data (no
+    // wertermittlung_methode / zustand_beschreibung), so importing a legacy
+    // row labelled "Sachspende"/"Aufwandsspende" AS such would violate the
+    // Task-10 `donations_sachspende_wertermittlung_ck` CHECK. We therefore
+    // ignore the legacy "Spendeart" column entirely and always persist
+    // "geldspende" — a sheet import can never produce a Sach-/Aufwandsspende.
+    const spendeKind: DonationInsert["spendeKind"] = "geldspende";
 
     // Try to link the donation to an existing member by spender name.
     const memberMatch = findMemberByName(spenderName, ctx.members);
@@ -710,7 +717,7 @@ function transformSpenden(
       spenderAdresse: adresse,
       spenderEmail: email,
       spendeKind,
-      kategorieId: null,
+      kategorieId: ctx.sentinelIncomeKategorieId,
       kategorieNameSnapshot: "Geldspende (Import)",
       sphereSnapshot: "ideeller",
       bescheinigungNr,
@@ -817,12 +824,23 @@ function stripDiacritics(s: string): string {
 // Kategorie resolver
 // ---------------------------------------------------------------------------
 
-function resolveKategorie(
+/**
+ * Resolve a legacy kategorie name → a non-null kategorie id + sphere snapshot.
+ *
+ * Contract (spec §4.6, Phase-1 Task 8): the returned `kategorieId` is NEVER
+ * null. A matched legacy name resolves to the real kategorie; an unmatched
+ * name falls back to the per-kind "Unkategorisiert (Import)" sentinel
+ * (`ctx.sentinelExpenseKategorieId` / `ctx.sentinelIncomeKategorieId`). This
+ * keeps the importer write-path safe once the NOT NULL constraint lands.
+ *
+ * Exported for pure unit testing — see tests/unit/import-kategorie-fallback.test.ts.
+ */
+export function resolveKategorie(
   ctx: TransformContext,
   kind: "expense" | "income",
   legacyName: string,
-  legacySphereCell: string,
-): { kategorieId: string | null; sphereSnapshot: Sphere; snapshot: string } {
+  legacySphereCell: string | null,
+): { kategorieId: string; sphereSnapshot: Sphere; snapshot: string } {
   // Try kategorie name match (case-insensitive, diacritic-stripped, with the
   // legacy emoji prefix stripped if present).
   const norm = stripDiacritics(legacyName).toLowerCase().trim();
@@ -840,10 +858,15 @@ function resolveKategorie(
     }
   }
 
-  // Fallback: parse sphäre from the formula's already-evaluated cell value.
-  const sphereFromSheet = parseSphereCell(legacySphereCell);
+  // Fallback: unmatched legacy rows resolve to the per-kind Import sentinel —
+  // NEVER null. Sphäre is still derived from the formula's evaluated cell
+  // value when present (default ideeller).
+  const sphereFromSheet = parseSphereCell(legacySphereCell ?? "");
   return {
-    kategorieId: null,
+    kategorieId:
+      kind === "income"
+        ? ctx.sentinelIncomeKategorieId
+        : ctx.sentinelExpenseKategorieId,
     sphereSnapshot: sphereFromSheet ?? "ideeller",
     snapshot: legacyName || "(Unkategorisiert)",
   };
