@@ -381,7 +381,7 @@
 			{#each matrix.members as member (member.id)}
 				<div
 					role="row"
-					class="fdw-cv-row flex border-b border-border transition-colors last:border-0 hover:bg-muted/20"
+					class="flex border-b border-border transition-colors last:border-0 hover:bg-muted/20"
 				>
 					<div
 						role="rowheader"
