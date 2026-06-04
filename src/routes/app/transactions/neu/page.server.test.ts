@@ -63,9 +63,12 @@ vi.mock("$lib/server/domain/id-allocator.js", () => ({
 }));
 
 vi.mock("$lib/server/domain/transaction-pickers.js", async () => {
-  // resolveSphereForKategorie is pure — use the real implementation.
-  // listKategorieOptions hits the DB, so stub it with a known fixture so the
-  // action's "re-derive sphere from picked Kategorie" path is exercised.
+  // P1-T7 (§4.5): the create branch no longer re-derives sphere — that moved
+  // into createExpense/createIncome (DB-verified elsewhere). listKategorieOptions
+  // and the projects lookup are now consumed only by load(); we stub
+  // listKategorieOptions (it hits the DB) with a known fixture so load() and the
+  // action's input plumbing stay exercisable without a real DB. `projectStore`
+  // is retained purely as an armed trap for the no-override contract (see tests).
   const actual = await vi.importActual<
     typeof import("$lib/server/domain/transaction-pickers.js")
   >("$lib/server/domain/transaction-pickers.js");
@@ -277,10 +280,11 @@ const BAR_POPUP_PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 // still do is forward the validated kategorieNameSnapshot to the domain fn and
 // NOT hand-compute/forward a project-override sphere.
 describe("/app/transactions/neu — create action forwards Kategorie name (§4.5)", () => {
-  it("expense: forwards kategorieNameSnapshot; does not compute a project-override sphere", async () => {
-    // A project with a sphereDefault is set, but §4.5 STRICT means the action
-    // must NOT translate it into a sphereSnapshot override — sphere is the
-    // Kategorie's, derived inside createExpense.
+  it("expense: forwards kategorieNameSnapshot + client sphere verbatim; no project override (armed trap)", async () => {
+    // ARMED TRAP: the project's sphereDefault is "wirtschaftlich". Under the
+    // old ADR-0008 path the action would have REWRITTEN sphereSnapshot to
+    // "wirtschaftlich". §4.5 STRICT forbids that — the action forwards inputs
+    // verbatim and lets createExpense derive the real sphere from the Kategorie.
     projectStore.set(BAR_POPUP_PROJECT_ID, {
       id: BAR_POPUP_PROJECT_ID,
       sphereDefault: "wirtschaftlich",
@@ -292,7 +296,8 @@ describe("/app/transactions/neu — create action forwards Kategorie name (§4.5
       betragCents: "2350",
       currency: "EUR",
       kategorieNameSnapshot: "Verpflegung",
-      sphereSnapshot: "ideeller", // tampered/stale client value — domain ignores it
+      // Valid Sphere enum member, DISTINCT from the trap's "wirtschaftlich".
+      sphereSnapshot: "vermoegen",
       bezahltVonKind: "verein",
       bezahltVonDisplay: "Verein",
       projectId: BAR_POPUP_PROJECT_ID,
@@ -306,7 +311,7 @@ describe("/app/transactions/neu — create action forwards Kategorie name (§4.5
     const result = await runCreate(event);
 
     // ASSERT — redirect on success; the action forwards the picked Kategorie
-    // name and does NOT inject a project-override "wirtschaftlich" sphere.
+    // name and the client sphere verbatim.
     expect(result.fail).toBeUndefined();
     expect(result.redirect?.status).toBe(303);
     expect(createExpenseMock).toHaveBeenCalledTimes(1);
@@ -315,11 +320,15 @@ describe("/app/transactions/neu — create action forwards Kategorie name (§4.5
       sphereSnapshot?: string;
     };
     expect(callArg.kategorieNameSnapshot).toBe("Verpflegung");
-    // §4.5: no project-override sphere is computed/forwarded by the caller.
-    expect(callArg.sphereSnapshot).not.toBe("wirtschaftlich");
+    // §4.5: action forwards the client sphere verbatim — no project override.
+    // projectStore is armed with sphereDefault "wirtschaftlich"; if a resurrected
+    // ADR-0008 path rewrote it, this would be "wirtschaftlich", not "vermoegen".
+    expect(callArg.sphereSnapshot).toBe("vermoegen");
   });
 
-  it("income: forwards kategorieNameSnapshot; does not compute a project-override sphere", async () => {
+  it("income: forwards kategorieNameSnapshot + client sphere verbatim; no project override (armed trap)", async () => {
+    // ARMED TRAP (see expense case): sphereDefault "wirtschaftlich" must NOT
+    // rewrite the forwarded sphere under §4.5.
     projectStore.set(BAR_POPUP_PROJECT_ID, {
       id: BAR_POPUP_PROJECT_ID,
       sphereDefault: "wirtschaftlich",
@@ -331,7 +340,8 @@ describe("/app/transactions/neu — create action forwards Kategorie name (§4.5
       betragCents: "5000",
       currency: "EUR",
       kategorieNameSnapshot: "Honorar",
-      sphereSnapshot: "ideeller",
+      // Valid Sphere enum member, DISTINCT from the trap's "wirtschaftlich".
+      sphereSnapshot: "vermoegen",
       projectId: BAR_POPUP_PROJECT_ID,
     });
 
@@ -345,7 +355,9 @@ describe("/app/transactions/neu — create action forwards Kategorie name (§4.5
       sphereSnapshot?: string;
     };
     expect(callArg.kategorieNameSnapshot).toBe("Honorar");
-    expect(callArg.sphereSnapshot).not.toBe("wirtschaftlich");
+    // §4.5: forwarded verbatim — a resurrected ADR-0008 override would make
+    // this "wirtschaftlich" (the armed trap), not "vermoegen".
+    expect(callArg.sphereSnapshot).toBe("vermoegen");
   });
 });
 

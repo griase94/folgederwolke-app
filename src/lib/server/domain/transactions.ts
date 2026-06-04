@@ -664,7 +664,9 @@ export async function createExpense(
   const db = getDb();
   // P1-T7 (spec §4.5): resolve a non-null kategorie by NAME and derive sphere
   // STRICTLY from it (no project override). Closes the null-kategorie_id path
-  // before the NOT NULL constraint lands in a later task.
+  // before the NOT NULL constraint lands in a later task. NOTE: `input.kategorieId`
+  // is intentionally NOT honored — resolution is name-authoritative, so a future
+  // caller can't assume by-id wins.
   const kat = await resolveKategorieByName(
     "expense",
     input.kategorieNameSnapshot,
@@ -719,7 +721,9 @@ export async function createIncome(
   const db = getDb();
   // P1-T7 (spec §4.5): resolve a non-null kategorie by NAME and derive sphere
   // STRICTLY from it (no project override). Closes the null-kategorie_id path
-  // before the NOT NULL constraint lands in a later task.
+  // before the NOT NULL constraint lands in a later task. NOTE: `input.kategorieId`
+  // is intentionally NOT honored — resolution is name-authoritative, so a future
+  // caller can't assume by-id wins.
   const kat = await resolveKategorieByName(
     "income",
     input.kategorieNameSnapshot,
