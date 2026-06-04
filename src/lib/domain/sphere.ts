@@ -45,6 +45,15 @@ export const LEGACY_SPHERE_TO_CANONICAL: Record<string, Sphere> = {
   "Wirtschaftlicher Geschäftsbetrieb": "wirtschaftlich",
 };
 
+/** Strict kategorie → sphere (spec §4.5). NEVER consults a project sphere_default. */
+export function kategorieSphere(
+  kategorien: readonly { name: string; sphere: Sphere }[],
+  kategorieName: string,
+): Sphere {
+  const match = kategorien.find((k) => k.name === kategorieName);
+  return match ? match.sphere : "ideeller";
+}
+
 /**
  * Resolve effective sphere for an expense pre-Festschreibung.
  * NOTE: This is a pure function. The DB-backed `effective_sphere(expense_id)`
