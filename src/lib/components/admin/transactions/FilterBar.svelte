@@ -106,13 +106,17 @@
 		// `page` is owned-and-reset: any filter change can shrink the result set, so
 		// a stale ?page=5 would strand the user past the last page — strip it so
 		// pagination falls back to page 1.
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local URL builder, not a Svelte reactive store
 		const current = new URLSearchParams($page.url.search);
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local set of owned keys, not a Svelte reactive store
 		const ownedKeys = new Set<string>(['q', 'betragMin', 'betragMax', 'page']);
 		for (const f of FILTER_REGISTRY[tab]) ownedKeys.add(f.key);
 		for (const k of ownedKeys) current.delete(k);
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local URL builder, not a Svelte reactive store
 		const merged = new URLSearchParams(qs);
 		for (const [k, v] of current) merged.set(k, v);
 		const search = merged.toString();
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic same-origin query string, not a typed route id
 		goto(`${$page.url.pathname}${search ? `?${search}` : ''}`, {
 			keepFocus: true,
 			noScroll: true,
@@ -264,6 +268,7 @@
 	function applyView(view: SavedView) {
 		viewsOpen = false;
 		const search = view.query;
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic same-origin query string, not a typed route id
 		goto(`${$page.url.pathname}${search ? `?${search}` : ''}`, {
 			keepFocus: true,
 			noScroll: true,
@@ -497,7 +502,7 @@
 	{:else if field.type === 'member-picker'}
 		<Combobox
 			options={memberOptions.map((m) => ({ value: m.id, label: m.label }))}
-			value={filterState.members[field.key] ? [filterState.members[field.key]] : []}
+			value={[filterState.members[field.key]].filter((v): v is string => v !== undefined)}
 			multiple={false}
 			ariaLabel={field.label}
 			placeholder="{field.label} wählen…"

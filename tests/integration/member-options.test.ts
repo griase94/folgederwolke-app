@@ -10,10 +10,12 @@ describe.skipIf(!dbConfigured)("listMemberOptions", () => {
     expect(Array.isArray(opts)).toBe(true);
     expect(opts.length).toBeGreaterThan(0); // Phase 1 seed-fixtures seeds ≥1 member
     if (opts.length > 1)
-      expect(opts[0].label.localeCompare(opts[1].label)).toBeLessThanOrEqual(0);
+      expect(opts[0]!.label.localeCompare(opts[1]!.label)).toBeLessThanOrEqual(
+        0,
+      );
     if (opts.length) {
-      expect(typeof opts[0].id).toBe("string");
-      expect(typeof opts[0].label).toBe("string");
+      expect(typeof opts[0]!.id).toBe("string");
+      expect(typeof opts[0]!.label).toBe("string");
     }
   });
 });

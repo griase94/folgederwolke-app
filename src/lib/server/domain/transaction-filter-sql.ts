@@ -58,10 +58,22 @@ export function buildAusgabenWhere(s: FilterState, year: YearScope): SQL[] {
     );
   if (s.enums.status?.length) {
     const dbVals = s.enums.status.flatMap((v) => STATUS_MAP[v] ?? []);
-    if (dbVals.length) c.push(inArray(expenses.status, dbVals as any));
+    if (dbVals.length)
+      c.push(
+        inArray(
+          expenses.status,
+          dbVals as (typeof expenses.status.enumValues)[number][],
+        ),
+      );
   }
   if (s.enums.bezahltVon?.length)
-    c.push(inArray(expenses.bezahltVonKind, s.enums.bezahltVon as any));
+    c.push(
+      inArray(
+        expenses.bezahltVonKind,
+        s.enums
+          .bezahltVon as (typeof expenses.bezahltVonKind.enumValues)[number][],
+      ),
+    );
   // P2-04: s.enums.kategorie holds kategorieNameSnapshot strings (not ids), per Task 1 contract.
   if (s.enums.kategorie?.length)
     c.push(inArray(expenses.kategorieNameSnapshot, s.enums.kategorie));
@@ -93,7 +105,12 @@ export function buildEinnahmenWhere(s: FilterState, year: YearScope): SQL[] {
   if (s.enums.kategorie?.length)
     c.push(inArray(income.kategorieNameSnapshot, s.enums.kategorie));
   if (s.enums.sphaere?.length)
-    c.push(inArray(income.sphereSnapshot, s.enums.sphaere as any));
+    c.push(
+      inArray(
+        income.sphereSnapshot,
+        s.enums.sphaere as (typeof income.sphereSnapshot.enumValues)[number][],
+      ),
+    );
   if (s.enums.monat?.length)
     c.push(
       sql`EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int IN (${sql.join(
@@ -121,9 +138,21 @@ export function buildSpendenWhere(s: FilterState, year: YearScope): SQL[] {
       sql`(${donations.spenderName} ILIKE ${`%${s.search}%`} OR ${donations.kategorieNameSnapshot} ILIKE ${`%${s.search}%`})`,
     );
   if (s.enums.spendenart?.length)
-    c.push(inArray(donations.spendeKind, s.enums.spendenart as any));
+    c.push(
+      inArray(
+        donations.spendeKind,
+        s.enums
+          .spendenart as (typeof donations.spendeKind.enumValues)[number][],
+      ),
+    );
   if (s.enums.zweckbindung?.length)
-    c.push(inArray(donations.zweckbindungKind, s.enums.zweckbindung as any));
+    c.push(
+      inArray(
+        donations.zweckbindungKind,
+        s.enums
+          .zweckbindung as (typeof donations.zweckbindungKind.enumValues)[number][],
+      ),
+    );
   // Bescheinigung filter: each branch fires only when ONE state is selected.
   // Both "versandt" + "ausstehend" selected (or neither) => no predicate added (= no filter).
   if (

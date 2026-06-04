@@ -77,7 +77,7 @@ describe("FilterBar", () => {
     const remove = screen.getByRole("button", { name: /Offen entfernen/i });
     await fireEvent.click(remove);
     expect(goto).toHaveBeenCalledTimes(1);
-    const target = String(vi.mocked(goto).mock.calls[0][0]);
+    const target = String(vi.mocked(goto).mock.calls[0]![0]);
     // The stale ?page=5 must be gone; the removed status filter too.
     expect(target).not.toMatch(/[?&]page=/);
     expect(target).not.toMatch(/status=/);

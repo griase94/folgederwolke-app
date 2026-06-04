@@ -24,7 +24,7 @@ import type { Sphere } from "$lib/domain/sphere.js";
 import { zahlungsarten } from "$lib/server/db/schema/zahlungsarten.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { bus } from "$lib/server/events/index.js";
-import { ALL_YEARS, type YearScope } from "$lib/domain/year.js";
+import type { YearScope } from "$lib/domain/year.js";
 import type { FilterState } from "$lib/domain/transaction-filters.js";
 import {
   buildAusgabenWhere,
