@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 
 /**
@@ -28,8 +28,6 @@ interface Manifest {
 
 /** Collect all paths that have a +page.svelte or +page.server.ts */
 function collectRoutes(dir: string, prefix = ""): string[] {
-  const { readdirSync, statSync } =
-    require("node:fs") as typeof import("node:fs");
   const routes: string[] = [];
   let entries: string[];
   try {
