@@ -4,6 +4,7 @@
 	import { beforeNavigate } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import DateField from '$lib/components/ui/date-field/DateField.svelte';
+	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 	import type { PageData, ActionData } from './$types.js';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -16,6 +17,18 @@
 	// svelte-ignore state_referenced_locally
 	let selectedType = $state<TransactionType>(data.initialType ?? 'expense');
 	let submitting = $state(false);
+
+	// Betrag client-side validation. Switching the input to type="text"
+	// (for inputmode="decimal") dropped native number validation, so we
+	// mirror the public AuslagenForm's check: parseBetragCents must yield a
+	// positive cents value. `betragTouched` keeps the error hidden until the
+	// user has interacted, matching the form's show-after-touch convention.
+	let betragDisplay = $state('');
+	let betragTouched = $state(false);
+	const betragValid = $derived.by(() => {
+		const cents = parseBetragCents(betragDisplay);
+		return Number.isFinite(cents) && cents > 0;
+	});
 
 	const typeLabels: Record<TransactionType, string> = {
 		expense: 'Ausgabe',
@@ -189,7 +202,14 @@
 			method="POST"
 			action="?/create"
 			enctype="multipart/form-data"
-			use:enhance={() => {
+			use:enhance={({ cancel }) => {
+				// Block submit on an invalid Betrag — surface the inline error
+				// instead of letting it fail only at the server.
+				betragTouched = true;
+				if (!betragValid) {
+					cancel();
+					return;
+				}
 				submitting = true;
 				return async ({ update }) => {
 					submitting = false;
@@ -225,20 +245,26 @@
 					<span class="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">€</span>
 					<input
 						id="betragCents-display"
-						type="number"
-						step="0.01"
-						min="0.01"
+						type="text"
+						inputmode="decimal"
 						required
 						placeholder="0,00"
-						oninput={(e) => {
-							const v = parseFloat((e.target as HTMLInputElement).value) || 0;
+						bind:value={betragDisplay}
+						oninput={() => {
+							const cents = parseBetragCents(betragDisplay);
 							const hidden = document.querySelector<HTMLInputElement>('input[name="betragCents"]');
-							if (hidden) hidden.value = String(Math.round(v * 100));
+							if (hidden) hidden.value = String(Number.isFinite(cents) ? cents : 0);
 						}}
+						onblur={() => (betragTouched = true)}
+						aria-invalid={betragTouched && !betragValid}
+						aria-describedby={betragTouched && !betragValid ? 'err-betrag' : undefined}
 						class="w-full rounded-md border border-border bg-background py-2 pr-3 pl-8 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 					/>
 					<input type="hidden" name="betragCents" value="" />
 				</div>
+				{#if betragTouched && !betragValid}
+					<p id="err-betrag" class="mt-1 text-xs text-red-600">Bitte einen gültigen Betrag eingeben.</p>
+				{/if}
 			</div>
 
 			<!-- Expense-specific fields -->
@@ -350,12 +376,14 @@
 							<input
 								name="externName"
 								type="text"
+								autocomplete="name"
 								placeholder="Name"
 								class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 							/>
 							<input
 								name="externIban"
 								type="text"
+								autocomplete="off"
 								placeholder="IBAN"
 								class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-primary focus:outline-none"
 							/>

@@ -376,6 +376,15 @@
 	const submitDisabled = $derived(
 		isSubmitting || !belegFile || !rechnungsdatum
 	);
+
+	// Name only the field(s) actually missing so the hint is precise. Uses
+	// "Rechnungsdatum" to match the field's visible <Label>.
+	const submitHint = $derived.by(() => {
+		const missing: string[] = [];
+		if (!belegFile) missing.push('einen Beleg hochladen');
+		if (!rechnungsdatum) missing.push('das Rechnungsdatum angeben');
+		return missing.length > 0 ? `Bitte zuerst ${missing.join(' und ')}.` : '';
+	});
 </script>
 
 <form
@@ -645,12 +654,18 @@
 					Bitte alle Pflichtfelder ausfüllen.
 				</p>
 			{/if}
+			{#if submitDisabled && !isSubmitting && submitHint}
+				<p id="submit-hint" class="text-muted-foreground mb-2 text-center text-xs">
+					{submitHint}
+				</p>
+			{/if}
 			<Button
 				type="submit"
 				class="w-full"
 				size="lg"
 				disabled={submitDisabled}
 				aria-busy={isSubmitting}
+				aria-describedby={submitDisabled && !isSubmitting ? 'submit-hint' : undefined}
 				data-testid="auslage-submit"
 			>
 				{#if isSubmitting}
