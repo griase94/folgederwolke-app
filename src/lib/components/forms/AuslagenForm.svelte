@@ -130,6 +130,8 @@
 	let draftRestored = $state(false);
 	let hasUnsavedChanges = $state(false);
 	let ctaBottomOffset = $state(0);
+	/** Set when the user tries to submit while offline — cleared on next submit attempt. */
+	let offlineError = $state(false);
 
 	// Idempotency key: generated once per page load
 	const submissionNonce = crypto.randomUUID();
@@ -325,6 +327,25 @@
 			e.preventDefault();
 			return;
 		}
+
+		// PR4: Offline guard — intercept before the native POST reaches the network.
+		// navigator.onLine is browser-only; this handler only runs in the browser
+		// (it's an event handler), so no SSR guard needed. When offline we:
+		//   1. prevent the native POST (which would show the browser's connection-error page)
+		//   2. ensure the current draft is flushed to IndexedDB immediately
+		//   3. show an honest inline message — no false auto-send promise
+		// The online path is completely unaffected: we only enter this branch when
+		// navigator.onLine === false.
+		if (typeof navigator !== 'undefined' && !navigator.onLine) {
+			e.preventDefault();
+			offlineError = true;
+			// Force-flush any pending debounced keystrokes to IndexedDB right now.
+			// saveDraft is best-effort; we never block the user on its result.
+			void saveDraft(getDraftMetadata(), belegFile);
+			return;
+		}
+
+		offlineError = false;
 		isSubmitting = true;
 
 		// Mark all fields as blurred to show all validation errors
@@ -417,6 +438,13 @@
 			>
 				Verwerfen
 			</button>
+		</div>
+	{/if}
+
+	<!-- PR4: Offline submit error -->
+	{#if offlineError}
+		<div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-4 py-3 text-sm" role="alert">
+			Keine Internetverbindung — dein Entwurf ist gespeichert. Bitte sende erneut ab, sobald du wieder online bist.
 		</div>
 	{/if}
 
