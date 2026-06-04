@@ -18,7 +18,17 @@
  * - P2-05: `betragCents` is int8/bigint, so amount bounds are wrapped in
  *   `BigInt(...)` for the Drizzle binding.
  */
-import { and, eq, gte, lte, ilike, inArray, sql, isNull } from "drizzle-orm";
+import {
+  and,
+  eq,
+  gte,
+  lte,
+  ilike,
+  inArray,
+  sql,
+  isNull,
+  isNotNull,
+} from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
@@ -120,7 +130,7 @@ export function buildSpendenWhere(s: FilterState, year: YearScope): SQL[] {
     s.enums.bescheinigung?.includes("versandt") &&
     !s.enums.bescheinigung?.includes("ausstehend")
   )
-    c.push(sql`${donations.bescheinigungNr} IS NOT NULL`);
+    c.push(isNotNull(donations.bescheinigungNr));
   if (
     s.enums.bescheinigung?.includes("ausstehend") &&
     !s.enums.bescheinigung?.includes("versandt")
