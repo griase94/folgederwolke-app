@@ -178,15 +178,14 @@ test.describe("@phase-3 Admin shell — dashboard", () => {
 });
 
 test.describe("@phase-3 Search API stub", () => {
-  test("GET /api/search returns empty grouped results", async ({
-    page,
-    request,
-  }) => {
-    // /api/search requires an authenticated session — sign in first so the
-    // cookie jar carries a valid session for the apiRequest call below.
+  test("GET /api/search returns empty grouped results", async ({ page }) => {
+    // /api/search requires an authenticated session — sign in first, then
+    // use page.request (which shares the page's cookie jar) so the session
+    // cookie is sent. The standalone `request` fixture has its own separate
+    // cookie jar and would receive a 401 after signIn(page).
     await signIn(page);
 
-    const resp = await request.get("/api/search?q=test");
+    const resp = await page.request.get("/api/search?q=test");
     expect(resp.status()).toBe(200);
     const body = await resp.json();
     expect(body).toHaveProperty("results");
