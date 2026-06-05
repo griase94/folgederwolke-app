@@ -46,6 +46,15 @@ jobs:
       - name: Scan committed env files for real-secret patterns
         run: bash scripts/check-env-files.sh
 
+  check-no-fdw-fallbacks:
+    name: check no FdW identity fallbacks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Forbid residual FdW identity fallbacks in src/
+        run: bash scripts/check-no-fdw-fallbacks.sh
+
   audit:
     name: audit
     runs-on: ubuntu-latest

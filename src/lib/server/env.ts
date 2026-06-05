@@ -137,6 +137,13 @@ const schema = z.object({
     .transform((v) => v === "true"),
   /** Canonical public origin (https://folgederwolke-app.vercel.app). Required in prod. */
   PUBLIC_BASE_URL: z.string().default(""),
+  /**
+   * Public-facing contact email shown in the public Auslagen-form consent text.
+   * Build-time PUBLIC_ var: $lib/domain/datenschutz.ts (client-importable) reads
+   * it via $env/static/public, NOT via this server-side env object. Declared
+   * here too so it is documented + validated alongside the other PUBLIC_ vars.
+   */
+  PUBLIC_VEREIN_KONTAKT_EMAIL: z.string().default(""),
 
   // Cron auth
   /** Secret shared between Vercel cron scheduler and the app. */
@@ -406,5 +413,24 @@ export function assertProductionEnvSafe(): void {
     console.warn(
       `[env] ${err instanceof Error ? err.message : String(err)} — non-prod, continuing.`,
     );
+  }
+
+  // White-label Phase 4 (Task 4.1): VEREIN_NAME + MAIL_FROM are required in
+  // production. They carry Zod `.default("")` (NOT `.min(1)`, which would throw
+  // at module load and break the CI build); required-ness is enforced here,
+  // prod-gated, so the prerender/build (which skips this via `if (!building)`
+  // in hooks.server.ts) is unaffected. Appended AFTER the existing checks so
+  // order-sensitive tests in env-prod-asserts.test.ts don't shift.
+  if (isProd) {
+    if (env.VEREIN_NAME.trim() === "") {
+      throw new Error(
+        "VEREIN_NAME is required in production — it is the Verein identity shown across the app, mail footers, and legal pages. Set it via the Vercel project env.",
+      );
+    }
+    if (env.MAIL_FROM.trim() === "") {
+      throw new Error(
+        "MAIL_FROM is required in production — it is the From-address of every outgoing email. Set it via the Vercel project env.",
+      );
+    }
   }
 }

@@ -160,7 +160,7 @@ export async function sendMail<T extends TemplateName>(opts: {
 
   try {
     const result = await provider.send({
-      from: env.MAIL_FROM || "noreply@folgederwolke.de",
+      from: env.MAIL_FROM,
       to,
       subject,
       html,
