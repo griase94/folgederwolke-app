@@ -47,7 +47,6 @@
 	import { page } from '$app/stores';
 	import FilterBar from './FilterBar.svelte';
 	import StaleYearBanner from '$lib/components/admin/StaleYearBanner.svelte';
-	import TransactionRowCmp from './TransactionRow.svelte';
 	import TransactionCardMobile from './TransactionCardMobile.svelte';
 	import { Pagination } from '$lib/components/ui/pagination/index.js';
 	import {
@@ -362,13 +361,16 @@
 		<Pagination page={pageNum} {pageSize} {total} {onPageChange} class="justify-center" />
 	{/if}
 
-	<!-- ── Mobile sticky create CTA / FAB (UX-01, min 44px touch target) ────── -->
+	<!-- ── Mobile sticky create CTA / FAB (UX-01, min 44px touch target) ─────
+	     AT-reachable: a real link with an accessible name (`aria-label={newLabel}`)
+	     and a visible "+" glyph. This is the mobile counterpart to the desktop
+	     top-right CTA above (which is display:none on mobile); the FAB is hidden
+	     on sm+ so exactly one create action is reachable per breakpoint. -->
 	<!-- eslint-disable svelte/no-navigation-without-resolve -->
 	<a
 		href={newHref}
 		data-slot="new-cta-mobile"
-		aria-hidden="true"
-		tabindex="-1"
+		aria-label={newLabel}
 		class="fixed right-4 bottom-20 z-30 inline-flex h-14 min-h-14 w-14 min-w-14 items-center justify-center rounded-full bg-primary text-2xl leading-none text-primary-foreground shadow-lg transition-colors hover:bg-primary/90 sm:hidden"
 	>
 		<span aria-hidden="true">+</span>

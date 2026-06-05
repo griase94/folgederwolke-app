@@ -118,16 +118,28 @@ function baseProps(overrides: Record<string, unknown> = {}) {
 }
 
 describe("TransactionListScaffold — shared contract", () => {
-  it("renders the kpi slot, exactly one primary CTA (newLabel→newHref), FilterBar, and a row per `rows`", () => {
-    render(TransactionListScaffold, { props: baseProps() });
+  it("renders the kpi slot, the primary create CTA (newLabel→newHref) + an AT-reachable mobile FAB, FilterBar, and a row per `rows`", () => {
+    const { container } = render(TransactionListScaffold, {
+      props: baseProps(),
+    });
 
     // kpi snippet
     expect(screen.getByTestId("kpi-strip")).toBeTruthy();
 
-    // exactly ONE primary create CTA, linking newLabel → newHref
-    const ctas = screen.getAllByRole("link", { name: /Neue Ausgabe/ });
-    expect(ctas.length).toBe(1);
-    expect(ctas[0]!.getAttribute("href")).toBe("/app/ausgaben/neu");
+    // Primary create CTA — assert by data-slot (not accessible-name count):
+    // jsdom doesn't compute Tailwind `hidden`, so both the desktop link and the
+    // mobile FAB are in the DOM; a role-name count would be fragile.
+    const desktopCta = container.querySelector('[data-slot="new-cta"]');
+    expect(desktopCta?.getAttribute("href")).toBe("/app/ausgaben/neu");
+    expect(desktopCta?.textContent).toContain("Neue Ausgabe");
+
+    // Mobile FAB is the AT-reachable mobile counterpart: a real link with an
+    // accessible name (aria-label) + the same href (no aria-hidden/tabindex=-1).
+    const mobileFab = container.querySelector('[data-slot="new-cta-mobile"]');
+    expect(mobileFab?.getAttribute("href")).toBe("/app/ausgaben/neu");
+    expect(mobileFab?.getAttribute("aria-label")).toBe("Neue Ausgabe");
+    expect(mobileFab?.getAttribute("aria-hidden")).toBeNull();
+    expect(mobileFab?.getAttribute("tabindex")).toBeNull();
 
     // FilterBar present (shared filter-bar slot marker)
     expect(document.querySelector('[data-slot="filter-bar"]')).toBeTruthy();
