@@ -18,6 +18,7 @@
 	import Money from '$lib/components/ui/money/money.svelte';
 	import type { Sphere } from '$lib/domain/sphere.js';
 	import { SPHERE_LABELS } from '$lib/domain/sphere.js';
+	import { statusPresentation } from '$lib/domain/transaction-status.js';
 	import type { AusgabenRow } from '$lib/server/domain/transactions.js';
 	import { deserialize } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
@@ -146,22 +147,8 @@
 	}
 
 	// ── Status badge ─────────────────────────────────────────────────────────
-	const STATUS_LABEL: Record<string, string> = {
-		zu_pruefen: 'Zu prüfen',
-		in_pruefung: 'In Prüfung',
-		geprueft: 'Genehmigt',
-		abgelehnt: 'Abgelehnt',
-		erstattet: 'Erstattet',
-		importiert: 'Importiert',
-	};
-	const STATUS_TONE: Record<string, string> = {
-		erstattet: 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200',
-		geprueft: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200',
-		abgelehnt: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200',
-	};
-	function statusTone(status: string): string {
-		return STATUS_TONE[status] ?? 'bg-muted text-muted-foreground';
-	}
+	// Label + tone come from the SHARED transaction-status map so the desktop
+	// column and the mobile card never drift (item 7).
 
 	function formatDatum(iso: string): string {
 		return new Date(iso).toLocaleDateString('de-DE');
@@ -237,10 +224,10 @@
 	<span
 		class={[
 			'inline-flex w-fit items-center rounded-full px-2 py-0.5 text-xs font-medium',
-			statusTone(row.status),
+			statusPresentation(row.status).tone,
 		].join(' ')}
 	>
-		{STATUS_LABEL[row.status] ?? row.status}
+		{statusPresentation(row.status).label}
 	</span>
 {/snippet}
 

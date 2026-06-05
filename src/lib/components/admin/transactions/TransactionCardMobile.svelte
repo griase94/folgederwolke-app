@@ -23,6 +23,7 @@
 	import type { TransactionRow } from '$lib/server/domain/transactions.js';
 	import { Money } from '$lib/components/ui/money/index.js';
 	import Lock from '@lucide/svelte/icons/lock';
+	import { statusPresentation } from '$lib/domain/transaction-status.js';
 
 	let {
 		row,
@@ -70,15 +71,6 @@
 		expense: 'bg-red-50 text-red-700 ring-red-200',
 		income: 'bg-green-50 text-green-700 ring-green-200',
 		donation: 'bg-blue-50 text-blue-700 ring-blue-200',
-	};
-
-	const statusLabel: Record<string, string> = {
-		zu_pruefen: 'Zu prüfen',
-		in_pruefung: 'In Prüfung',
-		geprueft: 'Genehmigt',
-		abgelehnt: 'Abgelehnt',
-		erstattet: 'Erstattet',
-		importiert: 'Importiert',
 	};
 
 	const isFestgeschrieben = $derived(row.festgeschriebenAt !== null);
@@ -148,19 +140,15 @@
 			{/if}
 
 			{#if row.status}
+				<!-- Label + tone from the SHARED transaction-status map (item 7) — keeps
+				     the card identical to the desktop Ausgaben status column. -->
 				<span
 					class={[
 						'inline-flex items-center rounded-full px-2 py-0.5 font-medium',
-						row.status === 'erstattet'
-							? 'bg-green-50 text-green-700'
-							: row.status === 'geprueft'
-								? 'bg-amber-50 text-amber-700'
-								: row.status === 'abgelehnt'
-									? 'bg-red-50 text-red-700'
-									: 'bg-muted text-muted-foreground',
+						statusPresentation(row.status).tone,
 					].join(' ')}
 				>
-					{statusLabel[row.status] ?? row.status}
+					{statusPresentation(row.status).label}
 				</span>
 			{/if}
 
