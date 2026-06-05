@@ -58,6 +58,93 @@ function berlinYear(): number {
   );
 }
 
+/**
+ * The form re-hydration shape — shared by the duplicate-as-template prefill
+ * (load reads it off the query string) AND the 422 re-hydrate (?/create echoes
+ * the submitted values back). `betrag` is the EUROS string the display input
+ * binds (cents are derived from it client-side), so on prefill we convert
+ * `betragCents` → euros and on a failed submit we echo whatever the user typed.
+ */
+export interface AusgabeFormValues {
+  bezeichnung: string;
+  betrag: string;
+  kategorieNameSnapshot: string;
+  kommentar: string;
+  projectId: string;
+  bezahltVonKind: "verein" | "member" | "extern";
+  bezahltVonMemberId: string;
+  externName: string;
+  externIban: string;
+  externEmail: string;
+  rechnungsdatum: string;
+  abflussDatum: string;
+  zahlungsartId: string;
+  schonBezahlt: boolean;
+  erstattetAm: string;
+  keinBeleg: boolean;
+  begruendung: string;
+}
+
+const EMPTY_VALUES: AusgabeFormValues = {
+  bezeichnung: "",
+  betrag: "",
+  kategorieNameSnapshot: "",
+  kommentar: "",
+  projectId: "",
+  bezahltVonKind: "verein",
+  bezahltVonMemberId: "",
+  externName: "",
+  externIban: "",
+  externEmail: "",
+  rechnungsdatum: "",
+  abflussDatum: "",
+  zahlungsartId: "",
+  schonBezahlt: false,
+  erstattetAm: "",
+  keinBeleg: false,
+  begruendung: "",
+};
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const BEZAHLT_VON = ["verein", "member", "extern"] as const;
+
+/** centsstring → "euros" with 2 decimals (e.g. "45000" → "450.00"). */
+function centsToEuros(cents: string | null): string {
+  if (!cents) return "";
+  const n = Number(cents);
+  return Number.isFinite(n) ? (n / 100).toFixed(2) : "";
+}
+
+/**
+ * Build the duplicate-as-template prefill from the entry-form query string. Only
+ * the descriptive fields the detail `?/duplicate` forwards are read; the payment
+ * state (zahlungsart / erstattetAm / schonBezahlt) and the Beleg are NEVER
+ * prefilled (spec §7.2 recurring-Miete safety — a duplicate starts unpaid).
+ */
+function parsePrefill(searchParams: URLSearchParams): AusgabeFormValues {
+  const kindRaw = searchParams.get("bezahltVonKind");
+  const bezahltVonKind = (BEZAHLT_VON as readonly string[]).includes(
+    kindRaw ?? "",
+  )
+    ? (kindRaw as AusgabeFormValues["bezahltVonKind"])
+    : "verein";
+  const memberId = searchParams.get("bezahltVonMemberId");
+  return {
+    ...EMPTY_VALUES,
+    bezeichnung: searchParams.get("bezeichnung") ?? "",
+    betrag: centsToEuros(searchParams.get("betragCents")),
+    kategorieNameSnapshot: searchParams.get("kategorieNameSnapshot") ?? "",
+    kommentar: searchParams.get("kommentar") ?? "",
+    projectId: searchParams.get("projectId") ?? "",
+    bezahltVonKind,
+    bezahltVonMemberId: memberId && UUID_RE.test(memberId) ? memberId : "",
+    externName: searchParams.get("externName") ?? "",
+    externIban: searchParams.get("externIban") ?? "",
+    externEmail: searchParams.get("externEmail") ?? "",
+  };
+}
+
 // ---------------------------------------------------------------------------
 // load
 // ---------------------------------------------------------------------------
@@ -106,6 +193,19 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     kind: "expense",
   });
 
+  // Duplicate-as-template prefill (Fix 1): the detail `?/duplicate` redirects
+  // here with the descriptive fields on the query string. `values` seeds the
+  // form; a fresh /neu visit yields all-empty values. `?projectId=` (the
+  // ProjectCtaRail deep-link) merges into the prefill's projectId.
+  const prefill = parsePrefill(url.searchParams);
+  const values: AusgabeFormValues = {
+    ...prefill,
+    projectId: prefill.projectId || prefillProjectId || "",
+    // No descriptive prefill → land on the smart-default Kategorie.
+    kategorieNameSnapshot:
+      prefill.kategorieNameSnapshot || (defaultExpenseKategorie ?? ""),
+  };
+
   return {
     zahlungsarten,
     members: allMembers,
@@ -113,6 +213,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     defaultExpenseKategorie,
     projects: allProjects,
     prefillProjectId,
+    values,
   };
 };
 
@@ -173,6 +274,54 @@ const expenseSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// 422 re-hydration helpers (Fix 2)
+// ---------------------------------------------------------------------------
+
+/** Re-build the form values from the submitted FormData so a 422 re-hydrates. */
+function valuesFromForm(data: FormData): AusgabeFormValues {
+  const str = (k: string): string => {
+    const v = data.get(k);
+    return typeof v === "string" ? v : "";
+  };
+  const kindRaw = str("bezahltVonKind");
+  const bezahltVonKind = (BEZAHLT_VON as readonly string[]).includes(kindRaw)
+    ? (kindRaw as AusgabeFormValues["bezahltVonKind"])
+    : "verein";
+  return {
+    bezeichnung: str("bezeichnung"),
+    // Echo the typed euros back (the hidden betragCents mirrors it client-side).
+    betrag: centsToEuros(str("betragCents")),
+    kategorieNameSnapshot: str("kategorieNameSnapshot"),
+    kommentar: str("kommentar"),
+    projectId: str("projectId"),
+    bezahltVonKind,
+    bezahltVonMemberId: str("bezahltVonMemberId"),
+    externName: str("externName"),
+    externIban: str("externIban"),
+    externEmail: str("externEmail"),
+    rechnungsdatum: str("rechnungsdatum"),
+    abflussDatum: str("abfluss_datum"),
+    zahlungsartId: str("zahlungsartId"),
+    schonBezahlt: str("schonBezahlt") === "true",
+    erstattetAm: str("erstattetAm"),
+    keinBeleg: str("keinBeleg") === "true",
+    begruendung: str("begruendung"),
+  };
+}
+
+/** Map Zod issues → per-field error messages (first message wins per field). */
+function errorsFromIssues(
+  issues: readonly { path: readonly PropertyKey[]; message: string }[],
+): Record<string, string[]> {
+  const errors: Record<string, string[]> = {};
+  for (const issue of issues) {
+    const key = String(issue.path[0] ?? "_");
+    if (!errors[key]) errors[key] = [issue.message];
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
 // actions
 // ---------------------------------------------------------------------------
 
@@ -190,8 +339,12 @@ export const actions = {
 
     const parsed = expenseSchema.safeParse(raw);
     if (!parsed.success) {
+      // Fix 2: echo the submitted values + per-field errors so the form
+      // re-hydrates (Spenden parity) instead of wiping everything.
       return fail(422, {
         error: "Ungültige Eingabe",
+        values: valuesFromForm(data),
+        errors: errorsFromIssues(parsed.error.issues),
         issues: parsed.error.issues,
       });
     }
@@ -209,6 +362,7 @@ export const actions = {
       return fail(422, {
         error:
           "Bitte einen Beleg hochladen oder „Kein Beleg vorhanden“ mit Begründung wählen.",
+        values: valuesFromForm(data),
         errors: {
           beleg: ["Beleg-Datei ODER eine Begründung ist erforderlich."],
         },
@@ -235,7 +389,11 @@ export const actions = {
             uploadErr instanceof Error
               ? uploadErr.message
               : "Beleg konnte nicht hochgeladen werden.";
-          return fail(422, { error: msg, errors: { beleg: [msg] } });
+          return fail(422, {
+            error: msg,
+            values: valuesFromForm(data),
+            errors: { beleg: [msg] },
+          });
         }
       }
 
@@ -289,6 +447,12 @@ export const actions = {
         if (!zahlungsartId) {
           return fail(422, {
             error: "Zahlungsart ist für „Schon bezahlt“ erforderlich.",
+            values: valuesFromForm(data),
+            errors: {
+              zahlungsartId: [
+                "Zahlungsart ist für „Schon bezahlt“ erforderlich.",
+              ],
+            },
           });
         }
         const erstattetResult = await markExpenseErstattet({

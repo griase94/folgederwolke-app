@@ -77,6 +77,7 @@ vi.mock("$lib/server/domain/transaction-pickers.js", () => ({
     },
   ],
   loadRecentKategorieUsage: async () => [],
+  pickDefaultKategorieName: () => "Verpflegung",
   listMemberOptions: async () => [
     { id: "11111111-1111-4111-8111-111111111111", label: "Felix Muster" },
   ],
@@ -124,7 +125,7 @@ vi.mock("$lib/server/db/schema/projects.js", () => ({ projects: {} }));
 // SUT — imported AFTER the mocks
 // ---------------------------------------------------------------------------
 
-const { actions } =
+const { actions, load } =
   await import("../../src/routes/app/ausgaben/neu/+page.server.js");
 
 // ---------------------------------------------------------------------------
@@ -378,5 +379,111 @@ describe("ausgaben/neu ?/create — beleg-or-Begründung", () => {
     );
     const result = (await runCreate(event)) as { fail?: { status?: number } };
     expect(result.fail?.status).toBe(401);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// load — duplicate-as-template prefill (Fix 1)
+// ---------------------------------------------------------------------------
+
+interface LoadEvent {
+  locals: { session: { user: { id: string } } | null };
+  url: URL;
+}
+
+function makeLoadEvent(search: string): LoadEvent {
+  return {
+    locals: { session: { user: { id: "user-1" } } },
+    url: new URL(`http://test.local/app/ausgaben/neu${search}`),
+  };
+}
+
+async function runLoad(event: LoadEvent): Promise<Record<string, unknown>> {
+  return (await (load as (e: LoadEvent) => Promise<Record<string, unknown>>)(
+    event,
+  )) as Record<string, unknown>;
+}
+
+describe("ausgaben/neu load — duplicate prefill", () => {
+  it("parses the duplicate query params into a values object (betragCents → euros)", async () => {
+    const data = await runLoad(
+      makeLoadEvent(
+        "?bezeichnung=Raummiete+M%C3%A4rz&betragCents=45000&kategorieNameSnapshot=Miete&kommentar=monatlich&bezahltVonKind=member&bezahltVonMemberId=11111111-1111-4111-8111-111111111111",
+      ),
+    );
+    const values = data.values as Record<string, unknown>;
+    expect(values).toBeTruthy();
+    expect(values.bezeichnung).toBe("Raummiete März");
+    // betragCents is surfaced as a euros string for the display input.
+    expect(values.betrag).toBe("450.00");
+    expect(values.kategorieNameSnapshot).toBe("Miete");
+    expect(values.kommentar).toBe("monatlich");
+    expect(values.bezahltVonKind).toBe("member");
+    expect(values.bezahltVonMemberId).toBe(
+      "11111111-1111-4111-8111-111111111111",
+    );
+  });
+
+  it("returns empty values (no prefill) for a fresh /neu visit", async () => {
+    const data = await runLoad(makeLoadEvent(""));
+    const values = data.values as Record<string, unknown>;
+    expect(values.bezeichnung ?? "").toBe("");
+    expect(values.betrag ?? "").toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ?/create — 422 re-hydration (Fix 2)
+// ---------------------------------------------------------------------------
+
+describe("ausgaben/neu ?/create — 422 re-hydrates the form", () => {
+  it("returns the submitted values + per-field errors on a Beleg-gate 422 (no input wiped)", async () => {
+    const event = makeEvent({
+      ...VEREIN_BASE,
+      bezeichnung: "Teilausgefüllt",
+      bezahltVonKind: "verein",
+      bezahltVonDisplay: "Folge der Wolke e.V.",
+      zahlungsartId: ZAHLART_ID,
+      // no beleg → triggers the §4.1 gate 422
+    });
+    const result = (await runCreate(event)) as {
+      fail?: {
+        status?: number;
+        data?: {
+          values?: Record<string, unknown>;
+          errors?: Record<string, string[]>;
+        };
+      };
+    };
+    expect(result.fail?.status).toBe(422);
+    // The submitted values come back so the form re-hydrates instead of wiping.
+    expect(result.fail?.data?.values?.bezeichnung).toBe("Teilausgefüllt");
+    expect(result.fail?.data?.values?.kategorieNameSnapshot).toBe(
+      "Verpflegung",
+    );
+    // A per-field error is surfaced for the Beleg gate.
+    expect(result.fail?.data?.errors?.beleg).toBeTruthy();
+  });
+
+  it("returns values + a kategorie field error on a schema 422", async () => {
+    const event = makeEvent({
+      ...VEREIN_BASE,
+      bezeichnung: "Ohne Kategorie",
+      kategorieNameSnapshot: "(Unkategorisiert)",
+      bezahltVonKind: "verein",
+      beleg: mkBelegFile(),
+    });
+    const result = (await runCreate(event)) as {
+      fail?: {
+        status?: number;
+        data?: {
+          values?: Record<string, unknown>;
+          errors?: Record<string, string[]>;
+        };
+      };
+    };
+    expect(result.fail?.status).toBe(422);
+    expect(result.fail?.data?.values?.bezeichnung).toBe("Ohne Kategorie");
+    expect(result.fail?.data?.errors?.kategorieNameSnapshot).toBeTruthy();
   });
 });

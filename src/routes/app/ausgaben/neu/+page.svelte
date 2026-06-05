@@ -15,12 +15,27 @@
 	import { goto } from '$app/navigation';
 	import EntryFormShell from '$lib/components/admin/transactions/EntryFormShell.svelte';
 	import AusgabeFields from '$lib/components/admin/transactions/ausgaben/AusgabeFields.svelte';
+	import type { AusgabeFormValues } from './+page.server.js';
 	import type { PageData, ActionData } from './$types.js';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	let dirty = $state(false);
 	let submitting = $state(false);
+
+	// On a failed submit the action echoes the typed values + per-field errors so
+	// the form re-hydrates (Fix 2); otherwise we seed from the load prefill (Fix 1,
+	// the duplicate-as-template query). The 422 echo wins when present. Both
+	// branches carry the same `AusgabeFormValues` shape.
+	const formValues = $derived(
+		((form && 'values' in form ? form.values : undefined) ??
+			data.values) as AusgabeFormValues,
+	);
+	const fieldErrors = $derived(
+		form && 'errors' in form
+			? (form.errors as Record<string, string[]> | undefined)
+			: undefined,
+	);
 
 	function onClose() {
 		// eslint-disable-next-line svelte/no-navigation-without-resolve
@@ -60,8 +75,8 @@
 		expenseKategorien={data.expenseKategorien}
 		zahlungsarten={data.zahlungsarten}
 		projects={data.projects}
-		defaultKategorie={data.defaultExpenseKategorie ?? ''}
-		prefillProjectId={data.prefillProjectId}
+		values={formValues}
+		errors={fieldErrors}
 		onDirty={() => (dirty = true)}
 	/>
 {/snippet}

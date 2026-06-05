@@ -42,13 +42,41 @@
 		name: string;
 	}
 
+	/**
+	 * Form re-hydration shape (mirrors `AusgabeFormValues` in +page.server.ts).
+	 * Seeds the form on BOTH the duplicate-as-template prefill (load) and a 422
+	 * re-hydrate (?/create echoes the submitted values back) so input is never
+	 * wiped.
+	 */
+	interface AusgabeValues {
+		bezeichnung: string;
+		betrag: string;
+		kategorieNameSnapshot: string;
+		kommentar: string;
+		projectId: string;
+		bezahltVonKind: 'verein' | 'member' | 'extern';
+		bezahltVonMemberId: string;
+		externName: string;
+		externIban: string;
+		externEmail: string;
+		rechnungsdatum: string;
+		abflussDatum: string;
+		zahlungsartId: string;
+		schonBezahlt: boolean;
+		erstattetAm: string;
+		keinBeleg: boolean;
+		begruendung: string;
+	}
+
 	interface Props {
 		members: MemberRow[];
 		expenseKategorien: KategorieRow[];
 		zahlungsarten: ZahlungsartRow[];
 		projects: ProjectRow[];
-		defaultKategorie: string;
-		prefillProjectId: string | null;
+		/** Prefill / re-hydrate seed (load prefill OR a failed-submit echo). */
+		values: AusgabeValues;
+		/** Per-field validation errors from a 422 (keyed by field name). */
+		errors?: Record<string, string[]>;
 		/** Bubbled up so the page can track dirtiness for the shell footer. */
 		onDirty?: () => void;
 	}
@@ -58,28 +86,38 @@
 		expenseKategorien,
 		zahlungsarten,
 		projects,
-		defaultKategorie,
-		prefillProjectId,
+		values,
+		errors,
 		onDirty,
 	}: Props = $props();
 
 	const today = new Date().toISOString().slice(0, 10);
 
+	function err(field: string): string | null {
+		return errors?.[field]?.[0] ?? null;
+	}
+
 	// ── Descriptive fields (stable across bezahlt-von switches — UX-07) ───────
+	// All seeded from `values` so a duplicate prefill / 422 re-hydrate restores
+	// what the user (or the source booking) had.
 	// svelte-ignore state_referenced_locally
-	let kategorieName = $state(defaultKategorie ?? '');
+	let kategorieName = $state(values.kategorieNameSnapshot);
 	// svelte-ignore state_referenced_locally
 	let kategorieSphere = $state<Sphere>(
-		expenseKategorien.find((k) => k.name === defaultKategorie)?.sphere ?? 'ideeller',
+		expenseKategorien.find((k) => k.name === values.kategorieNameSnapshot)?.sphere ?? 'ideeller',
 	);
-	let rechnungsdatum = $state(today);
-	let abflussDatum = $state(today);
 	// svelte-ignore state_referenced_locally
-	let projectId = $state(prefillProjectId ?? '');
+	let rechnungsdatum = $state(values.rechnungsdatum || today);
+	// svelte-ignore state_referenced_locally
+	let abflussDatum = $state(values.abflussDatum || today);
+	// svelte-ignore state_referenced_locally
+	let projectId = $state(values.projectId);
 
 	// ── bezahlt-von branching ─────────────────────────────────────────────────
-	let bezahltVonKind = $state<'verein' | 'member' | 'extern'>('verein');
-	let selectedMemberId = $state('');
+	// svelte-ignore state_referenced_locally
+	let bezahltVonKind = $state<'verein' | 'member' | 'extern'>(values.bezahltVonKind);
+	// svelte-ignore state_referenced_locally
+	let selectedMemberId = $state(values.bezahltVonMemberId);
 
 	const selectedMember = $derived(members.find((m) => m.id === selectedMemberId));
 	const bezahltVonDisplay = $derived(() => {
@@ -91,17 +129,26 @@
 	});
 
 	// ── Admin "Schon bezahlt?" reveal (member/extern only) ────────────────────
-	let schonBezahlt = $state(false);
-	let zahlungsartId = $state('');
-	let erstattetAm = $state(today);
+	// svelte-ignore state_referenced_locally
+	let schonBezahlt = $state(values.schonBezahlt);
+	// svelte-ignore state_referenced_locally
+	let zahlungsartId = $state(values.zahlungsartId);
+	// svelte-ignore state_referenced_locally
+	let erstattetAm = $state(values.erstattetAm || today);
 
 	// ── Beleg (kein-Beleg → Begründung reveal lives in BelegUpload) ───────────
-	let keinBeleg = $state(false);
-	let begruendung = $state('');
+	// svelte-ignore state_referenced_locally
+	let keinBeleg = $state(values.keinBeleg);
+	// svelte-ignore state_referenced_locally
+	let begruendung = $state(values.begruendung);
 
 	// Betrag is entered as euros in a display input; the canonical integer-cents
-	// value is mirrored into a hidden field the server Zod schema parses.
-	let betragCents = $state('');
+	// value is mirrored into a hidden field the server Zod schema parses. Seed
+	// the hidden cents from a re-hydrated euros value so a 422 keeps the amount.
+	// svelte-ignore state_referenced_locally
+	let betragCents = $state(
+		values.betrag ? String(Math.round(parseFloat(values.betrag) * 100)) : '',
+	);
 
 	$effect(() => {
 		if (!zahlungsartId && zahlungsarten.length > 0) {
@@ -126,9 +173,14 @@
 			type="text"
 			required
 			maxlength={500}
+			value={values.bezeichnung}
 			placeholder="z.B. Druckerpatronen, Raummiete März"
+			aria-invalid={err('bezeichnung') ? true : undefined}
 			class="rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 		/>
+		{#if err('bezeichnung')}
+			<p class="text-xs text-destructive">{err('bezeichnung')}</p>
+		{/if}
 	</div>
 
 	<!-- Betrag (native number → hidden cents) -->
@@ -144,7 +196,9 @@
 				step="0.01"
 				min="0.01"
 				required
+				value={values.betrag}
 				placeholder="0,00"
+				aria-invalid={err('betragCents') ? true : undefined}
 				oninput={(e) => {
 					const v = parseFloat((e.currentTarget as HTMLInputElement).value) || 0;
 					betragCents = String(Math.round(v * 100));
@@ -153,6 +207,9 @@
 			/>
 			<input type="hidden" name="betragCents" value={betragCents} />
 		</div>
+		{#if err('betragCents')}
+			<p class="text-xs text-destructive">{err('betragCents')}</p>
+		{/if}
 	</div>
 
 	<!-- Rechnungsdatum + Abfluss-Datum -->
@@ -208,6 +265,9 @@
 		/>
 		<!-- Hidden sphere mirror — server re-derives, this is caller-parity only. -->
 		<input type="hidden" name="sphereSnapshot" value={kategorieSphere} />
+		{#if err('kategorieNameSnapshot')}
+			<p class="text-xs text-destructive">{err('kategorieNameSnapshot')}</p>
+		{/if}
 	</div>
 
 	<!-- Projekt (optional) -->
@@ -227,6 +287,19 @@
 			</select>
 		</div>
 	{/if}
+
+	<!-- Kommentar (optional) — carried by duplicate-as-template + re-hydrate. -->
+	<div class="flex flex-col gap-1.5">
+		<label for="kommentar" class="text-sm font-medium text-foreground">Kommentar</label>
+		<textarea
+			id="kommentar"
+			name="kommentar"
+			rows={2}
+			maxlength={2000}
+			value={values.kommentar}
+			class="rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+		></textarea>
+	</div>
 
 	<!-- ── Bezahlt von (segmented) ───────────────────────────────────────────── -->
 	<fieldset class="flex flex-col gap-2">
@@ -283,18 +356,21 @@
 					name="externName"
 					type="text"
 					placeholder="Name"
+					value={values.externName}
 					class="rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 				/>
 				<input
 					name="externIban"
 					type="text"
 					placeholder="IBAN"
+					value={values.externIban}
 					class="rounded-md border border-border bg-background px-3 py-2 font-mono text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 				/>
 				<input
 					name="externEmail"
 					type="email"
 					placeholder="E-Mail (optional)"
+					value={values.externEmail}
 					class="rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 				/>
 			</div>
