@@ -6,7 +6,10 @@
 // write path, ADR-0008). Choosing an option:
 //   - calls `onChange(name)`
 //   - calls `onSphere(derivedSphere)`
-//   - drives the SphereBadge (palette §13) + the EÜR-Zeile hint.
+//   - drives the SphereBadge (palette §13).
+// The "Anlage EÜR Zeile {n}" hint is rendered ONLY when the chosen option carries
+// a non-null `eurZeile` (P44-04: the eur_zeile/anlage_gem_zeile columns are NULL
+// pre-launch, so the hint must NOT depend on a Zeile being present).
 //
 // Reset lane → `pnpm test --run <file>`. Uses fireEvent (project convention).
 import { render, screen, cleanup, fireEvent } from "@testing-library/svelte";
@@ -16,10 +19,14 @@ import type { Sphere } from "$lib/domain/sphere.js";
 
 afterEach(() => cleanup());
 
-const options: { name: string; sphere: Sphere }[] = [
-  { name: "Büromaterial", sphere: "ideeller" },
-  { name: "Eintritt", sphere: "zweckbetrieb" },
-  { name: "Merch-Einkauf", sphere: "wirtschaftlich" },
+const options: {
+  name: string;
+  sphere: Sphere;
+  eurZeile?: string | number | null;
+}[] = [
+  { name: "Büromaterial", sphere: "ideeller" }, // eurZeile absent (pre-launch reality)
+  { name: "Eintritt", sphere: "zweckbetrieb", eurZeile: null }, // explicit null
+  { name: "Merch-Einkauf", sphere: "wirtschaftlich", eurZeile: "5" }, // Zeile provided
 ];
 
 describe("KategoriePicker", () => {
@@ -51,16 +58,32 @@ describe("KategoriePicker", () => {
     expect(screen.getByText("Zweckbetrieb")).toBeTruthy();
   });
 
-  it("shows the Anlage/EÜR-Zeile hint", () => {
+  it("shows 'Anlage EÜR Zeile {n}' ONLY when the chosen option carries an eurZeile", () => {
     render(KategoriePicker, {
       props: {
         options,
-        value: "Eintritt",
+        value: "Merch-Einkauf", // eurZeile: "5"
         onChange: vi.fn(),
         onSphere: vi.fn(),
       },
     });
-    expect(screen.getByText(/EÜR/i)).toBeTruthy();
+    expect(screen.getByText(/Anlage EÜR Zeile 5/)).toBeTruthy();
+  });
+
+  it("renders NO EÜR-Zeile hint when the chosen option has no eurZeile (pre-launch)", () => {
+    render(KategoriePicker, {
+      props: {
+        options,
+        value: "Eintritt", // eurZeile: null
+        onChange: vi.fn(),
+        onSphere: vi.fn(),
+      },
+    });
+    // The SphereBadge still renders…
+    expect(screen.getByText("Zweckbetrieb")).toBeTruthy();
+    // …but nothing misleading about an EÜR Zeile appears.
+    expect(screen.queryByText(/Anlage EÜR Zeile/)).toBeNull();
+    expect(screen.queryByText(/EÜR/i)).toBeNull();
   });
 
   it("falls back to the ideeller sphere when nothing is chosen yet", () => {
