@@ -35,13 +35,16 @@
 </script>
 
 <div class="flex flex-col gap-2" data-slot="beleg-upload">
-	<label for="beleg-file" class="text-sm font-medium text-foreground">Beleg</label>
+	<!-- Required marker: a Beleg IS required (the row must satisfy Beleg OR a
+	     Begründung), so the field carries the "*". When the kein-Beleg path is
+	     active the requirement transfers to the Begründung (its own "*" below). -->
+	<label for="beleg-file" class="text-sm font-medium text-foreground">
+		Beleg<span class="text-destructive" aria-hidden="true">&nbsp;*</span>
+	</label>
 
 	<!-- Keep the input MOUNTED (disabled + hidden in the kein-Beleg path) so the
 	     `for="beleg-file"` association never dangles. A disabled file input does
-	     not submit, so the server's `keinBeleg`/Begründung branch is unaffected.
-	     No bare "*" on "Beleg": it is gated (Beleg OR Begründung), not strictly
-	     required — the requirement is signalled by the Begründung asterisk below. -->
+	     not submit, so the server's `keinBeleg`/Begründung branch is unaffected. -->
 	<input
 		id="beleg-file"
 		type="file"

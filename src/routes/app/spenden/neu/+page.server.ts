@@ -15,15 +15,30 @@
 
 import { fail, redirect } from "@sveltejs/kit";
 import type { Actions, PageServerLoad } from "./$types.js";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { projects } from "$lib/server/db/schema/projects.js";
+import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { createSpende } from "$lib/server/domain/spenden.js";
+import { deriveDonationKategorieName } from "$lib/domain/spenden-kategorie.js";
 import { handleAuslageUpload } from "$lib/server/files/handleAuslageUpload.js";
+
+// The distinct derived-Kategorie names a Spende can book into (Sachspende
+// collapses regardless of Zweckbindung). Used to resolve each one's
+// Anlage-Gem-Zeile so the read-only DerivedKategorieBadge can surface it.
+const DONATION_KATEGORIE_NAMES = [
+  ...new Set([
+    deriveDonationKategorieName("geldspende", "zweckfrei"),
+    deriveDonationKategorieName("geldspende", "zweckgebunden"),
+    deriveDonationKategorieName("sachspende", "zweckfrei"),
+    deriveDonationKategorieName("sachspende", "zweckgebunden"),
+  ]),
+];
 
 export const load: PageServerLoad = async () => {
   const db = getDb();
-  const [memberRows, projectRows] = await Promise.all([
+  const [memberRows, projectRows, katRows] = await Promise.all([
     db
       .select({
         id: members.id,
@@ -38,7 +53,23 @@ export const load: PageServerLoad = async () => {
       .select({ id: projects.id, name: projects.name })
       .from(projects)
       .orderBy(projects.name),
+    // Donations book as `income`-kind Kategorien (createDonation derives via
+    // resolveKategorieByName("income", …)); pull their Anlage-Gem-Zeile.
+    db
+      .select({ name: kategorien.name, zeile: kategorien.anlageGemZeile })
+      .from(kategorien)
+      .where(
+        and(
+          eq(kategorien.kind, "income"),
+          inArray(kategorien.name, DONATION_KATEGORIE_NAMES),
+        ),
+      ),
   ]);
+
+  // name → Anlage-Gem-Zeile (null where the Stammdaten mapping is unset; the
+  // badge degrades gracefully and omits the Zeile line).
+  const anlageGemZeilen: Record<string, number | null> = {};
+  for (const r of katRows) anlageGemZeilen[r.name] = r.zeile ?? null;
 
   return {
     members: memberRows.map((m) => ({
@@ -48,6 +79,7 @@ export const load: PageServerLoad = async () => {
       email: m.email ?? null,
     })),
     projects: projectRows.map((p) => ({ id: p.id, name: p.name })),
+    anlageGemZeilen,
   };
 };
 
