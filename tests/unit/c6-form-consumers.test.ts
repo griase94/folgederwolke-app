@@ -50,14 +50,9 @@ const MIGRATIONS: ReadonlyArray<{
     file: "src/lib/components/admin/members/EditMemberDialog.svelte",
     fields: ["date_of_birth", "eintritts_datum"],
   },
-  {
-    file: "src/lib/components/admin/spenden/AddSpendeDialog.svelte",
-    fields: ["zugewendet_am"],
-  },
-  {
-    file: "src/lib/components/admin/spenden/EditSpendeDialog.svelte",
-    fields: ["zugewendet_am"],
-  },
+  // Phase 6 (Tier C3): AddSpendeDialog/EditSpendeDialog were RETIRED with the
+  // old /app/transactions/spenden route — the Spenden entry/edit forms now use
+  // the Phase-3 EntryFormShell + the C3 SpendeFields snippet (ui/date-field).
 ];
 
 describe("C6-FORM consumer migrations — Night 2 E4", () => {

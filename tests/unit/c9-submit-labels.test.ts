@@ -22,10 +22,8 @@ const CASES: Array<{ path: string; expectedLabel: string }> = [
     path: "src/lib/components/admin/projects/AddProjectDialog.svelte",
     expectedLabel: "Projekt anlegen",
   },
-  {
-    path: "src/lib/components/admin/spenden/AddSpendeDialog.svelte",
-    expectedLabel: "Spende erfassen",
-  },
+  // Phase 6 (Tier C3): AddSpendeDialog retired; the Spenden create form's honest
+  // submit label ("Speichern") lives on the EntryFormShell-based /app/spenden/neu.
   {
     path: "src/lib/components/admin/invoices/InvoiceForm.svelte",
     expectedLabel: "Rechnung erstellen & PDF",
