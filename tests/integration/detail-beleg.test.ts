@@ -186,6 +186,19 @@ describe.skipIf(!dbConfigured)("getTransactionDetail per-kind fields", () => {
     expect(detail!.rechnungBusinessId).toBeNull();
   });
 
+  it("income: projects rechnungId (invoices.id) for the linked row → navigable detail link (item 5)", async () => {
+    const detail = await getTransactionDetail(incomeWithInvoiceId, "income");
+    // The route id powers /app/rechnungen/{rechnungId} (keyed on invoices.id).
+    expect(detail!.rechnungId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+  });
+
+  it("income: rechnungId is null for non-invoice-linked income (link degrades to overview)", async () => {
+    const detail = await getTransactionDetail(incomeNoInvoiceId, "income");
+    expect(detail!.rechnungId).toBeNull();
+  });
+
   it("income: projects geldEingangDatum (geld_eingang_datum)", async () => {
     const detail = await getTransactionDetail(incomeNoInvoiceId, "income");
     expect(detail!.geldEingangDatum).toBe(INCOME_GELD_EINGANG);

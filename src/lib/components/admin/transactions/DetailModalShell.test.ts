@@ -109,6 +109,7 @@ function makeDetail(
     belegOriginalName: null,
     approvedAt: null,
     rechnungBusinessId: null,
+    rechnungId: null,
     geldEingangDatum: null,
     spenderName: null,
     spenderEmail: null,

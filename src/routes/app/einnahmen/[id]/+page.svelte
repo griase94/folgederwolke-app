@@ -49,20 +49,27 @@
 	{/if}
 {/snippet}
 
-<!-- workflowAction is a READ-ONLY info slot (NOT an action button): when the
-     income row was created by the shipped markInvoiceAsPaid flow it surfaces
-     the "aus Rechnung FDW-…" context line; otherwise it renders nothing. -->
+<!-- workflowAction surfaces the "aus Rechnung FDW-…" context as a NAVIGABLE link
+     when the income row was created by the markInvoiceAsPaid flow. It links to
+     the Rechnung detail (/app/rechnungen/{rechnungId}, keyed on invoices.id)
+     when the route id is projected; if only the business id is known it degrades
+     to the Rechnungen overview. Renders nothing for free (unlinked) income. -->
 {#snippet workflowAction()}
 	{#if detail.rechnungBusinessId}
-		<span
+		{@const rechnungHref = detail.rechnungId
+			? `/app/rechnungen/${detail.rechnungId}`
+			: '/app/rechnungen'}
+		<!-- eslint-disable svelte/no-navigation-without-resolve -- dynamic same-origin route, not a typed route id -->
+		<a
 			data-slot="aus-rechnung"
-			class="mr-auto inline-flex items-center gap-1.5 text-sm text-muted-foreground"
+			href={rechnungHref}
+			class="mr-auto inline-flex items-center gap-1.5 rounded-md text-sm text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 			title={`aus Rechnung ${detail.rechnungBusinessId}`}
-			aria-label={`aus Rechnung ${detail.rechnungBusinessId}`}
+			aria-label={`Zur Rechnung ${detail.rechnungBusinessId}`}
 		>
 			<LinkIcon class="size-4" aria-hidden="true" />
 			<span>aus Rechnung <span class="font-mono">{detail.rechnungBusinessId}</span></span>
-		</span>
+		</a>
 	{/if}
 {/snippet}
 

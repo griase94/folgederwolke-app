@@ -110,6 +110,14 @@ export interface TransactionDetail extends TransactionRow {
    */
   rechnungBusinessId: string | null;
   /**
+   * income only — the linked Ausgangsrechnung's ROUTE id (invoices.id), the
+   * same correlated source as `rechnungBusinessId`. Lets the detail "aus
+   * Rechnung" line link straight to `/app/rechnungen/{rechnungId}` (which keys
+   * on invoices.id). null for unlinked income (the detail then degrades the
+   * link to the Rechnungen overview).
+   */
+  rechnungId: string | null;
+  /**
    * income only — the Geldeingang date (income.geld_eingang_datum), ISO
    * YYYY-MM-DD or null. The Einnahmen detail form pre-fills its DateField from
    * this; without it the field rendered blank and the save action only wrote a
@@ -781,6 +789,7 @@ export async function getTransactionDetail(
       belegOriginalName: null,
       approvedAt: r.approvedAt?.toISOString() ?? null,
       rechnungBusinessId: null,
+      rechnungId: null,
       geldEingangDatum: null,
       spenderName: null,
       spenderEmail: null,
@@ -810,7 +819,10 @@ export async function getTransactionDetail(
     // = income.id). `.orderBy(createdAt, id).limit(1)` resolves deterministically
     // if multiple invoices ever point at one income row. NULL when unlinked.
     const invRows = await db
-      .select({ rechnungBusinessId: invoices.businessId })
+      .select({
+        rechnungId: invoices.id,
+        rechnungBusinessId: invoices.businessId,
+      })
       .from(invoices)
       .where(eq(invoices.paidByIncomeId, r.id))
       .orderBy(invoices.createdAt, invoices.id)
@@ -845,6 +857,7 @@ export async function getTransactionDetail(
       belegOriginalName: null,
       approvedAt: null,
       rechnungBusinessId: invRows[0]?.rechnungBusinessId ?? null,
+      rechnungId: invRows[0]?.rechnungId ?? null,
       geldEingangDatum: r.geldEingangDatum ?? null,
       spenderName: null,
       spenderEmail: null,
@@ -902,6 +915,7 @@ export async function getTransactionDetail(
       belegOriginalName: null,
       approvedAt: null,
       rechnungBusinessId: null,
+      rechnungId: null,
       geldEingangDatum: null,
       spenderName: r.spenderName ?? null,
       spenderEmail: r.spenderEmail ?? null,
