@@ -1,21 +1,29 @@
 <script lang="ts">
-	import TransactionListScaffold, {
-		type ColumnDef,
-	} from '$lib/components/admin/transactions/TransactionListScaffold.svelte';
+	import TransactionListScaffold from '$lib/components/admin/transactions/TransactionListScaffold.svelte';
+	import SpendenKpi from '$lib/components/admin/transactions/spenden/SpendenKpi.svelte';
+	import {
+		spendenColumns,
+		spendeArtLabel,
+		zweckbindungLabel
+	} from '$lib/components/admin/transactions/spenden/columns.js';
 	import Money from '$lib/components/ui/money/money.svelte';
-	import type { TransactionRow } from '$lib/server/domain/transactions.js';
+	import type { SpendenRow } from '$lib/server/domain/transactions.js';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
 
-	// Phase-3 MINIMAL columns — the rich Spenden columns (Spendenart/Zweckbindung/
-	// Bescheinigung) land in Phase 6. These read only fields common to every list
-	// row (the donation `bezeichnung` is already "Spende von …" / kategorie).
-	const columns: ColumnDef[] = [
-		{ key: 'bezeichnung', label: 'Spender / Bezeichnung', sortable: true, render: bezeichnungCell },
-		{ key: 'gebuchtAm', label: 'Datum', sortable: true, render: datumCell },
-		{ key: 'betrag', label: 'Betrag', align: 'right', sortable: true, render: betragCell },
-	];
+	// §9.1 columns — declared against SpendenRow so each cell reads the per-tab
+	// fields (spenderName / spendeKind / zweckbindungKind / bescheinigungNr)
+	// directly, no casts. Markup lives in the auto-escaped {#snippet} blocks below.
+	const columns = spendenColumns({
+		datum: datumCell,
+		id: idCell,
+		spender: spenderCell,
+		art: artCell,
+		zweckbindung: zweckbindungCell,
+		betrag: betragCell,
+		bescheinigung: bescheinigungCell
+	});
 
 	function formatDatum(iso: string): string {
 		return new Date(iso).toLocaleDateString('de-DE');
@@ -27,28 +35,55 @@
 </svelte:head>
 
 {#snippet kpi()}
-	<div data-testid="kpi-strip">
-		<h1 class="text-2xl font-bold tracking-tight text-foreground">Spenden</h1>
-		<p class="mt-0.5 text-sm text-muted-foreground">{data.total} Buchungen</p>
-	</div>
+	<SpendenKpi
+		totalCents={data.kpi.totalCents}
+		count={data.kpi.count}
+		ohneBescheinigungCount={data.kpi.ohneBescheinigungCount}
+		versandtCount={data.kpi.versandtCount}
+		year={data.yearScope}
+	/>
 {/snippet}
 
-{#snippet bezeichnungCell(row: TransactionRow)}
-	<span class="font-medium text-foreground">{row.bezeichnung}</span>
-{/snippet}
-
-{#snippet datumCell(row: TransactionRow)}
+{#snippet datumCell(row: SpendenRow)}
 	<span class="text-muted-foreground">{formatDatum(row.gebuchtAm)}</span>
 {/snippet}
 
-{#snippet betragCell(row: TransactionRow)}
+{#snippet idCell(row: SpendenRow)}
+	<span class="font-mono text-xs text-muted-foreground">{row.businessId}</span>
+{/snippet}
+
+{#snippet spenderCell(row: SpendenRow)}
+	<span class="font-medium text-foreground">{row.spenderName ?? '—'}</span>
+{/snippet}
+
+{#snippet artCell(row: SpendenRow)}
+	<span
+		class="inline-flex items-center rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs font-medium text-muted-foreground"
+	>
+		{spendeArtLabel(row.spendeKind)}
+	</span>
+{/snippet}
+
+{#snippet zweckbindungCell(row: SpendenRow)}
+	<span class="text-sm text-muted-foreground">{zweckbindungLabel(row.zweckbindungKind)}</span>
+{/snippet}
+
+{#snippet betragCell(row: SpendenRow)}
 	<Money valueInCents={row.betragCents} />
+{/snippet}
+
+{#snippet bescheinigungCell(row: SpendenRow)}
+	{#if row.bescheinigungNr}
+		<span class="font-mono text-xs text-foreground">{row.bescheinigungNr}</span>
+	{:else}
+		<span class="text-xs text-muted-foreground/70">ausstehend</span>
+	{/if}
 {/snippet}
 
 <div class="container mx-auto max-w-6xl px-4 py-8 sm:px-6">
 	<TransactionListScaffold
 		tab="spenden"
-		rows={data.rows as unknown as TransactionRow[]}
+		rows={data.rows}
 		total={data.total}
 		page={data.page}
 		pageSize={data.pageSize}

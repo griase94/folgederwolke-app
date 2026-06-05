@@ -1,21 +1,23 @@
 /**
- * /app/spenden — flat Spenden (donation) list route shell (Phase 3, Task 10).
+ * /app/spenden — flat Spenden (donation) list route (Phase 6, Task 2).
  *
  * Thin `load`: parse the Phase-2 filter state, read the layout year scope, clamp
- * the `?page` into range, then call `listSpendenPage` + the picker-option loaders
- * the Spenden FILTER_REGISTRY actually needs:
+ * the `?page` into range, then call `listSpendenPage` + the C3-owned
+ * `listSpendenKpi` + the picker-option loaders the Spenden FILTER_REGISTRY needs:
  *
  *   - NO kategorie filter — the Spenden registry has no `kategorie` field
- *     (X-PRAG-04), so we never call `listKategorieOptions()` → `kategorieOptions: []`.
+ *     (X-PRAG-04, §9.1), so we never call `listKategorieOptions()` →
+ *     `kategorieOptions: []`.
  *   - `listMemberOptions()` — the `spender` field IS a member-picker, so the
  *     scaffold's member-picker dropdown needs the member options.
  *
- * Rich per-tab KPI/columns land in Phase 6 (Tier C); Phase 3 ships a minimal
- * KPI + default columns so the route works + the @phase-3 e2e smoke passes.
+ * `listSpendenKpi(year)` powers the §9.1 KPI strip: total + count + the
+ * disappearing "N ohne Bescheinigung" pill + "M Bescheinigungen versandt".
  */
 
 import type { PageServerLoad } from "./$types.js";
 import { listSpendenPage } from "$lib/server/domain/transactions.js";
+import { listSpendenKpi } from "$lib/server/domain/spenden-kpi.js";
 import { listMemberOptions } from "$lib/server/domain/transaction-pickers.js";
 import { parseFilterState } from "$lib/domain/transaction-filters.js";
 
@@ -52,7 +54,10 @@ export const load: PageServerLoad = async ({ url, parent }) => {
 
   // X-PRAG-04: Spenden has NO kategorie filter (→ []); the Spender filter IS a
   // member-picker, so it needs the member options.
-  const memberOptions = await listMemberOptions();
+  const [kpi, memberOptions] = await Promise.all([
+    listSpendenKpi(yearScope),
+    listMemberOptions(),
+  ]);
 
   return {
     tab: "spenden" as const,
@@ -63,6 +68,7 @@ export const load: PageServerLoad = async ({ url, parent }) => {
     filterState: state,
     yearScope,
     currentYear,
+    kpi,
     kategorieOptions: [] as { value: string; label: string }[],
     memberOptions,
   };
