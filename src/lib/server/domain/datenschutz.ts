@@ -7,6 +7,6 @@
 export {
   DATENSCHUTZ_VERSION,
   DATENSCHUTZ_TITLE,
-  DATENSCHUTZ_TEXT,
+  datenschutzText,
   FORM_DESCRIPTION,
 } from "$lib/domain/datenschutz.js";

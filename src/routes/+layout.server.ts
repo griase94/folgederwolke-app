@@ -13,7 +13,7 @@
  */
 
 import type { LayoutServerLoad } from "./$types.js";
-import { isPublicFormEnabled } from "$lib/server/env.js";
+import { env, isPublicFormEnabled } from "$lib/server/env.js";
 import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
 
 export const load: LayoutServerLoad = async () => {
@@ -21,5 +21,8 @@ export const load: LayoutServerLoad = async () => {
   return {
     publicFormEnabled: isPublicFormEnabled(),
     vereinName: stammdaten.name,
+    // Runtime Verein contact email — injected into the public-form consent text
+    // (datenschutzText) so the client module stays free of `$env`.
+    kontaktEmail: env.VEREIN_KONTAKT_EMAIL,
   };
 };
