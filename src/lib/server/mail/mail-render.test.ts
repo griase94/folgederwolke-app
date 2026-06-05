@@ -107,8 +107,14 @@ describe("EingangsMail", () => {
     expect(html).toContain("23,50");
     // German phrase
     expect(html).toContain("in Vorkasse gegangen");
-    // CTA link
-    expect(html).toContain("/auslage-status/AUS-2026-042");
+    // CTA link — must be an ABSOLUTE URL (relative paths are dead in email
+    // clients; Task 2.3). Built from the injected baseUrl (PUBLIC_BASE_URL).
+    expect(html).toContain(
+      'href="https://app.example.test/auslage-status/AUS-2026-042"',
+    );
+    expect(html).toMatch(
+      /href="https:\/\/[^"]*\/auslage-status\/AUS-2026-042"/,
+    );
     // Closing
     expect(html).toContain("Mit besten Grüßen");
   });

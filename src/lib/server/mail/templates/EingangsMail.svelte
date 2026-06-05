@@ -9,11 +9,15 @@
 		bezeichnung,
 		betragCents,
 		eingereichtAm,
+		baseUrl = '',
 		vereinName = '',
 		adresse = '',
 		vr = '',
 		steuernummer = ''
 	}: EingangsMailProps & {
+		/** Absolute public origin (PUBLIC_BASE_URL) — makes the CTA link
+		 *  absolute so it works in email clients (Task 2.3). Injected by sendMail. */
+		baseUrl?: string;
 		vereinName?: string;
 		adresse?: string;
 		vr?: string;
@@ -30,7 +34,10 @@
 			year: 'numeric'
 		})
 	);
-	const statusUrl = $derived(`/auslage-status/${ausId}`);
+	// Absolute status link — relative paths are dead in email clients
+	// (Task 2.3). baseUrl comes from PUBLIC_BASE_URL via sendMail; strip any
+	// trailing slash so we never emit a double slash.
+	const statusUrl = $derived(`${baseUrl.replace(/\/+$/, '')}/auslage-status/${ausId}`);
 </script>
 
 <!--
