@@ -27,7 +27,8 @@
     "dev:reset": "docker compose down -v && bash scripts/dev-up.sh",
     "db:console": "psql $DIRECT_DATABASE_URL",
     "files:reconcile": "tsx scripts/files-reconcile.ts",
-    "icons:build": "tsx scripts/build-app-icons.ts"
+    "icons:build": "tsx scripts/build-app-icons.ts",
+    "splash:build": "tsx scripts/build-splash.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
