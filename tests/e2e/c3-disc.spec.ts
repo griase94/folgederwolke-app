@@ -137,7 +137,7 @@ test.describe("@phase-9 C3-DISC kebab discoverability", () => {
     await cleanupEligibleExpenses();
     const { id } = await seedEligibleExpense();
     await signIn(page);
-    await page.goto("/app/transactions");
+    await page.goto("/app/ausgaben"); // Phase 8 T6: /app/transactions retired
 
     const row = page.locator(`tr[data-row-id="${id}"]`).first();
     await expect(row).toBeVisible({ timeout: 5_000 });
@@ -182,7 +182,7 @@ test.describe("@phase-9 C3-DISC kebab discoverability", () => {
     await client.end();
 
     await signIn(page);
-    await page.goto("/app/transactions");
+    await page.goto("/app/ausgaben"); // Phase 8 T6: /app/transactions retired
     const row = page.locator(`tr[data-row-id="${id}"]`).first();
     await expect(row).toBeVisible({ timeout: 5_000 });
     await expect(row.getByTestId("txn-row-kebab")).toHaveCount(0);

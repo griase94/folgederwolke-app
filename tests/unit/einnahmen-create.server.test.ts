@@ -15,7 +15,7 @@
  *   - festschreibung-gated: a gate failure → `fail(gate.status)`, createIncome
  *     NOT called.
  *
- * Strategy mirrors src/routes/app/transactions/neu/page.server.test.ts: mock
+ * Strategy mirrors the pattern from the (now retired) transactions/neu test: mock
  * every dependency the action touches (createIncome + id-allocator + gate +
  * the Beleg upload helper) and drive the handler with a synthesized FormData.
  */

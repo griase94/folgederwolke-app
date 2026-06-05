@@ -2,7 +2,9 @@
  * @vitest-environment node
  * @phase-5
  *
- * Unit tests for the /app/transactions/neu picker logic (cluster C4).
+ * Unit tests for the transaction neu picker logic (cluster C4).
+ * Phase 8 T6: /app/transactions/neu retired; pickers are now used by the
+ * per-tab neu routes (ausgaben/neu, einnahmen/neu, spenden/neu).
  *
  * Covers findings VB-004 (vereinsbuchhalter) + JB-014 (julia-buchhaltung):
  * the form previously hardcoded sphereSnapshot="ideeller" and

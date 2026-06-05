@@ -24,7 +24,9 @@ const FILES = [
   "src/lib/components/admin/transactions/TransactionEditForm.svelte",
   "src/lib/components/admin/transactions/ausgaben/BulkActionsBar.svelte",
   "src/lib/components/admin/members/AddMemberDialog.svelte",
-  "src/routes/app/transactions/neu/+page.svelte",
+  // Phase 8 T6: src/routes/app/transactions/neu/+page.svelte deleted.
+  // The per-tab routes (ausgaben/neu, einnahmen/neu, spenden/neu) have their
+  // own date inputs and should be audited separately if they use native date inputs.
 ];
 
 // Files migrated to DateField under E4 — sanity-checked separately by

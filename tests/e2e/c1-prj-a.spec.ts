@@ -199,7 +199,7 @@ test.describe("@phase-9 C1-PRJ-A Projekte first-class Phase 1", () => {
 
     await signIn(page);
     await page.goto(
-      `/app/transactions/neu?kind=einnahme&projectId=${projectId}`,
+      `/app/einnahmen/neu?projectId=${projectId}`, // Phase 8 T6: per-tab neu
     );
 
     const picker = page.getByTestId("transaction-project-picker");

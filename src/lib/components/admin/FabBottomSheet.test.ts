@@ -64,15 +64,10 @@ describe("FabBottomSheet", () => {
       name: /Externe Auslage einreichen/i,
     });
 
-    expect(ausgabe.getAttribute("href")).toBe(
-      "/app/transactions/neu?kind=ausgabe",
-    );
-    expect(einnahme.getAttribute("href")).toBe(
-      "/app/transactions/neu?kind=einnahme",
-    );
-    expect(spende.getAttribute("href")).toBe(
-      "/app/transactions/neu?kind=spende",
-    );
+    // Phase 8 T6: /app/transactions/neu retired → per-tab /app/{tab}/neu.
+    expect(ausgabe.getAttribute("href")).toBe("/app/ausgaben/neu");
+    expect(einnahme.getAttribute("href")).toBe("/app/einnahmen/neu");
+    expect(spende.getAttribute("href")).toBe("/app/spenden/neu");
     expect(auslage.getAttribute("href")).toBe("/auslage-einreichen");
   });
 

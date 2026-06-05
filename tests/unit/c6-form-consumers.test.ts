@@ -38,10 +38,9 @@ const MIGRATIONS: ReadonlyArray<{
     file: "src/lib/components/forms/AuslagenForm.svelte",
     fields: ["rechnungsdatum"],
   },
-  {
-    file: "src/routes/app/transactions/neu/+page.svelte",
-    fields: ["rechnungsdatum", "abfluss_datum"],
-  },
+  // Phase 8 T6: src/routes/app/transactions/neu/+page.svelte deleted.
+  // The date-field migration contract for Ausgabe neu is now covered
+  // by src/routes/app/ausgaben/neu/+page.svelte (per-tab route).
   {
     file: "src/lib/components/admin/invoices/InvoiceForm.svelte",
     fields: ["rechnungsdatum", "leistungsDatum", "faelligkeitsDatum"],

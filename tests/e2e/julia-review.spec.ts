@@ -379,7 +379,7 @@ test.describe("@julia Admin shell", () => {
       ["/app", "21-app-home"],
       ["/app/mitglieder", "22-mitglieder"],
       ["/app/rechnungen", "23-rechnungen"],
-      ["/app/transactions", "24-transactions"],
+      ["/app/ausgaben", "24-ausgaben"], // Phase 8 T6: /app/transactions retired
       ["/app/inbox", "25-inbox"],
       ["/app/projekte", "26-projekte"],
       ["/app/kunden", "27-kunden"],
