@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import LinkIcon from '@lucide/svelte/icons/link';
 	import DetailModalShell from '$lib/components/admin/transactions/DetailModalShell.svelte';
 	import BelegViewer from '$lib/components/files/BelegViewer.svelte';
 	import EinnahmeDetailFields from '$lib/components/admin/transactions/einnahmen/EinnahmeDetailFields.svelte';
@@ -57,8 +58,9 @@
 			data-slot="aus-rechnung"
 			class="mr-auto inline-flex items-center gap-1.5 text-sm text-muted-foreground"
 			title={`aus Rechnung ${detail.rechnungBusinessId}`}
+			aria-label={`aus Rechnung ${detail.rechnungBusinessId}`}
 		>
-			<span aria-hidden="true">🔗</span>
+			<LinkIcon class="size-4" aria-hidden="true" />
 			<span>aus Rechnung <span class="font-mono">{detail.rechnungBusinessId}</span></span>
 		</span>
 	{/if}
