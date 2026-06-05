@@ -19,11 +19,14 @@
 		row,
 		selected,
 		ontoggle,
+		detailHref,
 	}: {
 		row: TransactionRow;
 		selected: boolean;
 		ontoggle: (id: string) => void;
+		detailHref?: string;
 	} = $props();
+	const resolvedDetailHref = $derived(detailHref ?? `/app/transactions/${row.id}?kind=${row.kind}`);
 
 	function fmtDate(iso: string | null): string {
 		if (!iso) return '—';
@@ -56,7 +59,6 @@
 	};
 
 	const isFestgeschrieben = $derived(row.festgeschriebenAt !== null);
-	const detailHref = $derived(`/app/transactions/${row.id}?kind=${row.kind}`);
 
 	// Money component expects positive cents = green, negative = red.
 	// Expenses are stored positive in this data shape; flip sign to indicate
@@ -87,7 +89,7 @@
 	<!-- Main content: tap target is the link wrapping the text block. -->
 	<!-- eslint-disable svelte/no-navigation-without-resolve -->
 	<a
-		href={detailHref}
+		href={resolvedDetailHref}
 		class="flex min-w-0 flex-1 flex-col gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
 	>
 		<div class="flex items-start gap-2">

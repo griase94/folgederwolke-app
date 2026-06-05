@@ -10,9 +10,11 @@
 		selected: boolean;
 		ontoggle: (id: string) => void;
 		zahlungsarten?: ZahlungsartOption[];
+		detailHref?: string;
 	}
 
-	let { row, selected, ontoggle, zahlungsarten = [] }: Props = $props();
+	let { row, selected, ontoggle, zahlungsarten = [], detailHref }: Props = $props();
+	const resolvedDetailHref = $derived(detailHref ?? `/app/transactions/${row.id}?kind=${row.kind}`);
 
 	function fmtEur(cents: number): string {
 		return (cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
@@ -49,7 +51,6 @@
 	};
 
 	const isFestgeschrieben = $derived(row.festgeschriebenAt !== null);
-	const detailHref = $derived(`/app/transactions/${row.id}?kind=${row.kind}`);
 
 	// C3-DISC: kebab is shown only for expenses that are approved but not yet
 	// erstattet and not festgeschrieben. Matches the same gate as the
@@ -115,7 +116,7 @@
 	<!-- Bezeichnung -->
 	<td class="max-w-xs px-3 py-3">
 		<!-- eslint-disable svelte/no-navigation-without-resolve -->
-		<a href={detailHref} class="font-medium text-foreground hover:text-primary hover:underline">
+		<a href={resolvedDetailHref} class="font-medium text-foreground hover:text-primary hover:underline">
 			<span class="block truncate">{row.bezeichnung}</span>
 		</a>
 		{#if row.bezahltVonDisplay}
@@ -204,7 +205,7 @@
 
 			<!-- eslint-disable svelte/no-navigation-without-resolve -->
 			<a
-				href={detailHref}
+				href={resolvedDetailHref}
 				class="rounded px-2 py-1 text-xs text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 focus:opacity-100"
 				aria-label="Details anzeigen"
 			>
