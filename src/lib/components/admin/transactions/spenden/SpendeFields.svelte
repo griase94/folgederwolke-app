@@ -113,7 +113,7 @@
 						markDirty();
 					}}
 					class={[
-						'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+						'inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
 						spendeKind === k
 							? 'bg-primary text-primary-foreground'
 							: 'bg-muted text-muted-foreground hover:text-foreground'
@@ -128,7 +128,7 @@
 				type="button"
 				disabled
 				title="Aufwandsspende-Workflow folgt in Phase 2"
-				class="cursor-not-allowed rounded-md bg-muted px-3 py-1.5 text-sm font-medium text-muted-foreground/50"
+				class="inline-flex min-h-11 cursor-not-allowed items-center justify-center rounded-md bg-muted px-3 py-1.5 text-sm font-medium text-muted-foreground/50"
 				data-testid="spendeart-aufwand-disabled"
 			>
 				Aufwand
@@ -151,7 +151,7 @@
 						markDirty();
 					}}
 					class={[
-						'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+						'inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
 						zweckbindungKind === k
 							? 'bg-primary text-primary-foreground'
 							: 'bg-muted text-muted-foreground hover:text-foreground'
@@ -365,7 +365,7 @@
 						markDirty();
 					}}
 					class={[
-						'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+						'inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
 						spenderMode === k
 							? 'bg-primary text-primary-foreground'
 							: 'bg-muted text-muted-foreground hover:text-foreground'
