@@ -240,16 +240,15 @@ export async function renderRechnungV2(
   });
 
   // Sender line (DIN 5008 Absenderzeile): "Name · [c/o …] · Straße · PLZ Ort".
-  // Designer notes: a touch smaller + lighter (regular, not bold) than the heavy
-  // wordmark so they don't compete, with ~6mm air below the wordmark. Auto-shrinks
-  // so a long address never runs under the cloud logo (box starts at
+  // Bold pink, set tight under the wordmark (~3mm). Auto-shrinks so a long
+  // address never runs under the cloud logo (box starts at
   // x = PAGE_W - MARGIN_RIGHT - 30mm); an ~8mm gutter keeps a comfortable gap to
   // the logo. Floor 6.5pt for legibility.
-  const subtitleBoldY = wordmarkBaselineY - 6 * MM;
+  const subtitleBoldY = wordmarkBaselineY - 3 * MM;
   const senderText = `${input.verein.name} · ${input.verein.adresseSingleLine}`;
   const senderBaseSize = 8;
   const senderMaxW = PAGE_W - MARGIN_RIGHT - 30 * MM - MARGIN_LEFT - 8 * MM;
-  const senderNaturalW = regular.widthOfTextAtSize(senderText, senderBaseSize);
+  const senderNaturalW = bold.widthOfTextAtSize(senderText, senderBaseSize);
   const senderSize =
     senderNaturalW > senderMaxW
       ? Math.max(6.5, (senderBaseSize * senderMaxW) / senderNaturalW)
@@ -258,7 +257,7 @@ export async function renderRechnungV2(
     x: MARGIN_LEFT,
     y: subtitleBoldY,
     size: senderSize,
-    font: regular,
+    font: bold,
     color: BRAND_ROSA,
   });
 
