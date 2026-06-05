@@ -153,6 +153,14 @@ const schema = z.object({
   VEREIN_NAME: z.string().default(""),
   VEREIN_STEUERNUMMER: z.string().default(""),
   VEREIN_VR: z.string().default(""),
+  /**
+   * Verein postal address — a multi-line German address (DIN 5008), each line
+   * on its own row, with an optional care-of line below the name:
+   *   "c/o Jonas Hackenberg\nWestermühlstraße 6\n80469 München".
+   * Rendered as stacked lines on invoices, the legal pages, and donation
+   * certificates; collapsed to one line in compact contexts (mail footer).
+   * See $lib/server/domain/address.ts.
+   */
   VEREIN_ADRESSE: z.string().default(""),
   /** Verein IBAN for Beitragsreminder + SEPA templates. */
   VEREIN_IBAN: z.string().default(""),
@@ -160,14 +168,6 @@ const schema = z.object({
   VEREIN_BIC: z.string().default(""),
   /** Verein Bankname (display). */
   VEREIN_BANK: z.string().default(""),
-  /**
-   * Verein Kontakt-Person — displayed in the Rechnung v2 footer column 1
-   * ("℅ <name>"). Stable across Kassenwärtin rotation so it lives in env,
-   * not settings.
-   */
-  VEREIN_KONTAKT_PERSON: z.string().default(""),
-  /** Verein contact phone — displayed in Rechnung v2 footer column 2. */
-  VEREIN_CONTACT_PHONE: z.string().default(""),
 
   // White-label Phase 1 — legal/tax identity fields. All `.default("")` (never
   // `.min(1)`, which would throw at module load and break the CI build).

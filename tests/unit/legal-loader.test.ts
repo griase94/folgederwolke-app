@@ -32,6 +32,27 @@ describe("loadCurrentLegalDoc — placeholder substitution contract", () => {
     expect(out).not.toContain("[VEREIN_ADRESSE]");
   });
 
+  it("renders a multi-line value (VEREIN_ADRESSE with a c/o line) as <br>-separated lines", async () => {
+    vi.stubEnv(
+      "VEREIN_ADRESSE",
+      "c/o Jonas Hackenberg\nWestermühlstraße 6\n80469 München",
+    );
+    const { substituteVereinPlaceholders } =
+      await import("$lib/server/legal/loader.js");
+    expect(substituteVereinPlaceholders("[VEREIN_ADRESSE]")).toBe(
+      "c/o Jonas Hackenberg<br>Westermühlstraße 6<br>80469 München",
+    );
+  });
+
+  it("normalises a literal backslash-n in a multi-line value to <br>", async () => {
+    vi.stubEnv("VEREIN_ADRESSE", "c/o A\\nStraße 1\\n12345 Stadt");
+    const { substituteVereinPlaceholders } =
+      await import("$lib/server/legal/loader.js");
+    expect(substituteVereinPlaceholders("[VEREIN_ADRESSE]")).toBe(
+      "c/o A<br>Straße 1<br>12345 Stadt",
+    );
+  });
+
   it("leaves unknown placeholders in place (visible bug, not silent empty)", async () => {
     const { substituteVereinPlaceholders } =
       await import("$lib/server/legal/loader.js");
@@ -94,6 +115,23 @@ describe("loadCurrentLegalDoc — real docs tokenization (white-label PR3)", () 
     expect(doc.markdown).not.toContain("[VEREIN_KONTAKT_EMAIL]");
     expect(doc.markdown).not.toContain("[VEREIN_REGISTERGERICHT]");
     expect(doc.markdown).not.toContain("[VEREIN_NAME]");
+  });
+
+  it("impressum stacks a multi-line c/o address under the name (DIN 5008)", async () => {
+    vi.stubEnv("VEREIN_NAME", "Verein X e.V.");
+    vi.stubEnv(
+      "VEREIN_ADRESSE",
+      "c/o Max Muster\nMusterstraße 1\n12345 Musterstadt",
+    );
+    const { loadCurrentLegalDoc } = await import("$lib/server/legal/loader.js");
+    const doc = await loadCurrentLegalDoc("impressum");
+
+    // The name is hard-broken from the address block…
+    expect(doc.markdown).toContain("**Verein X e.V.**<br>");
+    // …and the postal lines stack: c/o, street, PLZ Ort.
+    expect(doc.markdown).toContain(
+      "c/o Max Muster<br>Musterstraße 1<br>12345 Musterstadt",
+    );
   });
 
   it("datenschutz is version v2, substitutes name/Kontakt/Aufsichtsbehörde, drops BayLDA literals", async () => {

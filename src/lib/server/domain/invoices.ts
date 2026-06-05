@@ -684,8 +684,6 @@ async function loadRenderInput(invoiceId: string): Promise<InvoiceRenderInput> {
       bic: unquote(settingsMap.get("verein.bic") ?? "") || env.VEREIN_BIC || "",
       bank:
         unquote(settingsMap.get("verein.bank") ?? "") || env.VEREIN_BANK || "",
-      kontaktPerson: env.VEREIN_KONTAKT_PERSON || "",
-      contactPhone: env.VEREIN_CONTACT_PHONE || "",
       // Footer contact email reuses MAIL_FROM — no separate env var.
       contactEmail: env.MAIL_FROM || "",
     },

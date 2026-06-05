@@ -48,11 +48,7 @@ export interface InvoiceRenderInput {
     iban?: string;
     bic?: string;
     bank?: string;
-    /** Phase 10 — footer-col-1 contact person ("℅ <name>"). */
-    kontaktPerson?: string;
-    /** Phase 10 — footer-col-2 contact phone. */
-    contactPhone?: string;
-    /** Phase 10 — footer-col-2 contact email (reuses env.MAIL_FROM). */
+    /** Footer-col-2 contact email (reuses env.MAIL_FROM). */
     contactEmail?: string;
   };
 

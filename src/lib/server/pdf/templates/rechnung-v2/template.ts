@@ -42,7 +42,7 @@ const CONTENT_W = PAGE_W - MARGIN_LEFT - MARGIN_RIGHT;
 //   - Header tier (untouched in -1pt sweep): WORDMARK, SUBTITLE pair, SECTION_TITLE
 //   - Body tier (all -1pt from initial design): ADDRESS / META / BODY / TABLE / FOOTER
 const SIZE_WORDMARK = 32;
-const SIZE_SUBTITLE_BOLD = 9;
+// Sender line now sizes itself (senderBaseSize, auto-shrink) — see header block.
 const SIZE_SUBTITLE_ITALIC = 8;
 const SIZE_ADDRESS = 9;
 const SIZE_META_LABEL = 9;
@@ -57,13 +57,12 @@ const SIZE_FOOTER = 7;
 export interface RechnungV2Input {
   verein: {
     name: string;
+    /** Compact one-line form (name's sender line). */
     adresseSingleLine: string;
-    adresseLine1: string;
-    adresseLine2: string;
+    /** Postal address lines top-to-bottom (DIN 5008: [c/o], street, PLZ Ort). */
+    adresseLines: string[];
     vereinsregister: string;
     steuernummer: string;
-    kontaktPerson: string;
-    contactPhone: string;
     contactEmail: string;
     bankname: string;
     iban: string;
@@ -240,14 +239,26 @@ export async function renderRechnungV2(
     color: BRAND_ROSA,
   });
 
-  // Andy review v2.3 (2026-05-26): tighten subtitle a hair closer to wordmark
-  // (was 6mm; that turned out a tiny bit loose).
-  const subtitleBoldY = wordmarkBaselineY - 4 * MM;
-  page.drawText(`${input.verein.name} - ${input.verein.adresseSingleLine}`, {
+  // Sender line (DIN 5008 Absenderzeile): "Name · [c/o …] · Straße · PLZ Ort".
+  // Designer notes: a touch smaller + lighter (regular, not bold) than the heavy
+  // wordmark so they don't compete, with ~6mm air below the wordmark. Auto-shrinks
+  // so a long address never runs under the cloud logo (box starts at
+  // x = PAGE_W - MARGIN_RIGHT - 30mm); an ~8mm gutter keeps a comfortable gap to
+  // the logo. Floor 6.5pt for legibility.
+  const subtitleBoldY = wordmarkBaselineY - 6 * MM;
+  const senderText = `${input.verein.name} · ${input.verein.adresseSingleLine}`;
+  const senderBaseSize = 8;
+  const senderMaxW = PAGE_W - MARGIN_RIGHT - 30 * MM - MARGIN_LEFT - 8 * MM;
+  const senderNaturalW = regular.widthOfTextAtSize(senderText, senderBaseSize);
+  const senderSize =
+    senderNaturalW > senderMaxW
+      ? Math.max(6.5, (senderBaseSize * senderMaxW) / senderNaturalW)
+      : senderBaseSize;
+  page.drawText(senderText, {
     x: MARGIN_LEFT,
     y: subtitleBoldY,
-    size: SIZE_SUBTITLE_BOLD,
-    font: bold,
+    size: senderSize,
+    font: regular,
     color: BRAND_ROSA,
   });
 
@@ -671,6 +682,9 @@ export async function renderRechnungV2(
     drawCenteredImage(page, icon, centerX, iconBottomY, iconBoxW, iconBoxH);
     let y = colTextBaseY;
     for (const line of lines) {
+      // Skip empty lines so the column collapses cleanly (no orphan glyphs or
+      // blank gaps) when an optional value — c/o line, phone — is absent.
+      if (line.text.trim() === "") continue;
       const font = line.bold ? bold : regular;
       const w = font.widthOfTextAtSize(line.text, SIZE_FOOTER);
       page.drawText(line.text, {
@@ -684,15 +698,16 @@ export async function renderRechnungV2(
     }
   };
 
+  // Address column (DIN 5008) = the complete postal block: the Empfänger name
+  // leads, then the postal lines (an optional "c/o …", the street, PLZ Ort).
+  // A care-of line is only a valid address with the recipient name above it.
+  // Empty lines are skipped above.
   drawFooterCol(colCenters[0]!, iconHouse, [
-    { text: `℅ ${input.verein.kontaktPerson}` },
-    { text: input.verein.adresseLine1 },
-    { text: input.verein.adresseLine2 },
+    { text: input.verein.name, bold: true },
+    ...input.verein.adresseLines.map((text) => ({ text })),
   ]);
   drawFooterCol(colCenters[1]!, iconContact, [
-    { text: input.verein.contactPhone },
     { text: input.verein.contactEmail },
-    { text: "" },
   ]);
   drawFooterCol(colCenters[2]!, iconBank, [
     { text: input.verein.bankname },
@@ -700,7 +715,7 @@ export async function renderRechnungV2(
     { text: `BIC: ${input.verein.bic}` },
   ]);
   drawFooterCol(colCenters[3]!, iconPerson, [
-    { text: input.verein.name },
+    { text: input.verein.name, bold: true },
     { text: "Steuernummer:" },
     // Andy review v2.3: revert to BODY/black — pink stood out too much
     // against the rest of the footer.

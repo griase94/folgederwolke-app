@@ -3,7 +3,7 @@
 **Verein:** Folge der Wolke e.V.  
 **Steuernummer:** 143/215/10028  
 **VR:** VR 211227  
-**Adresse:** Westermühlstraße 6, 80469 München  
+**Adresse:** Folge der Wolke e.V., c/o Jonas Hackenberg, Westermühlstraße 6, 80469 München  
 **Anwendung:** folgederwolke-app (Buchführung und Auslagenverwaltung)  
 **Version:** 1.0.0 (Phase 7.5, 2026-05)  
 **Status:** Skeleton — Abschnitte mit `<!-- FILL -->` müssen von Andy ausgefüllt werden.

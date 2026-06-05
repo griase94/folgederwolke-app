@@ -203,13 +203,13 @@ or from the CLI with `vercel env add <NAME> production`. Group by group:
 
 ### 6a. Who you are _(required)_
 
-| Variable                      | What it is                                                                              | Example                            |
-| ----------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------- |
-| `VEREIN_NAME`                 | Full legal name. Shown everywhere. **Boot fails in prod if empty.**                     | `Turnverein Musterstadt e.V.`      |
-| `VEREIN_ADRESSE`              | Postal address. Use `\n` for line breaks.                                               | `Hauptstraße 1\n12345 Musterstadt` |
-| `VEREIN_KONTAKT_EMAIL`        | Public contact email (Impressum + Datenschutz).                                         | `vorstand@meinverein.de`           |
-| `PUBLIC_VEREIN_KONTAKT_EMAIL` | Same address, used in the public form's consent text. Set it to the same value.         | `vorstand@meinverein.de`           |
-| `VEREIN_VORSTAND`             | Vertretungsberechtigter Vorstand (names). Appears on legal pages + cert signature line. | `Maria Muster, Hans Beispiel`      |
+| Variable                      | What it is                                                                                                                                                                            | Example                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `VEREIN_NAME`                 | Full legal name. Shown everywhere. **Boot fails in prod if empty.**                                                                                                                   | `Turnverein Musterstadt e.V.`                      |
+| `VEREIN_ADRESSE`              | Postal address (DIN 5008), one line per row via `\n`. Put a **care-of** line first if your post is delivered c/o someone — it renders stacked on invoices, legal pages, and receipts. | `c/o Max Muster\nHauptstraße 1\n12345 Musterstadt` |
+| `VEREIN_KONTAKT_EMAIL`        | Public contact email (Impressum + Datenschutz).                                                                                                                                       | `vorstand@meinverein.de`                           |
+| `PUBLIC_VEREIN_KONTAKT_EMAIL` | Same address, used in the public form's consent text. Set it to the same value.                                                                                                       | `vorstand@meinverein.de`                           |
+| `VEREIN_VORSTAND`             | Vertretungsberechtigter Vorstand (names). Appears on legal pages + cert signature line.                                                                                               | `Maria Muster, Hans Beispiel`                      |
 
 ### 6b. Your registration & oversight _(required for the legal pages)_
 
@@ -221,15 +221,13 @@ or from the CLI with `vercel env add <NAME> production`. Group by group:
 
 ### 6c. Your bank _(required for invoices, SEPA, reminders)_
 
-| Variable                | What it is                                                                                                      | Example                  |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| `VEREIN_IBAN`           | Your Verein's IBAN.                                                                                             | `DE02120300000000202051` |
-| `VEREIN_BIC`            | Matching BIC. _(The app refuses to boot if a known German IBAN and BIC name different banks — a typo-catcher.)_ | `BYLADEM1001`            |
-| `VEREIN_BANK`           | Bank name, for display.                                                                                         | `Sparkasse Musterstadt`  |
-| `VEREIN_STEUERNUMMER`   | Tax number, shown on mail footers + receipts.                                                                   | `123/456/78901`          |
-| `VEREIN_KONTAKT_PERSON` | Person in the invoice footer (`℅ …`). Stable across treasurer changes.                                          | `Maria Muster`           |
-| `VEREIN_CONTACT_PHONE`  | Phone in the invoice footer.                                                                                    | `+49 89 1234567`         |
-| `VEREIN_FINANZAMT`      | **Full** Finanzamt name (keep the word "Finanzamt"). Used on donation receipts.                                 | `Finanzamt Musterstadt`  |
+| Variable              | What it is                                                                                                      | Example                  |
+| --------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| `VEREIN_IBAN`         | Your Verein's IBAN.                                                                                             | `DE02120300000000202051` |
+| `VEREIN_BIC`          | Matching BIC. _(The app refuses to boot if a known German IBAN and BIC name different banks — a typo-catcher.)_ | `BYLADEM1001`            |
+| `VEREIN_BANK`         | Bank name, for display.                                                                                         | `Sparkasse Musterstadt`  |
+| `VEREIN_STEUERNUMMER` | Tax number, shown on mail footers + receipts.                                                                   | `123/456/78901`          |
+| `VEREIN_FINANZAMT`    | **Full** Finanzamt name (keep the word "Finanzamt"). Used on donation receipts.                                 | `Finanzamt Musterstadt`  |
 
 ### 6d. Membership fee _(optional)_
 
@@ -430,7 +428,6 @@ refuse to start without it** — not "how important is it":
 | `VEREIN_REGISTERGERICHT` / `VEREIN_VR`                                              | recommended                                                         | Impressum                                   |
 | `VEREIN_AUFSICHTSBEHOERDE`                                                          | recommended                                                         | Datenschutzerklärung                        |
 | `VEREIN_STEUERNUMMER`                                                               | recommended                                                         | Mail footers, receipts                      |
-| `VEREIN_KONTAKT_PERSON` / `VEREIN_CONTACT_PHONE`                                    | recommended                                                         | Invoice footer                              |
 | `VEREIN_FINANZAMT`                                                                  | for receipts                                                        | Donation receipts                           |
 | `VEREIN_BEITRAG_DEFAULT_CENTS`                                                      | optional                                                            | Default membership fee                      |
 | `VEREIN_BESCHEID_*` / `VEREIN_SATZUNG_FASSUNG` / `VEREIN_STEUERBEGUENSTIGTE_ZWECKE` | for receipts                                                        | Donation receipts                           |

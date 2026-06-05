@@ -23,6 +23,7 @@ import {
   type RGB,
 } from "pdf-lib";
 import type { BmfPflichtfelder } from "$lib/server/domain/spenden.js";
+import { addressLines } from "$lib/server/domain/address.js";
 
 // ── Geometry ──────────────────────────────────────────────────────────────
 const MM_TO_PT = 72 / 25.4;
@@ -204,12 +205,20 @@ export function bescheidPflichttext(p: BmfPflichtfelder): string[] {
  * PLZ+Ort pattern (4-5 digits, whitespace, city name); return the city
  * portion only. Falls back to the last segment if no PLZ pattern is found.
  */
-function maskOrtFromAdresse(adr: string): string {
+export function maskOrtFromAdresse(adr: string): string {
   const segments = adr
+    // Normalize a literal backslash-n first: $env/dynamic/private returns
+    // process.env verbatim, so a Vercel value entered as "…\n…" reaches us as
+    // two characters, not a real newline. Without this the PLZ+Ort pattern
+    // never matches and the whole raw address (incl. literal \n) would print on
+    // the Zuwendungsbestätigung's "Ort, Datum" line. Mirrors addressLines().
+    .replace(/\\n/g, "\n")
     .split(/[,\n]/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
-  if (segments.length === 0) return adr;
+  // Content-free address (only whitespace/separators): still normalize the
+  // literal \n on the fallback so a misconfigured value can never print "\n".
+  if (segments.length === 0) return adr.replace(/\\n/g, "\n").trim();
 
   for (const seg of segments) {
     const match = seg.match(/^\d{4,5}\s+(.+)$/);
@@ -238,7 +247,11 @@ export async function drawBescheinigung(
     bold: true,
     color: COLOR_PRIMARY,
   });
-  drawText(ctx, p.vereinAdresse, { size: SIZE_SMALL, color: COLOR_MUTED });
+  // Multi-line postal address (DIN 5008) — each line stacked under the name
+  // (an optional c/o line, the street, then PLZ Ort).
+  for (const addrLine of addressLines(p.vereinAdresse)) {
+    drawText(ctx, addrLine, { size: SIZE_SMALL, color: COLOR_MUTED });
+  }
   drawText(
     ctx,
     `Steuernummer ${p.vereinSteuernummer} | Vereinsregister ${p.vereinVr}`,

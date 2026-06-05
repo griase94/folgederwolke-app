@@ -27,6 +27,7 @@ import {
 } from "$lib/server/domain/spenden.js";
 import { env } from "$lib/server/env.js";
 import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
+import { addressLines } from "$lib/server/domain/address.js";
 
 export const load: PageServerLoad = async ({ params }) => {
   const db = getDb();
@@ -102,7 +103,9 @@ async function previewPflichtfelder(sp: typeof donations.$inferSelect) {
     vereinName: sd.name,
     vereinSteuernummer: sd.steuernummer,
     vereinVr: sd.vr,
-    vereinAdresse: sd.adresse,
+    // Normalize to real newlines so the preview renders stacked (whitespace-pre-line);
+    // the issued PDF normalizes internally via addressLines/maskOrtFromAdresse.
+    vereinAdresse: addressLines(sd.adresse).join("\n"),
     vereinFinanzamt: env.VEREIN_FINANZAMT,
     bescheidTyp: env.VEREIN_BESCHEID_TYP || "-",
     bescheidDatum: env.VEREIN_BESCHEID_DATUM || "-",
