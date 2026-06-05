@@ -81,12 +81,15 @@ export function buildTransactionsCsv(
   for (const r of rows) {
     const sphereSnapshot = SPHERE_LABEL[r.sphereSnapshot] ?? r.sphereSnapshot;
 
-    // Sphäre (Effektiv): for Ausgaben, use sphereOverride if present;
-    // for Einnahmen/Spenden effective == snapshot. The per-tab row types
-    // don't expose sphereOverride directly — AusgabenRow carries only
-    // sphereSnapshot in BaseTxRow (override plumbing added in a later task).
-    // For now, fall back to sphereSnapshot for all three tabs.
-    const sphereEffective = sphereSnapshot;
+    // Sphäre (Effektiv): for Ausgaben, use sphereEffective (= sphereOverride ??
+    // sphereSnapshot, already resolved by listAusgabenPage). For Einnahmen/Spenden
+    // the effective sphere == the snapshot (no override column), so we fall back to
+    // sphereSnapshot when the row doesn't carry a sphereEffective field.
+    const sphereEffective =
+      "sphereEffective" in r
+        ? (SPHERE_LABEL[(r as { sphereEffective: string }).sphereEffective] ??
+          (r as { sphereEffective: string }).sphereEffective)
+        : sphereSnapshot;
 
     const rowCells: Array<string | number | null | undefined> = [
       r.gebuchtAm,

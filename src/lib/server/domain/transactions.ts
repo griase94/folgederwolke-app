@@ -422,7 +422,11 @@ export async function listTransactions(
 export interface PageOptions {
   state: FilterState;
   year: YearScope;
-  limit: number;
+  /**
+   * Row limit for the page query. Pass `"all"` to skip `.limit()` and
+   * `.offset()` entirely (full filtered+sorted set — used by CSV export).
+   */
+  limit: number | "all";
   offset: number;
   /**
    * Optional sort key (the scaffold's `?sort=` column key). Each `listXPage`
@@ -487,6 +491,17 @@ export interface AusgabenRow extends BaseTxRow {
   /** Presence is what the Beleg column needs (the FK uuid, or null). */
   belegFileId: string | null;
   approvedAt: string | null;
+  /**
+   * Raw override value (null when no admin correction has been applied).
+   * Exposed so callers can detect whether an override is present.
+   */
+  sphereOverride: string | null;
+  /**
+   * Effective sphere = sphereOverride ?? sphereSnapshot.
+   * Mirrors the detail-helper derivation (transactions.ts ~272) so the CSV
+   * export can emit the correct "Sphäre (Effektiv)" column for Ausgaben.
+   */
+  sphereEffective: string;
 }
 
 export async function listAusgabenPage(
@@ -508,31 +523,38 @@ export async function listAusgabenPage(
     },
     expenses.gebuchtAm,
   );
+  const baseQuery = db
+    .select({
+      id: expenses.id,
+      businessId: expenses.businessId,
+      bezeichnung: expenses.bezeichnung,
+      betragCents: expenses.betragCents,
+      currency: expenses.currency,
+      gebuchtAm: expenses.gebuchtAm,
+      sphereSnapshot: expenses.sphereSnapshot,
+      sphereOverride: expenses.sphereOverride,
+      kategorieNameSnapshot: expenses.kategorieNameSnapshot,
+      yearOfBuchung: expenses.yearOfBuchung,
+      festgeschriebenAt: expenses.festgeschriebenAt,
+      status: expenses.status,
+      bezahltVonKind: expenses.bezahltVonKind,
+      bezahltVonDisplay: expenses.bezahltVonDisplay,
+      erstattetAm: expenses.erstattetAm,
+      belegFileId: expenses.belegFileId,
+      approvedAt: expenses.approvedAt,
+    })
+    .from(expenses)
+    .where(where)
+    .orderBy(orderBy)
+    .$dynamic();
+
+  const rowQuery =
+    opts.limit === "all"
+      ? baseQuery
+      : baseQuery.limit(opts.limit).offset(opts.offset);
+
   const [rows, countRows] = await Promise.all([
-    db
-      .select({
-        id: expenses.id,
-        businessId: expenses.businessId,
-        bezeichnung: expenses.bezeichnung,
-        betragCents: expenses.betragCents,
-        currency: expenses.currency,
-        gebuchtAm: expenses.gebuchtAm,
-        sphereSnapshot: expenses.sphereSnapshot,
-        kategorieNameSnapshot: expenses.kategorieNameSnapshot,
-        yearOfBuchung: expenses.yearOfBuchung,
-        festgeschriebenAt: expenses.festgeschriebenAt,
-        status: expenses.status,
-        bezahltVonKind: expenses.bezahltVonKind,
-        bezahltVonDisplay: expenses.bezahltVonDisplay,
-        erstattetAm: expenses.erstattetAm,
-        belegFileId: expenses.belegFileId,
-        approvedAt: expenses.approvedAt,
-      })
-      .from(expenses)
-      .where(where)
-      .orderBy(orderBy)
-      .limit(opts.limit)
-      .offset(opts.offset),
+    rowQuery,
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(expenses)
@@ -549,6 +571,8 @@ export async function listAusgabenPage(
       currency: r.currency,
       gebuchtAm: formatTs(r.gebuchtAm)!,
       sphereSnapshot: r.sphereSnapshot,
+      sphereOverride: r.sphereOverride ?? null,
+      sphereEffective: r.sphereOverride ?? r.sphereSnapshot,
       kategorieNameSnapshot: r.kategorieNameSnapshot,
       yearOfBuchung: r.yearOfBuchung ?? null,
       festgeschriebenAt: formatTs(r.festgeschriebenAt),
@@ -608,27 +632,33 @@ export async function listEinnahmenPage(
     .limit(1)
     .as("inv");
 
+  const baseEinnahmenQuery = db
+    .select({
+      id: income.id,
+      businessId: income.businessId,
+      bezeichnung: income.bezeichnung,
+      betragCents: income.betragCents,
+      currency: income.currency,
+      gebuchtAm: income.gebuchtAm,
+      sphereSnapshot: income.sphereSnapshot,
+      kategorieNameSnapshot: income.kategorieNameSnapshot,
+      yearOfBuchung: income.yearOfBuchung,
+      festgeschriebenAt: income.festgeschriebenAt,
+      rechnungBusinessId: invLateral.rechnungBusinessId,
+    })
+    .from(income)
+    .leftJoinLateral(invLateral, sql`true`)
+    .where(where)
+    .orderBy(orderBy)
+    .$dynamic();
+
+  const rowEinnahmenQuery =
+    opts.limit === "all"
+      ? baseEinnahmenQuery
+      : baseEinnahmenQuery.limit(opts.limit).offset(opts.offset);
+
   const [rows, countRows] = await Promise.all([
-    db
-      .select({
-        id: income.id,
-        businessId: income.businessId,
-        bezeichnung: income.bezeichnung,
-        betragCents: income.betragCents,
-        currency: income.currency,
-        gebuchtAm: income.gebuchtAm,
-        sphereSnapshot: income.sphereSnapshot,
-        kategorieNameSnapshot: income.kategorieNameSnapshot,
-        yearOfBuchung: income.yearOfBuchung,
-        festgeschriebenAt: income.festgeschriebenAt,
-        rechnungBusinessId: invLateral.rechnungBusinessId,
-      })
-      .from(income)
-      .leftJoinLateral(invLateral, sql`true`)
-      .where(where)
-      .orderBy(orderBy)
-      .limit(opts.limit)
-      .offset(opts.offset),
+    rowEinnahmenQuery,
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(income)
@@ -683,28 +713,34 @@ export async function listSpendenPage(
     },
     donations.gebuchtAm,
   );
+  const baseSpendenQuery = db
+    .select({
+      id: donations.id,
+      businessId: donations.businessId,
+      betragCents: donations.betragCents,
+      currency: donations.currency,
+      gebuchtAm: donations.gebuchtAm,
+      sphereSnapshot: donations.sphereSnapshot,
+      kategorieNameSnapshot: donations.kategorieNameSnapshot,
+      yearOfBuchung: donations.yearOfBuchung,
+      festgeschriebenAt: donations.festgeschriebenAt,
+      spenderName: donations.spenderName,
+      spendeKind: donations.spendeKind,
+      zweckbindungKind: donations.zweckbindungKind,
+      bescheinigungNr: donations.bescheinigungNr,
+    })
+    .from(donations)
+    .where(where)
+    .orderBy(orderBy)
+    .$dynamic();
+
+  const rowSpendenQuery =
+    opts.limit === "all"
+      ? baseSpendenQuery
+      : baseSpendenQuery.limit(opts.limit).offset(opts.offset);
+
   const [rows, countRows] = await Promise.all([
-    db
-      .select({
-        id: donations.id,
-        businessId: donations.businessId,
-        betragCents: donations.betragCents,
-        currency: donations.currency,
-        gebuchtAm: donations.gebuchtAm,
-        sphereSnapshot: donations.sphereSnapshot,
-        kategorieNameSnapshot: donations.kategorieNameSnapshot,
-        yearOfBuchung: donations.yearOfBuchung,
-        festgeschriebenAt: donations.festgeschriebenAt,
-        spenderName: donations.spenderName,
-        spendeKind: donations.spendeKind,
-        zweckbindungKind: donations.zweckbindungKind,
-        bescheinigungNr: donations.bescheinigungNr,
-      })
-      .from(donations)
-      .where(where)
-      .orderBy(orderBy)
-      .limit(opts.limit)
-      .offset(opts.offset),
+    rowSpendenQuery,
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(donations)
