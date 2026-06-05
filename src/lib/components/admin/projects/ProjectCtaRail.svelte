@@ -21,14 +21,14 @@
 		+Rechnung
 	</Button>
 	<Button
-		href={`/app/transactions/neu?kind=einnahme&projectId=${projectId}&from=projekt`}
+		href={`/app/einnahmen/neu?projectId=${projectId}&from=projekt`}
 		data-testid="project-cta"
 		data-cta-label="+Einnahme"
 	>
 		+Einnahme
 	</Button>
 	<Button
-		href={`/app/transactions/neu?kind=ausgabe&projectId=${projectId}&from=projekt`}
+		href={`/app/ausgaben/neu?projectId=${projectId}&from=projekt`}
 		data-testid="project-cta"
 		data-cta-label="+Ausgabe"
 	>

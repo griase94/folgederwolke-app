@@ -410,8 +410,8 @@ export function registerHandlers(): void {
 
   // ── expense.created / expense.updated / income.created / income.updated /
   // ── donation.created ───────────────────────────────────────────────────
-  // Direct-entry CRUD events emitted by /app/transactions/neu (create) and
-  // /app/transactions/[id] (update). Each handler writes a single audit_log
+  // Direct-entry CRUD events emitted by per-tab neu routes (create) and
+  // per-tab [id] routes (update). Each handler writes a single audit_log
   // row keyed by the corresponding entity_kind + action. Approval and
   // reimbursement remain on their own events (expense.approved,
   // expense.erstattet) so the activity timeline can distinguish a master-
@@ -560,22 +560,9 @@ export function registerHandlers(): void {
     },
   );
 
-  // ── spende.created ──────────────────────────────────────────────────────
-  bus.on<EventPayload<"spende.created">>("spende.created", async (payload) => {
-    await logAudit({
-      action: "create",
-      entityKind: "donation",
-      entityId: payload.donationId,
-      entityBusinessId: payload.businessId,
-      actorUserId: payload.actorUserId,
-      actorKind: payload.actorUserId ? "user" : "system",
-      payload: {
-        betragCents: payload.betragCents,
-        spendeKind: payload.spendeKind,
-        memberId: payload.memberId,
-      },
-    });
-  });
+  // Phase 8 T6: spende.created handler removed — no emitter exists
+  // (createDonation emits donation.created, which is handled in txAuditMap
+  // above; the spende.created type was from the retired transactions/neu route).
 
   // ── spende.edited ───────────────────────────────────────────────────────
   bus.on<EventPayload<"spende.edited">>("spende.edited", async (payload) => {

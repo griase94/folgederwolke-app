@@ -11,7 +11,7 @@
  *   2. No `effect_update_depth_exceeded` console errors during the fill
  *      flow (regression guard for the $state(timer) bug that prompted this
  *      test).
- *   3. A dirty form on /app/rechnungen/new AND /app/transactions/neu prompts
+ *   3. A dirty form on /app/rechnungen/new AND /app/ausgaben/neu prompts
  *      with window.confirm on sidebar navigation.
  *
  * Auth helper mirrors tests/e2e/rechnungen.spec.ts (magic-link insertion).
@@ -175,7 +175,7 @@ test.describe("@phase-9 B-1 InvoiceForm effect loop fix", () => {
     page,
   }) => {
     await signIn(page);
-    await page.goto("/app/transactions/neu?kind=ausgabe");
+    await page.goto("/app/ausgaben/neu"); // Phase 8 T6: per-tab neu
 
     await expect(page.locator('input[name="bezeichnung"]')).toBeVisible();
     await page.fill('input[name="bezeichnung"]', "Dirty Ausgabe");

@@ -68,10 +68,8 @@ test.describe("@phase-6 dashboard", () => {
 
     // Inbox link
     await expect(page.locator('a[href="/app/inbox"]').first()).toBeVisible();
-    // Transactions link
-    await expect(
-      page.locator('a[href="/app/transactions"]').first(),
-    ).toBeVisible();
+    // Ausgaben link (Phase 8 T6: /app/transactions retired → /app/ausgaben in nav)
+    await expect(page.locator('a[href="/app/ausgaben"]').first()).toBeVisible();
     // Mitglieder link
     await expect(
       page.locator('a[href="/app/mitglieder"]').first(),

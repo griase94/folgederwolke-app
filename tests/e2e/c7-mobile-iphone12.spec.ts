@@ -10,10 +10,11 @@
  * This file is the iPhone 12 surface area:
  *  - PM-003: FAB → bottom sheet → tap "Neue Einnahme" → lands on the form
  *            with the Einnahme tab pre-selected (aria-pressed="true").
- *  - PM-008: at 390x844 (iPhone 12 logical width), the page does not
- *            horizontally overflow and all 4 type tabs are reachable
- *            via the chip strip's overflow-x scroll.
- *  - PM-009 (mobile half): TransactionsList renders the card variant,
+ *  - PM-008: at 390x844 (iPhone 12 logical width), /app/ausgaben does not
+ *            horizontally overflow. (Phase 8 T6: the merged-list type-tab
+ *            reachability check was dropped — the three list surfaces are
+ *            now separate per-tab routes, not tabs on one page.)
+ *  - PM-009 (mobile half): the Ausgaben list renders the card variant,
  *            not the table.
  *  - Safe-area-inset: the bottom nav uses the documented .nav-safe-bottom
  *            utility (or equivalent env() padding).
@@ -104,7 +105,8 @@ test.describe("@phase-7 C7 mobile-polish (iPhone 12)", () => {
 
     await page.getByRole("menuitem", { name: /Neue Ausgabe/i }).click();
 
-    await expect(page).toHaveURL(/\/app\/transactions\/neu\?kind=ausgabe/);
+    // Phase 8 T6: FAB repointed /app/transactions/neu?kind=ausgabe → /app/ausgaben/neu.
+    await expect(page).toHaveURL(/\/app\/ausgaben\/neu/);
   });
 
   // ---------------------------------------------------------------------------
@@ -114,7 +116,8 @@ test.describe("@phase-7 C7 mobile-polish (iPhone 12)", () => {
     page,
   }) => {
     await signIn(page);
-    await page.goto("/app/transactions/neu?kind=einnahme");
+    // Phase 8 T6: /app/transactions/neu?kind=einnahme → /app/einnahmen/neu
+    await page.goto("/app/einnahmen/neu");
 
     // The form's type-picker MUST reflect the URL kind via aria-pressed.
     const einnahmeTab = page.getByRole("button", { name: /^Einnahme$/i });
@@ -133,7 +136,8 @@ test.describe("@phase-7 C7 mobile-polish (iPhone 12)", () => {
     page,
   }) => {
     await signIn(page);
-    await page.goto("/app/transactions/neu?kind=spende");
+    // Phase 8 T6: /app/transactions/neu?kind=spende → /app/spenden/neu
+    await page.goto("/app/spenden/neu");
     await expect(
       page.getByRole("button", { name: /^Spende$/i }),
     ).toHaveAttribute("aria-pressed", "true");
@@ -142,35 +146,29 @@ test.describe("@phase-7 C7 mobile-polish (iPhone 12)", () => {
   // ---------------------------------------------------------------------------
   // PM-008 — Filter chips don't horizontally overflow at iPhone 12 width
   // ---------------------------------------------------------------------------
-  test("PM-008 at iPhone 12 width, type tabs reachable + no h-overflow", async ({
+  // Phase 8 T6: /app/transactions retired → test against /app/ausgaben.
+  test("PM-008 at iPhone 12 width, no h-overflow on /app/ausgaben", async ({
     page,
   }) => {
     await signIn(page);
-    await page.goto("/app/transactions");
+    await page.goto("/app/ausgaben");
 
     // No horizontal page overflow: documentElement scrollWidth <= window width
     const overflowsHorizontally = await page.evaluate(() => {
       return document.documentElement.scrollWidth > window.innerWidth + 1;
     });
     expect(overflowsHorizontally).toBe(false);
-
-    // Each tab is reachable (it might require scrolling inside the chip strip,
-    // but the chip strip is overflow-x-auto so .scrollIntoView() works).
-    for (const label of ["Alle", "Ausgaben", "Einnahmen", "Spenden"]) {
-      const tab = page.getByRole("tab", { name: new RegExp(`^${label}`) });
-      await tab.scrollIntoViewIfNeeded();
-      await expect(tab).toBeVisible();
-    }
   });
 
   // ---------------------------------------------------------------------------
   // PM-009 — TransactionsList renders the card variant on mobile (no table)
   // ---------------------------------------------------------------------------
-  test("PM-009 on iPhone 12, TransactionsList renders card variant (no table)", async ({
+  // Phase 8 T6: /app/transactions retired → test against /app/ausgaben.
+  test("PM-009 on iPhone 12, Ausgaben renders card variant (no table)", async ({
     page,
   }) => {
     await signIn(page);
-    await page.goto("/app/transactions");
+    await page.goto("/app/ausgaben");
 
     // Mobile card list is identified by data-testid; table is hidden on < md.
     const mobileCards = page.locator('[data-testid="transactions-card-list"]');

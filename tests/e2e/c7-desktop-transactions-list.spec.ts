@@ -58,11 +58,12 @@ test.beforeEach(async () => {
 });
 
 test.describe("@phase-7 C7 mobile-polish (desktop list)", () => {
-  test("PM-009 on desktop viewport, TransactionsList renders the table (no cards)", async ({
+  // Phase 8 T6: /app/transactions retired → test against /app/ausgaben.
+  test("PM-009 on desktop viewport, Ausgaben table visible (no cards)", async ({
     page,
   }) => {
     await signIn(page);
-    await page.goto("/app/transactions");
+    await page.goto("/app/ausgaben");
 
     const desktopTable = page.locator('[data-testid="transactions-table"]');
     await expect(desktopTable).toBeVisible();

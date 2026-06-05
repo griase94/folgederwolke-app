@@ -113,8 +113,7 @@ const { load: einnahmenLoad } =
   await import("../../src/routes/app/einnahmen/+page.server.js");
 const { load: spendenLoad } =
   await import("../../src/routes/app/spenden/+page.server.js");
-const { load: transactionsLoad } =
-  await import("../../src/routes/app/transactions/+page.server.js");
+// Phase 8 T6: /app/transactions+page.server.ts deleted — redirect tests removed.
 
 // ---------------------------------------------------------------------------
 // Helpers — synthesize the `{ url, parent }` load event
@@ -276,51 +275,6 @@ describe("/app/spenden load", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Redirect — /app/transactions → 308 /app/ausgaben (preserving ?year=)
-// ---------------------------------------------------------------------------
-
-async function runLoadExpectRedirect(
-  // PageServerLoad returns MaybePromise<void | {...}>; `unknown` accepts that
-  // (a redirect throws, so the resolved value is never inspected anyway).
-  fn: (e: never) => unknown,
-  event: never,
-): Promise<{ status: number; location: string }> {
-  try {
-    await fn(event);
-    throw new Error("expected the load to throw a redirect");
-  } catch (err) {
-    if (
-      err &&
-      typeof err === "object" &&
-      "status" in err &&
-      "location" in err
-    ) {
-      return {
-        status: (err as { status: number }).status,
-        location: (err as { location: string }).location,
-      };
-    }
-    throw err;
-  }
-}
-
-describe("/app/transactions redirect", () => {
-  it("redirects 308 → /app/ausgaben", async () => {
-    const r = await runLoadExpectRedirect(
-      transactionsLoad,
-      makeLoadEvent("/app/transactions", "", PARENT_2025),
-    );
-    expect(r.status).toBe(308);
-    expect(r.location).toBe("/app/ausgaben");
-  });
-
-  it("preserves ?year= (and other query) on the redirect", async () => {
-    const r = await runLoadExpectRedirect(
-      transactionsLoad,
-      makeLoadEvent("/app/transactions", "?year=2024", PARENT_2025),
-    );
-    expect(r.status).toBe(308);
-    expect(r.location).toBe("/app/ausgaben?year=2024");
-  });
-});
+// Phase 8 T6: /app/transactions redirect describe removed.
+// The 308 redirect load function is deleted with the route.
+// /app/transactions now 404s (pre-launch, no backward-compat requirement).

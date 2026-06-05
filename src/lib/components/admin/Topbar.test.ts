@@ -17,8 +17,9 @@ import { readable } from "svelte/store";
 
 // $app/stores — Topbar uses $page.url.pathname for breadcrumbs.
 vi.mock("$app/stores", () => ({
+  // Phase 8 T6: /app/transactions retired → use /app/ausgaben as mock URL.
   page: readable({
-    url: new URL("http://localhost/app/transactions"),
+    url: new URL("http://localhost/app/ausgaben"),
     data: {},
   }),
 }));

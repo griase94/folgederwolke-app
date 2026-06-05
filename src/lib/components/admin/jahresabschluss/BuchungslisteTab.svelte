@@ -89,9 +89,16 @@
 		});
 	}
 
+	// Phase 8 T6: /app/transactions/[id] retired → route to per-kind detail page.
+	const KIND_TAB: Record<"income" | "expense" | "donation", string> = {
+		income: "einnahmen",
+		expense: "ausgaben",
+		donation: "spenden"
+	};
+
 	function detailHref(r: BuchungslisteRow): string {
-		// Existing detail route handles all kinds via /app/transactions/[id]
-		return `/app/transactions/${r.id}`;
+		const tab = KIND_TAB[r.kind] ?? "ausgaben";
+		return `/app/${tab}/${r.id}`;
 	}
 </script>
 
@@ -216,7 +223,7 @@
 			>
 				{#snippet cta()}
 					{#if !closed}
-						<Button href="/app/transactions/neu" variant="default">
+						<Button href="/app/ausgaben/neu" variant="default">
 							Erste Buchung anlegen
 						</Button>
 					{/if}

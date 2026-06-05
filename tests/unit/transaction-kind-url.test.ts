@@ -44,16 +44,11 @@ describe("parseKindFromUrl", () => {
 });
 
 describe("buildNeuUrlForKind", () => {
-  it("produces /app/transactions/neu?kind=<German slug> URLs", () => {
-    expect(buildNeuUrlForKind("expense")).toBe(
-      "/app/transactions/neu?kind=ausgabe",
-    );
-    expect(buildNeuUrlForKind("income")).toBe(
-      "/app/transactions/neu?kind=einnahme",
-    );
-    expect(buildNeuUrlForKind("donation")).toBe(
-      "/app/transactions/neu?kind=spende",
-    );
+  // Phase 8 T6: /app/transactions/neu retired → per-tab /app/{tab}/neu.
+  it("produces per-tab /app/{tab}/neu URLs (no ?kind= param needed)", () => {
+    expect(buildNeuUrlForKind("expense")).toBe("/app/ausgaben/neu");
+    expect(buildNeuUrlForKind("income")).toBe("/app/einnahmen/neu");
+    expect(buildNeuUrlForKind("donation")).toBe("/app/spenden/neu");
   });
 });
 

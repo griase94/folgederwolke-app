@@ -178,7 +178,9 @@ test.describe("@phase-6-spenden detail + Bescheinigung", () => {
 });
 
 test.describe("@phase-6-spenden retirement", () => {
-  test("old /app/transactions/spenden is no longer the legacy dialog page", async ({
+  // Phase 8 T6: /app/transactions/spenden retired → 404 (route group deleted).
+  // The assertion (not 200) still holds.
+  test("old /app/transactions/spenden returns non-200 (retired)", async ({
     page,
   }) => {
     await signIn(page);

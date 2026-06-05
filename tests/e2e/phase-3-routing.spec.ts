@@ -1,16 +1,12 @@
 /**
  * @phase-3-routing
  *
- * Task 10 smoke — the three flat list routes + the 308 redirect.
+ * Task 10 smoke — the three flat list routes.
  *
  *  - GET /app/ausgaben (signed in) → 200, renders the list scaffold.
- *  - GET /app/transactions → 308 → /app/ausgaben (preserving ?year=).
  *
- * Auth runs in hooks.server.ts BEFORE the route load, so an unauthenticated
- * GET /app/transactions would 303 → /sign-in and never reach the 308. We
- * therefore sign in first; the session cookie lives on the page context, which
- * `page.request` shares — so the raw (non-followed) redirect check below carries
- * the cookie.
+ * Phase 8 T6: /app/transactions is retired (404s). The 308-redirect tests
+ * have been removed.
  */
 
 import { expect, test } from "@playwright/test";
@@ -59,7 +55,7 @@ test.beforeEach(async () => {
   }
 });
 
-test.describe("@phase-3-routing flat list routes + redirect", () => {
+test.describe("@phase-3-routing flat list routes", () => {
   test("GET /app/ausgaben → 200, renders the list scaffold", async ({
     page,
   }) => {
@@ -85,25 +81,6 @@ test.describe("@phase-3-routing flat list routes + redirect", () => {
     await expect(page.getByTestId("kpi-strip")).toBeVisible();
   });
 
-  test("GET /app/transactions → 308 → /app/ausgaben", async ({ page }) => {
-    await signIn(page);
-    // maxRedirects: 0 so we observe the raw 308 + Location rather than the
-    // auto-followed 200. page.request shares the signed-in cookie jar.
-    const res = await page.request.get("/app/transactions", {
-      maxRedirects: 0,
-    });
-    expect(res.status()).toBe(308);
-    expect(res.headers()["location"]).toBe("/app/ausgaben");
-  });
-
-  test("GET /app/transactions?year=2024 → 308 preserving ?year=", async ({
-    page,
-  }) => {
-    await signIn(page);
-    const res = await page.request.get("/app/transactions?year=2024", {
-      maxRedirects: 0,
-    });
-    expect(res.status()).toBe(308);
-    expect(res.headers()["location"]).toBe("/app/ausgaben?year=2024");
-  });
+  // Phase 8 T6: /app/transactions redirect tests removed.
+  // /app/transactions now 404s (pre-launch, no backward-compat requirement).
 });

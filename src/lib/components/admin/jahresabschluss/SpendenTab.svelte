@@ -166,7 +166,7 @@
 									{#if r.status === 'pending'}
 										{#if bescheinigungEnabled}
 											<Button
-												href={`/app/transactions/${r.id}`}
+												href={`/app/spenden/${r.id}`}
 												variant="outline"
 												size="sm"
 												data-testid="bescheinigung-create-cta"
@@ -183,7 +183,7 @@
 										{/if}
 									{:else if r.status === 'issued'}
 										<Button
-											href={`/app/transactions/${r.id}`}
+											href={`/app/spenden/${r.id}`}
 											variant="ghost"
 											size="sm"
 										>

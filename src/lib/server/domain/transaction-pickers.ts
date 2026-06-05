@@ -1,5 +1,6 @@
 /**
- * Picker helpers for /app/transactions/neu (cluster C4).
+ * Picker helpers for the transaction-neu routes (cluster C4).
+ * Phase 8 T6: /app/transactions/neu retired; used by per-tab neu routes.
  *
  * Fixes findings VB-004 + JB-014: the form used to hardcode
  * sphereSnapshot="ideeller" + kategorieNameSnapshot="(Unkategorisiert)",
@@ -127,7 +128,7 @@ export function pickDefaultKategorieName(args: {
 
 /**
  * Loads all non-deactivated kategorien of a given kind, ordered by sortOrder.
- * Drives the picker dropdown in /app/transactions/neu.
+ * Drives the picker dropdowns in the per-tab neu routes.
  */
 export async function listKategorieOptions(
   kind: TransactionKind,
