@@ -27,12 +27,13 @@ import {
   markExpenseAsPaid,
   checkFestschreibungGate,
   listZahlungsarten,
+  resolveKategorieByName,
 } from "$lib/server/domain/transactions.js";
 import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
 import { getDb } from "$lib/server/db/index.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { projects } from "$lib/server/db/schema/projects.js";
-import { eq, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { bus } from "$lib/server/events/index.js";
 
 // ---------------------------------------------------------------------------
@@ -77,10 +78,18 @@ const saveSchema = z.object({
     .nullable()
     .optional(),
   kommentar: z.string().max(2000).nullable().optional(),
-  kategorieNameSnapshot: z.string().max(200).optional(),
-  sphereSnapshot: z
-    .enum(["ideeller", "vermoegen", "zweckbetrieb", "wirtschaftlich"])
-    .optional(),
+  // Mandatory Kategorie (mirrors the create schema): the picker drives the
+  // Sphäre STRICTLY (§4.5), so an empty / sentinel Kategorie is rejected here —
+  // we never persist an uncategorized booking from the edit surface either.
+  kategorieNameSnapshot: z
+    .string()
+    .min(1)
+    .max(200)
+    .refine((v) => v !== "(Unkategorisiert)", {
+      message: "Kategorie muss ausgewählt werden",
+    }),
+  // NOTE: `sphereSnapshot` is intentionally NOT in this schema — it is DERIVED
+  // server-side from the Kategorie (§4.5); a body value is never trusted.
   projectId: z.string().uuid().nullable().optional(),
   zahlungsartId: z.string().uuid().nullable().optional(),
 });
@@ -126,6 +135,14 @@ export const actions = {
     );
     if (!gate.ok) return fail(gate.status, { error: gate.error });
 
+    // §4.5: re-resolve the Kategorie by NAME and derive sphere STRICTLY from it.
+    // The body's sphereSnapshot is never trusted (mirrors createExpense) — a
+    // tampered/stale sphere can't mis-classify the booking.
+    const kat = await resolveKategorieByName(
+      "expense",
+      parsed.data.kategorieNameSnapshot,
+    );
+
     const db = getDb();
     await db
       .update(expenses)
@@ -134,20 +151,19 @@ export const actions = {
         betragCents: BigInt(parsed.data.betragCents),
         rechnungsdatum: parsed.data.rechnungsdatum ?? null,
         kommentar: parsed.data.kommentar ?? null,
-        kategorieNameSnapshot:
-          parsed.data.kategorieNameSnapshot ?? detail.kategorieNameSnapshot,
-        sphereSnapshot:
-          parsed.data.sphereSnapshot ??
-          (detail.sphereSnapshot as
-            | "ideeller"
-            | "vermoegen"
-            | "zweckbetrieb"
-            | "wirtschaftlich"),
+        kategorieNameSnapshot: kat.name,
+        sphereSnapshot: kat.sphere,
         projectId: parsed.data.projectId ?? null,
         zahlungsartId: parsed.data.zahlungsartId ?? null,
         updatedAt: new Date(),
       })
-      .where(eq(expenses.id, params.id));
+      // TOCTOU: guard the write atomically with the read-gate by re-asserting
+      // `festgeschrieben_at IS NULL` in the WHERE (mirrors unmark-erstattet), so
+      // a concurrent Festschreibung between the SELECT above and this UPDATE
+      // cannot slip an edit into a now-sealed row.
+      .where(
+        and(eq(expenses.id, params.id), isNull(expenses.festgeschriebenAt)),
+      );
 
     await bus.emit("expense.updated", {
       id: params.id,

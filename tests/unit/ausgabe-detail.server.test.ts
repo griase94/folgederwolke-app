@@ -81,12 +81,23 @@ const checkFestschreibungGateMock = vi.fn(async (_year: number) => ({
 const listZahlungsartenMock = vi.fn(async () => [
   { id: "22222222-2222-4222-8222-222222222222", kind: "bank", label: "Bank" },
 ]);
+// §4.5: ?/save re-derives sphere from the picked Kategorie name (never trusts
+// the body). The fixture Kategorie "Miete" resolves to sphere "wirtschaftlich"
+// here so the test can prove the body's tampered sphere is overridden.
+const resolveKategorieByNameMock = vi.fn(
+  async (_kind: "expense", name: string) => ({
+    id: "kat-miete",
+    name,
+    sphere: "wirtschaftlich" as const,
+  }),
+);
 
 vi.mock("$lib/server/domain/transactions.js", () => ({
   getTransactionDetail: getTransactionDetailMock,
   markExpenseAsPaid: markExpenseAsPaidMock,
   checkFestschreibungGate: checkFestschreibungGateMock,
   listZahlungsarten: listZahlungsartenMock,
+  resolveKategorieByName: resolveKategorieByNameMock,
 }));
 
 // load() also fetches expense kategorie options + the active-projects list for
@@ -104,13 +115,15 @@ vi.mock("$lib/server/events/index.js", () => ({
 }));
 
 const updateSetMock = vi.fn();
+const updateWhereMock = vi.fn();
 function makeDbFake() {
   const updateChain = {
     set(values: Record<string, unknown>) {
       updateSetMock(values);
       return updateChain;
     },
-    where() {
+    where(cond: unknown) {
+      updateWhereMock(cond);
       return Promise.resolve();
     },
   };
@@ -129,14 +142,15 @@ function makeDbFake() {
 }
 vi.mock("$lib/server/db/index.js", () => ({ getDb: () => makeDbFake() }));
 vi.mock("$lib/server/db/schema/expenses.js", () => ({
-  expenses: { id: "id" },
+  expenses: { id: "id", festgeschriebenAt: "festgeschriebenAt" },
 }));
 vi.mock("$lib/server/db/schema/projects.js", () => ({
   projects: { id: "id", name: "name", deletedAt: "deletedAt" },
 }));
 vi.mock("drizzle-orm", () => ({
-  eq: (a: unknown, b: unknown) => ({ a, b }),
+  eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
   isNull: (a: unknown) => ({ isNull: a }),
+  and: (...conds: unknown[]) => ({ and: conds }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -194,7 +208,9 @@ beforeEach(() => {
   getTransactionDetailMock.mockClear();
   markExpenseAsPaidMock.mockClear();
   checkFestschreibungGateMock.mockClear();
+  resolveKategorieByNameMock.mockClear();
   updateSetMock.mockClear();
+  updateWhereMock.mockClear();
   busEmitMock.mockClear();
 });
 
@@ -287,6 +303,7 @@ describe("ausgaben/[id] ?/save", () => {
       betragCents: "46000",
       rechnungsdatum: "2026-04-01",
       kommentar: "monatlich",
+      kategorieNameSnapshot: "Miete",
     });
     const result = (await actions["save"]!(event)) as { ok?: boolean };
     expect(result.ok).toBe(true);
@@ -294,6 +311,63 @@ describe("ausgaben/[id] ?/save", () => {
     const setArg = updateSetMock.mock.calls[0]![0] as { bezeichnung: string };
     expect(setArg.bezeichnung).toBe("Raummiete April");
     expect(busEmitMock).toHaveBeenCalled();
+  });
+
+  it("re-derives sphere from the Kategorie server-side — a tampered sphereSnapshot is ignored (§4.5)", async () => {
+    // The body claims "ideeller", but the picked Kategorie ("Miete") resolves to
+    // "wirtschaftlich". The write MUST use the resolved sphere, never the body's.
+    const event = makeActionEvent("exp-1", {
+      bezeichnung: "Raummiete April",
+      betragCents: "46000",
+      kategorieNameSnapshot: "Miete",
+      sphereSnapshot: "ideeller",
+    });
+    const result = (await actions["save"]!(event)) as { ok?: boolean };
+    expect(result.ok).toBe(true);
+    expect(resolveKategorieByNameMock).toHaveBeenCalledWith("expense", "Miete");
+    const setArg = updateSetMock.mock.calls[0]![0] as {
+      sphereSnapshot: string;
+      kategorieNameSnapshot: string;
+    };
+    // Derived from the Kategorie, NOT the tampered body value.
+    expect(setArg.sphereSnapshot).toBe("wirtschaftlich");
+    expect(setArg.kategorieNameSnapshot).toBe("Miete");
+  });
+
+  it("guards the UPDATE atomically with isNull(festgeschriebenAt) in the WHERE (TOCTOU)", async () => {
+    const event = makeActionEvent("exp-1", {
+      bezeichnung: "Raummiete April",
+      betragCents: "46000",
+      kategorieNameSnapshot: "Miete",
+    });
+    await actions["save"]!(event);
+    expect(updateWhereMock).toHaveBeenCalledTimes(1);
+    // The WHERE must reference the festgeschriebenAt IS NULL guard, not just id.
+    const whereArg = JSON.stringify(updateWhereMock.mock.calls[0]![0]);
+    expect(whereArg).toContain("festgeschriebenAt");
+    expect(whereArg).toContain("isNull");
+  });
+
+  it("rejects an empty Kategorie with 422 (mandatory-Kategorie refine)", async () => {
+    const event = makeActionEvent("exp-1", {
+      bezeichnung: "Raummiete April",
+      betragCents: "46000",
+      kategorieNameSnapshot: "",
+    });
+    const result = (await actions["save"]!(event)) as { status?: number };
+    expect(result.status).toBe(422);
+    expect(updateSetMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects the (Unkategorisiert) sentinel Kategorie with 422", async () => {
+    const event = makeActionEvent("exp-1", {
+      bezeichnung: "Raummiete April",
+      betragCents: "46000",
+      kategorieNameSnapshot: "(Unkategorisiert)",
+    });
+    const result = (await actions["save"]!(event)) as { status?: number };
+    expect(result.status).toBe(422);
+    expect(updateSetMock).not.toHaveBeenCalled();
   });
 
   it("blocks the update with 409 when the expense is festgeschrieben", async () => {
@@ -304,6 +378,7 @@ describe("ausgaben/[id] ?/save", () => {
     const event = makeActionEvent("exp-1", {
       bezeichnung: "Hack",
       betragCents: "1",
+      kategorieNameSnapshot: "Miete",
     });
     const result = (await actions["save"]!(event)) as { status?: number };
     expect(result.status).toBe(409);
