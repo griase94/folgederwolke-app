@@ -27,6 +27,7 @@ import { idCounters } from "$lib/server/db/schema/id_counters.js";
 import { and, eq } from "drizzle-orm";
 import { berlinYear } from "$lib/domain/year.js";
 import { env } from "$lib/server/env.js";
+import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
 import { pdfLibInvoiceRenderer } from "$lib/server/pdf/pdf-lib-renderer.js";
 
 // Bounded draft schema — anything the renderer can survive is allowed, but
@@ -122,6 +123,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     else if (v !== null && v !== undefined) settingsMap.set(r.key, String(v));
   }
   const unquote = (s: string): string => s.replace(/^"|"$/g, "");
+
+  // White-label: name + address come from the single settings→env Stammdaten
+  // reader (no hardcoded FdW literals).
+  const sd = await readStammdaten();
   const kassenwaertName =
     unquote(settingsMap.get("verein.kassenwaert_name") ?? "") ||
     "Julia Schwarz";
@@ -145,7 +150,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     faelligkeitsDatum: payload.faelligkeitsDatum || null,
     leistungszeitraum: payload.leistungszeitraum?.trim() || null,
     verein: {
-      name: env.VEREIN_NAME || "Folge der Wolke e.V.",
+      name: sd.name,
       adresse: env.VEREIN_ADRESSE || "Westermuehlstrasse 6\n80469 Muenchen",
       steuernummer: env.VEREIN_STEUERNUMMER || "",
       vereinsregister: env.VEREIN_VR || "",
