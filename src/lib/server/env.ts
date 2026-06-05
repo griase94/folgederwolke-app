@@ -414,4 +414,23 @@ export function assertProductionEnvSafe(): void {
       `[env] ${err instanceof Error ? err.message : String(err)} — non-prod, continuing.`,
     );
   }
+
+  // White-label Phase 4 (Task 4.1): VEREIN_NAME + MAIL_FROM are required in
+  // production. They carry Zod `.default("")` (NOT `.min(1)`, which would throw
+  // at module load and break the CI build); required-ness is enforced here,
+  // prod-gated, so the prerender/build (which skips this via `if (!building)`
+  // in hooks.server.ts) is unaffected. Appended AFTER the existing checks so
+  // order-sensitive tests in env-prod-asserts.test.ts don't shift.
+  if (isProd) {
+    if (env.VEREIN_NAME.trim() === "") {
+      throw new Error(
+        "VEREIN_NAME is required in production — it is the Verein identity shown across the app, mail footers, and legal pages. Set it via the Vercel project env.",
+      );
+    }
+    if (env.MAIL_FROM.trim() === "") {
+      throw new Error(
+        "MAIL_FROM is required in production — it is the From-address of every outgoing email. Set it via the Vercel project env.",
+      );
+    }
+  }
 }
