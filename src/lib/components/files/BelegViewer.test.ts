@@ -15,9 +15,45 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/svelte";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// Mutable switch read by the pdfjs mock factory. Toggle to simulate a PDF that
-// fails to load (encrypted/corrupt/huge) so we can assert the fallback.
-const pdfState = { shouldReject: false };
+// Mutable switches read by the pdfjs mock factory.
+//   - shouldReject: getDocument rejects → simulates an unrenderable PDF.
+//   - numPages: number of pages the fake doc reports (drives ‹/› page nav).
+const pdfState = { shouldReject: false, numPages: 1 };
+
+// Each page.render() returns a real cancellable RenderTask whose promise stays
+// PENDING (mirrors a real in-flight render that hasn't painted yet) until either
+// resolved or cancelled. .cancel() REJECTS it with a RenderingCancelledException
+// (name matches pdfjs-dist@4.10.38). Because the promise stays pending, a render
+// superseded by fast nav is genuinely cancelled → its promise rejects → the
+// component's catch runs. If the component did NOT swallow the cancellation it
+// would flip to the fallback; the rapid-nav test asserts it does not.
+interface FakeRenderTask {
+  promise: Promise<void>;
+  cancel(): void;
+  settled: boolean;
+  cancelled: boolean;
+}
+let renderTasks: FakeRenderTask[] = [];
+function makeRenderTask(): FakeRenderTask {
+  let rejectFn: (e: unknown) => void = () => {};
+  const task = {
+    settled: false,
+    cancelled: false,
+  } as FakeRenderTask;
+  task.promise = new Promise<void>((_resolve, reject) => {
+    rejectFn = reject;
+  });
+  // Avoid unhandled-rejection noise if a cancelled task is never awaited.
+  task.promise.catch(() => {});
+  task.cancel = () => {
+    if (task.settled) return;
+    task.settled = true;
+    task.cancelled = true;
+    rejectFn({ name: "RenderingCancelledException" });
+  };
+  renderTasks.push(task);
+  return task;
+}
 
 // The component fetches the blob bytes before handing them to pdfjs. Stub fetch
 // so the PDF byte-fetch resolves with fake bytes (happy-dom's real fetch would
@@ -36,19 +72,23 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+// Spy so tests can assert the worker doc is destroyed on teardown.
+const destroySpy = vi.fn(() => Promise.resolve());
+
 vi.mock("pdfjs-dist", () => ({
   GlobalWorkerOptions: {},
   getDocument: () => ({
     promise: pdfState.shouldReject
       ? Promise.reject(new Error("corrupt pdf"))
       : Promise.resolve({
-          numPages: 1,
+          numPages: pdfState.numPages,
           getPage: () =>
             Promise.resolve({
               getViewport: () => ({ width: 100, height: 141 }),
-              render: () => ({ promise: Promise.resolve() }),
+              render: () => makeRenderTask(),
+              cleanup: () => {},
             }),
-          destroy: () => Promise.resolve(),
+          destroy: destroySpy,
         }),
   }),
 }));
@@ -62,6 +102,9 @@ import BelegViewer from "./BelegViewer.svelte";
 // inert — we assert structure, not pixels.
 beforeEach(() => {
   pdfState.shouldReject = false;
+  pdfState.numPages = 1;
+  destroySpy.mockClear();
+  renderTasks = [];
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
     {} as unknown as CanvasRenderingContext2D,
   );
@@ -202,5 +245,68 @@ describe("BelegViewer", () => {
       },
     });
     expect(screen.getByText(/rechnung-2026\.png/)).toBeTruthy();
+  });
+
+  it("does NOT fall back when rapid page-nav cancels an in-flight render", async () => {
+    pdfState.numPages = 3;
+    const { container } = render(BelegViewer, {
+      props: {
+        fileId: "f9",
+        mimeType: "application/pdf",
+        originalFilename: "multi.pdf",
+        mode: "inline",
+      },
+    });
+    // Wait for the doc to load + page controls to appear (numPages > 1).
+    const next = await screen.findByRole("button", { name: /Nächste Seite/i });
+    // Fire several nav clicks back-to-back without awaiting renders. Each
+    // re-runs the render $effect, which cancels the prior in-flight RenderTask
+    // → that task's promise REJECTS with RenderingCancelledException. The
+    // component must swallow those rejections (user nav, not a failure).
+    await fireEvent.click(next); // → page 2 (cancels page-1 render)
+    await fireEvent.click(next); // → page 3 (cancels page-2 render)
+    const prev = screen.getByRole("button", { name: /Vorherige Seite/i });
+    await fireEvent.click(prev); // → page 2 (cancels page-3 render)
+
+    await waitFor(() => {
+      expect(screen.getByText(/2 \/ 3/)).toBeTruthy();
+    });
+    // Drain the microtask queue so any unswallowed cancellation rejection would
+    // have flipped pdfFailed by now.
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Sanity: the cancellation mechanism actually fired — superseded renders
+    // were cancelled (so this is genuinely exercising the swallow path, not
+    // passing because nothing happened).
+    expect(renderTasks.some((t) => t.cancelled)).toBe(true);
+
+    // The viewer stayed on the canvas path — it did NOT drop to the fallback.
+    expect(container.querySelector("canvas")).not.toBeNull();
+    expect(screen.queryByTestId("beleg-fallback-link")).toBeNull();
+    expect(screen.queryByText(/Vorschau nicht verfügbar/i)).toBeNull();
+    // Page controls are still present (proves pdfFailed never flipped true).
+    expect(screen.getByRole("button", { name: /Vergrößern/i })).toBeTruthy();
+  });
+
+  it("destroys the worker doc on unmount (no leak)", async () => {
+    pdfState.numPages = 2;
+    const { unmount } = render(BelegViewer, {
+      props: {
+        fileId: "f10",
+        mimeType: "application/pdf",
+        originalFilename: "b.pdf",
+        mode: "inline",
+      },
+    });
+    // Wait for the doc to FULLY load — page nav (numPages > 1) only appears once
+    // loadPdf() has resolved and set numPages, so this proves the load finished
+    // before we unmount (exercises the teardown destroy path, not the
+    // load-aborted-mid-flight path).
+    await screen.findByRole("button", { name: /Nächste Seite/i });
+    expect(destroySpy).not.toHaveBeenCalled();
+    unmount();
+    await waitFor(() => {
+      expect(destroySpy).toHaveBeenCalled();
+    });
   });
 });

@@ -49,12 +49,19 @@
 		getPage(n: number): Promise<PdfPage>;
 		destroy?: () => Promise<void>;
 	}
+	// A pdfjs RenderTask: `.promise` resolves when the page is painted and is
+	// REJECTED with a RenderingCancelledException if `.cancel()` is called while
+	// the render is in flight (verified against pdfjs-dist@4.10.38 source).
+	interface PdfRenderTask {
+		promise: Promise<void>;
+		cancel(extraDelay?: number): void;
+	}
 	interface PdfPage {
 		getViewport(opts: { scale: number }): { width: number; height: number };
 		render(args: {
 			canvasContext: CanvasRenderingContext2D;
 			viewport: { width: number; height: number };
-		}): { promise: Promise<void> };
+		}): PdfRenderTask;
 		cleanup?: () => void;
 	}
 
@@ -116,24 +123,54 @@
 		}
 	}
 
+	// In-flight RenderTask handles. The main viewer canvas and the fold peek
+	// canvas render concurrently to DIFFERENT canvases, so each gets its own
+	// handle — they must not cancel each other. Calling pdfjs `render()` on a
+	// canvas that already has an in-flight render throws "Cannot use the same
+	// canvas during multiple render() operations", so we cancel the prior task
+	// for that canvas before starting a new one (e.g. fast ‹/›/+/− clicks).
+	let renderTask: PdfRenderTask | null = null;
+	let peekRenderTask: PdfRenderTask | null = null;
+
+	function isCancellation(e: unknown): boolean {
+		return (e as { name?: string } | null)?.name === 'RenderingCancelledException';
+	}
+
 	async function renderPage(
 		doc: PdfDocument,
 		pageNum: number,
 		canvas: HTMLCanvasElement,
-		scale: number
+		scale: number,
+		which: 'main' | 'peek'
 	): Promise<void> {
+		// Cancel any prior in-flight render for THIS canvas before re-rendering.
+		if (which === 'main') renderTask?.cancel();
+		else peekRenderTask?.cancel();
+
 		const page = await doc.getPage(pageNum);
 		const viewport = page.getViewport({ scale });
 		const ctx = canvas.getContext('2d');
 		if (!ctx) throw new Error('2d context unavailable');
 		canvas.width = viewport.width;
 		canvas.height = viewport.height;
-		await page.render({ canvasContext: ctx, viewport }).promise;
+
+		const task = page.render({ canvasContext: ctx, viewport });
+		if (which === 'main') renderTask = task;
+		else peekRenderTask = task;
+		try {
+			await task.promise;
+		} finally {
+			if (which === 'main' && renderTask === task) renderTask = null;
+			if (which === 'peek' && peekRenderTask === task) peekRenderTask = null;
+		}
 		page.cleanup?.();
 	}
 
 	// Lazily render the active viewer page when the doc, page, zoom, canvas, or
-	// open-state change. One page at a time (memory safety, spec §11).
+	// open-state change. One page at a time (memory safety, spec §11). A render
+	// superseded by a fast nav/zoom is cancelled — that REJECTS the prior task's
+	// promise with RenderingCancelledException, which we swallow (it is user
+	// navigation, NOT a render failure, so we must not flip to the fallback).
 	$effect(() => {
 		if (!isPdf || !viewerOpen || pdfFailed) return;
 		const doc = pdfDoc;
@@ -141,31 +178,61 @@
 		const page = currentPage;
 		const scale = BASE_SCALE * zoom;
 		if (!doc || !canvas) return;
-		renderPage(doc, page, canvas, scale).catch((e) => {
+		renderPage(doc, page, canvas, scale, 'main').catch((e) => {
+			if (isCancellation(e)) return; // superseded by user nav, not a failure
 			console.warn('[BelegViewer] page render failed:', e);
 			pdfFailed = true;
 		});
+		// Teardown: cancel the in-flight render when this effect re-runs / unmounts.
+		return () => renderTask?.cancel();
 	});
 
 	// Fold peek: render page-1 to the small peek canvas (P3-05). Icon fallback
-	// only when this render fails.
+	// only when this render genuinely fails (cancellation is not a failure).
 	$effect(() => {
 		if (!isPdf || mode !== 'fold') return;
 		const doc = pdfDoc;
 		const canvas = peekCanvas;
 		if (!doc || !canvas) return;
-		renderPage(doc, 1, canvas, PEEK_SCALE).catch((e) => {
+		renderPage(doc, 1, canvas, PEEK_SCALE, 'peek').catch((e) => {
+			if (isCancellation(e)) return;
 			console.warn('[BelegViewer] peek render failed, showing icon:', e);
 			peekFailed = true;
 		});
+		return () => peekRenderTask?.cancel();
 	});
 
-	// Kick off the PDF load once on mount (independent of fold open state so the
-	// fold peek can render page-1 before the user taps).
+	// Load (or reload) the PDF whenever `fileId` changes. Keyed on `fileId` so a
+	// prop change reloads instead of showing a stale doc; on teardown we cancel
+	// in-flight renders + destroy the worker doc so unmount doesn't leak it.
 	$effect(() => {
-		if (isPdf && pdfDoc === null && !pdfFailed) {
-			void loadPdf();
-		}
+		if (!isPdf) return;
+		// Read fileId so this effect is keyed on it (re-runs on prop change).
+		void fileId;
+		// Reset paging + failure state for the (re)load.
+		currentPage = 1;
+		pdfFailed = false;
+		peekFailed = false;
+		pdfDoc = null;
+
+		let cancelled = false;
+		let loadedDoc: PdfDocument | null = null;
+		void loadPdf().then(() => {
+			if (cancelled) {
+				// Unmounted / fileId changed mid-load — destroy the now-orphaned doc.
+				void pdfDoc?.destroy?.();
+			} else {
+				loadedDoc = pdfDoc;
+			}
+		});
+
+		return () => {
+			cancelled = true;
+			renderTask?.cancel();
+			peekRenderTask?.cancel();
+			void (loadedDoc ?? pdfDoc)?.destroy?.();
+			pdfDoc = null;
+		};
 	});
 
 	function zoomIn() {
