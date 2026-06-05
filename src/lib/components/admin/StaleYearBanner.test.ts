@@ -15,4 +15,10 @@ describe("StaleYearBanner", () => {
     });
     expect(container.querySelector('[role="status"]')).toBeNull();
   });
+  it("renders nothing under the Alle Jahre scope (ALL_YEARS sentinel)", () => {
+    const { container } = render(StaleYearBanner, {
+      props: { selectedYear: "all", currentYear: 2026 },
+    });
+    expect(container.querySelector('[role="status"]')).toBeNull();
+  });
 });

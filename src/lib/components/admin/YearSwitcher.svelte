@@ -45,8 +45,8 @@
 
 	let { years, selected, onChange, allowAllYears = false }: Props = $props();
 
-	const options = $derived((): SegmentedOption[] => {
-		const base = years.map<SegmentedOption>((y) => ({
+	const options = $derived<SegmentedOption[]>([
+		...years.map<SegmentedOption>((y) => ({
 			value: String(y.year),
 			// The label is read by screen-readers via aria-label on each radio.
 			// Closed years carry the "festgeschrieben" suffix so SR-users hear
@@ -55,12 +55,10 @@
 			// Closed years get a lock icon snippet — rendered INSIDE the
 			// segment by the primitive (C2-5).
 			icon: y.closed ? lockIcon : undefined
-		}));
-		if (allowAllYears) {
-			base.push({ value: ALL_YEARS, label: 'Alle Jahre' });
-		}
-		return base;
-	});
+		})),
+		// Lists only: append the "Alle Jahre" scope (ALL_YEARS sentinel).
+		...(allowAllYears ? [{ value: ALL_YEARS, label: 'Alle Jahre' }] : [])
+	]);
 
 	function handleChange(value: string) {
 		// Pass the "all" sentinel through verbatim — do NOT parseInt it (that
@@ -94,7 +92,7 @@
 
 <div class="fdw-year-switcher relative inline-flex items-center">
 	<SegmentedControl
-		options={options()}
+		{options}
 		value={String(selected)}
 		onChange={handleChange}
 		ariaLabel="Buchungsjahr"

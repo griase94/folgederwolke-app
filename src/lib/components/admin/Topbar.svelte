@@ -31,9 +31,19 @@
 		const d = $page.data as Record<string, unknown>;
 		const availableYears = (d['availableYears'] ?? []) as YearSwitcherOption[];
 		const selectedYear = (d['selectedYear'] as number | undefined) ?? null;
+		// yearScope (Task 2) is the wider YearScope — `number | ALL_YEARS`. The
+		// switcher highlights "Alle Jahre" when this is the "all" sentinel; for
+		// concrete years it equals selectedYear.
+		const yearScope = (d['yearScope'] as YearScope | undefined) ?? null;
 		const currentYear = (d['currentYear'] as number | undefined) ?? null;
-		return { availableYears, selectedYear, currentYear };
+		return { availableYears, selectedYear, yearScope, currentYear };
 	});
+
+	// "Alle Jahre" is a lists-only scope (spec §6) — the option appears only on
+	// the three transaction list routes and is invisible everywhere else.
+	const allowAllYears = $derived(
+		/^\/app\/(ausgaben|einnahmen|spenden)(\/|$)/.test($page.url.pathname)
+	);
 
 	function persistYear(year: number) {
 		try {
@@ -507,8 +517,9 @@
 		<div class="fdw-year-switcher-wrap hidden sm:block" data-fdw="year-switcher-wrap">
 			<YearSwitcher
 				years={yearData().availableYears}
-				selected={yearData().selectedYear!}
+				selected={yearData().yearScope ?? yearData().selectedYear!}
 				onChange={handleYearChange}
+				{allowAllYears}
 			/>
 		</div>
 		<!--
@@ -520,8 +531,9 @@
 		<div class="sm:hidden">
 			<MobileYearPicker
 				years={yearData().availableYears}
-				selected={yearData().selectedYear!}
+				selected={yearData().yearScope ?? yearData().selectedYear!}
 				onChange={handleYearChange}
+				{allowAllYears}
 			/>
 		</div>
 	{/if}
