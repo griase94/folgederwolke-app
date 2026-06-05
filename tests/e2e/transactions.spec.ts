@@ -126,3 +126,19 @@ test.describe("Transactions detail page @phase-5", () => {
     expect(response?.status()).toBe(404);
   });
 });
+
+test.describe("White-label payer label @phase-1", () => {
+  // The "Verein"-paid payer label must reflect the runtime vereinName from
+  // settings (exposed via the root layout), NOT a hardcoded "Folge der Wolke
+  // e.V." literal. In the test env VEREIN_NAME = "Folge der Wolke e.V. (TEST)".
+  test("verein payer display uses the configured runtime name", async ({
+    page,
+  }) => {
+    await page.goto("/app/transactions/neu");
+    // Default type is Ausgabe → bezahltVonKind defaults to 'verein'.
+    await expect(page.getByTestId("bezahlt-von-kind")).toHaveValue("verein");
+    // The persisted display name flows into the hidden bezahltVonDisplay input.
+    const display = page.locator('input[name="bezahltVonDisplay"]');
+    await expect(display).toHaveValue(/Folge der Wolke e\.V\. \(TEST\)/);
+  });
+});

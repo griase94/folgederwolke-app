@@ -10,6 +10,7 @@
 	import { makeDebouncedSave, saveDraft, loadDraft, clearDraft, type DraftMetadata } from '$lib/client/drafts.js';
 	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 	import { browser } from '$app/environment';
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { beforeNavigate } from '$app/navigation';
 
@@ -458,6 +459,7 @@
 	<!-- ── Section 1: Wer hat bezahlt? ──────────────────────────────────────── -->
 	<BezahltVonPicker
 		bind:kind={bezahltVonKind}
+		vereinName={page.data.vereinName}
 		{members}
 		bind:memberId
 		bind:memberDisplayName

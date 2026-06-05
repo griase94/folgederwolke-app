@@ -153,6 +153,7 @@
 <!-- ── ManualImportSheet ────────────────────────────────────────────────── -->
 <ManualImportSheet
 	bind:open={importSheetOpen}
+	vereinName={data.vereinName}
 	members={data.members}
 	onSuccess={onImportSuccess}
 />

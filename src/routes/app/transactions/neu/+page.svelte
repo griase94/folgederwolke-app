@@ -78,7 +78,7 @@
 	);
 
 	const bezahltVonDisplay = $derived(() => {
-		if (bezahltVonKind === 'verein') return 'Folge der Wolke e.V.';
+		if (bezahltVonKind === 'verein') return data.vereinName;
 		if (bezahltVonKind === 'member' && selectedMember) {
 			return `${selectedMember.vorname} ${selectedMember.nachname}`.trim();
 		}
