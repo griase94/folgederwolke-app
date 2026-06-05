@@ -221,13 +221,14 @@ or from the CLI with `vercel env add <NAME> production`. Group by group:
 
 ### 6c. Your bank _(required for invoices, SEPA, reminders)_
 
-| Variable              | What it is                                                                                                      | Example                  |
-| --------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------ |
-| `VEREIN_IBAN`         | Your Verein's IBAN.                                                                                             | `DE02120300000000202051` |
-| `VEREIN_BIC`          | Matching BIC. _(The app refuses to boot if a known German IBAN and BIC name different banks — a typo-catcher.)_ | `BYLADEM1001`            |
-| `VEREIN_BANK`         | Bank name, for display.                                                                                         | `Sparkasse Musterstadt`  |
-| `VEREIN_STEUERNUMMER` | Tax number, shown on mail footers + receipts.                                                                   | `123/456/78901`          |
-| `VEREIN_FINANZAMT`    | **Full** Finanzamt name (keep the word "Finanzamt"). Used on donation receipts.                                 | `Finanzamt Musterstadt`  |
+| Variable               | What it is                                                                                                            | Example                  |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| `VEREIN_IBAN`          | Your Verein's IBAN.                                                                                                   | `DE02120300000000202051` |
+| `VEREIN_BIC`           | Matching BIC. _(The app refuses to boot if a known German IBAN and BIC name different banks — a typo-catcher.)_       | `BYLADEM1001`            |
+| `VEREIN_BANK`          | Bank name, for display.                                                                                               | `Sparkasse Musterstadt`  |
+| `VEREIN_STEUERNUMMER`  | Tax number, shown on mail footers + receipts.                                                                         | `123/456/78901`          |
+| `VEREIN_CONTACT_PHONE` | Phone shown in the invoice footer's contact column. Optional. The in-app `verein.contact_phone` setting overrides it. | `+49 89 1234567`         |
+| `VEREIN_FINANZAMT`     | **Full** Finanzamt name (keep the word "Finanzamt"). Used on donation receipts.                                       | `Finanzamt Musterstadt`  |
 
 ### 6d. Membership fee _(optional)_
 
@@ -428,6 +429,7 @@ refuse to start without it** — not "how important is it":
 | `VEREIN_REGISTERGERICHT` / `VEREIN_VR`                                              | recommended                                                         | Impressum                                   |
 | `VEREIN_AUFSICHTSBEHOERDE`                                                          | recommended                                                         | Datenschutzerklärung                        |
 | `VEREIN_STEUERNUMMER`                                                               | recommended                                                         | Mail footers, receipts                      |
+| `VEREIN_CONTACT_PHONE`                                                              | optional                                                            | Invoice footer phone                        |
 | `VEREIN_FINANZAMT`                                                                  | for receipts                                                        | Donation receipts                           |
 | `VEREIN_BEITRAG_DEFAULT_CENTS`                                                      | optional                                                            | Default membership fee                      |
 | `VEREIN_BESCHEID_*` / `VEREIN_SATZUNG_FASSUNG` / `VEREIN_STEUERBEGUENSTIGTE_ZWECKE` | for receipts                                                        | Donation receipts                           |

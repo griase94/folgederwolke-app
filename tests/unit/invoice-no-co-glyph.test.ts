@@ -29,7 +29,10 @@ describe("invoice template — care-of lives in the address, not a ℅ glyph", (
     expect(TEMPLATE_SRC).not.toContain("℅");
   });
 
-  it("does not reference the retired kontaktPerson / contactPhone fields", () => {
-    expect(TEMPLATE_SRC).not.toMatch(/kontaktPerson|contactPhone/);
+  it("does not reference the retired kontaktPerson (℅ care-of person) field", () => {
+    // contactPhone is a legitimate, configurable contact field again; only the
+    // hardcoded "℅ kontaktPerson" care-of person was retired (the c/o now lives
+    // in the address).
+    expect(TEMPLATE_SRC).not.toMatch(/kontaktPerson/);
   });
 });

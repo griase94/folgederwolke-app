@@ -114,7 +114,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   // loadRenderInput so the preview is byte-for-byte identical to the saved
   // PDF for the same input.
   const settingsRows = await db.execute<{ key: string; value: unknown }>(
-    sql`SELECT key, value FROM settings WHERE key IN ('verein.iban', 'verein.bic', 'verein.bank', 'verein.kassenwaert_name')`,
+    sql`SELECT key, value FROM settings WHERE key IN ('verein.iban', 'verein.bic', 'verein.bank', 'verein.kassenwaert_name', 'verein.contact_phone')`,
   );
   const settingsMap = new Map<string, string>();
   for (const r of settingsRows as { key: string; value: unknown }[]) {
@@ -160,6 +160,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
       bank:
         unquote(settingsMap.get("verein.bank") ?? "") || env.VEREIN_BANK || "",
       contactEmail: env.MAIL_FROM || "",
+      contactPhone:
+        unquote(settingsMap.get("verein.contact_phone") ?? "") ||
+        env.VEREIN_CONTACT_PHONE ||
+        "",
     },
     customer: {
       name: customerName,

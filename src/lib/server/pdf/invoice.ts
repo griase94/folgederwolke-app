@@ -50,6 +50,8 @@ export interface InvoiceRenderInput {
     bank?: string;
     /** Footer-col-2 contact email (reuses env.MAIL_FROM). */
     contactEmail?: string;
+    /** Footer-col-2 contact phone (settings verein.contact_phone → env). */
+    contactPhone?: string;
   };
 
   /** Customer block. */

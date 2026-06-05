@@ -64,6 +64,7 @@ export interface RechnungV2Input {
     vereinsregister: string;
     steuernummer: string;
     contactEmail: string;
+    contactPhone: string;
     bankname: string;
     iban: string;
     bic: string;
@@ -707,6 +708,7 @@ export async function renderRechnungV2(
   ]);
   drawFooterCol(colCenters[1]!, iconContact, [
     { text: input.verein.contactEmail },
+    { text: input.verein.contactPhone },
   ]);
   drawFooterCol(colCenters[2]!, iconBank, [
     { text: input.verein.bankname },
