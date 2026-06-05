@@ -110,9 +110,7 @@
 		>
 			{#snippet cta()}
 				{#if !closed}
-					<Button href={`/app/transactions/spenden?year=${year}`}>
-						Spende erfassen
-					</Button>
+					<Button href="/app/spenden/neu">Spende erfassen</Button>
 				{/if}
 			{/snippet}
 		</EmptyState>

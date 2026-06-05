@@ -372,7 +372,7 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
       detail: `${missingBescheinigungenCount} Spende${
         missingBescheinigungenCount === 1 ? "" : "n"
       } ≥ 300 € ohne Bescheinigungs-Nummer. Nach Festschreibung ist eine Neuvergabe der Nummern aufwendig — wir empfehlen, sie jetzt auszustellen.`,
-      fixHref: `/app/transactions/spenden?year=${input.year}&bescheinigung=missing`,
+      fixHref: `/app/spenden?year=${input.year}&bescheinigung=ausstehend`,
     });
   } else {
     items.push({
