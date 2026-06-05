@@ -77,6 +77,32 @@
           animation: none;
         }
       }
+
+      /* ── iOS status-bar scrim ───────────────────────────────────────────────
+         apple-mobile-web-app-status-bar-style=black-translucent renders the
+         clock/battery/signal glyphs WHITE and lets app content draw under the bar.
+         The in-app Topbar is near-white (--background), so white-on-white glyphs
+         would be unreadable. This paints just the safe-area-inset-top strip in brand
+         pink (#be185d — mirrors src/lib/brand.ts), keeping the glyphs legible and
+         echoing the splash. Standalone-only (no band in a browser tab); collapses to
+         zero height on non-notched devices. pointer-events:none so it never blocks
+         taps in that region. */
+      .pwa-statusbar-scrim {
+        display: none;
+      }
+      @media (display-mode: standalone) {
+        .pwa-statusbar-scrim {
+          display: block;
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: env(safe-area-inset-top, 0px);
+          background-color: #be185d;
+          z-index: 40;
+          pointer-events: none;
+        }
+      }
     </style>
 
     <!-- PWA manifest -->
@@ -456,6 +482,11 @@
         <g id="MasterLayer_1"></g>
       </svg>
     </div>
+    <!-- iOS status-bar scrim — paints the safe-area-inset-top strip brand pink in
+         standalone PWA so the (white) black-translucent status-bar glyphs stay
+         legible over the near-white in-app chrome. CSS lives in the <head>
+         (.pwa-statusbar-scrim); standalone-only, zero-height on non-notched screens. -->
+    <div class="pwa-statusbar-scrim" aria-hidden="true"></div>
     <div style="display: contents">%sveltekit.body%</div>
   </body>
 </html>
