@@ -141,12 +141,15 @@ interface RowResult {
  * string. Each bucket holds the affected expense IDs (or {id,error} for the
  * generic-error bucket).
  *
- * TODO bereits-bezahlt bucket: `markExpenseErstattet` only reports
- * `alreadyErstattet` (already REIMBURSED). The richer "already paid directly by
- * the Verein" detection depends on the shared `markExpenseAsPaid` already-paid
- * fix landing on the base; until then `bereitsBezahlt` is populated solely from
- * `alreadyErstattet` and never sees Verein-direct double-pays (those never enter
- * the member/extern bulk pool anyway).
+ * bereits-bezahlt bucket: the bulk pool is member/extern-only (Verein-direct
+ * rows are created already-erstattet by `markExpenseAsPaid` and never enter
+ * here), so a row that is already settled can only be one that was already
+ * REIMBURSED — `markExpenseErstattet` reports that via `alreadyErstattet`,
+ * which we map straight into `bereitsBezahlt`. The shared `markExpenseAsPaid`
+ * double-pay fix now refuses an already-erstattet row with `{ok:false,
+ * error:'bereits bezahlt'}` on the single-row (kebab/detail) path, keeping the
+ * two entrypoints consistent: neither double-pays, and both surface the row as
+ * "bereits bezahlt" rather than silently re-stamping it.
  */
 interface BulkSummary {
   erstattet: string[];

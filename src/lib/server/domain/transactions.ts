@@ -1309,16 +1309,31 @@ export async function markExpenseAsPaid(
     };
   }
 
-  await db.execute(sql`
+  // Guard the write with `erstattet_am IS NULL` and RETURNING so an
+  // already-erstattet row updates 0 rows (we lost no money — the row was
+  // already paid). We use the returned row count as the authoritative "I
+  // actually marked it" signal: a 0-row UPDATE must NOT report success and
+  // must NOT emit a no-op `expense.updated` audit event (double-pay fix).
+  //
+  // `abfluss_datum` is preserved with COALESCE: a member/extern row already
+  // carries its own cash-out date and must keep it; only a row that never had
+  // one (Verein-direct, where the reimbursement IS the cash-out) takes `datum`.
+  const updated = (await db.execute(sql`
     UPDATE expenses
        SET erstattet_am   = ${params.datum}::date,
            status         = 'erstattet',
            zahlungsart_id = ${params.zahlartId}::uuid,
-           abfluss_datum  = ${params.datum}::date,
+           abfluss_datum  = COALESCE(abfluss_datum, ${params.datum}::date),
            updated_at     = NOW()
      WHERE id = ${expenseId}::uuid
        AND erstattet_am IS NULL
-  `);
+    RETURNING id
+  `)) as unknown as { id: string }[];
+
+  if (updated.length === 0) {
+    // Row already erstattet — refuse, and emit NO audit event.
+    return { ok: false, error: "bereits bezahlt" };
+  }
 
   // Audit-only emit (CLAUDE.md §2 — never write audit_log directly).
   await bus.emit("expense.updated", {
