@@ -69,6 +69,14 @@
 	let selectedMemberId = $state(v('member_id'));
 	let zugewendetAm = $state(v('zugewendet_am'));
 
+	// Extern Spender fields backed by local $state + bind:value (mirror
+	// selectedMemberId) so typed data SURVIVES a Spender mode toggle (UX-07 §7.2).
+	// The inputs live inside an {#if}/{:else} that re-mounts on toggle; as
+	// uncontrolled `value={…}` inputs they would reset, losing what the user typed.
+	let spenderName = $state(v('spender_name'));
+	let spenderAdresse = $state(v('spender_adresse'));
+	let spenderEmail = $state(v('spender_email'));
+
 	const isSach = $derived(spendeKind === 'sachspende');
 	const isZweckgebunden = $derived(zweckbindungKind === 'zweckgebunden');
 
@@ -394,7 +402,7 @@
 					name="spender_name"
 					type="text"
 					placeholder="Name *"
-					value={v('spender_name')}
+					bind:value={spenderName}
 					oninput={markDirty}
 					required
 					data-testid="spender-name-input"
@@ -407,7 +415,7 @@
 					name="spender_adresse"
 					type="text"
 					placeholder="Adresse *"
-					value={v('spender_adresse')}
+					bind:value={spenderAdresse}
 					oninput={markDirty}
 					required
 					data-testid="spender-adresse-input"
@@ -420,7 +428,7 @@
 					name="spender_email"
 					type="email"
 					placeholder="E-Mail (optional)"
-					value={v('spender_email')}
+					bind:value={spenderEmail}
 					oninput={markDirty}
 					class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 				/>

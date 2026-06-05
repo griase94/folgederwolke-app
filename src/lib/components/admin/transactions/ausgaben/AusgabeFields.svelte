@@ -119,6 +119,18 @@
 	// svelte-ignore state_referenced_locally
 	let selectedMemberId = $state(values.bezahltVonMemberId);
 
+	// Extern recipient fields backed by local $state + bind:value (mirror
+	// selectedMemberId) so typed data SURVIVES a bezahlt-von mode toggle (UX-07
+	// §7.2). The inputs live inside an {#if} that re-mounts on toggle; as
+	// uncontrolled `value={…}` inputs that would reset what the user typed, so we
+	// persist it here instead.
+	// svelte-ignore state_referenced_locally
+	let externName = $state(values.externName);
+	// svelte-ignore state_referenced_locally
+	let externIban = $state(values.externIban);
+	// svelte-ignore state_referenced_locally
+	let externEmail = $state(values.externEmail);
+
 	const selectedMember = $derived(members.find((m) => m.id === selectedMemberId));
 	const bezahltVonDisplay = $derived(() => {
 		if (bezahltVonKind === 'verein') return 'Folge der Wolke e.V.';
@@ -355,21 +367,22 @@
 					name="externName"
 					type="text"
 					placeholder="Name"
-					value={values.externName}
+					bind:value={externName}
+					data-testid="extern-name-input"
 					class="rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 				/>
 				<input
 					name="externIban"
 					type="text"
 					placeholder="IBAN"
-					value={values.externIban}
+					bind:value={externIban}
 					class="rounded-md border border-border bg-background px-3 py-2 font-mono text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 				/>
 				<input
 					name="externEmail"
 					type="email"
 					placeholder="E-Mail (optional)"
-					value={values.externEmail}
+					bind:value={externEmail}
 					class="rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 				/>
 			</div>
