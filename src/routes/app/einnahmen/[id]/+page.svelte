@@ -1,52 +1,53 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import LinkIcon from '@lucide/svelte/icons/link';
-	import DetailModalShell from '$lib/components/admin/transactions/DetailModalShell.svelte';
-	import BelegViewer from '$lib/components/files/BelegViewer.svelte';
-	import EinnahmeDetailFields from '$lib/components/admin/transactions/einnahmen/EinnahmeDetailFields.svelte';
-	import type { PageData } from './$types.js';
+  import { goto } from "$app/navigation";
+  import LinkIcon from "@lucide/svelte/icons/link";
+  import DetailModalShell from "$lib/components/admin/transactions/DetailModalShell.svelte";
+  import BelegViewer from "$lib/components/files/BelegViewer.svelte";
+  import EinnahmeDetailFields from "$lib/components/admin/transactions/einnahmen/EinnahmeDetailFields.svelte";
+  import type { PageData } from "./$types.js";
 
-	let { data }: { data: PageData } = $props();
+  let { data }: { data: PageData } = $props();
 
-	let dirty = $state(false);
-	const saving = $state(false);
+  let dirty = $state(false);
+  let saving = $state(false);
 
-	const detail = $derived(data.detail);
-	const hasBeleg = $derived(!!detail.belegFileId);
+  const detail = $derived(data.detail);
+  const hasBeleg = $derived(!!detail.belegFileId);
 
-	function close() {
-		// eslint-disable-next-line svelte/no-navigation-without-resolve -- static parent-list route
-		goto('/app/einnahmen');
-	}
+  function close() {
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- static parent-list route
+    goto("/app/einnahmen");
+  }
 </script>
 
 <svelte:head>
-	<title>{detail.bezeichnung} – Einnahme</title>
+  <title>{detail.bezeichnung} – Einnahme</title>
 </svelte:head>
 
 {#snippet fields()}
-	<EinnahmeDetailFields
-		bezeichnung={detail.bezeichnung}
-		betragCents={detail.betragCents}
-		geldEingangDatum={detail.geldEingangDatum}
-		kategorieNameSnapshot={detail.kategorieNameSnapshot}
-		projectId={detail.projectId}
-		kommentar={detail.kommentar}
-		kategorien={data.kategorien}
-		projects={data.projects}
-		onDirty={() => (dirty = true)}
-	/>
+  <EinnahmeDetailFields
+    bezeichnung={detail.bezeichnung}
+    betragCents={detail.betragCents}
+    geldEingangDatum={detail.geldEingangDatum}
+    kategorieNameSnapshot={detail.kategorieNameSnapshot}
+    projectId={detail.projectId}
+    kommentar={detail.kommentar}
+    kategorien={data.kategorien}
+    projects={data.projects}
+    onDirty={() => (dirty = true)}
+    onSaving={(v) => (saving = v)}
+  />
 {/snippet}
 
 {#snippet beleg()}
-	{#if detail.belegFileId}
-		<BelegViewer
-			fileId={detail.belegFileId}
-			mimeType={detail.belegMimeType ?? 'application/octet-stream'}
-			originalFilename={detail.belegOriginalName ?? 'Beleg'}
-			mode="inline"
-		/>
-	{/if}
+  {#if detail.belegFileId}
+    <BelegViewer
+      fileId={detail.belegFileId}
+      mimeType={detail.belegMimeType ?? "application/octet-stream"}
+      originalFilename={detail.belegOriginalName ?? "Beleg"}
+      mode="inline"
+    />
+  {/if}
 {/snippet}
 
 <!-- workflowAction surfaces the "aus Rechnung FDW-…" context as a NAVIGABLE link
@@ -55,31 +56,34 @@
      when the route id is projected; if only the business id is known it degrades
      to the Rechnungen overview. Renders nothing for free (unlinked) income. -->
 {#snippet workflowAction()}
-	{#if detail.rechnungBusinessId}
-		{@const rechnungHref = detail.rechnungId
-			? `/app/rechnungen/${detail.rechnungId}`
-			: '/app/rechnungen'}
-		<!-- eslint-disable svelte/no-navigation-without-resolve -- dynamic same-origin route, not a typed route id -->
-		<a
-			data-slot="aus-rechnung"
-			href={rechnungHref}
-			class="mr-auto inline-flex items-center gap-1.5 rounded-md text-sm text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-			title={`aus Rechnung ${detail.rechnungBusinessId}`}
-			aria-label={`Zur Rechnung ${detail.rechnungBusinessId}`}
-		>
-			<LinkIcon class="size-4" aria-hidden="true" />
-			<span>aus Rechnung <span class="font-mono">{detail.rechnungBusinessId}</span></span>
-		</a>
-	{/if}
+  {#if detail.rechnungBusinessId}
+    {@const rechnungHref = detail.rechnungId
+      ? `/app/rechnungen/${detail.rechnungId}`
+      : "/app/rechnungen"}
+    <!-- eslint-disable svelte/no-navigation-without-resolve -- dynamic same-origin route, not a typed route id -->
+    <a
+      data-slot="aus-rechnung"
+      href={rechnungHref}
+      class="text-muted-foreground hover:text-foreground focus-visible:ring-ring mr-auto inline-flex items-center gap-1.5 rounded-md text-sm underline-offset-2 transition-colors hover:underline focus-visible:ring-2 focus-visible:outline-none"
+      title={`aus Rechnung ${detail.rechnungBusinessId}`}
+      aria-label={`Zur Rechnung ${detail.rechnungBusinessId}`}
+    >
+      <LinkIcon class="size-4" aria-hidden="true" />
+      <span
+        >aus Rechnung <span class="font-mono">{detail.rechnungBusinessId}</span
+        ></span
+      >
+    </a>
+  {/if}
 {/snippet}
 
 <DetailModalShell
-	{detail}
-	isFestgeschrieben={data.isFestgeschrieben}
-	{fields}
-	beleg={hasBeleg ? beleg : undefined}
-	workflowAction={detail.rechnungBusinessId ? workflowAction : undefined}
-	{saving}
-	{dirty}
-	onClose={close}
+  {detail}
+  isFestgeschrieben={data.isFestgeschrieben}
+  {fields}
+  beleg={hasBeleg ? beleg : undefined}
+  workflowAction={detail.rechnungBusinessId ? workflowAction : undefined}
+  {saving}
+  {dirty}
+  onClose={close}
 />

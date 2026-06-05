@@ -26,28 +26,38 @@ import type { FilterState } from "$lib/domain/transaction-filters.js";
 
 vi.mock("$app/navigation", () => ({ goto: vi.fn() }));
 
-// Expose a writable `navigatingStore` so skeleton tests can set it to truthy.
-import { writable, readable } from "svelte/store";
+// Expose writable stores so tests can drive them:
+//  - navigatingStore: skeleton tests set it truthy to show the loading skeleton.
+//  - pageStore: the export-CTA query-passthrough test sets a URL WITH query
+//    params and asserts the CTA href carries them. Default URL has no query so
+//    all other tests (which expect a bare /app/ausgaben href) are unaffected.
+import { writable } from "svelte/store";
 const navigatingStore = writable<null | { type: string }>(null);
+const DEFAULT_PAGE = {
+  url: new URL("http://localhost/app/ausgaben"),
+  data: {},
+};
+const pageStore = writable<{ url: URL; data: Record<string, unknown> }>(
+  DEFAULT_PAGE,
+);
 
-vi.mock("$app/stores", async () => {
-  const { readable: r } = await import("svelte/store");
-  return {
-    page: r({
-      url: new URL("http://localhost/app/ausgaben"),
-      data: {},
-    }),
-    // navigating is null when idle, a NavigationTarget object when in-flight.
-    // We expose the writable from the outer scope so tests can control it.
-    get navigating() {
-      return navigatingStore;
-    },
-  };
-});
+vi.mock("$app/stores", () => ({
+  get page() {
+    return pageStore;
+  },
+  // navigating is null when idle, a NavigationTarget object when in-flight.
+  get navigating() {
+    return navigatingStore;
+  },
+}));
 
 afterEach(() => {
   cleanup();
   vi.mocked(goto).mockClear();
+  // Reset both stores to defaults so a URL/navigating set by one test never
+  // bleeds into the next.
+  pageStore.set(DEFAULT_PAGE);
+  navigatingStore.set(null);
 });
 
 function makeRow(id: string, bezeichnung: string): TransactionRow {
@@ -271,12 +281,7 @@ describe("TransactionListScaffold — shared contract", () => {
 
 // ── T3: Export CTA ─────────────────────────────────────────────────────────
 describe("T3 — Export CTA", () => {
-  afterEach(() => {
-    cleanup();
-    navigatingStore.set(null);
-  });
-
-  it("export CTA renders with the tab-aware export href carrying the active query", () => {
+  it("export CTA renders the tab-aware export href (no-query case)", () => {
     const { container } = render(TransactionListScaffold, {
       props: baseProps(),
     });
@@ -284,28 +289,33 @@ describe("T3 — Export CTA", () => {
       '[data-testid="export-cta"]',
     ) as HTMLAnchorElement;
     expect(cta).toBeTruthy();
-    // The mock page URL has no query params; href should be /app/ausgaben/export
+    // The default mock page URL has no query params → bare /app/ausgaben/export
     expect(cta.getAttribute("href")).toBe("/app/ausgaben/export");
     expect(cta.textContent).toContain("Gefilterte Liste als CSV");
   });
 
   it("export CTA carries the active query string from $page.url.searchParams", () => {
-    // Re-mock with a URL that has filter params.
-    vi.doMock("$app/stores", async () => {
-      const { readable: r } = await import("svelte/store");
-      return {
-        page: r({
-          url: new URL("http://localhost/app/ausgaben?sort=betrag&dir=desc"),
-          data: {},
-        }),
-        navigating: navigatingStore,
-      };
+    // Drive the page store to a URL WITH the active filter+sort BEFORE rendering
+    // (the export href is $derived off $page.url.searchParams). This fails if the
+    // query passthrough breaks (e.g. href hardcoded without the search string).
+    pageStore.set({
+      url: new URL(
+        "http://localhost/app/ausgaben?status=offen&sort=betrag&dir=asc",
+      ),
+      data: {},
     });
-    // NOTE: vi.doMock changes take effect for the next import, not the already-
-    // cached module in this test — we verify the static mock path instead.
-    // The static test above covers the no-query case; the query-passthrough
-    // is covered by the derived logic unit (exportHref = /app/${tab}/export?${qs}).
-    vi.doUnmock("$app/stores");
+    const { container } = render(TransactionListScaffold, {
+      props: baseProps(),
+    });
+    const cta = container.querySelector(
+      '[data-testid="export-cta"]',
+    ) as HTMLAnchorElement;
+    const href = cta.getAttribute("href") ?? "";
+    expect(href.startsWith("/app/ausgaben/export?")).toBe(true);
+    // The whole active query string is forwarded (filter + sort + dir).
+    expect(href).toContain("status=offen");
+    expect(href).toContain("sort=betrag");
+    expect(href).toContain("dir=asc");
   });
 
   it("export CTA is disabled (aria-disabled + prevents click) when total === 0", () => {

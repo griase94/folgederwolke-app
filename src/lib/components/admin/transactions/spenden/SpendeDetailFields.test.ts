@@ -8,9 +8,22 @@
  * — it shows a fixed chip + a hidden spende_kind input pinned to the row's kind.
  */
 
-import { render, screen } from "@testing-library/svelte";
-import { describe, it, expect } from "vitest";
+import { render, screen, cleanup } from "@testing-library/svelte";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import SpendeDetailFields from "./SpendeDetailFields.svelte";
+
+// The form now uses `use:enhance` for T4 save-failure toasts. The real enhance
+// action throws in happy-dom (its form-clone drops method="POST"), so stub
+// $app/forms + svelte-sonner — these tests only assert the static markup.
+vi.mock("$app/forms", () => ({
+  enhance: () => ({ destroy() {} }),
+  applyAction: vi.fn(),
+}));
+vi.mock("svelte-sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}));
+
+afterEach(() => cleanup());
 
 function detail(overrides: Record<string, unknown> = {}) {
   return {
