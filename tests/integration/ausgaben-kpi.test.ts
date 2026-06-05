@@ -33,11 +33,17 @@ const dbConfigured = DATABASE_URL.length > 0 && DIRECT_DATABASE_URL.length > 0;
 describe.skipIf(!dbConfigured)("listAusgabenKpi", () => {
   it("offen-predicate (year 2025, corpus-only): exactly ONE open — erstattet/rejected/unapproved excluded", async () => {
     const kpi = await listAusgabenKpi(2025);
-    // 2025 corpus has 4 expenses; only A-2025-905 is open. A wrong predicate
-    // that counted the approved-but-erstattet 904, the rejected 906, or the
-    // unapproved 903 would push this above 1.
-    expect(kpi.count).toBeGreaterThanOrEqual(4);
-    expect(kpi.totalCents).toBeGreaterThan(0);
+    // 2025 is leakage-immune: every createExpense-based sibling reset-lane seed
+    // lands in the CURRENT Buchungsjahr (2026), never 2025, so 2025 stays
+    // corpus-only — exactly the 4 seeded A-2025-90{3,4,5,6} expenses
+    // (24050 + 50000 + 6780 + 13400 = 94230 cents; verified against
+    // scripts/seed-fixtures.ts). EXACT assertions (not floors) here so a
+    // mis-scoped year filter or a dropped/extra row is caught.
+    expect(kpi.count).toBe(4);
+    expect(kpi.totalCents).toBe(94230);
+    // Only A-2025-905 is open. A wrong predicate that counted the
+    // approved-but-erstattet 904, the rejected 906, or the unapproved 903 would
+    // push this above 1.
     expect(kpi.offenCount).toBe(1);
     // Aging basis is approvedAt (2025-01-25), NOT gebuchtAm/createdAt — the age
     // is well over a year, so a generous lower bound proves it isn't a recent
