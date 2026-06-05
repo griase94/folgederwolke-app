@@ -9,6 +9,7 @@ const ROOT = process.cwd();
 const startupHrefs = (s: string): string[] =>
   [...s.matchAll(/apple-touch-startup-image"[^>]*?href="([^"]+)"/gs)]
     .map((m) => m[1])
+    .filter((h): h is string => h !== undefined)
     .sort();
 
 describe("PWA assets", () => {
