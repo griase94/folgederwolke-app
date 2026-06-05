@@ -3,7 +3,7 @@
 </script>
 
 <svelte:head>
-	<title>{page.status === 404 ? 'Seite nicht gefunden' : 'Fehler'} – Admin – Folge der Wolke</title>
+	<title>{page.status === 404 ? 'Seite nicht gefunden' : 'Fehler'} – Admin – {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="flex flex-1 flex-col items-center justify-center px-4 py-16">

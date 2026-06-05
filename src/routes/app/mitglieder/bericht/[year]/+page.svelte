@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	/**
 	 * /app/mitglieder/bericht/[year] — printable Kassenbericht (Task 3.5 / spec §11).
 	 *
@@ -32,7 +33,7 @@
 </script>
 
 <svelte:head>
-	<title>Kassenbericht {data.year} – Folge der Wolke</title>
+	<title>Kassenbericht {data.year} – {page.data.vereinName}</title>
 </svelte:head>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -->

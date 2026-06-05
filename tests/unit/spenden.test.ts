@@ -307,4 +307,17 @@ describe("isBescheinigungEnabled — Freistellungsbescheid VZ Pflicht", () => {
     });
     expect(enabled).toBe(true);
   });
+
+  // White-label Phase 1 — Task 1.6: empty steuerbegünstigte Zwecke disables
+  // issuance (the Pflichttext quotes them verbatim; we never render an empty
+  // Zweck). The UI hides issuance when this returns false.
+  it("returns false when STEUERBEGUENSTIGTE_ZWECKE is empty (otherwise valid)", async () => {
+    const enabled = await loadWithEnv({
+      VEREIN_BESCHEID_TYP: "freistellungsbescheid",
+      VEREIN_BESCHEID_DATUM: "2024-03-15",
+      VEREIN_FREISTELLUNGSBESCHEID_VZ: "2024",
+      VEREIN_STEUERBEGUENSTIGTE_ZWECKE: "   ",
+    });
+    expect(enabled).toBe(false);
+  });
 });

@@ -4,6 +4,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { LogIn, Receipt, ArrowRight } from '@lucide/svelte';
 	import { loggedOutLaunchTarget, setPreferredAuslage } from '$lib/client/pwa-entry.js';
+	import { page } from '$app/state';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
@@ -32,7 +33,7 @@
 </script>
 
 <svelte:head>
-	<title>Folge der Wolke e.V.</title>
+	<title>{page.data.vereinName}</title>
 </svelte:head>
 
 <main class="mx-auto flex min-h-svh max-w-md flex-col justify-center px-6 py-12">
@@ -54,7 +55,7 @@
 				<path d="M17.5 19a4.5 4.5 0 1 0 0-9 6 6 0 0 0-11.6-1.5A4 4 0 0 0 6 19z" />
 			</svg>
 		</div>
-		<h1 class="text-2xl font-bold tracking-tight text-foreground">Folge der Wolke e.V.</h1>
+		<h1 class="text-2xl font-bold tracking-tight text-foreground">{page.data.vereinName}</h1>
 		<p class="mt-2 text-sm text-muted-foreground">Vereins-Verwaltung — Buchhaltung &amp; Mitglieder</p>
 	</div>
 

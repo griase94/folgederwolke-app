@@ -6,6 +6,7 @@
  * mark-erstattet flows require fixture data and are tagged @phase-5-extended.
  */
 import { test, expect } from "@playwright/test";
+import { loginAs } from "./helpers/sign-in.js";
 
 test.describe("Transactions list @phase-5", () => {
   test.beforeEach(async ({ page }) => {
@@ -124,5 +125,24 @@ test.describe("Transactions detail page @phase-5", () => {
     );
     // SvelteKit error page returns 404
     expect(response?.status()).toBe(404);
+  });
+});
+
+test.describe("White-label payer label @phase-1", () => {
+  // The "Verein"-paid payer label must reflect the runtime vereinName from
+  // settings (exposed via the root layout), NOT a hardcoded "Folge der Wolke
+  // e.V." literal. The configured name varies by env (local ".env.test" adds a
+  // "(TEST)" suffix; CI sets the bare value), so assert the name root, not the
+  // exact suffix — rigorous dynamic-source checks live in the unit tests.
+  test("verein payer display uses the configured runtime name", async ({
+    page,
+  }) => {
+    await loginAs(page, "admin");
+    await page.goto("/app/transactions/neu");
+    // Default type is Ausgabe → bezahltVonKind defaults to 'verein'.
+    await expect(page.getByTestId("bezahlt-von-kind")).toHaveValue("verein");
+    // The persisted display name flows into the hidden bezahltVonDisplay input.
+    const display = page.locator('input[name="bezahltVonDisplay"]');
+    await expect(display).toHaveValue(/Folge der Wolke/);
   });
 });

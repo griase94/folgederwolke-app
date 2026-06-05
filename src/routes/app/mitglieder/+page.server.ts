@@ -396,7 +396,9 @@ export const actions: Actions = {
       )
       .limit(1);
 
-    const betragCents = beitragRow ? Number(beitragRow.betragCents) : 6969;
+    const betragCents = beitragRow
+      ? Number(beitragRow.betragCents)
+      : env.VEREIN_BEITRAG_DEFAULT_CENTS;
 
     const iban = env.VEREIN_IBAN;
     const bic = env.VEREIN_BIC;

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import ProjectList from '$lib/components/admin/projects/ProjectList.svelte';
 	import AddProjectDialog from '$lib/components/admin/projects/AddProjectDialog.svelte';
@@ -34,7 +35,7 @@
 </script>
 
 <svelte:head>
-	<title>Projekte – Folge der Wolke</title>
+	<title>Projekte – {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-5xl px-4 py-8 sm:px-6">

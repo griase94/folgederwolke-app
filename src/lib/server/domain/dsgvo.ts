@@ -17,11 +17,14 @@ import { sentMails } from "$lib/server/db/schema/mails.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
 import { logAudit } from "$lib/server/audit-log/index.js";
+import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface AuskunftData {
   email: string;
+  /** Runtime Verein name (settings → env) for the PDF cover header + author. */
+  vereinName: string;
   collectedAt: string;
   members: unknown[];
   donations: unknown[];
@@ -48,6 +51,7 @@ export interface PseudonymiseResult {
  */
 export async function collectAuskunft(email: string): Promise<AuskunftData> {
   const db = getDb();
+  const { name: vereinName } = await readStammdaten();
   const emailLower = email.toLowerCase().trim();
 
   // Members by email (exact match on both raw + canonical)
@@ -115,6 +119,7 @@ export async function collectAuskunft(email: string): Promise<AuskunftData> {
 
   return {
     email,
+    vereinName,
     collectedAt: new Date().toISOString(),
     members: memberRows.map((r) => ({
       id: r.id,

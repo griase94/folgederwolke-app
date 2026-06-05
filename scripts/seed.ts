@@ -1,5 +1,5 @@
 /**
- * Idempotent seed for Folge der Wolke e.V.
+ * Idempotent seed for the deploying Verein (white-label).
  *
  * Run: `pnpm tsx scripts/seed.ts`
  *
@@ -16,6 +16,9 @@
  * (kategorien.kind+name, zahlungsarten.label, settings.key, ...).
  */
 
+import { fileURLToPath } from "node:url";
+import { resolve as pathResolve } from "node:path";
+import { argv } from "node:process";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -119,6 +122,38 @@ const MAIL_TEMPLATE_KEYS = [
   "mail.template.invoice_versendet",
 ];
 
+/**
+ * White-label Phase 1 — Task 1.8: seed the flat Verein-Stammdaten keys from
+ * env (VEREIN_*), NOT from hardcoded FdW literals. Uses onConflictDoNothing so
+ * a Stammdaten edit saved by an admin (which upserts the same flat keys) is
+ * never clobbered on re-seed. A fork's dev/test thus seeds the fork's own
+ * identity from its `.env.*`. This is an ops script (no SvelteKit `$env`
+ * resolution), so it reads `process.env` directly like the DB-URL lookup.
+ *
+ * Exported for the seed-idempotency integration test (runs in-process).
+ */
+export async function seedVereinStammdatenFromEnv(
+  db: ReturnType<typeof drizzle>,
+): Promise<void> {
+  const flat: Array<[string, string | undefined]> = [
+    ["verein.name", process.env["VEREIN_NAME"]],
+    ["verein.adresse", process.env["VEREIN_ADRESSE"]],
+    ["verein.iban", process.env["VEREIN_IBAN"]],
+    ["verein.bic", process.env["VEREIN_BIC"]],
+    ["verein.steuernummer", process.env["VEREIN_STEUERNUMMER"]],
+    ["verein.vr", process.env["VEREIN_VR"]],
+  ];
+  for (const [key, value] of flat) {
+    // Skip unset/empty so the readStammdaten env-fallback stays in control
+    // (writing "" would shadow the env fallback — see settings-stammdaten.ts).
+    if (!value) continue;
+    await db
+      .insert(schema.settings)
+      .values({ key, value })
+      .onConflictDoNothing({ target: schema.settings.key });
+  }
+}
+
 async function main() {
   const url = process.env["DIRECT_DATABASE_URL"] ?? process.env["DATABASE_URL"];
   if (!url) {
@@ -198,78 +233,15 @@ async function main() {
       })
       .onConflictDoNothing();
 
-    // Bankverbindung (legacy BANKVERBINDUNG).
-    // PLACEHOLDER IBAN — real Verein IBAN lives in Vercel env (VEREIN_IBAN),
-    // never in committed code. The placeholder keeps the real BLZ (83065408)
-    // so the BLZ-consistency check in env.ts treats it like a known bank;
-    // the check-digits (00) and account portion (9999999999) are obviously
-    // non-real so this can't be mistaken for a live account.
-    await db
-      .insert(schema.settings)
-      .values({
-        key: "verein.bankverbindung",
-        value: {
-          empfaenger: "Folge der Wolke e.V.",
-          iban: "DE43830654089999999999",
-          bic: "GENODEF1SLR",
-          bank: "Deutsche Skatbank",
-        },
-      })
-      .onConflictDoUpdate({
-        target: schema.settings.key,
-        set: {
-          value: {
-            empfaenger: "Folge der Wolke e.V.",
-            iban: "DE43830654089999999999",
-            bic: "GENODEF1SLR",
-            bank: "Deutsche Skatbank",
-          },
-          updatedAt: new Date(),
-        },
-      });
-
-    // Verein-Stammdaten (legacy VEREIN_FOOTER).
-    await db
-      .insert(schema.settings)
-      .values({
-        key: "verein.stammdaten",
-        value: {
-          name: "Folge der Wolke e.V.",
-          strasse: "Westermühlstraße 6",
-          plz_stadt: "80469 München",
-          register:
-            "eingetragen im Vereinsregister des AG München unter VR 211227",
-          steuernr: "143/215/10028",
-          kontakt: "folgederwolke@gmail.com",
-        },
-      })
-      .onConflictDoUpdate({
-        target: schema.settings.key,
-        set: {
-          value: {
-            name: "Folge der Wolke e.V.",
-            strasse: "Westermühlstraße 6",
-            plz_stadt: "80469 München",
-            register:
-              "eingetragen im Vereinsregister des AG München unter VR 211227",
-            steuernr: "143/215/10028",
-            kontakt: "folgederwolke@gmail.com",
-          },
-          updatedAt: new Date(),
-        },
-      });
-
-    // Default Mitgliedsbeitrag per Jahr (legacy MITGLIEDSBEITRAG_PER_JAHR_EUR = 69.69).
-    await db
-      .insert(schema.settings)
-      .values({
-        key: "verein.mitgliedsbeitrag.default_cents",
-        value: { cents: 6969 },
-      })
-      .onConflictDoUpdate({
-        target: schema.settings.key,
-        set: { value: { cents: 6969 }, updatedAt: new Date() },
-      });
+    // White-label Phase 1 — Task 1.8: the former `verein.bankverbindung`,
+    // `verein.stammdaten`, and `verein.mitgliedsbeitrag.default_cents` object
+    // keys are removed. They had no readers (audit §2) and carried hardcoded
+    // FdW identity literals. The Verein's Stammdaten now live under the flat
+    // `verein.*` keys (written via the Stammdaten settings form), and the
+    // annual Beitragssatz lives in `beitragssatz_by_year` (migration 0026).
+    // The flat Stammdaten keys are seeded below from env (onConflictDoNothing,
+    // so a saved admin edit is never overwritten on re-seed).
+    await seedVereinStammdatenFromEnv(db);
 
     // Mail template placeholders.
     for (const key of MAIL_TEMPLATE_KEYS) {
@@ -307,4 +279,13 @@ async function main() {
   }
 }
 
-await main();
+// Only run the full seed when executed directly (`tsx scripts/seed.ts`), not
+// when imported (e.g. the seed-idempotency test imports
+// seedVereinStammdatenFromEnv in-process — importing must NOT trigger main()).
+const invokedDirectly =
+  argv[1] !== undefined &&
+  fileURLToPath(import.meta.url) === pathResolve(argv[1]);
+
+if (invokedDirectly) {
+  await main();
+}

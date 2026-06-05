@@ -42,7 +42,7 @@
 				<path d="M17.5 19a4.5 4.5 0 1 0 0-9 6 6 0 0 0-11.6-1.5A4 4 0 0 0 6 19z" />
 			</svg>
 		</span>
-		<span class="text-sm font-semibold tracking-tight">Folge der Wolke</span>
+		<span class="text-sm font-semibold tracking-tight">{page.data.vereinName}</span>
 	</a>
 
 	{#if onSignIn}

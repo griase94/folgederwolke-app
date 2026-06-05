@@ -10,6 +10,7 @@ import { error } from "@sveltejs/kit";
 import { and, eq, inArray } from "drizzle-orm";
 import type { PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
+import { env } from "$lib/server/env.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
 
@@ -101,7 +102,9 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     if (exitYear !== null && exitYear < year) continue;
 
     const beitrag = beitragMap.get(m.id);
-    const defaultCents = Number(satz?.cents ?? 6969n);
+    const defaultCents = Number(
+      satz?.cents ?? env.VEREIN_BEITRAG_DEFAULT_CENTS,
+    );
 
     // Effective exemption: permanent (members.beitrag_exempt) or per-year (member_beitrags.is_exempt).
     const effectiveExempt = m.beitragExempt || (beitrag?.isExempt ?? false);

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
   import type { PageData } from './$types.js';
 
   let { data }: { data: PageData } = $props();
@@ -56,7 +57,7 @@
 </script>
 
 <svelte:head>
-  <title>Status {data.ausId} – Folge der Wolke</title>
+  <title>Status {data.ausId} – {page.data.vereinName}</title>
 </svelte:head>
 
 <main class="container mx-auto max-w-2xl px-6 py-12">
