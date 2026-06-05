@@ -402,3 +402,85 @@ describe("buildTransactionsCsv — trailing CRLF", () => {
     expect(csv.endsWith("\r\n")).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Golden full-line byte-parity — one exact-literal assertion per tab. Catches
+// column reorder / label / separator / BOM / CRLF regressions in one shot.
+// The literals are derived from the oracle's logic (BOM + header + CRLF + row).
+// ---------------------------------------------------------------------------
+
+describe("buildTransactionsCsv — golden full-line byte-parity", () => {
+  it("Ausgaben: exact bytes for baseAusgabenRow", () => {
+    const csv = buildTransactionsCsv([baseAusgabenRow], "ausgaben");
+    expect(csv).toBe(
+      BOM +
+        "Datum;Buchung-Nr;Bezeichnung;Art;Sphäre (Snapshot);Sphäre (Effektiv);Kategorie;Betrag (EUR);Betrag (Cent);Währung;Festgeschrieben am" +
+        "\r\n" +
+        "2024-03-15T10:00:00.000Z;AUS-2024-001;Bürobedarf;Ausgabe;Ideeller Bereich;Ideeller Bereich;Büro;42,50;4250;EUR;2024-12-31T23:59:59.000Z" +
+        "\r\n",
+    );
+  });
+
+  it("Einnahmen: exact bytes for baseEinnahmenRow (null Festschreibung → empty cell)", () => {
+    const csv = buildTransactionsCsv([baseEinnahmenRow], "einnahmen");
+    expect(csv).toBe(
+      BOM +
+        "Datum;Buchung-Nr;Bezeichnung;Art;Sphäre (Snapshot);Sphäre (Effektiv);Kategorie;Betrag (EUR);Betrag (Cent);Währung;Festgeschrieben am" +
+        "\r\n" +
+        "2024-06-01T00:00:00.000Z;EIN-2024-042;Mitgliedsbeitrag;Einnahme;Ideeller Bereich;Ideeller Bereich;Mitgliedsbeiträge;120,00;12000;EUR;" +
+        "\r\n",
+    );
+  });
+
+  it("Spenden: exact bytes for baseSpendenRow (12th Bescheinigung column)", () => {
+    const csv = buildTransactionsCsv([baseSpendenRow], "spenden");
+    expect(csv).toBe(
+      BOM +
+        "Datum;Buchung-Nr;Bezeichnung;Art;Sphäre (Snapshot);Sphäre (Effektiv);Kategorie;Betrag (EUR);Betrag (Cent);Währung;Festgeschrieben am;Bescheinigung" +
+        "\r\n" +
+        "2024-09-20T08:00:00.000Z;SPE-2024-007;Spende von Anna Spender;Spende;Ideeller Bereich;Ideeller Bereich;Geldspende zweckfrei;50,00;5000;EUR;;BESCH-2024-007" +
+        "\r\n",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Injection-hardening characterization (PINS the new guarded behavior).
+//
+// This documents an INTENTIONAL divergence from the oracle's old inline
+// csvCell, which had NO injection guard. A Bezeichnung that begins with `=`
+// (or +, -, @, TAB, CR) is now apostrophe-prefixed AND quoted (the leading `'`
+// makes the cell start with `'` which is fine, but the original `=…` payload
+// here also has no quote-triggers, so the only change is the apostrophe — it
+// is NOT quoted). Verified: a clean formula like `=SUM(A1)` → `'=SUM(A1)`.
+// ---------------------------------------------------------------------------
+
+describe("buildTransactionsCsv — CSV-injection hardening (intentional)", () => {
+  it("Bezeichnung starting with '=' is neutralized with a leading apostrophe", () => {
+    const malicious: AusgabenRow = {
+      ...baseAusgabenRow,
+      bezeichnung: "=SUM(A1)",
+    };
+    const csv = buildTransactionsCsv([malicious], "ausgaben");
+    const withoutBom = csv.slice(BOM.length);
+    const dataLine = withoutBom.split("\r\n")[1];
+    const cells = dataLine.split(";");
+    // `=SUM(A1)` has no quote-trigger chars, so the only mutation is the
+    // prepended apostrophe — no surrounding double-quotes.
+    expect(cells[2]).toBe("'=SUM(A1)");
+  });
+
+  it("formula payload that ALSO contains a delimiter is apostrophe-prefixed then quoted", () => {
+    const malicious: AusgabenRow = {
+      ...baseAusgabenRow,
+      // `@cmd|'/calc'!A1;0` — starts with @ (injection) AND contains ; (quote).
+      bezeichnung: "@cmd;0",
+    };
+    const csv = buildTransactionsCsv([malicious], "ausgaben");
+    const withoutBom = csv.slice(BOM.length);
+    const dataLine = withoutBom.split("\r\n")[1];
+    // The apostrophe is inside the outer quotes; the embedded ; does NOT split
+    // the cell (it's quoted), so the Bezeichnung survives as one field.
+    expect(dataLine).toContain(`"'@cmd;0"`);
+  });
+});

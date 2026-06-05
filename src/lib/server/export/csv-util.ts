@@ -1,13 +1,17 @@
 /**
  * Shared CSV primitives for all export modules.
  *
- * Byte-parity with the jahresabschluss transactions.csv oracle route:
+ * Byte-parity with the jahresabschluss transactions.csv oracle route EXCEPT
+ * that injection-trigger cells are now neutralized — this is an intentional
+ * CSV-injection hardening (no external consumer pre-launch). Concretely:
  *   - semicolon-delimited
  *   - UTF-8 with BOM (Excel DE-locale auto-detect)
  *   - quote/escape: wrap in `"…"` and double internal `"` when value contains
  *     any of `; " \r \n`
- *   - formula-injection neutralisation: prepend `'` when the stringified value
- *     starts with `= + - @ \t \r`
+ *   - formula-injection neutralisation (NEW vs. the old inline oracle copy):
+ *     prepend `'` when the stringified value starts with `= + - @ \t \r`. Any
+ *     field beginning with one of those triggers now gains a leading apostrophe
+ *     so the treasurer's Excel doesn't evaluate it as a formula.
  */
 
 /** UTF-8 BOM — prepend to every CSV so Excel DE-locale auto-detects UTF-8. */

@@ -1,8 +1,10 @@
 /**
  * Per-tab CSV builder for the Transactions export (Phase 8).
  *
- * Pure function — no DB, no HTTP. The output is byte-identical to the
- * jahresabschluss oracle route for the same data.
+ * Pure function — no DB, no HTTP. The output matches the jahresabschluss
+ * oracle route for the same data, byte-identical EXCEPT that injection-trigger
+ * cells are now neutralized (intentional CSV-injection hardening via the shared
+ * `csvCell`; no external consumer pre-launch).
  *
  * Usage:
  *   const csv = buildTransactionsCsv(rows, 'ausgaben');
@@ -17,16 +19,16 @@ import type {
 } from "$lib/server/domain/transactions.js";
 
 // ---------------------------------------------------------------------------
-// Label maps (match the oracle exactly)
+// Label maps — single source of truth (the oracle route imports these).
 // ---------------------------------------------------------------------------
 
-const KIND_LABEL: Record<string, string> = {
+export const KIND_LABEL: Record<string, string> = {
   income: "Einnahme",
   expense: "Ausgabe",
   donation: "Spende",
 };
 
-const SPHERE_LABEL: Record<string, string> = {
+export const SPHERE_LABEL: Record<string, string> = {
   ideeller: "Ideeller Bereich",
   vermoegen: "Vermögensverwaltung",
   zweckbetrieb: "Zweckbetrieb",
@@ -94,15 +96,21 @@ export function buildTransactionsCsv(
       sphereSnapshot,
       sphereEffective,
       r.kategorieNameSnapshot,
+      // Betrag: `betragCents` is UNSIGNED in all three row projections (the
+      // `Art` column carries expense/income direction), so the leading-`-`
+      // injection guard in csvCell never fires on these numeric cells.
       formatCents(r.betragCents),
-      String(r.betragCents),
+      // Pass the raw number — csvCell stringifies internally (no double-String).
+      r.betragCents,
       r.currency,
       r.festgeschriebenAt ?? "",
     ];
 
-    if (isSpenden) {
-      const spRow = r as SpendenRow;
-      rowCells.push(spRow.bescheinigungNr ?? "ausstehend");
+    // Invariant: tab === 'spenden' ⟺ rows are SpendenRow, which is the only
+    // projection carrying `bescheinigungNr`. The `in` guard makes that
+    // explicit (and narrows the union) instead of an unchecked cast.
+    if (isSpenden && "bescheinigungNr" in r) {
+      rowCells.push(r.bescheinigungNr ?? "ausstehend");
     }
 
     lines.push(rowCells.map(csvCell).join(";"));

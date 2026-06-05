@@ -11,24 +11,21 @@
 import { error } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types.js";
 import { listTransactions } from "$lib/server/domain/transactions.js";
+// NOTE: `csvCell` here is the GUARDED shared primitive — output is
+// byte-identical to this route's old inline copy EXCEPT injection-trigger
+// cells are now neutralized (a leading `'` is prepended to fields starting
+// with `= + - @ \t \r`). This is intentional CSV-injection hardening; no
+// external consumer pins the old bytes pre-launch. KIND_LABEL/SPHERE_LABEL are
+// shared from transactions-csv.ts so the labels live in exactly one place.
 import { BOM, csvCell, formatCents } from "$lib/server/export/csv-util.js";
+import {
+  KIND_LABEL,
+  SPHERE_LABEL,
+} from "$lib/server/export/transactions-csv.js";
 
 function csvRow(cells: Array<string | number | null | undefined>): string {
   return cells.map(csvCell).join(";");
 }
-
-const KIND_LABEL: Record<string, string> = {
-  income: "Einnahme",
-  expense: "Ausgabe",
-  donation: "Spende",
-};
-
-const SPHERE_LABEL: Record<string, string> = {
-  ideeller: "Ideeller Bereich",
-  vermoegen: "Vermögensverwaltung",
-  zweckbetrieb: "Zweckbetrieb",
-  wirtschaftlich: "Wirtschaftlicher Geschäftsbetrieb",
-};
 
 export const GET: RequestHandler = async ({ params }) => {
   const year = parseInt(params.year, 10);
