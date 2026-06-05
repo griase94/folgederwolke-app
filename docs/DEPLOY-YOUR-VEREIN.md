@@ -280,7 +280,8 @@ Migrations and nightly backups run in **GitHub Actions**, not Vercel — so a co
 secrets live there too:
 
 ```bash
-# The migrate workflow needs the direct Neon URL:
+# The migrate workflow needs the direct Neon URL (paste your own value):
+export DIRECT_DATABASE_URL='postgres://…direct-neon-url…'
 echo "$DIRECT_DATABASE_URL" | gh secret set NEON_MIGRATE_DATABASE_URL
 ```
 
@@ -302,8 +303,10 @@ Watch them:
 
 ```bash
 gh run list --workflow=migrate.yml --limit 3     # migrations applied?
-vercel deploy --prod                             # or just watch the Vercel dashboard
+vercel ls                                        # recent deployments + their status (read-only)
 ```
+
+…or just watch the Vercel dashboard — it shows the build live.
 
 When both are green, open your `PUBLIC_BASE_URL`. You should see a sign-in page wearing
 **your** Verein's name. 🎉
@@ -381,13 +384,13 @@ issue receipts** — the feature stays safely hidden.
 The functional white-label (Parts 1–2) is done; this is cosmetic. These assets still
 carry FdW's look and are swapped by hand for now:
 
-| What                 | Where                                                     | Notes                                       |
-| -------------------- | --------------------------------------------------------- | ------------------------------------------- |
-| App name / PWA title | `static/manifest.webmanifest`                             | Change `name`, `short_name`, `description`. |
-| Theme colour         | `static/manifest.webmanifest` (`theme_color`)             | FdW's is `#be185d`. Pick yours.             |
-| Home-screen icons    | `static/icons/icon-*.png` + `static/apple-touch-icon.png` | Replace with your logo at the same sizes.   |
-| Favicon              | `static/favicon.{ico,svg,png}`                            | Same.                                       |
-| iOS splash screens   | `static/splash/*.png`                                     | Optional; regenerate or delete.             |
+| What                 | Where                                                                                        | Notes                                                                                                                     |
+| -------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| App name / PWA title | `static/manifest.webmanifest`                                                                | Change `name`, `short_name`, `description`.                                                                               |
+| Theme colour         | `static/manifest.webmanifest` (`theme_color`)                                                | FdW's is `#be185d`. Pick yours.                                                                                           |
+| Home-screen icons    | `static/icons/icon-*.png` + `static/apple-touch-icon.png`                                    | Replace at the same sizes. The committed `*.svg` siblings are the source — swap those too, or your logo won't fully land. |
+| Favicon              | `static/favicon.ico`, `static/favicon.svg`, `static/favicon-16.png`, `static/favicon-32.png` | Replace all four.                                                                                                         |
+| iOS splash screens   | `static/splash/*.png`                                                                        | Optional; regenerate or delete.                                                                                           |
 
 After swapping assets, push a commit to redeploy. _(Turning this into a one-command
 `generate-branding` step from a single source logo is planned but not built yet — for
@@ -397,38 +400,43 @@ now it's a manual swap.)_
 
 ## 📋 Everything in one place: the env var reference
 
-The complete list, with which ones block a production boot if missing.
+The complete list. The middle column means one specific thing — **does the process
+refuse to start without it** — not "how important is it":
+
+- 🛑 **Boot-blocks** — `assertProductionEnvSafe()` throws at startup; the deploy won't serve traffic until it's fixed.
+- ⭐ **Required to function** — no startup throw, but the app (or the named feature) is broken without it.
+- everything else — _recommended_ (correctness/legal completeness) or _optional_ (off by default).
 
 <details>
 <summary><b>Click to expand the full table</b></summary>
 
-| Variable                                                                            | Required in prod?               | Drives                                      |
-| ----------------------------------------------------------------------------------- | ------------------------------- | ------------------------------------------- |
-| `VEREIN_NAME`                                                                       | ✅ **boots fails if empty**     | Everything: chrome, mail, legal, receipts   |
-| `MAIL_FROM`                                                                         | ✅ **boot fails if empty**      | From-address of all mail                    |
-| `PUBLIC_BASE_URL`                                                                   | ✅ **boot fails if empty**      | Absolute links in mail; magic-link security |
-| `SESSION_SECRET`                                                                    | ✅ **boot fails if < 32 chars** | Login cookie signing                        |
-| `DATABASE_URL`                                                                      | ✅                              | All data                                    |
-| `DIRECT_DATABASE_URL`                                                               | ✅                              | Migrations                                  |
-| `STORAGE_BACKEND`                                                                   | ✅ (`blob`)                     | Receipt file storage                        |
-| `BLOB_READ_WRITE_TOKEN`                                                             | ✅ (when `blob`)                | Receipt file storage                        |
-| `GOOGLE_SERVICE_ACCOUNT_KEY_JSON`                                                   | ✅ _(see Step 6e note)_         | `/healthz` + legacy import                  |
-| `MAIL_PROVIDER`                                                                     | ✅ (`smtp`/`resend`)            | Mail transport                              |
-| `VEREIN_ADRESSE`                                                                    | recommended                     | Invoices, footers, Impressum                |
-| `VEREIN_KONTAKT_EMAIL` / `PUBLIC_VEREIN_KONTAKT_EMAIL`                              | recommended                     | Legal pages, consent text                   |
-| `VEREIN_VORSTAND`                                                                   | recommended                     | Legal pages, receipt signature              |
-| `VEREIN_REGISTERGERICHT` / `VEREIN_VR`                                              | recommended                     | Impressum                                   |
-| `VEREIN_AUFSICHTSBEHOERDE`                                                          | recommended                     | Datenschutzerklärung                        |
-| `VEREIN_IBAN` / `VEREIN_BIC` / `VEREIN_BANK`                                        | for SEPA/invoices               | Bank-bearing documents                      |
-| `VEREIN_STEUERNUMMER`                                                               | recommended                     | Mail footers, receipts                      |
-| `VEREIN_KONTAKT_PERSON` / `VEREIN_CONTACT_PHONE`                                    | recommended                     | Invoice footer                              |
-| `VEREIN_FINANZAMT`                                                                  | for receipts                    | Donation receipts                           |
-| `VEREIN_BEITRAG_DEFAULT_CENTS`                                                      | optional                        | Default membership fee                      |
-| `VEREIN_BESCHEID_*` / `VEREIN_SATZUNG_FASSUNG` / `VEREIN_STEUERBEGUENSTIGTE_ZWECKE` | for receipts                    | Donation receipts                           |
-| `ADMIN_EMAILS`                                                                      | ✅ (at least one)               | Who can become admin                        |
-| `CRON_SECRET`                                                                       | recommended                     | Yearly reminder job auth                    |
-| `PUBLIC_FORM_ENABLED`                                                               | optional (`false`)              | Public Auslagen form                        |
-| `FINANCE_SHEET_ID` / `LIVE_SHEET_ID`                                                | optional                        | `/healthz`, legacy import                   |
+| Variable                                                                            | Refuses to boot / function?                                         | Drives                                      |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------- |
+| `VEREIN_NAME`                                                                       | 🛑 boot fails if empty                                              | Everything: chrome, mail, legal, receipts   |
+| `MAIL_FROM`                                                                         | 🛑 boot fails if empty                                              | From-address of all mail                    |
+| `PUBLIC_BASE_URL`                                                                   | 🛑 boot fails if empty                                              | Absolute links in mail; magic-link security |
+| `SESSION_SECRET`                                                                    | 🛑 boot fails if < 32 chars                                         | Login cookie signing                        |
+| `STORAGE_BACKEND`                                                                   | 🛑 must be `blob` (`local-fs` throws)                               | Receipt file storage                        |
+| `BLOB_READ_WRITE_TOKEN`                                                             | 🛑 boot fails when `blob` & unset                                   | Receipt file storage                        |
+| `GOOGLE_SERVICE_ACCOUNT_KEY_JSON`                                                   | 🛑 boot fails if unset _(see Step 6e)_                              | `/healthz` + legacy import                  |
+| `DATABASE_URL`                                                                      | ⭐ no data without it                                               | All data                                    |
+| `DIRECT_DATABASE_URL`                                                               | ⭐ migrations fail without it                                       | Migrations                                  |
+| `MAIL_PROVIDER`                                                                     | ⭐ must not be `dev-eml`/`no-op` (defaults `smtp`)                  | Mail transport                              |
+| `ADMIN_EMAILS`                                                                      | ⭐ needed for your first admin (not a boot check)                   | Who can become admin                        |
+| `VEREIN_IBAN` / `VEREIN_BIC` / `VEREIN_BANK`                                        | for SEPA/invoices (mismatched IBAN/BIC on a known bank boot-blocks) | Bank-bearing documents                      |
+| `VEREIN_ADRESSE`                                                                    | recommended                                                         | Invoices, footers, Impressum                |
+| `VEREIN_KONTAKT_EMAIL` / `PUBLIC_VEREIN_KONTAKT_EMAIL`                              | recommended                                                         | Legal pages, consent text                   |
+| `VEREIN_VORSTAND`                                                                   | recommended                                                         | Legal pages, receipt signature              |
+| `VEREIN_REGISTERGERICHT` / `VEREIN_VR`                                              | recommended                                                         | Impressum                                   |
+| `VEREIN_AUFSICHTSBEHOERDE`                                                          | recommended                                                         | Datenschutzerklärung                        |
+| `VEREIN_STEUERNUMMER`                                                               | recommended                                                         | Mail footers, receipts                      |
+| `VEREIN_KONTAKT_PERSON` / `VEREIN_CONTACT_PHONE`                                    | recommended                                                         | Invoice footer                              |
+| `VEREIN_FINANZAMT`                                                                  | for receipts                                                        | Donation receipts                           |
+| `VEREIN_BEITRAG_DEFAULT_CENTS`                                                      | optional                                                            | Default membership fee                      |
+| `VEREIN_BESCHEID_*` / `VEREIN_SATZUNG_FASSUNG` / `VEREIN_STEUERBEGUENSTIGTE_ZWECKE` | for receipts                                                        | Donation receipts                           |
+| `CRON_SECRET`                                                                       | recommended (warns, doesn't block)                                  | Yearly reminder job auth                    |
+| `PUBLIC_FORM_ENABLED`                                                               | optional (`false`)                                                  | Public Auslagen form                        |
+| `FINANCE_SHEET_ID` / `LIVE_SHEET_ID`                                                | optional                                                            | `/healthz`, legacy import                   |
 
 The authoritative schema — every variable, its type, its default — is
 `src/lib/server/env.ts`. If this table and that file ever disagree, **the file is right.**
@@ -444,6 +452,12 @@ Read the deploy log — `assertProductionEnvSafe()` throws a _named_ error
 ("`VEREIN_NAME` is required in production…"). Set the named var and redeploy. This guard
 exists precisely so a misconfiguration fails loudly at startup instead of silently
 serving broken pages.
+
+**Boot fails with an "IBAN/BIC mismatch" error.**
+Your `VEREIN_IBAN` and `VEREIN_BIC` name two _different_ banks. For a handful of
+well-known German banks the app cross-checks the IBAN's bank code against the BIC and
+refuses to boot on a mismatch — a deliberate typo-catcher. Fix whichever of the two is
+wrong so they refer to the same bank, then redeploy.
 
 **My magic-link email never arrives.**
 Check, in order: (1) `MAIL_PROVIDER` is `smtp`/`resend`, not `dev-eml`; (2) `MAIL_FROM`
