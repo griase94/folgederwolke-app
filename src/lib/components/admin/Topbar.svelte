@@ -6,6 +6,7 @@
 	import YearSwitcher, { type YearSwitcherOption } from './YearSwitcher.svelte';
 	import MobileYearPicker from './MobileYearPicker.svelte';
 	import type { SessionUser } from '$lib/server/auth/index.js';
+	import { ALL_YEARS, type YearScope } from '$lib/domain/year.js';
 	import InstallPrompt from '$lib/components/pwa/InstallPrompt.svelte';
 	import type { SearchResponse, SearchResult } from '../../../routes/api/search/+server.js';
 
@@ -42,7 +43,17 @@
 		}
 	}
 
-	function handleYearChange(year: number) {
+	function handleYearChange(year: YearScope) {
+		// "all" sentinel: navigate to ?year=all verbatim — do NOT persist to
+		// localStorage (it's a list-only view, not a year we want to restore on
+		// next visit). Numeric years keep the existing persist + navigate path.
+		if (year === ALL_YEARS) {
+			const u = new URL($page.url);
+			u.searchParams.set('year', ALL_YEARS);
+			// eslint-disable-next-line svelte/no-navigation-without-resolve
+			goto(u.pathname + u.search, { keepFocus: true, noScroll: true });
+			return;
+		}
 		persistYear(year);
 		// Mutate ?year= on the current path; preserve every other query param
 		// (search, filter, kind, …) so the user's view context survives.
