@@ -48,6 +48,8 @@ const DEVICES: ReadonlyArray<{ w: number; h: number; r: number }> = [
 
 function wordmarkBuffer(pointPx: number): Buffer {
   // White text on transparent, rendered by ImageMagick via the explicit TTF.
+  // NAME must stay confined to the `label:` token (a literal-text coder); do not
+  // refactor it into a bare image-spec arg — that would re-open an @file/coder surface.
   return execFileSync(
     "magick",
     [

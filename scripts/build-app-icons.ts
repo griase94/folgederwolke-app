@@ -3,6 +3,7 @@
 // assembles favicon.ico (sharp has no .ico encoder). Run: pnpm icons:build
 import sharp from "sharp";
 import { execFileSync } from "node:child_process";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = process.cwd();
@@ -79,7 +80,7 @@ async function main(): Promise<void> {
     join(STATIC, "favicon-48.png"),
     join(STATIC, "favicon.ico"),
   ]);
-  execFileSync("rm", ["-f", join(STATIC, "favicon-48.png")]);
+  rmSync(join(STATIC, "favicon-48.png"), { force: true });
 
   console.log(
     "icons built: favicon.ico, favicon-16/32/96.png, apple-touch-icon.png, icons/icon-192|512[-maskable].png",
