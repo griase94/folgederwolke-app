@@ -42,7 +42,7 @@ const CONTENT_W = PAGE_W - MARGIN_LEFT - MARGIN_RIGHT;
 //   - Header tier (untouched in -1pt sweep): WORDMARK, SUBTITLE pair, SECTION_TITLE
 //   - Body tier (all -1pt from initial design): ADDRESS / META / BODY / TABLE / FOOTER
 const SIZE_WORDMARK = 32;
-const SIZE_SUBTITLE_BOLD = 9;
+// Sender line now sizes itself (senderBaseSize, auto-shrink) — see header block.
 const SIZE_SUBTITLE_ITALIC = 8;
 const SIZE_ADDRESS = 9;
 const SIZE_META_LABEL = 9;
@@ -239,25 +239,26 @@ export async function renderRechnungV2(
     color: BRAND_ROSA,
   });
 
-  // Andy review v2.3 (2026-05-26): tighten subtitle a hair closer to wordmark
-  // (was 6mm; that turned out a tiny bit loose).
-  const subtitleBoldY = wordmarkBaselineY - 4 * MM;
   // Sender line (DIN 5008 Absenderzeile): "Name · [c/o …] · Straße · PLZ Ort".
-  // The cloud logo box starts at x = PAGE_W - MARGIN_RIGHT - 30mm (see below);
-  // auto-shrink the line so a long address (e.g. with a care-of) never runs
-  // under the logo. Floor at 6.5pt so it stays legible.
+  // Designer notes: a touch smaller + lighter (regular, not bold) than the heavy
+  // wordmark so they don't compete, with ~6mm air below the wordmark. Auto-shrinks
+  // so a long address never runs under the cloud logo (box starts at
+  // x = PAGE_W - MARGIN_RIGHT - 30mm); an ~8mm gutter keeps a comfortable gap to
+  // the logo. Floor 6.5pt for legibility.
+  const subtitleBoldY = wordmarkBaselineY - 6 * MM;
   const senderText = `${input.verein.name} · ${input.verein.adresseSingleLine}`;
-  const senderMaxW = PAGE_W - MARGIN_RIGHT - 30 * MM - MARGIN_LEFT - 3 * MM;
-  const senderNaturalW = bold.widthOfTextAtSize(senderText, SIZE_SUBTITLE_BOLD);
+  const senderBaseSize = 8;
+  const senderMaxW = PAGE_W - MARGIN_RIGHT - 30 * MM - MARGIN_LEFT - 8 * MM;
+  const senderNaturalW = regular.widthOfTextAtSize(senderText, senderBaseSize);
   const senderSize =
     senderNaturalW > senderMaxW
-      ? Math.max(6.5, (SIZE_SUBTITLE_BOLD * senderMaxW) / senderNaturalW)
-      : SIZE_SUBTITLE_BOLD;
+      ? Math.max(6.5, (senderBaseSize * senderMaxW) / senderNaturalW)
+      : senderBaseSize;
   page.drawText(senderText, {
     x: MARGIN_LEFT,
     y: subtitleBoldY,
     size: senderSize,
-    font: bold,
+    font: regular,
     color: BRAND_ROSA,
   });
 
@@ -702,7 +703,7 @@ export async function renderRechnungV2(
   // A care-of line is only a valid address with the recipient name above it.
   // Empty lines are skipped above.
   drawFooterCol(colCenters[0]!, iconHouse, [
-    { text: input.verein.name },
+    { text: input.verein.name, bold: true },
     ...input.verein.adresseLines.map((text) => ({ text })),
   ]);
   drawFooterCol(colCenters[1]!, iconContact, [
@@ -714,7 +715,7 @@ export async function renderRechnungV2(
     { text: `BIC: ${input.verein.bic}` },
   ]);
   drawFooterCol(colCenters[3]!, iconPerson, [
-    { text: input.verein.name },
+    { text: input.verein.name, bold: true },
     { text: "Steuernummer:" },
     // Andy review v2.3: revert to BODY/black — pink stood out too much
     // against the rest of the footer.
