@@ -11,7 +11,8 @@
 	 * appears only when an age is known (`oldestOpenAgeDays != null`).
 	 */
 	import Money from '$lib/components/ui/money/money.svelte';
-	import { ALL_YEARS, type YearScope } from '$lib/domain/year.js';
+	import { yearScopeLabel, type YearScope } from '$lib/domain/year.js';
+	import { buchungenLabel as fmtBuchungen } from '$lib/domain/transaction-kpi.js';
 
 	interface Props {
 		totalCents: number;
@@ -23,8 +24,8 @@
 
 	let { totalCents, count, offenCount, oldestOpenAgeDays, year }: Props = $props();
 
-	const yearLabel = $derived(year === ALL_YEARS ? 'Alle Jahre' : String(year));
-	const buchungenLabel = $derived(`${count} ${count === 1 ? 'Buchung' : 'Buchungen'}`);
+	const yearLabel = $derived(yearScopeLabel(year));
+	const buchungenLabel = $derived(fmtBuchungen(count));
 </script>
 
 <div data-testid="kpi-strip">

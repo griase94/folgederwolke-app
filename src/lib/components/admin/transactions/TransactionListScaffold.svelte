@@ -63,7 +63,7 @@
 	} from '$lib/domain/transaction-filters.js';
 	import type { TransactionRow as TxnRow } from '$lib/server/domain/transactions.js';
 	import type { YearScope } from '$lib/domain/year.js';
-	import { ALL_YEARS } from '$lib/domain/year.js';
+	import { yearScopeLabel } from '$lib/domain/year.js';
 	// `Snippet` + `BaseTxRow` are imported in the module <script> above and are in
 	// scope here (incl. for the `generics` attribute on the instance <script> tag).
 	// `Row` is the generics param — the per-tab BaseTxRow subtype; `TxnRow` is the
@@ -137,8 +137,9 @@
 			Object.values(filterState.booleans).some(Boolean),
 	);
 
-	// Year label for the year-named empty state — handles the ALL_YEARS sentinel.
-	const yearLabel = $derived(selectedYear === ALL_YEARS ? 'Alle Jahre' : String(selectedYear));
+	// Year label for the year-named empty state — handles the ALL_YEARS sentinel
+	// via the SHARED helper so it matches the tab KPIs (item 6).
+	const yearLabel = $derived(yearScopeLabel(selectedYear));
 
 	// ── Sort (read off the URL; emit via goto) ─────────────────────────────────
 	const currentSort = $derived($page.url.searchParams.get('sort'));

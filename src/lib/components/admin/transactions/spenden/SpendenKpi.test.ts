@@ -6,9 +6,11 @@
  * §9.1 delight) + "M Bescheinigungen versandt". No Sammelbestätigungs-Fenster.
  */
 
-import { render, screen } from "@testing-library/svelte";
-import { describe, it, expect } from "vitest";
+import { render, screen, cleanup } from "@testing-library/svelte";
+import { describe, it, expect, afterEach } from "vitest";
 import SpendenKpi from "./SpendenKpi.svelte";
+
+afterEach(() => cleanup());
 
 describe("SpendenKpi", () => {
   it("hides the ohne-Bescheinigung pill when zero", () => {
@@ -50,5 +52,18 @@ describe("SpendenKpi", () => {
     });
     expect(screen.getByText(/2026/)).toBeTruthy();
     expect(screen.getByText(/12 Spenden/)).toBeTruthy();
+  });
+
+  it("uses the singular 'Spende' at a count of 1 (item 6 — was '1 Spenden')", () => {
+    render(SpendenKpi, {
+      props: {
+        totalCents: 25000,
+        count: 1,
+        ohneBescheinigungCount: 0,
+        versandtCount: 1,
+        year: 2026,
+      },
+    });
+    expect(screen.getByText(/· 1 Spende(?!n)/)).toBeTruthy();
   });
 });

@@ -16,6 +16,8 @@ import {
   currentBuchungsjahr,
   selectYearFromUrl,
   clampYearToAvailable,
+  yearScopeLabel,
+  ALL_YEARS,
 } from "./year.js";
 
 describe("C2 — year switching helpers (VB-002 / JB-001 / UX-010)", () => {
@@ -81,6 +83,16 @@ describe("C2 — year switching helpers (VB-002 / JB-001 / UX-010)", () => {
 
     it("returns the requested year unchanged when available list is empty", () => {
       expect(clampYearToAvailable(2026, [])).toBe(2026);
+    });
+  });
+
+  describe("yearScopeLabel (item 6 — shared across tab KPIs + empty state)", () => {
+    it("renders a concrete year as-is", () => {
+      expect(yearScopeLabel(2026)).toBe("2026");
+    });
+
+    it("renders the ALL_YEARS sentinel as 'Alle Jahre' (not bare 'Alle')", () => {
+      expect(yearScopeLabel(ALL_YEARS)).toBe("Alle Jahre");
     });
   });
 });

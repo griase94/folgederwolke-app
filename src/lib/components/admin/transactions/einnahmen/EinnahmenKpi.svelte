@@ -16,7 +16,8 @@
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
 	import { SPHERE_BADGE_CLASSES } from '../fields/SphereBadge.svelte';
 	import { SPHERE_LABELS, SPHERES, type Sphere } from '$lib/domain/sphere.js';
-	import { ALL_YEARS, type YearScope } from '$lib/domain/year.js';
+	import { yearScopeLabel, type YearScope } from '$lib/domain/year.js';
+	import { buchungenLabel as fmtBuchungen } from '$lib/domain/transaction-kpi.js';
 
 	interface Props {
 		/** Sum of all non-superseded income cents in scope. */
@@ -31,8 +32,9 @@
 
 	let { totalCents, count, bySphere, year }: Props = $props();
 
-	const yearLabel = $derived(year === ALL_YEARS ? 'Alle' : String(year));
+	const yearLabel = $derived(yearScopeLabel(year));
 	const totalLabel = $derived(formatMoney(totalCents));
+	const buchungenLabel = $derived(fmtBuchungen(count));
 </script>
 
 <div data-testid="kpi-strip" class="flex flex-col gap-3">
@@ -44,7 +46,7 @@
 			<span aria-hidden="true">·</span>
 			<span class="font-medium tabular-nums text-foreground">{totalLabel}</span>
 			<span aria-hidden="true">·</span>
-			<span class="tabular-nums">{count} Buchungen</span>
+			<span class="tabular-nums">{buchungenLabel}</span>
 		</p>
 	</div>
 

@@ -7,7 +7,8 @@
 //  - ALL FOUR Sphären-Split chips render (Ideeller / Vermögen / Zweckbetrieb /
 //    Wirtschaftlich), and an EMPTY sphere is shown as 0,00 € rather than hidden
 //    (the split must always show all four for the gemeinnützigkeit reading)
-//  - the ALL_YEARS anchor reads "Alle" (not a concrete year)
+//  - the ALL_YEARS anchor reads "Alle Jahre" (item 6 — was bare "Alle";
+//    now matches the sibling tabs + the list empty state via yearScopeLabel)
 //  - the 🔗 Rechnung badge (BezeichnungCell) shows ONLY when rechnungBusinessId
 //    is set, and carries the "aus Rechnung {id}" accessible name
 //
@@ -42,9 +43,14 @@ describe("EinnahmenKpi — anchor + Sphären-Split chips", () => {
     expect(screen.getByText(/1\.250,00\s*€/)).toBeTruthy();
   });
 
-  it("renders 'Alle' in the anchor for the ALL_YEARS scope", () => {
+  it("renders 'Alle Jahre' in the anchor for the ALL_YEARS scope (item 6)", () => {
     render(EinnahmenKpi, { props: { ...kpi, year: ALL_YEARS } });
-    expect(screen.getByText(/Alle/i)).toBeTruthy();
+    expect(screen.getByText(/Alle Jahre/)).toBeTruthy();
+  });
+
+  it("uses the singular 'Buchung' at a count of 1 (item 6 — was '1 Buchungen')", () => {
+    render(EinnahmenKpi, { props: { ...kpi, count: 1, year: 2026 } });
+    expect(screen.getByText(/1 Buchung(?!en)/)).toBeTruthy();
   });
 
   it("renders all four Sphären-Split chips, incl. an empty (0,00 €) one", () => {

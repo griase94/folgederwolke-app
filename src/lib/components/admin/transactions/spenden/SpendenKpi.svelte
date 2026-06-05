@@ -11,7 +11,8 @@
 -->
 <script lang="ts">
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
-	import { ALL_YEARS, type YearScope } from '$lib/domain/year.js';
+	import { yearScopeLabel, type YearScope } from '$lib/domain/year.js';
+	import { spendenLabel as fmtSpenden } from '$lib/domain/transaction-kpi.js';
 
 	interface Props {
 		totalCents: number;
@@ -23,7 +24,8 @@
 
 	let { totalCents, count, ohneBescheinigungCount, versandtCount, year }: Props = $props();
 
-	const yearLabel = $derived(year === ALL_YEARS ? 'Alle Jahre' : String(year));
+	const yearLabel = $derived(yearScopeLabel(year));
+	const spendenLabel = $derived(fmtSpenden(count));
 </script>
 
 <div data-testid="kpi-strip">
@@ -31,7 +33,7 @@
 
 	<!-- Quiet anchor: Jahr|Alle · Summe · N Spenden. -->
 	<p class="mt-0.5 text-sm text-muted-foreground" data-testid="spenden-kpi-anchor">
-		{yearLabel} · {formatMoney(totalCents)} · {count} Spenden
+		{yearLabel} · {formatMoney(totalCents)} · {spendenLabel}
 	</p>
 
 	<!-- Status pills. -->

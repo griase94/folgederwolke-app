@@ -145,3 +145,12 @@ export function selectYearOrAllFromUrl(
 export function isStaleYear(scope: YearScope, currentYear: number): boolean {
   return scope !== ALL_YEARS && scope !== currentYear;
 }
+
+/**
+ * The display label for a year scope: a concrete year as-is, the ALL_YEARS
+ * sentinel as "Alle Jahre". SHARED so the three tab KPIs + the list empty-state
+ * never drift (Einnahmen previously rendered the sentinel as bare "Alle").
+ */
+export function yearScopeLabel(scope: YearScope): string {
+  return scope === ALL_YEARS ? "Alle Jahre" : String(scope);
+}
