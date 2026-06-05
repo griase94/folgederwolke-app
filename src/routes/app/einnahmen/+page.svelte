@@ -1,21 +1,25 @@
 <script lang="ts">
-	import TransactionListScaffold, {
-		type ColumnDef,
-	} from '$lib/components/admin/transactions/TransactionListScaffold.svelte';
+	import TransactionListScaffold from '$lib/components/admin/transactions/TransactionListScaffold.svelte';
 	import Money from '$lib/components/ui/money/money.svelte';
-	import type { TransactionRow } from '$lib/server/domain/transactions.js';
+	import EinnahmenKpi from '$lib/components/admin/transactions/einnahmen/EinnahmenKpi.svelte';
+	import BezeichnungCell from '$lib/components/admin/transactions/einnahmen/BezeichnungCell.svelte';
+	import SphereRuleCell from '$lib/components/admin/transactions/einnahmen/SphereRuleCell.svelte';
+	import { buildEinnahmenColumns } from '$lib/components/admin/transactions/einnahmen/columns.js';
+	import type { EinnahmenRow } from '$lib/server/domain/transactions.js';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
 
-	// Phase-3 MINIMAL columns — the rich Einnahmen columns (Sphäre/🔗-Rechnung)
-	// land in Phase 5. These read only fields common to every list row.
-	const columns: ColumnDef[] = [
-		{ key: 'bezeichnung', label: 'Bezeichnung', sortable: true, render: bezeichnungCell },
-		{ key: 'kategorie', label: 'Kategorie', render: kategorieCell },
-		{ key: 'gebuchtAm', label: 'Datum', sortable: true, render: datumCell },
-		{ key: 'betrag', label: 'Betrag', align: 'right', sortable: true, render: betragCell },
-	];
+	// Einnahmen columns (🔗 badge, Sphäre left-rule, no status, no bulk). The
+	// render snippets are authored below and injected into the ColumnDef factory.
+	const columns = buildEinnahmenColumns({
+		datum: datumCell,
+		id: idCell,
+		bezeichnung: bezeichnungCell,
+		kategorie: kategorieCell,
+		sphaere: sphaereCell,
+		betrag: betragCell
+	});
 
 	function formatDatum(iso: string): string {
 		return new Date(iso).toLocaleDateString('de-DE');
@@ -27,32 +31,42 @@
 </svelte:head>
 
 {#snippet kpi()}
-	<div data-testid="kpi-strip">
-		<h1 class="text-2xl font-bold tracking-tight text-foreground">Einnahmen</h1>
-		<p class="mt-0.5 text-sm text-muted-foreground">{data.total} Buchungen</p>
-	</div>
+	<EinnahmenKpi
+		totalCents={data.kpi.totalCents}
+		count={data.kpi.count}
+		bySphere={data.kpi.bySphere}
+		year={data.yearScope}
+	/>
 {/snippet}
 
-{#snippet bezeichnungCell(row: TransactionRow)}
-	<span class="font-medium text-foreground">{row.bezeichnung}</span>
+{#snippet datumCell(row: EinnahmenRow)}
+	<span class="tabular-nums text-muted-foreground">{formatDatum(row.gebuchtAm)}</span>
 {/snippet}
 
-{#snippet kategorieCell(row: TransactionRow)}
+{#snippet idCell(row: EinnahmenRow)}
+	<span class="font-mono text-xs text-muted-foreground">{row.businessId}</span>
+{/snippet}
+
+{#snippet bezeichnungCell(row: EinnahmenRow)}
+	<BezeichnungCell bezeichnung={row.bezeichnung} rechnungBusinessId={row.rechnungBusinessId} />
+{/snippet}
+
+{#snippet kategorieCell(row: EinnahmenRow)}
 	<span class="text-muted-foreground">{row.kategorieNameSnapshot}</span>
 {/snippet}
 
-{#snippet datumCell(row: TransactionRow)}
-	<span class="text-muted-foreground">{formatDatum(row.gebuchtAm)}</span>
+{#snippet sphaereCell(row: EinnahmenRow)}
+	<SphereRuleCell sphere={row.sphereSnapshot} />
 {/snippet}
 
-{#snippet betragCell(row: TransactionRow)}
+{#snippet betragCell(row: EinnahmenRow)}
 	<Money valueInCents={row.betragCents} />
 {/snippet}
 
 <div class="container mx-auto max-w-6xl px-4 py-8 sm:px-6">
 	<TransactionListScaffold
 		tab="einnahmen"
-		rows={data.rows as unknown as TransactionRow[]}
+		rows={data.rows}
 		total={data.total}
 		page={data.page}
 		pageSize={data.pageSize}
