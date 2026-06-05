@@ -216,7 +216,9 @@ export function maskOrtFromAdresse(adr: string): string {
     .split(/[,\n]/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
-  if (segments.length === 0) return adr;
+  // Content-free address (only whitespace/separators): still normalize the
+  // literal \n on the fallback so a misconfigured value can never print "\n".
+  if (segments.length === 0) return adr.replace(/\\n/g, "\n").trim();
 
   for (const seg of segments) {
     const match = seg.match(/^\d{4,5}\s+(.+)$/);

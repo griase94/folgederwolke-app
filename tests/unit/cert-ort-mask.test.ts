@@ -35,4 +35,9 @@ describe("maskOrtFromAdresse — Ort extraction for the Bescheinigung", () => {
   it("falls back to the last segment when no PLZ pattern is present", () => {
     expect(maskOrtFromAdresse("Postfach 1234\\nMünchen")).toBe("München");
   });
+
+  it("a content-free address never leaks a literal \\n", () => {
+    expect(maskOrtFromAdresse("  \\n  ")).not.toContain("\\n");
+    expect(maskOrtFromAdresse("\\n")).toBe("");
+  });
 });
