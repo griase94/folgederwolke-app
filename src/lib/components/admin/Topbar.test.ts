@@ -55,9 +55,10 @@ describe("Topbar — mobile polish (C7-3 / C7-7)", () => {
   it("hides the Vereinsname wordmark below sm (PM-010 / C7-3)", () => {
     const { container } = render(Topbar, { props: { user: mockUser } });
 
-    // Find the wordmark span — text content equals "Folge der Wolke".
-    const wordmark = Array.from(container.querySelectorAll("span")).find(
-      (el) => el.textContent?.trim() === "Folge der Wolke",
+    // Find the wordmark span by its stable test id (the rendered text is now
+    // the runtime vereinName, not a hardcoded literal — white-label).
+    const wordmark = container.querySelector<HTMLElement>(
+      '[data-testid="verein-wordmark"]',
     );
     expect(wordmark).toBeTruthy();
 

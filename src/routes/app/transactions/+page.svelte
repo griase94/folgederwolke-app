@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import TransactionsList from '$lib/components/admin/transactions/TransactionsList.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { PageData } from './$types.js';
@@ -7,7 +8,7 @@
 </script>
 
 <svelte:head>
-	<title>Transaktionen – Folge der Wolke</title>
+	<title>Transaktionen – {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-6xl px-4 py-8 sm:px-6">

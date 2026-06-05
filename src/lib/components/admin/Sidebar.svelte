@@ -62,7 +62,7 @@
 			FW
 		</div>
 		{#if !collapsed}
-			<span class="text-sm font-semibold text-foreground">Folge der Wolke</span>
+			<span class="text-sm font-semibold text-foreground">{$page.data.vereinName}</span>
 		{/if}
 	</div>
 

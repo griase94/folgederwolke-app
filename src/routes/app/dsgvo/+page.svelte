@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { enhance } from '$app/forms';
 	import type { ActionData } from './$types.js';
 	import AuskunftPreview from '$lib/components/admin/dsgvo/AuskunftPreview.svelte';
@@ -25,7 +26,7 @@
 </script>
 
 <svelte:head>
-	<title>DSGVO – Folge der Wolke</title>
+	<title>DSGVO – {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="mx-auto max-w-2xl px-4 py-8 lg:px-8">

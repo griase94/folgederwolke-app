@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import CustomerDetailHero from '$lib/components/admin/customers/CustomerDetailHero.svelte';
 	import CustomerInfoCard from '$lib/components/admin/customers/CustomerInfoCard.svelte';
 	import type { PageData } from './$types.js';
@@ -20,7 +21,7 @@
 </script>
 
 <svelte:head>
-	<title>{data.customer.name} – Kunden – Folge der Wolke</title>
+	<title>{data.customer.name} – Kunden – {page.data.vereinName}</title>
 </svelte:head>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -->

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { enhance } from '$app/forms';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import FileUploadZone from '$lib/components/admin/import/FileUploadZone.svelte';
@@ -64,7 +65,7 @@
 </script>
 
 <svelte:head>
-	<title>Sheet-Import – Folge der Wolke</title>
+	<title>Sheet-Import – {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-4xl px-4 py-8 sm:px-6">

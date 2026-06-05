@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { onMount, onDestroy } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
@@ -101,7 +102,7 @@
 </script>
 
 <svelte:head>
-	<title>Rechnung {inv.businessId} - Folge der Wolke</title>
+	<title>Rechnung {inv.businessId} - {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-3xl px-4 py-8 sm:px-6">

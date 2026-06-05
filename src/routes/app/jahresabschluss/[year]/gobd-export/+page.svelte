@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
@@ -7,7 +8,7 @@
 </script>
 
 <svelte:head>
-	<title>GoBD-Export {data.year} – Folge der Wolke</title>
+	<title>GoBD-Export {data.year} – {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="mx-auto max-w-2xl px-4 py-8 lg:px-8">

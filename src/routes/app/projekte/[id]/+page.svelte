@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import type { PageData } from './$types.js';
@@ -46,7 +47,7 @@
 </script>
 
 <svelte:head>
-	<title>{data.project.name} – Projekt – Folge der Wolke</title>
+	<title>{data.project.name} – Projekt – {page.data.vereinName}</title>
 </svelte:head>
 
 <main class="container mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6">

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import MemberInfoCard from '$lib/components/admin/members/MemberInfoCard.svelte';
@@ -41,7 +42,7 @@
 </script>
 
 <svelte:head>
-	<title>{fullName} – Mitglieder – Folge der Wolke</title>
+	<title>{fullName} – Mitglieder – {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-5xl px-4 py-6 sm:px-6">

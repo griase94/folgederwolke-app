@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { enhance } from '$app/forms';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -27,7 +28,7 @@
 	];
 </script>
 
-<svelte:head><title>Stammdaten – Folge der Wolke</title></svelte:head>
+<svelte:head><title>Stammdaten – {page.data.vereinName}</title></svelte:head>
 
 <main class="container mx-auto max-w-2xl px-4 py-8 sm:px-6">
 	<h1 class="mb-1 text-2xl font-bold tracking-tight text-foreground">Stammdaten</h1>

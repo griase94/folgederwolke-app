@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { enhance } from '$app/forms';
 	import { beforeNavigate } from '$app/navigation';
@@ -151,7 +152,7 @@
 </script>
 
 <svelte:head>
-	<title>Neue Transaktion – Folge der Wolke</title>
+	<title>Neue Transaktion – {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-2xl px-4 py-8 sm:px-6">
