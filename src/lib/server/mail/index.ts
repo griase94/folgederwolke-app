@@ -12,6 +12,7 @@ import { getDb } from "$lib/server/db/index.js";
 import { sentMails } from "$lib/server/db/schema/mails.js";
 import { env } from "$lib/server/env.js";
 import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
+import { addressOneLine } from "$lib/server/domain/address.js";
 import { eq } from "drizzle-orm";
 import type { Component } from "svelte";
 import { getMailProvider } from "./provider.js";
@@ -113,7 +114,9 @@ export async function sendMail<T extends TemplateName>(opts: {
   const mergedProps = {
     ...(props as unknown as Record<string, unknown>),
     vereinName: sd.name,
-    adresse: sd.adresse,
+    // Compact one-line form for the inline mail footer (the multi-line postal
+    // address — incl. any c/o — would otherwise collapse to run-on text in HTML).
+    adresse: addressOneLine(sd.adresse),
     vr: sd.vr,
     steuernummer: sd.steuernummer,
     stammdaten: sd,

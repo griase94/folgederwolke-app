@@ -57,13 +57,12 @@ const SIZE_FOOTER = 7;
 export interface RechnungV2Input {
   verein: {
     name: string;
+    /** Compact one-line form (name's sender line). */
     adresseSingleLine: string;
-    adresseLine1: string;
-    adresseLine2: string;
+    /** Postal address lines top-to-bottom (DIN 5008: [c/o], street, PLZ Ort). */
+    adresseLines: string[];
     vereinsregister: string;
     steuernummer: string;
-    kontaktPerson: string;
-    contactPhone: string;
     contactEmail: string;
     bankname: string;
     iban: string;
@@ -243,7 +242,7 @@ export async function renderRechnungV2(
   // Andy review v2.3 (2026-05-26): tighten subtitle a hair closer to wordmark
   // (was 6mm; that turned out a tiny bit loose).
   const subtitleBoldY = wordmarkBaselineY - 4 * MM;
-  page.drawText(`${input.verein.name} - ${input.verein.adresseSingleLine}`, {
+  page.drawText(`${input.verein.name} · ${input.verein.adresseSingleLine}`, {
     x: MARGIN_LEFT,
     y: subtitleBoldY,
     size: SIZE_SUBTITLE_BOLD,
@@ -671,6 +670,9 @@ export async function renderRechnungV2(
     drawCenteredImage(page, icon, centerX, iconBottomY, iconBoxW, iconBoxH);
     let y = colTextBaseY;
     for (const line of lines) {
+      // Skip empty lines so the column collapses cleanly (no orphan glyphs or
+      // blank gaps) when an optional value — c/o line, phone — is absent.
+      if (line.text.trim() === "") continue;
       const font = line.bold ? bold : regular;
       const w = font.widthOfTextAtSize(line.text, SIZE_FOOTER);
       page.drawText(line.text, {
@@ -684,15 +686,15 @@ export async function renderRechnungV2(
     }
   };
 
-  drawFooterCol(colCenters[0]!, iconHouse, [
-    { text: `℅ ${input.verein.kontaktPerson}` },
-    { text: input.verein.adresseLine1 },
-    { text: input.verein.adresseLine2 },
-  ]);
+  // Address column (DIN 5008): the postal lines top-to-bottom — an optional
+  // care-of line, the street, then PLZ Ort. Empty lines are skipped above.
+  drawFooterCol(
+    colCenters[0]!,
+    iconHouse,
+    input.verein.adresseLines.map((text) => ({ text })),
+  );
   drawFooterCol(colCenters[1]!, iconContact, [
-    { text: input.verein.contactPhone },
     { text: input.verein.contactEmail },
-    { text: "" },
   ]);
   drawFooterCol(colCenters[2]!, iconBank, [
     { text: input.verein.bankname },

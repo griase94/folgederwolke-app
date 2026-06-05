@@ -52,7 +52,11 @@ export function substituteVereinPlaceholders(markdown: string): string {
       key
     ];
     if (typeof value === "string" && value.length > 0) {
-      return value;
+      // Multi-line values (notably VEREIN_ADRESSE with a DIN-5008 c/o line) must
+      // render as stacked lines, not run-on text. marked is configured without
+      // `breaks`, so a bare "\n" collapses to a space — emit an explicit <br>.
+      // Normalise a literal backslash-n too, in case the env transport escaped it.
+      return value.replace(/\\n/g, "\n").replace(/\r?\n/g, "<br>");
     }
     if (typeof value === "number" || typeof value === "boolean") {
       return String(value);

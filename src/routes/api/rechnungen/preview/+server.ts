@@ -159,8 +159,6 @@ export const POST: RequestHandler = async ({ request, locals }) => {
       bic: unquote(settingsMap.get("verein.bic") ?? "") || env.VEREIN_BIC || "",
       bank:
         unquote(settingsMap.get("verein.bank") ?? "") || env.VEREIN_BANK || "",
-      kontaktPerson: env.VEREIN_KONTAKT_PERSON || "",
-      contactPhone: env.VEREIN_CONTACT_PHONE || "",
       contactEmail: env.MAIL_FROM || "",
     },
     customer: {

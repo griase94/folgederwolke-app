@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { env } from "$lib/server/env.js";
+import { addressLines } from "$lib/server/domain/address.js";
 
 const KASSEN_KEY = "verein.kassenwaert_name";
 
@@ -38,12 +39,10 @@ export const load: PageServerLoad = async ({ locals }) => {
       name: env.VEREIN_NAME,
       steuernummer: env.VEREIN_STEUERNUMMER,
       vr: env.VEREIN_VR,
-      adresse: env.VEREIN_ADRESSE,
+      adresse: addressLines(env.VEREIN_ADRESSE).join("\n"),
       iban: env.VEREIN_IBAN,
       bic: env.VEREIN_BIC,
       bank: env.VEREIN_BANK,
-      kontaktPerson: env.VEREIN_KONTAKT_PERSON,
-      contactPhone: env.VEREIN_CONTACT_PHONE,
     },
     kassenwaertName,
     mailFrom: env.MAIL_FROM,

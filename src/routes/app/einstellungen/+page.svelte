@@ -69,15 +69,13 @@
 					{ label: 'Steuernummer', value: data.verein.steuernummer },
 					{ label: 'Vereinsregister', value: data.verein.vr },
 					{ label: 'Adresse', value: data.verein.adresse },
-					{ label: 'Kontakt', value: data.verein.kontaktPerson },
-					{ label: 'Telefon', value: data.verein.contactPhone },
 					{ label: 'IBAN', value: data.verein.iban },
 					{ label: 'BIC', value: data.verein.bic },
 					{ label: 'Bank', value: data.verein.bank },
 				].filter(row => row.value) as row (row.label)}
 					<div class="flex flex-col gap-0.5 px-6 py-3 sm:flex-row sm:items-baseline sm:gap-4">
 						<dt class="w-36 shrink-0 text-xs font-medium text-muted-foreground">{row.label}</dt>
-						<dd class="text-sm text-foreground font-mono">{row.value}</dd>
+						<dd class="text-sm text-foreground font-mono whitespace-pre-line">{row.value}</dd>
 					</div>
 				{/each}
 			</div>

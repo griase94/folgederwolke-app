@@ -29,13 +29,11 @@ import type { RechnungV2Input } from "$lib/server/pdf/templates/rechnung-v2/inde
 
 const VEREIN_FIXTURE: RechnungV2Input["verein"] = {
   name: "Folge der Wolke e.V.",
-  adresseSingleLine: "Westermühlstraße 6 - 80469 München",
-  adresseLine1: "Westermühlstraße 6",
-  adresseLine2: "80469 München",
+  adresseSingleLine:
+    "c/o Jonas Hackenberg · Westermühlstraße 6 · 80469 München",
+  adresseLines: ["c/o Jonas Hackenberg", "Westermühlstraße 6", "80469 München"],
   vereinsregister: "VR 211227",
   steuernummer: "143/215/10028",
-  kontaktPerson: "Jonas Hackenberg",
-  contactPhone: "+49 176 / 81566960",
   contactEmail: "booking@folgederwolke.de",
   bankname: "Deutsche Skatbank",
   iban: "DE25 8306 5408 0006 8944 53",

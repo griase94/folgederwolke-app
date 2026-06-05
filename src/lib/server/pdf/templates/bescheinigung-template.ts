@@ -23,6 +23,7 @@ import {
   type RGB,
 } from "pdf-lib";
 import type { BmfPflichtfelder } from "$lib/server/domain/spenden.js";
+import { addressLines } from "$lib/server/domain/address.js";
 
 // ── Geometry ──────────────────────────────────────────────────────────────
 const MM_TO_PT = 72 / 25.4;
@@ -238,7 +239,11 @@ export async function drawBescheinigung(
     bold: true,
     color: COLOR_PRIMARY,
   });
-  drawText(ctx, p.vereinAdresse, { size: SIZE_SMALL, color: COLOR_MUTED });
+  // Multi-line postal address (DIN 5008) — each line stacked under the name
+  // (an optional c/o line, the street, then PLZ Ort).
+  for (const addrLine of addressLines(p.vereinAdresse)) {
+    drawText(ctx, addrLine, { size: SIZE_SMALL, color: COLOR_MUTED });
+  }
   drawText(
     ctx,
     `Steuernummer ${p.vereinSteuernummer} | Vereinsregister ${p.vereinVr}`,
