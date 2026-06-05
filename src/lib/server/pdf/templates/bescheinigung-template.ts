@@ -205,8 +205,14 @@ export function bescheidPflichttext(p: BmfPflichtfelder): string[] {
  * PLZ+Ort pattern (4-5 digits, whitespace, city name); return the city
  * portion only. Falls back to the last segment if no PLZ pattern is found.
  */
-function maskOrtFromAdresse(adr: string): string {
+export function maskOrtFromAdresse(adr: string): string {
   const segments = adr
+    // Normalize a literal backslash-n first: $env/dynamic/private returns
+    // process.env verbatim, so a Vercel value entered as "…\n…" reaches us as
+    // two characters, not a real newline. Without this the PLZ+Ort pattern
+    // never matches and the whole raw address (incl. literal \n) would print on
+    // the Zuwendungsbestätigung's "Ort, Datum" line. Mirrors addressLines().
+    .replace(/\\n/g, "\n")
     .split(/[,\n]/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);

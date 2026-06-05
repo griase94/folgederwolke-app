@@ -7,7 +7,7 @@
 | Vereinsname      | Folge der Wolke e.V.                                                                         |
 | Steuernummer     | 143/215/10028                                                                                |
 | Registernummer   | VR 211227                                                                                    |
-| Sitz             | Westermühlstraße 6, 80469 München                                                            |
+| Sitz             | c/o Jonas Hackenberg, Westermühlstraße 6, 80469 München                                                            |
 | Finanzamt        | Finanzamt München (zuständig für gemeinnützige Körperschaften)                               |
 | Gemeinnützigkeit | Bestätigt; Bescheid-Typ und Datum in `.env` (`VEREIN_BESCHEID_TYP`, `VEREIN_BESCHEID_DATUM`) |
 

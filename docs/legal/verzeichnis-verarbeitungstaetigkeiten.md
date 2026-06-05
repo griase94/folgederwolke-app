@@ -1,6 +1,6 @@
 # Verzeichnis der Verarbeitungstätigkeiten (Art. 30 DSGVO)
 
-**Verantwortlicher:** Folge der Wolke e.V., Westermühlstraße 6, 80469 München  
+**Verantwortlicher:** Folge der Wolke e.V., c/o Jonas Hackenberg, Westermühlstraße 6, 80469 München  
 **Stand:** 2026-06 (Phase 12)  
 **Erstellt durch:** Andy Griesbeck (Technischer Betreiber)
 

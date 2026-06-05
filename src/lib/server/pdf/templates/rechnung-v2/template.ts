@@ -242,10 +242,21 @@ export async function renderRechnungV2(
   // Andy review v2.3 (2026-05-26): tighten subtitle a hair closer to wordmark
   // (was 6mm; that turned out a tiny bit loose).
   const subtitleBoldY = wordmarkBaselineY - 4 * MM;
-  page.drawText(`${input.verein.name} · ${input.verein.adresseSingleLine}`, {
+  // Sender line (DIN 5008 Absenderzeile): "Name · [c/o …] · Straße · PLZ Ort".
+  // The cloud logo box starts at x = PAGE_W - MARGIN_RIGHT - 30mm (see below);
+  // auto-shrink the line so a long address (e.g. with a care-of) never runs
+  // under the logo. Floor at 6.5pt so it stays legible.
+  const senderText = `${input.verein.name} · ${input.verein.adresseSingleLine}`;
+  const senderMaxW = PAGE_W - MARGIN_RIGHT - 30 * MM - MARGIN_LEFT - 3 * MM;
+  const senderNaturalW = bold.widthOfTextAtSize(senderText, SIZE_SUBTITLE_BOLD);
+  const senderSize =
+    senderNaturalW > senderMaxW
+      ? Math.max(6.5, (SIZE_SUBTITLE_BOLD * senderMaxW) / senderNaturalW)
+      : SIZE_SUBTITLE_BOLD;
+  page.drawText(senderText, {
     x: MARGIN_LEFT,
     y: subtitleBoldY,
-    size: SIZE_SUBTITLE_BOLD,
+    size: senderSize,
     font: bold,
     color: BRAND_ROSA,
   });
@@ -686,13 +697,14 @@ export async function renderRechnungV2(
     }
   };
 
-  // Address column (DIN 5008): the postal lines top-to-bottom — an optional
-  // care-of line, the street, then PLZ Ort. Empty lines are skipped above.
-  drawFooterCol(
-    colCenters[0]!,
-    iconHouse,
-    input.verein.adresseLines.map((text) => ({ text })),
-  );
+  // Address column (DIN 5008) = the complete postal block: the Empfänger name
+  // leads, then the postal lines (an optional "c/o …", the street, PLZ Ort).
+  // A care-of line is only a valid address with the recipient name above it.
+  // Empty lines are skipped above.
+  drawFooterCol(colCenters[0]!, iconHouse, [
+    { text: input.verein.name },
+    ...input.verein.adresseLines.map((text) => ({ text })),
+  ]);
   drawFooterCol(colCenters[1]!, iconContact, [
     { text: input.verein.contactEmail },
   ]);
