@@ -393,7 +393,7 @@ export interface PageOptions {
 }
 
 /** Shared base columns every per-tab row projection includes. */
-interface BaseTxRow {
+export interface BaseTxRow {
   id: string;
   /**
    * Per-row discriminant. The shared `TransactionCardMobile` (the <md card the

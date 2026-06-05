@@ -18,7 +18,10 @@ import { createRawSnippet } from "svelte";
 import TransactionListScaffold from "./TransactionListScaffold.svelte";
 import type { ColumnDef } from "./TransactionListScaffold.svelte";
 import { goto } from "$app/navigation";
-import type { TransactionRow } from "$lib/server/domain/transactions.js";
+import type {
+  TransactionRow,
+  BaseTxRow,
+} from "$lib/server/domain/transactions.js";
 import type { FilterState } from "$lib/domain/transaction-filters.js";
 
 vi.mock("$app/navigation", () => ({ goto: vi.fn() }));
@@ -63,7 +66,11 @@ const kpiSnippet = createRawSnippet(() => ({
   render: () => `<div data-testid="kpi-strip">KPI</div>`,
 }));
 
-const columns: ColumnDef[] = [
+// Typed to `BaseTxRow`: testing-library's `render(Component, {props})` cannot
+// infer the scaffold's generic `Row` from props (markup `<Component>` usage can),
+// so it resolves `Row` to the constraint `BaseTxRow`. These snippets only read
+// base fields, so `ColumnDef<BaseTxRow>` is the matching column type here.
+const columns: ColumnDef<BaseTxRow>[] = [
   {
     key: "bezeichnung",
     label: "Bezeichnung",

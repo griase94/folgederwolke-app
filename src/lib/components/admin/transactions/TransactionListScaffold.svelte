@@ -1,10 +1,17 @@
 <script lang="ts" module>
 	import type { Snippet } from 'svelte';
-	import type { TransactionRow } from '$lib/server/domain/transactions.js';
+	import type { TransactionRow, BaseTxRow } from '$lib/server/domain/transactions.js';
 
 	/**
 	 * Per-tab column descriptor (Task 7 owns this type; the per-tab `columns.ts`
-	 * files in Phases 4/5/6 export `ColumnDef[]` and bind to this shape).
+	 * files in Phases 4/5/6 export `ColumnDef<TabRow>[]` and bind to this shape).
+	 *
+	 * GENERIC over the row type `Row` (defaults to `TransactionRow` for back-compat
+	 * with the Phase-3 route shells). Each tab's `listXPage` returns a `BaseTxRow`
+	 * subtype (`AusgabenRow`/`EinnahmenRow`/`SpendenRow`) carrying its own columns
+	 * (`status`/`belegFileId`, `rechnungBusinessId`, `spenderName`, …); declaring
+	 * `ColumnDef<AusgabenRow>` lets a column's `render` snippet read those per-tab
+	 * fields type-safely instead of casting `row as AusgabenRow` in every snippet.
 	 *
 	 *  - `key`     — the sort key emitted as `?sort=<key>` when the column header
 	 *                is clicked (only meaningful when `sortable`).
@@ -15,16 +22,16 @@
 	 *                scaffold wraps it in a `<td>` (desktop) — the tab decides the
 	 *                inner markup (badge, Money, Sphäre color-rule, link, …).
 	 */
-	export interface ColumnDef {
+	export interface ColumnDef<Row extends BaseTxRow = TransactionRow> {
 		key: string;
 		label: string;
 		sortable?: boolean;
 		align?: 'left' | 'right' | 'center';
-		render: Snippet<[TransactionRow]>;
+		render: Snippet<[Row]>;
 	}
 </script>
 
-<script lang="ts">
+<script lang="ts" generics="Row extends BaseTxRow = TxnRow">
 	/**
 	 * TransactionListScaffold — Task 7, Phase 3.
 	 *
@@ -57,12 +64,15 @@
 	import type { TransactionRow as TxnRow } from '$lib/server/domain/transactions.js';
 	import type { YearScope } from '$lib/domain/year.js';
 	import { ALL_YEARS } from '$lib/domain/year.js';
-	// `Snippet` is imported in the module <script> above and is in scope here.
+	// `Snippet` + `BaseTxRow` are imported in the module <script> above and are in
+	// scope here (incl. for the `generics` attribute on the instance <script> tag).
+	// `Row` is the generics param — the per-tab BaseTxRow subtype; `TxnRow` is the
+	// back-compat default for the Phase-3 shells.
 
 	interface Props {
 		tab: TabKey;
 		/** Already server-filtered + paginated rows (the per-tab `listXPage`). */
-		rows: TxnRow[];
+		rows: Row[];
 		/** Total matching rows across all pages (drives pagination). */
 		total: number;
 		page: number;
@@ -75,7 +85,7 @@
 		kategorieOptions: { value: string; label: string }[];
 		memberOptions: { id: string; label: string }[];
 		/** Per-tab column config (label, key, sortable, align, render snippet). */
-		columns: ColumnDef[];
+		columns: ColumnDef<Row>[];
 		/** Per-tab KPI strip (Ausgaben pill / Einnahmen split / Spenden bescheinigung). */
 		kpi: Snippet;
 		/** UX-01: primary create CTA target, e.g. "/app/ausgaben/neu". */
@@ -348,8 +358,12 @@
 		<!-- ── Mobile cards (<md) ────────────────────────────────────────────── -->
 		<div class="flex flex-col gap-2 md:hidden">
 			{#each rows as row (row.id)}
+				<!-- The legacy mobile card is typed to `TransactionRow`; the generic
+				     `Row` is a `BaseTxRow` subtype that carries `kind` + the fields
+				     the card reads (others are {#if}-guarded inside it), so bridge
+				     with one contained cast here rather than per-tab at every call. -->
 				<TransactionCardMobile
-					{row}
+					row={row as unknown as TxnRow}
 					selected={bulk ? bulk.selectedIds.includes(row.id) : false}
 					ontoggle={bulk ? bulk.onToggle : () => {}}
 					detailHref={`${detailHrefBase}/${row.id}`}
