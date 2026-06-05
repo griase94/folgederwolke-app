@@ -28,7 +28,7 @@
 	<EinnahmeDetailFields
 		bezeichnung={detail.bezeichnung}
 		betragCents={detail.betragCents}
-		geldEingangDatum={null}
+		geldEingangDatum={detail.geldEingangDatum}
 		kategorieNameSnapshot={detail.kategorieNameSnapshot}
 		projectId={detail.projectId}
 		kommentar={detail.kommentar}

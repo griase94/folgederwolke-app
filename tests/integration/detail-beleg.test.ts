@@ -50,6 +50,17 @@ const BELEG_FILE_ID = "00000000-0000-4000-8000-0000000be1e9";
 const BELEG_MIME = "image/png";
 const BELEG_NAME = "rechnung-scan.png";
 
+// Self-arranged geld_eingang_datum on the no-invoice income row (the corpus
+// seeds none), so the income geldEingangDatum projection is deterministic.
+const INCOME_GELD_EINGANG = "2026-03-07";
+
+// A second files row attached to the Sachspende as its Herkunftsbeleg, so the
+// donation herkunftsbelegMimeType / herkunftsbelegOriginalName projection
+// (the SECOND files join) resolves real values, not the octet-stream default.
+const HERKUNFT_FILE_ID = "00000000-0000-4000-8000-0000000be2ea";
+const HERKUNFT_MIME = "application/pdf";
+const HERKUNFT_NAME = "kaufbeleg-lautsprecher.pdf";
+
 let adminPool: ReturnType<typeof postgres> | null = null;
 let expenseId = "";
 let incomeWithInvoiceId = "";
@@ -85,6 +96,20 @@ describe.skipIf(!dbConfigured)("getTransactionDetail per-kind fields", () => {
     await a`UPDATE expenses SET beleg_file_id = ${BELEG_FILE_ID} WHERE business_id = ${EXPENSE_WITH_BELEG_BIZ}`;
     await a`UPDATE income   SET beleg_file_id = ${BELEG_FILE_ID} WHERE business_id = ${INCOME_WITH_INVOICE_BIZ}`;
 
+    // geld_eingang_datum on the no-invoice income row (deterministic projection).
+    await a`UPDATE income SET geld_eingang_datum = ${INCOME_GELD_EINGANG}::date WHERE business_id = ${INCOME_NO_INVOICE_BIZ}`;
+
+    // Seed + attach a Herkunftsbeleg file to the Sachspende (second files join).
+    await seedFileViaAdmin({
+      id: HERKUNFT_FILE_ID,
+      storageKey: `test/detail-herkunft/${HERKUNFT_FILE_ID}`,
+      sha256: "c".repeat(64),
+      mimeType: HERKUNFT_MIME,
+      originalFilename: HERKUNFT_NAME,
+      kind: "beleg",
+    });
+    await a`UPDATE donations SET herkunftsbeleg_file_id = ${HERKUNFT_FILE_ID} WHERE business_id = ${SACHSPENDE_BIZ}`;
+
     // Resolve the UUIDs the detail query is keyed on.
     const db = getDb();
     const lookup = async (table: string, biz: string): Promise<string> => {
@@ -108,7 +133,10 @@ describe.skipIf(!dbConfigured)("getTransactionDetail per-kind fields", () => {
     const a = admin();
     await a`UPDATE expenses SET beleg_file_id = NULL WHERE business_id = ${EXPENSE_WITH_BELEG_BIZ}`;
     await a`UPDATE income   SET beleg_file_id = NULL WHERE business_id = ${INCOME_WITH_INVOICE_BIZ}`;
+    await a`UPDATE income   SET geld_eingang_datum = NULL WHERE business_id = ${INCOME_NO_INVOICE_BIZ}`;
+    await a`UPDATE donations SET herkunftsbeleg_file_id = NULL WHERE business_id = ${SACHSPENDE_BIZ}`;
     await cleanupFilesViaAdmin(BELEG_FILE_ID);
+    await cleanupFilesViaAdmin(HERKUNFT_FILE_ID);
     if (adminPool) {
       await adminPool.end();
       adminPool = null;
@@ -158,6 +186,16 @@ describe.skipIf(!dbConfigured)("getTransactionDetail per-kind fields", () => {
     expect(detail!.rechnungBusinessId).toBeNull();
   });
 
+  it("income: projects geldEingangDatum (geld_eingang_datum)", async () => {
+    const detail = await getTransactionDetail(incomeNoInvoiceId, "income");
+    expect(detail!.geldEingangDatum).toBe(INCOME_GELD_EINGANG);
+  });
+
+  it("income: geldEingangDatum is null when none is set", async () => {
+    const detail = await getTransactionDetail(incomeWithInvoiceId, "income");
+    expect(detail!.geldEingangDatum).toBeNull();
+  });
+
   // ── Spenden detail fields ─────────────────────────────────────────────────────
   it("donation (Sachspende): exposes Wertermittlung fields + betriebsvermoegen", async () => {
     const detail = await getTransactionDetail(sachspendeId, "donation");
@@ -167,6 +205,21 @@ describe.skipIf(!dbConfigured)("getTransactionDetail per-kind fields", () => {
     );
     expect(detail).toHaveProperty("herkunftsbelegFileId");
     expect(detail!.betriebsvermoegen).toBe(false);
+  });
+
+  it("donation (Sachspende): resolves Herkunftsbeleg mime/name from the second files join", async () => {
+    const detail = await getTransactionDetail(sachspendeId, "donation");
+    expect(detail!.herkunftsbelegFileId).toBe(HERKUNFT_FILE_ID);
+    expect(detail!.herkunftsbelegMimeType).toBe(HERKUNFT_MIME);
+    expect(detail!.herkunftsbelegOriginalName).toBe(HERKUNFT_NAME);
+  });
+
+  it("donation: Herkunftsbeleg mime/name are null when none is attached", async () => {
+    // The zweckgebundene Geldspende has no Herkunftsbeleg (Sachspende-only).
+    const detail = await getTransactionDetail(zweckgebundenId, "donation");
+    expect(detail!.herkunftsbelegFileId).toBeNull();
+    expect(detail!.herkunftsbelegMimeType).toBeNull();
+    expect(detail!.herkunftsbelegOriginalName).toBeNull();
   });
 
   it("donation (zweckgebunden): exposes zweckbindungText + zweckbindungKind + spenderAdresse", async () => {

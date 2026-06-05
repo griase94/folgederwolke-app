@@ -99,6 +99,13 @@ export interface TransactionDetail extends TransactionRow {
    * detail context reads this off `detail` so it never imports `invoices`.
    */
   rechnungBusinessId: string | null;
+  /**
+   * income only — the Geldeingang date (income.geld_eingang_datum), ISO
+   * YYYY-MM-DD or null. The Einnahmen detail form pre-fills its DateField from
+   * this; without it the field rendered blank and the save action only wrote a
+   * non-blank value, so the stopgap was a "bleibt erhalten, wenn leer" hint.
+   */
+  geldEingangDatum: string | null;
   /** donation only */
   spenderName: string | null;
   spenderEmail: string | null;
@@ -110,6 +117,15 @@ export interface TransactionDetail extends TransactionRow {
   wertermittlungMethode: string | null;
   zustandBeschreibung: string | null;
   herkunftsbelegFileId: string | null;
+  /**
+   * donation only — Herkunftsbeleg (Sachspende provenance) mime/name, LEFT-
+   * JOINed off `files` on `donations.herkunftsbeleg_file_id` (a SECOND files
+   * join, distinct from the main Beleg one). Both null when no Herkunftsbeleg
+   * is attached. The Spenden detail BelegViewer binds to these instead of the
+   * old hardcoded `application/octet-stream` / "Herkunftsbeleg" placeholders.
+   */
+  herkunftsbelegMimeType: string | null;
+  herkunftsbelegOriginalName: string | null;
   betriebsvermoegen: boolean | null;
   timeline: AuditTimelineEntry[];
 }
@@ -691,6 +707,7 @@ export async function getTransactionDetail(
       belegOriginalName: null,
       approvedAt: r.approvedAt?.toISOString() ?? null,
       rechnungBusinessId: null,
+      geldEingangDatum: null,
       spenderName: null,
       spenderEmail: null,
       spenderAdresse: null,
@@ -701,6 +718,8 @@ export async function getTransactionDetail(
       wertermittlungMethode: null,
       zustandBeschreibung: null,
       herkunftsbelegFileId: null,
+      herkunftsbelegMimeType: null,
+      herkunftsbelegOriginalName: null,
       betriebsvermoegen: null,
       timeline: [],
     };
@@ -752,6 +771,7 @@ export async function getTransactionDetail(
       belegOriginalName: null,
       approvedAt: null,
       rechnungBusinessId: invRows[0]?.rechnungBusinessId ?? null,
+      geldEingangDatum: r.geldEingangDatum ?? null,
       spenderName: null,
       spenderEmail: null,
       spenderAdresse: null,
@@ -762,6 +782,8 @@ export async function getTransactionDetail(
       wertermittlungMethode: null,
       zustandBeschreibung: null,
       herkunftsbelegFileId: null,
+      herkunftsbelegMimeType: null,
+      herkunftsbelegOriginalName: null,
       betriebsvermoegen: null,
       timeline: [],
     };
@@ -806,6 +828,7 @@ export async function getTransactionDetail(
       belegOriginalName: null,
       approvedAt: null,
       rechnungBusinessId: null,
+      geldEingangDatum: null,
       spenderName: r.spenderName ?? null,
       spenderEmail: r.spenderEmail ?? null,
       spenderAdresse: r.spenderAdresse ?? null,
@@ -816,6 +839,9 @@ export async function getTransactionDetail(
       wertermittlungMethode: r.wertermittlungMethode ?? null,
       zustandBeschreibung: r.zustandBeschreibung ?? null,
       herkunftsbelegFileId: r.herkunftsbelegFileId ?? null,
+      // Filled from the SECOND files lookup below (Herkunftsbeleg provenance).
+      herkunftsbelegMimeType: null,
+      herkunftsbelegOriginalName: null,
       betriebsvermoegen: r.betriebsvermoegen ?? null,
       timeline: [],
     };
@@ -840,6 +866,27 @@ export async function getTransactionDetail(
     if (f) {
       base.belegMimeType = f.mimeType;
       base.belegOriginalName = f.originalFilename;
+    }
+  }
+
+  // Herkunftsbeleg metadata (donations only): a SECOND `files` lookup off
+  // `donations.herkunftsbeleg_file_id` (the Sachspende provenance receipt),
+  // distinct from the main Beleg join above. Resolves mime_type /
+  // original_filename so the Spenden detail BelegViewer renders the real type
+  // + name instead of the hardcoded application/octet-stream placeholder.
+  if (base.herkunftsbelegFileId) {
+    const herkunftRows = await db
+      .select({
+        mimeType: files.mimeType,
+        originalFilename: files.originalFilename,
+      })
+      .from(files)
+      .where(eq(files.id, base.herkunftsbelegFileId))
+      .limit(1);
+    const hf = herkunftRows[0];
+    if (hf) {
+      base.herkunftsbelegMimeType = hf.mimeType;
+      base.herkunftsbelegOriginalName = hf.originalFilename;
     }
   }
 

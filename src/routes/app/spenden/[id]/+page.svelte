@@ -64,12 +64,13 @@
 	{#if isSach && detail.herkunftsbelegFileId}
 		<div>
 			<p class="mb-1 text-xs font-medium text-muted-foreground">Herkunftsbeleg</p>
-			<!-- getTransactionDetail resolves mime/name only for the main Beleg; the
-			     viewer's "Original öffnen" fallback handles the unknown-type case. -->
+			<!-- getTransactionDetail now resolves the Herkunftsbeleg's real mime/name
+			     via a second files join, so the viewer renders the correct type +
+			     filename (was hardcoded application/octet-stream / "Herkunftsbeleg"). -->
 			<BelegViewer
 				fileId={detail.herkunftsbelegFileId}
-				mimeType="application/octet-stream"
-				originalFilename="Herkunftsbeleg"
+				mimeType={detail.herkunftsbelegMimeType ?? 'application/octet-stream'}
+				originalFilename={detail.herkunftsbelegOriginalName ?? 'Herkunftsbeleg'}
 			/>
 		</div>
 	{/if}
