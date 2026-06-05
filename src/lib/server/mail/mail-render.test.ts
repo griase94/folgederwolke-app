@@ -21,14 +21,27 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderMailTemplate } from "./render.js";
+import { subjectFor } from "./index.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const VEREIN_NAME = "Folge der Wolke e.V.";
+// White-label identity props that sendMail() injects into every template
+// from readStammdaten() (Task 2.2). The templates render this footer/name —
+// never a hardcoded "Folge der Wolke" literal — so the tests assert on the
+// VALUE supplied here, proving the identity is prop-driven.
+const WL_IDENTITY = {
+  vereinName: "Verein X e.V.",
+  adresse: "Teststraße 1, 12345 Testort",
+  vr: "VR 999",
+  steuernummer: "111/222/33333",
+};
+const VEREIN_NAME = WL_IDENTITY.vereinName;
 
 const eingangsProps = {
+  ...WL_IDENTITY,
+  baseUrl: "https://app.example.test",
   vorname: "Lea",
   ausId: "AUS-2026-042",
   bezeichnung: "Druckerpapier für Wolkenbüro",
@@ -37,6 +50,7 @@ const eingangsProps = {
 };
 
 const erstattungsProps = {
+  ...WL_IDENTITY,
   vorname: "Lea",
   ausId: "AUS-2026-042",
   bezeichnung: "Druckerpapier für Wolkenbüro",
@@ -46,6 +60,7 @@ const erstattungsProps = {
 };
 
 const beitragsProps = {
+  ...WL_IDENTITY,
   vorname: "Lea",
   nachname: "Mustermann",
   jahr: 2026,
@@ -53,10 +68,11 @@ const beitragsProps = {
   iban: "DE43830654089999999999",
   bic: "SSKMDEMMXXX",
   bank: "Stadtsparkasse München",
-  empfaenger: "Folge der Wolke e.V.",
+  empfaenger: "Verein X e.V.",
 };
 
 const magicLinkProps = {
+  ...WL_IDENTITY,
   email: "lea@example.com",
   magicUrl: "https://app.folgederwolke.de/sign-in/verify?token=abc123",
   expiresInMinutes: 15,
@@ -80,6 +96,8 @@ describe("EingangsMail", () => {
     const { html } = await renderTemplate("EingangsMail", eingangsProps);
 
     expect(html).toContain(VEREIN_NAME);
+    // Identity is fully prop-driven — no hardcoded FdW literal survives.
+    expect(html).not.toContain("Folge der Wolke");
     expect(html).toContain("Hallo");
     // Greeting
     expect(html).toContain("Liebste:r Lea");
@@ -237,5 +255,57 @@ describe("mail templates — Gmail-safe CSS sweep", () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// subjectFor — runtime vereinName interpolation (Task 2.2)
+// ---------------------------------------------------------------------------
+// Every subject must carry the runtime Verein name from props.vereinName,
+// never a hardcoded "Folge der Wolke" literal.
+
+describe("subjectFor — name-bearing subjects from props.vereinName", () => {
+  const name = "Verein X e.V.";
+
+  it("magic_link subject uses the runtime name", () => {
+    const s = subjectFor("magic_link", { vereinName: name });
+    expect(s).toContain(name);
+    expect(s).not.toContain("Folge der Wolke");
+  });
+
+  it("spende_bescheinigung subject uses the runtime name", () => {
+    const s = subjectFor("spende_bescheinigung", { vereinName: name });
+    expect(s).toContain(name);
+    expect(s).not.toContain("Folge der Wolke");
+  });
+
+  it("invoice_versendet subject uses the runtime name", () => {
+    const s = subjectFor("invoice_versendet", {
+      vereinName: name,
+      invoiceNumber: "R-2026-001",
+    });
+    expect(s).toContain(name);
+    expect(s).toContain("R-2026-001");
+    expect(s).not.toContain("Folge der Wolke");
+  });
+
+  it("auslage_approved subject uses the runtime name", () => {
+    const s = subjectFor("auslage_approved", {
+      vereinName: name,
+      ausId: "AUS-2026-042",
+    });
+    expect(s).toContain(name);
+    expect(s).not.toContain("Folge der Wolke");
+  });
+
+  it("default subject uses the runtime name", () => {
+    // The fallback branch — passed an unknown template name via the loose
+    // signature — still names the Verein.
+    const s = subjectFor(
+      "unknown_template" as never,
+      { vereinName: name } as never,
+    );
+    expect(s).toContain(name);
+    expect(s).not.toContain("Folge der Wolke");
   });
 });

@@ -1,8 +1,22 @@
 <script lang="ts">
 	/* eslint-disable svelte/no-navigation-without-resolve */
 	import type { MagicLinkProps } from '../types.js';
+	import MailFooter from './MailFooter.svelte';
 
-	let { email, magicUrl, expiresInMinutes }: MagicLinkProps = $props();
+	let {
+		email,
+		magicUrl,
+		expiresInMinutes,
+		vereinName = '',
+		adresse = '',
+		vr = '',
+		steuernummer = ''
+	}: MagicLinkProps & {
+		vereinName?: string;
+		adresse?: string;
+		vr?: string;
+		steuernummer?: string;
+	} = $props();
 </script>
 
 <!--
@@ -38,7 +52,7 @@
 								<p
 									style="margin:0;color:#ffffff;font-size:13px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;"
 								>
-									Folge der Wolke
+									{vereinName}
 								</p>
 							</td>
 						</tr>
@@ -112,14 +126,7 @@
 						</tr>
 
 						<!-- Footer -->
-						<tr>
-							<td
-								style="padding:24px 32px 28px 32px;text-align:center;font-size:11px;color:#9ca3af;line-height:1.6;border-top:1px solid #f1e6ec;"
-							>
-								<strong style="color:#6b7280;">Folge der Wolke e.V.</strong> · Westermühlstraße 6, 80469 München<br />
-								VR 211227 · Steuernummer 143/215/10028
-							</td>
-						</tr>
+						<MailFooter {vereinName} {adresse} {vr} {steuernummer} />
 					</tbody>
 				</table>
 			</td>

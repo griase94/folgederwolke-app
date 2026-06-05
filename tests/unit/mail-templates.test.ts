@@ -23,7 +23,17 @@
 import { describe, expect, it } from "vitest";
 import { renderMailTemplate } from "../../src/lib/server/mail/render.js";
 
-const VEREIN_NAME = "Folge der Wolke";
+// White-label identity props that sendMail() injects into every template
+// from readStammdaten() (Task 2.2). Rendered directly here, so each fixture
+// supplies them explicitly; the brand strip + footer render this VALUE, never
+// a hardcoded "Folge der Wolke" literal.
+const WL_IDENTITY = {
+  vereinName: "Verein X e.V.",
+  adresse: "Teststraße 1, 12345 Testort",
+  vr: "VR 999",
+  steuernummer: "111/222/33333",
+};
+const VEREIN_NAME = WL_IDENTITY.vereinName;
 
 async function renderTemplate(name: string, props: Record<string, unknown>) {
   const mod = await import(
@@ -42,8 +52,9 @@ async function renderTemplate(name: string, props: Record<string, unknown>) {
 //   - uppercase
 //   - letter-spacing ~1.2px
 //   - text-transform:uppercase
-//   - contains "Folge der Wolke" (without the trailing "e.V." — UI-031 said
-//     keep the strip short; e.V. + address live in the footer).
+//   - contains the runtime Verein name (now prop-driven via vereinName —
+//     Task 2.2; the strip renders WL_IDENTITY.vereinName, not a hardcoded
+//     "Folge der Wolke" literal).
 //
 // Also enforce the "no gradient header / no playful subtitle in header" rule.
 
@@ -70,6 +81,7 @@ function expectBrandStrip(html: string) {
 
 describe("EingangsMail — brand strip + content", () => {
   const props = {
+    ...WL_IDENTITY,
     vorname: "Lea",
     ausId: "AUS-2026-042",
     bezeichnung: "Druckerpapier für Wolkenbüro",
@@ -98,6 +110,7 @@ describe("EingangsMail — brand strip + content", () => {
 
 describe("ErstattungsMail — brand strip + content", () => {
   const props = {
+    ...WL_IDENTITY,
     vorname: "Lea",
     ausId: "AUS-2026-042",
     bezeichnung: "Druckerpapier für Wolkenbüro",
@@ -127,6 +140,7 @@ describe("ErstattungsMail — brand strip + content", () => {
 
 describe("RejectionMail — brand strip + content", () => {
   const props = {
+    ...WL_IDENTITY,
     vorname: "Lea",
     ausId: "AUS-2026-042",
     bezeichnung: "Druckerpapier für Wolkenbüro",
@@ -156,6 +170,7 @@ describe("RejectionMail — brand strip + content", () => {
 
 describe("BeitragsReminder — brand strip + content + Giro-QR", () => {
   const props = {
+    ...WL_IDENTITY,
     vorname: "Lea",
     nachname: "Mustermann",
     jahr: 2026,
@@ -163,7 +178,7 @@ describe("BeitragsReminder — brand strip + content + Giro-QR", () => {
     iban: "DE43830654089999999999",
     bic: "SSKMDEMMXXX",
     bank: "Stadtsparkasse München",
-    empfaenger: "Folge der Wolke e.V.",
+    empfaenger: "Verein X e.V.",
   };
 
   it("uses the brand-strip pattern", async () => {
@@ -204,6 +219,7 @@ describe("BeitragsReminder — brand strip + content + Giro-QR", () => {
 
 describe("InvoiceVersendetMail — brand strip + content + Giro-QR", () => {
   const propsWithIban = {
+    ...WL_IDENTITY,
     customerName: "Max Mustermann GmbH",
     invoiceNumber: "RE-2026-007",
     bezeichnung: "Workshop Cloudchoreographie",
@@ -214,7 +230,7 @@ describe("InvoiceVersendetMail — brand strip + content + Giro-QR", () => {
     downloadUrl: "https://app.folgederwolke.de/invoices/RE-2026-007.pdf",
     iban: "DE43830654089999999999",
     bic: "SSKMDEMMXXX",
-    empfaenger: "Folge der Wolke e.V.",
+    empfaenger: "Verein X e.V.",
   };
 
   it("uses the brand-strip pattern", async () => {
