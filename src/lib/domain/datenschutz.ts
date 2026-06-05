@@ -10,7 +10,13 @@
  * reconstruct exactly which text the submitter agreed to.
  */
 
-export const DATENSCHUTZ_VERSION = "2026-05-01-v1";
+import { PUBLIC_VEREIN_KONTAKT_EMAIL } from "$env/static/public";
+
+// Bumped from "2026-05-01-v1" when the consent contact email was parameterized
+// (white-label PR3). Stored consents are immutable snapshots — the server
+// validates each submission's version against this constant, so any older
+// snapshot is rejected as stale rather than silently accepted.
+export const DATENSCHUTZ_VERSION = "2026-06-05-v2";
 
 export const DATENSCHUTZ_TITLE = "Datenschutz";
 
@@ -20,7 +26,7 @@ export const DATENSCHUTZ_TEXT =
   "und gesetzlich vorgeschriebenen Buchhaltung ein.\n\n" +
   "Speicherdauer: 10 Jahre gemäß § 147 AO.\n" +
   "Rechtsgrundlage: Art. 6 Abs. 1 lit. b und c DSGVO.\n\n" +
-  "Fragen oder Auskunftswunsch: folgederwolke@gmail.com";
+  `Fragen oder Auskunftswunsch: ${PUBLIC_VEREIN_KONTAKT_EMAIL}`;
 
 export const FORM_DESCRIPTION =
   "Hier reichst du Auslagen ein, die du für den Verein gezahlt hast. " +
