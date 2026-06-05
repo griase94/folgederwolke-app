@@ -10,11 +10,13 @@ const MARBLE = join(ROOT, "assets/app-icon-marble.jpg");
 const STATIC = join(ROOT, "static");
 const ICONS = join(STATIC, "icons");
 
-// Maskable background blends with the art by sampling the marble's dominant color
-// (avoids a flat-pink ring). MASKABLE_MODE: "inset" = content in the 80% Android
-// safe zone; "cover" = full-bleed. Default "inset"; may flip to "cover" at the
-// asset-review gate if full-bleed reads better for this centered texture.
-const MASKABLE_MODE: "inset" | "cover" = "inset";
+// MASKABLE_MODE: "cover" = full-bleed marble (Android masks the corners, which are
+// just texture — the centered cloud+bolt survives any circle/squircle mask); "inset"
+// = content scaled into the 80% safe zone. We use "cover": the marble's sampled
+// "dominant" color comes out near-white (the cloud + light marble dominate), so an
+// inset background would show a white ring, not pink. Full-bleed avoids that and
+// reads cleaner for this centered-texture mark.
+const MASKABLE_MODE: "inset" | "cover" = "cover";
 
 function ensureMagick(): string {
   for (const bin of ["magick", "convert"]) {
