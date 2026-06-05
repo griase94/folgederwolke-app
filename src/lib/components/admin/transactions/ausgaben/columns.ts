@@ -15,10 +15,11 @@
  * column metadata (key / German label / sortable / align) + ordering so the
  * header sort keys + alignment live in one place.
  *
- * The sort `key`s match the Ausgaben sort whitelist the Phase-2 `listAusgabenPage`
- * ORDER BY understands (`gebuchtAm`, `businessId`, `bezeichnung`, `betrag`,
- * `status`); non-sortable columns (Bezahlt-von, Kategorie, Sphäre, Beleg,
- * chevron) omit `sortable`.
+ * Sorting is currently DISABLED on every column: the shared `listAusgabenPage`
+ * hardcodes its ORDER BY, so a `sortable: true` header would be clickable but
+ * dead (emit `?sort=` the query ignores). The sort `key`s are retained on the
+ * descriptive columns so re-enabling is a one-line flip once the shared sort
+ * plumbing lands — see the per-column TODO below.
  */
 
 import type { Snippet } from "svelte";
@@ -47,16 +48,20 @@ export interface AusgabenCellSnippets {
 export function ausgabenColumns(
   cells: AusgabenCellSnippets,
 ): ColumnDef<AusgabenRow>[] {
+  // TODO re-enable once shared listAusgabenPage sort plumbing lands (Tier-C
+  // shared-kit batch): flip `sortable: false` → `true` on the keyed columns
+  // below (gebuchtAm / businessId / bezeichnung / betrag / status). Until then
+  // every header is inert so we don't ship clickable-but-dead sort controls.
   return [
     // Sphäre LEFT color-rule (§13) — leads the row as a thin tone bar, not a
     // filled badge. Not sortable (a visual rule, not a data axis).
     { key: "sphaere", label: "", render: cells.sphaere },
-    { key: "gebuchtAm", label: "Datum", sortable: true, render: cells.datum },
-    { key: "businessId", label: "ID", sortable: true, render: cells.id },
+    { key: "gebuchtAm", label: "Datum", sortable: false, render: cells.datum },
+    { key: "businessId", label: "ID", sortable: false, render: cells.id },
     {
       key: "bezeichnung",
       label: "Bezeichnung",
-      sortable: true,
+      sortable: false,
       render: cells.bezeichnung,
     },
     { key: "bezahltVon", label: "Bezahlt von", render: cells.bezahltVon },
@@ -65,10 +70,10 @@ export function ausgabenColumns(
       key: "betrag",
       label: "Betrag",
       align: "right",
-      sortable: true,
+      sortable: false,
       render: cells.betrag,
     },
-    { key: "status", label: "Status", sortable: true, render: cells.status },
+    { key: "status", label: "Status", sortable: false, render: cells.status },
     { key: "chevron", label: "", align: "right", render: cells.chevron },
   ];
 }
