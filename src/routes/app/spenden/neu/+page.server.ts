@@ -70,8 +70,8 @@ export const actions: Actions = {
     const data = await request.formData();
 
     // Optional Beleg uploads → file ids (encouraged, not enforced, §4.3).
-    let belegFileId: string | null = null;
-    let herkunftsbelegFileId: string | null = null;
+    let belegFileId: string | null;
+    let herkunftsbelegFileId: string | null;
     try {
       belegFileId = await uploadOptional(data.get("beleg"), userId);
       herkunftsbelegFileId = await uploadOptional(
