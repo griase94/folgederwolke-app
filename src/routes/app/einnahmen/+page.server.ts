@@ -11,12 +11,15 @@
  *   - NO member picker — the Einnahmen registry has no member-picker field
  *     (X-PRAG-04), so we never call `listMemberOptions()` → `memberOptions: []`.
  *
- * Rich per-tab KPI/columns land in Phase 5 (Tier C); Phase 3 ships a minimal
- * KPI + default columns so the route works + the @phase-3 e2e smoke passes.
+ * Phase 5 (Tier C2): the rich KPI now comes from `listEinnahmenKpi` (the
+ * C2-owned Sphären-Split aggregation, spec §8.1) and the Einnahmen columns
+ * (🔗 badge, Sphäre left-rule, no status) live in `+page.svelte`. NO bulk
+ * payload — Einnahmen has no bulk-select.
  */
 
 import type { PageServerLoad } from "./$types.js";
 import { listEinnahmenPage } from "$lib/server/domain/transactions.js";
+import { listEinnahmenKpi } from "$lib/server/domain/einnahmen-kpi.js";
 import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
 import { parseFilterState } from "$lib/domain/transaction-filters.js";
 
@@ -51,8 +54,14 @@ export const load: PageServerLoad = async ({ url, parent }) => {
     }));
   }
 
+  // KPI + kategorie options in parallel (both independent of the row slice).
   // X-PRAG-04: Einnahmen needs the income kategorie options; no member filter.
-  const kategorien = await listKategorieOptions("income");
+  // listEinnahmenKpi is year-scoped (NOT filtered) — the Sphären-Split header
+  // reflects the whole year, the row table reflects the active filters.
+  const [kpi, kategorien] = await Promise.all([
+    listEinnahmenKpi(yearScope),
+    listKategorieOptions("income"),
+  ]);
   const kategorieOptions = kategorien.map((k) => ({
     value: k.name,
     label: k.name,
@@ -67,6 +76,7 @@ export const load: PageServerLoad = async ({ url, parent }) => {
     filterState: state,
     yearScope,
     currentYear,
+    kpi,
     kategorieOptions,
     memberOptions: [] as { id: string; label: string }[],
   };
