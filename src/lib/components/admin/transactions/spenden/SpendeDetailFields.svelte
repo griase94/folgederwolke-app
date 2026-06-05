@@ -12,6 +12,14 @@
   a Storno+Neu concern); the create form is the authoring surface. The hidden
   inputs carry the current Sachspende values so the editSpende validation (which
   requires them for a Sachspende) still passes on a Zweckbindung edit.
+
+  Spendenart is READ-ONLY here: it is FIXED at the row's actual kind (a
+  Geld↔Sach switch is a Storno-class change, not an inline edit). Making it
+  mutable was a save dead-end — toggling Geldspende→Sachspende revealed only the
+  READ-ONLY Wertermittlung block with EMPTY hidden carry-forwards, which
+  editSpende's superRefine rejects (422) with no editable inputs to fix it. The
+  fixed chip keeps `isSach` aligned with the row, so the hidden carry-forwards
+  always mirror real persisted values.
 -->
 <script lang="ts">
 	import { untrack } from 'svelte';
@@ -29,12 +37,16 @@
 	type SpendeKind = 'geldspende' | 'sachspende';
 	type ZweckbindungKind = 'zweckfrei' | 'zweckgebunden';
 
+	// Spendenart is FIXED to the row's actual kind (read-only chip — see header).
+	const spendeKind: SpendeKind = untrack(() =>
+		detail.spendeKind === 'sachspende' ? 'sachspende' : 'geldspende'
+	);
+	const isSach = $derived(spendeKind === 'sachspende');
+	const spendeArtLabel = $derived(isSach ? 'Sachspende' : 'Geldspende');
+
 	// Initial snapshot from the loaded detail — the form fields seed ONCE (a
 	// detail modal does not hot-swap its row), so we read the props untracked to
 	// make the initial-value intent explicit (no reactivity-capture warning).
-	const initialSpendeKind: SpendeKind = untrack(() =>
-		detail.spendeKind === 'sachspende' ? 'sachspende' : 'geldspende'
-	);
 	const initialZweckbindung: ZweckbindungKind = untrack(() =>
 		detail.zweckbindungKind === 'zweckgebunden' ? 'zweckgebunden' : 'zweckfrei'
 	);
@@ -42,20 +54,14 @@
 		detail.gebuchtAm ? detail.gebuchtAm.slice(0, 10) : ''
 	);
 
-	let spendeKind = $state<SpendeKind>(initialSpendeKind);
 	let zweckbindungKind = $state<ZweckbindungKind>(initialZweckbindung);
 	let zugewendetAm = $state(initialZugewendet);
 
-	const SPENDEARTEN: readonly [SpendeKind, string][] = [
-		['geldspende', 'Geldspende'],
-		['sachspende', 'Sachspende']
-	];
 	const ZWECKBINDUNGEN: readonly [ZweckbindungKind, string][] = [
 		['zweckfrei', 'Zweckfrei'],
 		['zweckgebunden', 'Zweckgebunden']
 	];
 
-	const isSach = $derived(spendeKind === 'sachspende');
 	const isZweckgebunden = $derived(zweckbindungKind === 'zweckgebunden');
 
 	function markDirty() {
@@ -79,31 +85,18 @@
 	     (no re-pick in v1) — carry it forward so editSpende validation passes. -->
 	<input type="hidden" name="member_id" value={detail.bezahltVonMemberId ?? ''} />
 
-	<!-- Spendenart -->
-	<fieldset>
-		<legend class="mb-1.5 block text-sm font-medium text-foreground">Spendenart</legend>
-		<div class="flex flex-wrap gap-2">
-			{#each SPENDEARTEN as [k, l] (k)}
-				<button
-					type="button"
-					onclick={() => {
-						spendeKind = k;
-						markDirty();
-					}}
-					class={[
-						'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-						spendeKind === k
-							? 'bg-primary text-primary-foreground'
-							: 'bg-muted text-muted-foreground hover:text-foreground'
-					].join(' ')}
-					data-testid={`detail-spendeart-${k}`}
-				>
-					{l}
-				</button>
-			{/each}
-		</div>
+	<!-- Spendenart — READ-ONLY chip. A Geld↔Sach switch is a Storno-class change,
+	     not an inline edit (it would otherwise be an unfixable 422 dead end). -->
+	<div>
+		<p class="mb-1.5 block text-sm font-medium text-foreground">Spendenart</p>
+		<span
+			class="inline-flex items-center rounded-full border border-border bg-muted/50 px-2.5 py-0.5 text-sm font-medium text-muted-foreground"
+			data-testid="detail-spendeart-chip"
+		>
+			{spendeArtLabel}
+		</span>
 		<input type="hidden" name="spende_kind" value={spendeKind} />
-	</fieldset>
+	</div>
 
 	<!-- Zweckbindung -->
 	<fieldset>
