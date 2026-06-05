@@ -10,6 +10,14 @@
 
   Each card is a tap-target navigating to the detail page. We rely on the
   same TransactionRow data shape — no new domain helpers required.
+
+  TODO(per-tab mobile signals): this card is typed to the shared `TransactionRow`
+  and the scaffold bridges the per-tab row with a contained `as unknown as`
+  cast, so per-tab-only signals are LOST on mobile: the Einnahmen 🔗
+  `rechnungBusinessId` aus-Rechnung link, and the Spenden `spenderName` /
+  `bescheinigungNr` Bescheinigung state. Surfacing them needs the card to become
+  generic over `BaseTxRow` (like the desktop columns) or `TransactionRow` to
+  carry the union — a bigger retype deferred out of this shared-kit batch.
 -->
 <script lang="ts">
 	import type { TransactionRow } from '$lib/server/domain/transactions.js';
@@ -20,11 +28,25 @@
 		selected,
 		ontoggle,
 		detailHref,
+		selectable = false,
+		showKindPill = true,
 	}: {
 		row: TransactionRow;
 		selected: boolean;
 		ontoggle: (id: string) => void;
 		detailHref?: string;
+		/**
+		 * Whether the bulk-select checkbox renders. Only Ausgaben has a bulk
+		 * Erstattung workflow, so Einnahmen/Spenden pass `false` to avoid a no-op
+		 * checkbox the scaffold would never read. Defaults to false (opt-in).
+		 */
+		selectable?: boolean;
+		/**
+		 * Whether the kind pill (Ausgabe/Einnahme/Spende) renders. On a single-kind
+		 * tab list the pill is redundant (the whole list is one kind), so the
+		 * scaffold passes `false`. Defaults to true for merged/unknown contexts.
+		 */
+		showKindPill?: boolean;
 	} = $props();
 	const resolvedDetailHref = $derived(detailHref ?? `/app/transactions/${row.id}?kind=${row.kind}`);
 
@@ -74,17 +96,21 @@
 		isFestgeschrieben ? 'opacity-75' : '',
 	].join(' ')}
 >
-	<!-- Bulk-select checkbox: tap-friendly column on the left. -->
-	<label class="flex shrink-0 items-start pt-0.5">
-		<input
-			type="checkbox"
-			checked={selected}
-			onchange={() => ontoggle(row.id)}
-			aria-label="Auswählen"
-			class="h-4 w-4 rounded border-border accent-primary"
-			disabled={isFestgeschrieben}
-		/>
-	</label>
+	<!-- Bulk-select checkbox: tap-friendly column on the left. Only rendered when
+	     the tab opts in (`selectable`) — Ausgaben has the bulk Erstattung flow;
+	     Einnahmen/Spenden would otherwise show a no-op checkbox. -->
+	{#if selectable}
+		<label class="flex shrink-0 items-start pt-0.5">
+			<input
+				type="checkbox"
+				checked={selected}
+				onchange={() => ontoggle(row.id)}
+				aria-label="Auswählen"
+				class="h-4 w-4 rounded border-border accent-primary"
+				disabled={isFestgeschrieben}
+			/>
+		</label>
+	{/if}
 
 	<!-- Main content: tap target is the link wrapping the text block. -->
 	<!-- eslint-disable svelte/no-navigation-without-resolve -->
@@ -107,14 +133,18 @@
 		</div>
 
 		<div class="flex flex-wrap items-center gap-1.5 text-xs">
-			<span
-				class={[
-					'inline-flex items-center rounded-full px-2 py-0.5 font-medium ring-1 ring-inset',
-					kindColor[row.kind] ?? 'bg-muted text-muted-foreground ring-border',
-				].join(' ')}
-			>
-				{kindLabel[row.kind] ?? row.kind}
-			</span>
+			{#if showKindPill}
+				<!-- Redundant on a single-kind tab list (the scaffold passes
+				     showKindPill=false there); kept for merged/unknown contexts. -->
+				<span
+					class={[
+						'inline-flex items-center rounded-full px-2 py-0.5 font-medium ring-1 ring-inset',
+						kindColor[row.kind] ?? 'bg-muted text-muted-foreground ring-border',
+					].join(' ')}
+				>
+					{kindLabel[row.kind] ?? row.kind}
+				</span>
+			{/if}
 
 			{#if row.status}
 				<span

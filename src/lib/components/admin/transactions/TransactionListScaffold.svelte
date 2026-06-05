@@ -367,6 +367,8 @@
 					selected={bulk ? bulk.selectedIds.includes(row.id) : false}
 					ontoggle={bulk ? bulk.onToggle : () => {}}
 					detailHref={`${detailHrefBase}/${row.id}`}
+					selectable={!!bulk}
+					showKindPill={false}
 				/>
 			{/each}
 		</div>
