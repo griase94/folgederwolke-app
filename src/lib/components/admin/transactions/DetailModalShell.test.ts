@@ -209,6 +209,19 @@ describe("DetailModalShell — shared contract", () => {
     ).toBeTruthy();
   });
 
+  it("festgeschrieben: the workflowAction snippet STILL renders in the footer", () => {
+    render(DetailModalShell, {
+      props: baseProps({
+        isFestgeschrieben: true,
+        detail: makeDetail({ festgeschriebenAt: "2026-05-02T11:30:00.000Z" }),
+      }),
+    });
+    const footer = document.querySelector('[data-slot="detail-footer"]');
+    expect(footer).toBeTruthy();
+    const action = screen.getByTestId("workflow-action");
+    expect(footer!.contains(action)).toBe(true);
+  });
+
   it("festgeschrieben: marks the fields region read-only (data-readonly + inert)", () => {
     const { container } = render(DetailModalShell, {
       props: baseProps({ isFestgeschrieben: true }),
@@ -242,6 +255,28 @@ describe("DetailModalShell — shared contract", () => {
     render(DetailModalShell, { props: baseProps({ onClose }) });
     const closeBtn = screen.getByRole("button", { name: /Schließen/i });
     await fireEvent.click(closeBtn);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("UX-02: clicking the backdrop calls onClose (click-outside → parent list)", async () => {
+    const onClose = vi.fn();
+    const { container } = render(DetailModalShell, {
+      props: baseProps({ onClose }),
+    });
+    const backdrop = container.querySelector('[data-slot="detail-backdrop"]');
+    expect(backdrop).toBeTruthy();
+    await fireEvent.click(backdrop!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("UX-02: pressing Escape on the dialog calls onClose (same guard as × / back)", async () => {
+    const onClose = vi.fn();
+    const { container } = render(DetailModalShell, {
+      props: baseProps({ onClose }),
+    });
+    const dialog = container.querySelector('[role="dialog"]');
+    expect(dialog).toBeTruthy();
+    await fireEvent.keyDown(dialog!, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

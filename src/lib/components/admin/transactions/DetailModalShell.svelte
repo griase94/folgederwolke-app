@@ -115,18 +115,28 @@
 	class="fixed inset-0 z-40 bg-black/40"
 	data-slot="detail-backdrop"
 	onclick={onClose}
-	onkeydown={(e) => {
-		if (e.key === 'Escape') onClose();
-	}}
 	role="presentation"
 ></div>
 
+<!--
+	Escape lives on the dialog (which contains the focusable content), NOT the
+	backdrop — the backdrop is a sibling, so a keydown while focus is inside the
+	dialog never bubbles to it. Escape → onClose → same beforeNavigate dirty-guard
+	as the × and browser-back (UX-02).
+-->
 <div
 	class="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[92dvh] w-full max-w-5xl flex-col rounded-t-xl border border-border bg-background shadow-xl sm:inset-y-8 sm:rounded-xl"
 	data-slot="detail-modal-shell"
 	role="dialog"
 	aria-modal="true"
 	aria-labelledby="detail-modal-title"
+	tabindex="-1"
+	onkeydown={(e) => {
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			onClose();
+		}
+	}}
 >
 	<!-- ── Sticky header ──────────────────────────────────────────────────── -->
 	<header

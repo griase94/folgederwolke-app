@@ -103,6 +103,17 @@ describe("EntryFormShell — shared contract", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("UX-02: pressing Escape on the dialog calls onClose (same guard as × / back)", async () => {
+    const onClose = vi.fn();
+    const { container } = render(EntryFormShell, {
+      props: baseProps({ onClose }),
+    });
+    const dialog = container.querySelector('[role="dialog"]');
+    expect(dialog).toBeTruthy();
+    await fireEvent.keyDown(dialog!, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("registers a beforeNavigate dirty-guard on mount (same guard fires on × and back)", () => {
     render(EntryFormShell, { props: baseProps() });
     expect(beforeNavigate).toHaveBeenCalledTimes(1);
