@@ -5,10 +5,13 @@
 	import SavedViewsBar from './SavedViewsBar.svelte';
 	import TransactionRowComponent from './TransactionRow.svelte';
 	import TransactionCardMobile from './TransactionCardMobile.svelte';
-	import BulkActionsBar from './BulkActionsBar.svelte';
+	// Phase 4 (Tier C1) moved the bulk/SEPA components into `./ausgaben/`. This
+	// legacy merged-list component is no longer routed (Phase 8 deletes it) but
+	// is kept compiling by pointing at the new location.
+	import BulkActionsBar from './ausgaben/BulkActionsBar.svelte';
 	import { EmptyState } from '$lib/components/ui/empty-state/index.js';
-	import SepaCopyModal from './SepaCopyModal.svelte';
-	import PostSepaMarkErstattetModal from './PostSepaMarkErstattetModal.svelte';
+	import SepaCopyModal from './ausgaben/SepaCopyModal.svelte';
+	import PostSepaMarkErstattetModal from './ausgaben/PostSepaMarkErstattetModal.svelte';
 	import { toast } from 'svelte-sonner';
 	import { invalidateAll } from '$app/navigation';
 	import { goto } from '$app/navigation';

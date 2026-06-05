@@ -19,9 +19,10 @@ const FILES = [
   "src/lib/components/admin/inbox/ManualImportSheet.svelte",
   "src/lib/components/admin/projects/AddProjectDialog.svelte",
   "src/lib/components/admin/projects/EditProjectDialog.svelte",
-  "src/lib/components/admin/transactions/PostSepaMarkErstattetModal.svelte",
+  // Phase 4 (Tier C1) moved the bulk/SEPA components into `…/transactions/ausgaben/`.
+  "src/lib/components/admin/transactions/ausgaben/PostSepaMarkErstattetModal.svelte",
   "src/lib/components/admin/transactions/TransactionEditForm.svelte",
-  "src/lib/components/admin/transactions/BulkActionsBar.svelte",
+  "src/lib/components/admin/transactions/ausgaben/BulkActionsBar.svelte",
   "src/lib/components/admin/members/AddMemberDialog.svelte",
   "src/routes/app/transactions/neu/+page.svelte",
 ];

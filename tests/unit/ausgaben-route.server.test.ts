@@ -46,10 +46,29 @@ const listSpendenPageMock = vi.fn(async (_opts: unknown) => ({
   total: 0,
 }));
 
+// Phase 4 (Tier C1) added the KPI + bulk-pool loads to the Ausgaben `load`;
+// the Einnahmen/Spenden shells still only call their `listXPage`. Mock the
+// extra Ausgaben deps so this Phase-3 route-shell test keeps exercising all
+// three shells (the rich Ausgaben KPI/bulk behaviour is covered by
+// tests/unit/ausgaben-page.server.test.ts).
+const listApprovedPendingErstattetMock = vi.fn(async () => []);
+const listZahlungsartenMock = vi.fn(async () => []);
+
 vi.mock("$lib/server/domain/transactions.js", () => ({
   listAusgabenPage: listAusgabenPageMock,
   listEinnahmenPage: listEinnahmenPageMock,
   listSpendenPage: listSpendenPageMock,
+  listApprovedPendingErstattet: listApprovedPendingErstattetMock,
+  listZahlungsarten: listZahlungsartenMock,
+}));
+
+vi.mock("$lib/server/domain/ausgaben-kpi.js", () => ({
+  listAusgabenKpi: vi.fn(async () => ({
+    totalCents: 0,
+    count: 0,
+    offenCount: 0,
+    oldestOpenAgeDays: null,
+  })),
 }));
 
 const listKategorieOptionsMock = vi.fn(async (kind: "expense" | "income") => [
