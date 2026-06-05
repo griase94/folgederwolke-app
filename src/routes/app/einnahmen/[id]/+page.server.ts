@@ -25,12 +25,13 @@ import type { Actions, PageServerLoad } from "./$types.js";
 import {
   getTransactionDetail,
   checkFestschreibungGate,
+  resolveKategorieByName,
 } from "$lib/server/domain/transactions.js";
 import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
 import { getDb } from "$lib/server/db/index.js";
 import { income } from "$lib/server/db/schema/income.js";
 import { projects } from "$lib/server/db/schema/projects.js";
-import { eq, isNull } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { bus } from "$lib/server/events/index.js";
 
 // ---------------------------------------------------------------------------
@@ -75,9 +76,10 @@ const saveIncomeSchema = z.object({
     .nullable()
     .optional(),
   kategorieNameSnapshot: z.string().max(200).optional(),
-  sphereSnapshot: z
-    .enum(["ideeller", "vermoegen", "zweckbetrieb", "wirtschaftlich"])
-    .optional(),
+  // NOTE: `sphereSnapshot` is intentionally NOT accepted from the client (§4.5 —
+  // the Sphäre is strictly DERIVED from the Kategorie server-side; a tampered or
+  // stale client value must never decouple sphere from Kategorie + mis-bucket
+  // the EÜR). It is re-resolved below via resolveKategorieByName.
   projectId: z.string().uuid().nullable().optional(),
   kommentar: z.string().max(2000).nullable().optional(),
 });
@@ -130,26 +132,30 @@ export const actions = {
       parsed.data.geldEingangDatum != null
         ? { geldEingangDatum: parsed.data.geldEingangDatum }
         : {};
+
+    // §4.5 — re-derive the Sphäre from the (possibly changed) Kategorie
+    // server-side; never trust a client-posted sphere. Mirrors createIncome +
+    // the Ausgaben detail ?/save.
+    const kat = await resolveKategorieByName(
+      "income",
+      parsed.data.kategorieNameSnapshot ?? detail.kategorieNameSnapshot,
+    );
+
     await db
       .update(income)
       .set({
         bezeichnung: parsed.data.bezeichnung,
         betragCents: BigInt(parsed.data.betragCents),
         ...geldUpdate,
-        kategorieNameSnapshot:
-          parsed.data.kategorieNameSnapshot ?? detail.kategorieNameSnapshot,
-        sphereSnapshot:
-          parsed.data.sphereSnapshot ??
-          (detail.sphereSnapshot as
-            | "ideeller"
-            | "vermoegen"
-            | "zweckbetrieb"
-            | "wirtschaftlich"),
+        kategorieNameSnapshot: kat.name,
+        sphereSnapshot: kat.sphere,
         projectId: parsed.data.projectId ?? null,
         kommentar: parsed.data.kommentar ?? null,
         updatedAt: new Date(),
       })
-      .where(eq(income.id, params.id));
+      // Atomic festschreibung guard (TOCTOU): only write if still not
+      // festgeschrieben — mirrors the Ausgaben save + unmark-erstattet.
+      .where(and(eq(income.id, params.id), isNull(income.festgeschriebenAt)));
 
     await bus.emit("income.updated", {
       id: params.id,

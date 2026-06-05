@@ -45,9 +45,21 @@ const checkFestschreibungGateMock = vi.fn(
   async (_year: number): Promise<GateResult> => ({ ok: true }),
 );
 
+// §4.5: ?/save re-derives the Sphäre from the Kategorie server-side. The mock
+// returns a FIXED sphere ("zweckbetrieb") regardless of any client-posted
+// sphere, so the test can prove the save ignores the body's sphere.
+const resolveKategorieByNameMock = vi.fn(
+  async (_kind: "income", name: string | undefined) => ({
+    id: "kat-x",
+    name: name ?? "Aufnahmegebühr",
+    sphere: "zweckbetrieb" as const,
+  }),
+);
+
 vi.mock("$lib/server/domain/transactions.js", () => ({
   getTransactionDetail: getTransactionDetailMock,
   checkFestschreibungGate: checkFestschreibungGateMock,
+  resolveKategorieByName: resolveKategorieByNameMock,
 }));
 
 // load() also fetches kategorie options for the detail fields picker.
@@ -283,6 +295,27 @@ describe("/app/einnahmen/[id] actions", () => {
     expect(checkFestschreibungGateMock).toHaveBeenCalled();
     expect(updateCalls.length).toBe(1);
     expect(updateCalls[0]!.set!.bezeichnung).toBe("Spende bar (korr.)");
+  });
+
+  it("?/save re-derives the Sphäre from the Kategorie server-side, ignoring a tampered client sphere (§4.5)", async () => {
+    const r = await runSave(
+      makeSaveEvent(FREE.id, {
+        bezeichnung: "Honorar Workshop",
+        betragCents: "12000",
+        kategorieNameSnapshot: "Honorar",
+        // A tampered/stale client sphere that must NOT be persisted.
+        sphereSnapshot: "wirtschaftlich",
+      }),
+    );
+    expect(r.fail).toBeUndefined();
+    expect(resolveKategorieByNameMock).toHaveBeenCalledWith(
+      "income",
+      "Honorar",
+    );
+    // The persisted sphere is the RESOLVED one ("zweckbetrieb"), NOT the
+    // tampered body value ("wirtschaftlich"); name comes from the resolver too.
+    expect(updateCalls[0]!.set!.sphereSnapshot).toBe("zweckbetrieb");
+    expect(updateCalls[0]!.set!.kategorieNameSnapshot).toBe("Honorar");
   });
 
   it("?/save is festschreibung-gated (gate fail → fail(status), no update)", async () => {
