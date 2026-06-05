@@ -376,7 +376,12 @@
 			</div>
 		{/if}
 
-		<!-- ── Admin "Schon bezahlt?" reveal (member/extern only) ─────────────── -->
+		<!-- ── Admin "Schon bezahlt?" reveal (member/extern only) ───────────────
+		     Role gate (§7.2 admin-only): this toggle (and the Verein auto-pay
+		     panel) need no client-side isAdmin gate — `/app/*` is admin-only BY
+		     CONVENTION (resolveSession deletes the session for any non-admin, so
+		     only admins ever reach this form), and ?/create re-asserts auth before
+		     the markExpenseErstattet / Verein auto-pay branches. -->
 		{#if bezahltVonKind !== 'verein'}
 			<div class="mt-1 rounded-md border border-border bg-muted/30 px-3 py-2">
 				<label class="flex items-center gap-2 text-sm font-medium text-foreground">

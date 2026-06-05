@@ -427,6 +427,14 @@ export const actions = {
       });
 
       // ── Payment path branch (review-amendment matrix) ───────────────────
+      // Role gate (§7.2 admin-only): the Verein auto-pay + "Schon bezahlt?"
+      // Erstattung paths below are reachable only by an admin. `/app/*` is
+      // admin-only BY CONVENTION — `resolveSession` (auth/index.ts) re-checks the
+      // ADMIN_EMAILS allowlist on every request and DELETES the session +
+      // returns null for any non-admin, and hooks.server.ts redirects a null
+      // session away from `/app`. So a non-admin can never hold a `locals.session`
+      // here; the `if (!user) return 401` at the top of the action is the
+      // effective admin gate. No extra per-branch role check is needed.
       if (bezahltVonKind === "verein") {
         // Verein-paid → mark paid immediately, NO member mail. The cash-out
         // date IS the Abfluss date. Zahlungsart is optional (positional helper).
