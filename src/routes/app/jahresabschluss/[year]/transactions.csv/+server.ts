@@ -11,22 +11,10 @@
 import { error } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types.js";
 import { listTransactions } from "$lib/server/domain/transactions.js";
-
-function csvCell(value: string | number | null | undefined): string {
-  if (value === null || value === undefined) return "";
-  const s = String(value);
-  if (/[;"\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
+import { BOM, csvCell, formatCents } from "$lib/server/export/csv-util.js";
 
 function csvRow(cells: Array<string | number | null | undefined>): string {
   return cells.map(csvCell).join(";");
-}
-
-/** Format integer cents as German-locale "12,34" string. */
-function formatCents(cents: number): string {
-  const euros = (cents / 100).toFixed(2);
-  return euros.replace(".", ",");
 }
 
 const KIND_LABEL: Record<string, string> = {
@@ -57,7 +45,7 @@ export const GET: RequestHandler = async ({ params }) => {
 
   // BOM for Excel DE-locale auto-detect
   lines.push(
-    "﻿" +
+    BOM +
       csvRow([
         "Datum",
         "Buchung-Nr",
