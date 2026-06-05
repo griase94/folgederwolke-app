@@ -107,7 +107,11 @@ test.describe("@phase-2 prod-bug-regressions — old ?/default returns 4xx", () 
 });
 
 // ---------------------------------------------------------------------------
-// Bug B — /app/transactions/neu retired (Phase 8 T6).
-// The constraint regression is now tested via the per-tab create routes
-// (ausgaben/neu, einnahmen/neu, spenden/neu). This smoke check is removed.
+// Bug B — /app/transactions/neu retired (Phase 8 T6); this e2e smoke check is
+// removed. NOTE: the per-tab create actions (ausgaben/neu, einnahmen/neu,
+// spenden/neu) have "no 500" coverage only via FULLY-MOCKED unit tests
+// (e.g. einnahmen-create.server.test.ts) — those do NOT hit the DB, so the
+// real `expenses_business_id_format_ck` constraint path is NOT exercised by
+// any current automated test. If that constraint regresses, it would surface
+// in manual/integration testing, not here.
 // ---------------------------------------------------------------------------

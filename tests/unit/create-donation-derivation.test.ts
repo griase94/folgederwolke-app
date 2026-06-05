@@ -17,7 +17,9 @@ import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getDb } from "$lib/server/db/index.js";
 import { donations } from "$lib/server/db/schema/donations.js";
 import { users } from "$lib/server/db/schema/users.js";
-import { eq } from "drizzle-orm";
+import { auditLog } from "$lib/server/db/schema/audit_log.js";
+import { registerHandlers } from "$lib/server/events/index.js";
+import { and, eq } from "drizzle-orm";
 
 const DATABASE_URL = process.env["DATABASE_URL"] ?? "";
 const DIRECT_DATABASE_URL = process.env["DIRECT_DATABASE_URL"] ?? "";
@@ -93,6 +95,60 @@ describe.skipIf(!dbConfigured)(
       expect(row.wertermittlungMethode).toBe("marktpreis");
       expect(row.zustandBeschreibung).toBe("Beamer Epson, gebraucht");
       expect(row.betriebsvermoegen).toBe(true);
+    });
+  },
+);
+
+// Phase 8 T6 regression guard: createDonation must write EXACTLY ONE
+// `donation.created` audit row. Before T6 a parallel `spende.created`
+// handler also wrote a `donation`/`create` audit row off the (now-deleted)
+// transactions/neu route — this test fails if a second audit writer ever
+// re-appears (or if the sole donation.created handler is dropped).
+//
+// The audit handlers are registered on app startup via hooks.server.ts; in
+// unit tests we register them explicitly so the emitted event writes its row.
+describe.skipIf(!dbConfigured)(
+  "createDonation: emits exactly ONE donation.created audit row",
+  () => {
+    let AUDIT_ACTOR = "";
+
+    beforeAll(async () => {
+      registerHandlers();
+      const [u] = await getDb()
+        .insert(users)
+        .values({
+          email: "donation-audit-test@example.com",
+          emailCanonical: "donation-audit-test@example.com",
+          name: "Donation Audit Test",
+        })
+        .returning({ id: users.id });
+      if (!u) throw new Error("failed to seed audit actor user");
+      AUDIT_ACTOR = u.id;
+    });
+
+    it("writes exactly one donation/create audit_log row for the new donation", async () => {
+      const businessId = await allocateBusinessId("S", 2026);
+      const { id } = await createDonation({
+        betragCents: 12345,
+        spendeKind: "geldspende",
+        zweckbindungKind: "zweckfrei",
+        spenderName: "Audit Spender",
+        actorUserId: AUDIT_ACTOR,
+        businessId,
+      });
+
+      const rows = await getDb()
+        .select({ id: auditLog.id })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.entityKind, "donation"),
+            eq(auditLog.entityId, id),
+            eq(auditLog.action, "create"),
+          ),
+        );
+
+      expect(rows.length).toBe(1);
     });
   },
 );

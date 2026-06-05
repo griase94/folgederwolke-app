@@ -59,8 +59,11 @@
 		festgeschriebenBis = null,
 	}: CashflowOverviewSectionProps = $props();
 
-	// Phase 8 T6: /app/transactions retired → cashflow cards now link to /app/ausgaben with year filter.
-	const transactionsBase = $derived(`/app/ausgaben?year=${cashflow.year}`);
+	// Phase 8 T6: /app/transactions retired → cashflow cards link to the
+	// per-tab list routes (the old single base + dead `&kind=` suffix sent the
+	// Einnahmen card to the AUSGABEN list since `kind` isn't a parsed param).
+	const einnahmenBase = $derived(`/app/einnahmen?year=${cashflow.year}`);
+	const ausgabenBase = $derived(`/app/ausgaben?year=${cashflow.year}`);
 
 	const saldoTone = $derived<'success' | 'danger' | 'default'>(
 		cashflow.saldoCents > 0 ? 'success' : cashflow.saldoCents < 0 ? 'danger' : 'default',
@@ -141,7 +144,7 @@
 				sparklineData={einnahmenSparkData}
 				lyValueInCents={cashflow.einnahmenLyYtdCents}
 				tone="income"
-				href={`${transactionsBase}&kind=einnahmen`}
+				href={einnahmenBase}
 			/>
 			<!-- C3-3: per-sphere subtotals beneath the headline card -->
 			<div class="grid grid-cols-4 gap-1" role="list" aria-label="Einnahmen nach Sphäre">
@@ -170,7 +173,7 @@
 				sparklineData={ausgabenSparkData}
 				lyValueInCents={cashflow.ausgabenLyYtdCents}
 				tone="expense"
-				href={`${transactionsBase}&kind=ausgaben`}
+				href={ausgabenBase}
 			/>
 			<div class="grid grid-cols-4 gap-1" role="list" aria-label="Ausgaben nach Sphäre">
 				{#each SPHERE_ORDER as sphere (sphere)}
@@ -196,7 +199,7 @@
 	<div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
 		<!-- eslint-disable svelte/no-navigation-without-resolve -->
 		<a
-			href={transactionsBase}
+			href={ausgabenBase}
 			data-testid="link-chip"
 			aria-label={`Saldo ${cashflow.year}`}
 			class="group flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"

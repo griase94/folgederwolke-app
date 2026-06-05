@@ -292,9 +292,13 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
         input.missingBelegCount === 1 ? "" : "en"
       } ohne Beleg-Datei. Festschreibung weiterhin möglich, aber Belege später nachreichen.`,
       // Phase 8 T6: /app/transactions retired → /app/ausgaben with belegFehlt=true.
-      // Delta: belegFehlt = isNull(belegFileId) AND isNull(belegVerzichtGrund),
-      // which EXCLUDES documented Beleg-Verzicht rows. The EÜR "ohne Beleg"
-      // count may therefore be higher than the rows shown in this filter.
+      // The filtered list can show FEWER rows than this EÜR count, for two reasons:
+      //   1. belegFehlt = isNull(belegFileId) AND isNull(belegVerzichtGrund), so it
+      //      EXCLUDES documented Beleg-Verzicht rows (this count includes them).
+      //   2. Column divergence: this EÜR count queries the LEGACY Drive column
+      //      `beleg_drive_file_id IS NULL` (see eur/load.ts), whereas belegFehlt
+      //      checks the NEW `beleg_file_id IS NULL`. A row with a Drive file but no
+      //      new-system file is counted here but does NOT appear in the filtered list.
       fixHref: `/app/ausgaben?year=${input.year}&belegFehlt=true`,
     });
   } else {

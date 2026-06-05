@@ -10,10 +10,11 @@
  * This file is the iPhone 12 surface area:
  *  - PM-003: FAB → bottom sheet → tap "Neue Einnahme" → lands on the form
  *            with the Einnahme tab pre-selected (aria-pressed="true").
- *  - PM-008: at 390x844 (iPhone 12 logical width), the page does not
- *            horizontally overflow and all 4 type tabs are reachable
- *            via the chip strip's overflow-x scroll.
- *  - PM-009 (mobile half): TransactionsList renders the card variant,
+ *  - PM-008: at 390x844 (iPhone 12 logical width), /app/ausgaben does not
+ *            horizontally overflow. (Phase 8 T6: the merged-list type-tab
+ *            reachability check was dropped — the three list surfaces are
+ *            now separate per-tab routes, not tabs on one page.)
+ *  - PM-009 (mobile half): the Ausgaben list renders the card variant,
  *            not the table.
  *  - Safe-area-inset: the bottom nav uses the documented .nav-safe-bottom
  *            utility (or equivalent env() padding).
@@ -104,7 +105,8 @@ test.describe("@phase-7 C7 mobile-polish (iPhone 12)", () => {
 
     await page.getByRole("menuitem", { name: /Neue Ausgabe/i }).click();
 
-    await expect(page).toHaveURL(/\/app\/transactions\/neu\?kind=ausgabe/);
+    // Phase 8 T6: FAB repointed /app/transactions/neu?kind=ausgabe → /app/ausgaben/neu.
+    await expect(page).toHaveURL(/\/app\/ausgaben\/neu/);
   });
 
   // ---------------------------------------------------------------------------
