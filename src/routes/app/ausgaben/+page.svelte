@@ -12,13 +12,109 @@
 	import TransactionListScaffold from '$lib/components/admin/transactions/TransactionListScaffold.svelte';
 	import AusgabenKpi from '$lib/components/admin/transactions/ausgaben/AusgabenKpi.svelte';
 	import { ausgabenColumns } from '$lib/components/admin/transactions/ausgaben/columns.js';
+	import BulkActionsBar from '$lib/components/admin/transactions/ausgaben/BulkActionsBar.svelte';
+	import SepaCopyModal from '$lib/components/admin/transactions/ausgaben/SepaCopyModal.svelte';
+	import PostSepaMarkErstattetModal from '$lib/components/admin/transactions/ausgaben/PostSepaMarkErstattetModal.svelte';
 	import Money from '$lib/components/ui/money/money.svelte';
 	import type { Sphere } from '$lib/domain/sphere.js';
 	import { SPHERE_LABELS } from '$lib/domain/sphere.js';
 	import type { AusgabenRow } from '$lib/server/domain/transactions.js';
+	import { deserialize } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
+	import { toast } from 'svelte-sonner';
+	import type { ActionResult } from '@sveltejs/kit';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
+
+	// ── Bulk select + Als-bezahlt (Task 3) ────────────────────────────────────
+	// The bulk pool is `approvedPending` (member/extern rows awaiting Erstattung;
+	// Verein-direct rows are created already-erstattet and never appear). Bulk
+	// Als-bezahlt POSTs `?/bulk-mark-erstattet` (one markExpenseErstattet per row,
+	// each fires the SEPA-payout confirmation mail) and surfaces a PER-ROW summary
+	// toast ("9 erstattet, 1 festgeschrieben", spec §7.1).
+	let selectedIds = $state<string[]>([]);
+
+	type RowStatus = 'erstattet' | 'bereits-erstattet' | 'festgeschrieben' | 'fehler';
+
+	function toggleSelect(id: string) {
+		selectedIds = selectedIds.includes(id)
+			? selectedIds.filter((x) => x !== id)
+			: [...selectedIds, id];
+	}
+
+	/** Render the per-row summary as a single German toast (§7.1). */
+	function summarize(results: { status: RowStatus }[]) {
+		const n = (s: RowStatus) => results.filter((r) => r.status === s).length;
+		const erstattet = n('erstattet');
+		const bereits = n('bereits-erstattet');
+		const festgeschrieben = n('festgeschrieben');
+		const fehler = n('fehler');
+		const parts: string[] = [];
+		if (erstattet > 0) parts.push(`${erstattet} erstattet`);
+		if (bereits > 0) parts.push(`${bereits} bereits erstattet`);
+		if (festgeschrieben > 0) parts.push(`${festgeschrieben} festgeschrieben`);
+		if (fehler > 0) parts.push(`${fehler} fehlgeschlagen`);
+		const msg = parts.join(', ') || 'Keine Auslagen verarbeitet';
+		if (festgeschrieben > 0 || fehler > 0) toast.warning(msg);
+		else toast.success(msg);
+	}
+
+	async function postBulk(action: string, ids: string[], chosenDate: string, zahlungsartId: string) {
+		const fd = new FormData();
+		fd.set('expenseIds', ids.join(','));
+		fd.set('chosenDate', chosenDate);
+		fd.set('zahlungsartId', zahlungsartId);
+		const res = await fetch(action, { method: 'POST', body: fd });
+		const result = deserialize(await res.text()) as ActionResult;
+		if (result.type === 'success' && result.data) {
+			const data = result.data as { results?: { status: RowStatus }[] };
+			if (data.results) summarize(data.results);
+			selectedIds = [];
+			await invalidateAll();
+		} else if (result.type === 'failure') {
+			const err = (result.data as { error?: string } | undefined)?.error;
+			toast.error(err ?? 'Fehler beim Markieren');
+		} else {
+			toast.error('Fehler beim Markieren');
+		}
+	}
+
+	function handleBulkMarkErstattet(ids: string[], chosenDate: string, zahlungsartId: string) {
+		void postBulk('?/bulk-mark-erstattet', ids, chosenDate, zahlungsartId);
+	}
+
+	// ── SEPA modals ────────────────────────────────────────────────────────────
+	let sepaModalOpen = $state(false);
+	let postSepaModalOpen = $state(false);
+	let sepaExpenseIds = $state<string[]>([]);
+	let sepaTotalCents = $state(0);
+
+	const sepaExpenses = $derived(
+		sepaExpenseIds.length > 0
+			? data.approvedPending.filter((e) => sepaExpenseIds.includes(e.id))
+			: data.approvedPending,
+	);
+
+	function openSepaModal(ids: string[]) {
+		const approvedIds = new Set(data.approvedPending.map((e) => e.id));
+		sepaExpenseIds = ids.filter((id) => approvedIds.has(id));
+		sepaModalOpen = true;
+	}
+
+	function onSepaXmlCopied(ids: string[], totalCents: number) {
+		sepaModalOpen = false;
+		sepaExpenseIds = ids;
+		sepaTotalCents = totalCents;
+		postSepaModalOpen = true;
+	}
+
+	async function onPostSepaSuccess(count: number) {
+		postSepaModalOpen = false;
+		selectedIds = [];
+		await invalidateAll();
+		toast.success(`${count} ${count === 1 ? 'Auslage' : 'Auslagen'} als erstattet markiert`);
+	}
 
 	// ── Sphäre LEFT color-rule (§13) ──────────────────────────────────────────
 	// A thin vertical tone bar keyed on the row's sphere — NOT the filled
@@ -143,6 +239,17 @@
 	<span aria-hidden="true" class="text-muted-foreground">›</span>
 {/snippet}
 
+<!-- ── Bulk action bar (rendered by the scaffold above the list) ───────────── -->
+{#snippet bulkBar()}
+	<BulkActionsBar
+		{selectedIds}
+		zahlungsarten={data.zahlungsarten}
+		onMarkErstattet={handleBulkMarkErstattet}
+		onSepaXml={openSepaModal}
+		onClear={() => (selectedIds = [])}
+	/>
+{/snippet}
+
 <div class="container mx-auto max-w-6xl px-4 py-8 sm:px-6">
 	<TransactionListScaffold
 		tab="ausgaben"
@@ -157,8 +264,26 @@
 		memberOptions={data.memberOptions}
 		{columns}
 		{kpi}
+		bulk={{ selectedIds, onToggle: toggleSelect, bar: bulkBar }}
 		detailHrefBase="/app/ausgaben"
 		newLabel="Neue Ausgabe"
 		newHref="/app/ausgaben/neu"
 	/>
 </div>
+
+<!-- ── SEPA modals (bulk payout flow) ──────────────────────────────────────── -->
+<SepaCopyModal
+	open={sepaModalOpen}
+	expenses={sepaExpenses}
+	onclose={() => (sepaModalOpen = false)}
+	oncopied={onSepaXmlCopied}
+/>
+
+<PostSepaMarkErstattetModal
+	open={postSepaModalOpen}
+	expenseIds={sepaExpenseIds}
+	totalCents={sepaTotalCents}
+	zahlungsarten={data.zahlungsarten}
+	onclose={() => (postSepaModalOpen = false)}
+	onsuccess={onPostSepaSuccess}
+/>
