@@ -27,10 +27,13 @@ import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { donations } from "$lib/server/db/schema/donations.js";
-import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { members } from "$lib/server/db/schema/members.js";
-import { projects } from "$lib/server/db/schema/projects.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
+import {
+  createDonation,
+  resolveKategorieByName,
+} from "$lib/server/domain/transactions.js";
+import { deriveDonationKategorieName } from "$lib/domain/spenden-kategorie.js";
 import { bus } from "$lib/server/events/index.js";
 import { env } from "$lib/server/env.js";
 import { berlinYear } from "$lib/domain/year.js";
@@ -125,20 +128,31 @@ export const spendeInputSchema = z
       .max(254)
       .optional()
       .or(z.literal("")),
-    /** Sachspende: required description + valuation. */
-    sache_beschreibung: z
+    /**
+     * Sachspende §4.3 Wertermittlung (real columns — NOT the legacy "Sache:"
+     * string packed into zweckbindung_text). Both required when sachspende
+     * (enforced in the superRefine + the donations_sachspende_wertermittlung_ck
+     * CHECK). The Kategorie is DERIVED server-side (no UI kategorie_id), so the
+     * pre-Phase-1 `kategorie_id` field is gone.
+     */
+    wertermittlung_methode: z
+      .enum(["marktpreis", "kaufbeleg", "schaetzung", "buchwert"])
+      .optional(),
+    zustand_beschreibung: z
       .string()
-      .max(500, "Beschreibung zu lang")
+      .max(2000, "Beschreibung zu lang")
       .optional()
       .or(z.literal("")),
-    sache_wertermittlung: z
-      .enum(["verkehrswert", "selbstermittelter_wert"])
-      .optional(),
+    /** Optional Sachspende Herkunftsbeleg (Kaufbeleg/Foto) FK into `files`. */
+    herkunftsbeleg_file_id: z.string().uuid().optional().or(z.literal("")),
+    /** Optional main Beleg (Geldspende Kontoauszug, §4.3) FK into `files`. */
+    beleg_file_id: z.string().uuid().optional().or(z.literal("")),
+    /** SPEC-02: Sachspende aus Betriebsvermögen flag (default Privatvermögen). */
+    betriebsvermoegen: z.coerce.boolean().optional(),
     zweckbindung_kind: z
       .enum(["zweckfrei", "zweckgebunden"])
       .default("zweckfrei"),
     zweckbindung_text: z.string().max(500).optional().or(z.literal("")),
-    kategorie_id: z.string().uuid("Kategorie wählen"),
     project_id: z.string().uuid().optional().or(z.literal("")),
   })
   .superRefine((val, ctx) => {
@@ -165,18 +179,22 @@ export const spendeInputSchema = z
       }
     }
     if (val.spende_kind === "sachspende") {
-      if (!val.sache_beschreibung || val.sache_beschreibung.trim().length < 3) {
+      if (
+        !val.zustand_beschreibung ||
+        val.zustand_beschreibung.trim().length < 3
+      ) {
         ctx.addIssue({
           code: "custom",
-          path: ["sache_beschreibung"],
-          message: "Beschreibung der Sache ist Pflichtfeld",
+          path: ["zustand_beschreibung"],
+          message:
+            "Beschreibung des Gegenstands (Art, Zustand) ist Pflichtfeld",
         });
       }
-      if (!val.sache_wertermittlung) {
+      if (!val.wertermittlung_methode) {
         ctx.addIssue({
           code: "custom",
-          path: ["sache_wertermittlung"],
-          message: "Wertermittlung ist Pflichtfeld",
+          path: ["wertermittlung_methode"],
+          message: "Wertermittlungsmethode ist Pflichtfeld",
         });
       }
     }
@@ -267,37 +285,10 @@ export async function createSpende(
   }
   const d = v.data;
 
-  // Resolve kategorie name + sphere snapshot.
+  // Pre-resolve Spender display info if member. The snapshot survives a later
+  // member rename (BMF receipt requirement). For an external Spender the
+  // validated name/adresse are used as-is.
   const db = getDb();
-  const katRows = await db
-    .select({ name: kategorien.name, sphere: kategorien.sphere })
-    .from(kategorien)
-    .where(eq(kategorien.id, d.kategorie_id))
-    .limit(1);
-  const kat = katRows[0];
-  if (!kat) {
-    return {
-      ok: false,
-      status: 422,
-      errors: { kategorie_id: ["Kategorie nicht gefunden"] },
-      values: raw,
-    };
-  }
-
-  // Allow Project to override sphere (ADR-0008). Lookup if set.
-  let sphere = kat.sphere;
-  let projectId: string | null = null;
-  if (d.project_id && d.project_id.length > 0) {
-    const pj = await db
-      .select({ sphereDefault: projects.sphereDefault })
-      .from(projects)
-      .where(eq(projects.id, d.project_id))
-      .limit(1);
-    if (pj[0]?.sphereDefault) sphere = pj[0].sphereDefault;
-    projectId = d.project_id;
-  }
-
-  // Pre-resolve Spender display info if member.
   let memberId: string | null = null;
   let spenderName = d.spender_name?.trim() || null;
   let spenderAdresse = d.spender_adresse?.trim() || null;
@@ -323,71 +314,67 @@ export async function createSpende(
       };
     }
     memberId = m[0].id;
-    // Snapshot for receipt — survives later member rename.
     spenderName = `${m[0].vorname} ${m[0].nachname}`.trim();
     spenderAdresse = m[0].adresse ?? null;
     spenderEmail = m[0].email ?? null;
   }
 
-  // Sachspende: include description in zweckbindung_text-style note so the
-  // PDF generator has a single source for "Beschreibung der Sache".
-  const sacheNote =
-    d.spende_kind === "sachspende" && d.sache_beschreibung
-      ? `Sache: ${d.sache_beschreibung.trim()} (Wert: ${
-          d.sache_wertermittlung === "verkehrswert"
-            ? "Verkehrswert"
-            : "selbstermittelt"
-        })`
-      : null;
-
   const zweckText =
     d.zweckbindung_kind === "zweckgebunden"
       ? d.zweckbindung_text?.trim() || null
       : null;
+  const projectId =
+    d.project_id && d.project_id.length > 0 ? d.project_id : null;
+
+  // Sachspende §4.3 Wertermittlung → the real columns (NOT the legacy "Sache:"
+  // string). createDonation persists these as-passed, satisfying the
+  // donations_sachspende_wertermittlung_ck CHECK.
+  const isSach = d.spende_kind === "sachspende";
+  const wertermittlungMethode = isSach
+    ? (d.wertermittlung_methode ?? null)
+    : null;
+  const zustandBeschreibung = isSach
+    ? d.zustand_beschreibung?.trim() || null
+    : null;
+  const herkunftsbelegFileId =
+    isSach && d.herkunftsbeleg_file_id && d.herkunftsbeleg_file_id.length > 0
+      ? d.herkunftsbeleg_file_id
+      : null;
+  const belegFileId =
+    d.beleg_file_id && d.beleg_file_id.length > 0 ? d.beleg_file_id : null;
 
   // Allocate business_id 'S-{YYYY}-{NNN}' (Spende prefix per business-id.ts).
   const yearForId = berlinYear(new Date(d.zugewendet_am));
   const businessId = await allocateBusinessId("S", yearForId);
 
-  const inserted = await db
-    .insert(donations)
-    .values({
-      businessId,
-      source: "app",
-      zugewendetAm: d.zugewendet_am,
-      betragCents: BigInt(d.betragCents),
-      currency: d.currency ?? "EUR",
-      memberId,
-      spenderName,
-      spenderAdresse,
-      spenderEmail,
-      spendeKind: d.spende_kind,
-      zweckbindungKind: d.zweckbindung_kind,
-      zweckbindungText: sacheNote
-        ? zweckText
-          ? `${zweckText} | ${sacheNote}`
-          : sacheNote
-        : zweckText,
-      kategorieId: d.kategorie_id,
-      kategorieNameSnapshot: kat.name,
-      sphereSnapshot: sphere,
-      projectId,
-      createdByUserId: actorUserId,
-    })
-    .returning({ id: donations.id });
-
-  const donationId = inserted[0]?.id;
-  if (!donationId) {
-    return { ok: false, status: 500, error: "Insert lieferte keine ID" };
-  }
-
-  await bus.emit("spende.created", {
-    donationId,
-    businessId,
-    actorUserId,
+  // Delegate the insert to createDonation (Phase 1): it DERIVES kategorie
+  // name+id + sphere='ideeller' from (spendeKind, zweckbindungKind) — we never
+  // pass a kategorie_id, and the ADR-0008 project sphere-override is NOT applied
+  // to donations (§4.5: donation sphere is always ideeller). createDonation
+  // fires the single append-only audit event donation.created (ADR-0004) — we
+  // must NOT emit a parallel spende.created here (no duplicate audit rows).
+  const { id: donationId } = await createDonation({
     betragCents: d.betragCents,
-    spendeKind: d.spende_kind,
+    currency: d.currency ?? "EUR",
+    zugewendetAm: d.zugewendet_am,
     memberId,
+    spenderName,
+    spenderAdresse,
+    spenderEmail,
+    spendeKind: d.spende_kind,
+    zweckbindungKind: d.zweckbindung_kind,
+    zweckbindungText: zweckText,
+    wertermittlungMethode,
+    zustandBeschreibung,
+    herkunftsbelegFileId,
+    belegFileId,
+    betriebsvermoegen: isSach ? (d.betriebsvermoegen ?? false) : false,
+    projectId,
+    // createDonation types actorUserId as string, but created_by_user_id is a
+    // nullable FK — preserve the legacy null-actor path (createSpende accepts a
+    // null actor) rather than forcing an FK-violating empty string.
+    actorUserId: actorUserId as string,
+    businessId,
   });
 
   return { ok: true, donationId, businessId };
@@ -442,21 +429,80 @@ export async function editSpende(
     };
   }
 
+  // Resolve the Spender snapshot (member overrides the free-text fields).
+  let memberId: string | null = null;
+  let spenderName = d.spender_name?.trim() || null;
+  let spenderAdresse = d.spender_adresse?.trim() || null;
+  let spenderEmail = d.spender_email?.trim() || null;
+  if (d.member_id && d.member_id.length > 0) {
+    const m = await db
+      .select({
+        id: members.id,
+        vorname: members.vorname,
+        nachname: members.nachname,
+        email: members.email,
+        adresse: members.adresse,
+      })
+      .from(members)
+      .where(eq(members.id, d.member_id))
+      .limit(1);
+    if (!m[0]) {
+      return {
+        ok: false,
+        status: 422,
+        errors: { member_id: ["Mitglied nicht gefunden"] },
+        values: raw,
+      };
+    }
+    memberId = m[0].id;
+    spenderName = `${m[0].vorname} ${m[0].nachname}`.trim();
+    spenderAdresse = m[0].adresse ?? null;
+    spenderEmail = m[0].email ?? null;
+  }
+
+  // Re-derive the Kategorie from the (possibly changed) Spendenart/Zweckbindung
+  // using the SAME seeded lookup createDonation uses — write BOTH kategorie_id
+  // AND kategorie_name_snapshot. NEVER touch sphere_snapshot: Spenden are always
+  // ideeller (§4.5), fixed at create + immutable on edit.
+  const kategorieName = deriveDonationKategorieName(
+    d.spende_kind,
+    d.zweckbindung_kind,
+  );
+  const kat = await resolveKategorieByName("income", kategorieName);
+
+  const isSach = d.spende_kind === "sachspende";
+
   await db
     .update(donations)
     .set({
       zugewendetAm: d.zugewendet_am,
       betragCents: BigInt(d.betragCents),
       currency: d.currency ?? "EUR",
+      memberId,
       spendeKind: d.spende_kind,
-      spenderName: d.spender_name?.trim() || null,
-      spenderAdresse: d.spender_adresse?.trim() || null,
-      spenderEmail: d.spender_email?.trim() || null,
+      spenderName,
+      spenderAdresse,
+      spenderEmail,
       zweckbindungKind: d.zweckbindung_kind,
       zweckbindungText:
         d.zweckbindung_kind === "zweckgebunden"
           ? d.zweckbindung_text?.trim() || null
           : null,
+      kategorieId: kat.id,
+      kategorieNameSnapshot: kat.name,
+      // §4.3 Sachspende Wertermittlung — real columns; cleared on Geld/Aufwand.
+      wertermittlungMethode: isSach ? (d.wertermittlung_methode ?? null) : null,
+      zustandBeschreibung: isSach
+        ? d.zustand_beschreibung?.trim() || null
+        : null,
+      herkunftsbelegFileId:
+        isSach &&
+        d.herkunftsbeleg_file_id &&
+        d.herkunftsbeleg_file_id.length > 0
+          ? d.herkunftsbeleg_file_id
+          : null,
+      betriebsvermoegen: isSach ? (d.betriebsvermoegen ?? false) : false,
+      projectId: d.project_id && d.project_id.length > 0 ? d.project_id : null,
       updatedAt: new Date(),
     })
     .where(eq(donations.id, idVal));
@@ -604,12 +650,9 @@ export async function allocateBescheinigung(
 
   const betragCents = sp.betragCents;
   const betragInWortenStr = betragInWorten(betragCents);
+  // §4.3: read the real Sachspende column (NOT the legacy "Sache:" string).
   const sacheBeschreibung =
-    sp.spendeKind === "sachspende"
-      ? sp.zweckbindungText?.includes("Sache:")
-        ? (sp.zweckbindungText.split("Sache:")[1]?.trim() ?? null)
-        : sp.zweckbindungText
-      : null;
+    sp.spendeKind === "sachspende" ? (sp.zustandBeschreibung ?? null) : null;
 
   // BMF compliance: VZ / Satzungsfassung are quoted verbatim in the
   // Pflichttext block. Guard non-empty so we never emit "-" placeholders.
@@ -705,12 +748,9 @@ export function extractBmfPflichtfelder(
       "VEREIN_SATZUNG_FASSUNG fehlt — Bescheinigung nicht renderbar",
     );
   }
+  // §4.3: read the real Sachspende column (NOT the legacy "Sache:" string).
   const sacheBeschreibung =
-    sp.spendeKind === "sachspende"
-      ? sp.zweckbindungText?.includes("Sache:")
-        ? (sp.zweckbindungText.split("Sache:")[1]?.trim() ?? null)
-        : sp.zweckbindungText
-      : null;
+    sp.spendeKind === "sachspende" ? (sp.zustandBeschreibung ?? null) : null;
   return {
     vereinName: env.VEREIN_NAME,
     vereinSteuernummer: env.VEREIN_STEUERNUMMER,

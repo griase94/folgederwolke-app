@@ -71,6 +71,19 @@ vi.mock("$lib/server/domain/ausgaben-kpi.js", () => ({
   })),
 }));
 
+// Phase 6: the Spenden load now also calls the C3-owned listSpendenKpi (its own
+// module). Mock it so the spenden load is exercisable without a real DB.
+const listSpendenKpiMock = vi.fn(async (_year: unknown) => ({
+  totalCents: 0,
+  count: 0,
+  ohneBescheinigungCount: 0,
+  versandtCount: 0,
+}));
+
+vi.mock("$lib/server/domain/spenden-kpi.js", () => ({
+  listSpendenKpi: listSpendenKpiMock,
+}));
+
 const listKategorieOptionsMock = vi.fn(async (kind: "expense" | "income") => [
   {
     id: `kat-${kind}-1`,

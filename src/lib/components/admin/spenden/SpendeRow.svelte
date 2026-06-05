@@ -103,7 +103,7 @@
 			</Button>
 			<Button
 				size="sm"
-				href={`/app/transactions/${spende.id}/zuwendungsbestaetigung`}
+				href={`/app/spenden/${spende.id}/zuwendungsbestaetigung`}
 				disabled={!bescheinigungEnabled && !spende.bescheinigungNr}
 				data-testid="bescheinigung-btn"
 			>
