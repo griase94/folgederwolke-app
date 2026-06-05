@@ -194,4 +194,41 @@ describe.skipIf(!dbConfigured)("per-tab paginated queries", () => {
     expect(total).toBeGreaterThanOrEqual(1);
     expect(rows.some((r) => r.bescheinigungNr === "B-2024-901")).toBe(true);
   });
+
+  // ── kind discriminant (mobile-card contract) ───────────────────────────────
+  // TransactionCardMobile (the shared <md card the scaffold renders for every
+  // tab) reads `row.kind` to negate expense amounts (outflow minus sign) and to
+  // label the kind pill. The per-tab projections must therefore carry a `kind`
+  // discriminant — without it the mobile card shows expenses as positive/green
+  // with a blank pill. These assert each query stamps the right constant.
+  it("every per-tab row carries its `kind` discriminant (expense/income/donation)", async () => {
+    const noFilter = (tab: "ausgaben" | "einnahmen" | "spenden") =>
+      parseFilterState(tab, new URLSearchParams(""));
+
+    const aus = await listAusgabenPage({
+      state: noFilter("ausgaben"),
+      year: ALL_YEARS,
+      limit: 50,
+      offset: 0,
+    });
+    const ein = await listEinnahmenPage({
+      state: noFilter("einnahmen"),
+      year: ALL_YEARS,
+      limit: 50,
+      offset: 0,
+    });
+    const spe = await listSpendenPage({
+      state: noFilter("spenden"),
+      year: ALL_YEARS,
+      limit: 50,
+      offset: 0,
+    });
+
+    expect(aus.rows.length).toBeGreaterThan(0);
+    expect(ein.rows.length).toBeGreaterThan(0);
+    expect(spe.rows.length).toBeGreaterThan(0);
+    expect(aus.rows.every((r) => r.kind === "expense")).toBe(true);
+    expect(ein.rows.every((r) => r.kind === "income")).toBe(true);
+    expect(spe.rows.every((r) => r.kind === "donation")).toBe(true);
+  });
 });

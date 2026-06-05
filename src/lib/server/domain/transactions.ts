@@ -395,6 +395,14 @@ export interface PageOptions {
 /** Shared base columns every per-tab row projection includes. */
 interface BaseTxRow {
   id: string;
+  /**
+   * Per-row discriminant. The shared `TransactionCardMobile` (the <md card the
+   * scaffold renders for every tab) reads it to negate expense amounts (outflow
+   * minus sign) and label the kind pill — without it expenses render as
+   * positive/green with a blank pill. Stamped as a per-table constant by each
+   * `listXPage` map (no DB column; the table identity IS the kind).
+   */
+  kind: TransactionKind;
   businessId: string;
   bezeichnung: string;
   betragCents: number;
@@ -460,6 +468,7 @@ export async function listAusgabenPage(
   return {
     rows: rows.map((r) => ({
       id: r.id,
+      kind: "expense" as const,
       businessId: r.businessId,
       bezeichnung: r.bezeichnung,
       betragCents: Number(r.betragCents),
@@ -544,6 +553,7 @@ export async function listEinnahmenPage(
   return {
     rows: rows.map((r) => ({
       id: r.id,
+      kind: "income" as const,
       businessId: r.businessId,
       bezeichnung: r.bezeichnung,
       betragCents: Number(r.betragCents),
@@ -606,6 +616,7 @@ export async function listSpendenPage(
   return {
     rows: rows.map((r) => ({
       id: r.id,
+      kind: "donation" as const,
       businessId: r.businessId,
       // Spenden have no `bezeichnung` column — surface a human label like the
       // merged view does, falling back to the kategorie snapshot.
