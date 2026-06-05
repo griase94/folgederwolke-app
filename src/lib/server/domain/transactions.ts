@@ -16,6 +16,7 @@ import { getDb } from "$lib/server/db/index.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
 import { donations } from "$lib/server/db/schema/donations.js";
+import { files } from "$lib/server/db/schema/files.js";
 import { invoices } from "$lib/server/db/schema/invoices.js";
 import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
@@ -78,13 +79,38 @@ export interface TransactionDetail extends TransactionRow {
   externName: string | null;
   bezahltVonMemberId: string | null;
   belegDriveFileId: string | null;
+  /**
+   * Beleg metadata (all kinds). `belegFileId` is the FK into the normalized
+   * `files` table; `belegMimeType`/`belegOriginalName` are LEFT-JOINed off
+   * that row (`files.mime_type` / `files.original_filename`) — NOT the legacy
+   * `beleg_drive_file_id` / `beleg_original_name` text columns. All three are
+   * null when no Beleg is attached. The §11 BelegViewer (Phase 5) binds to
+   * `belegFileId`/`belegMimeType`/`belegOriginalName`.
+   */
+  belegFileId: string | null;
+  belegMimeType: string | null;
   belegOriginalName: string | null;
   approvedAt: string | null;
+  /**
+   * income only — the aus-Rechnung link: the linked Ausgangsrechnung's
+   * `business_id` via the correlated subquery `invoices.paid_by_income_id =
+   * income.id` (same source as the Phase-2 Einnahmen list projection). null
+   * for non-invoice-linked income. Phase 5's read-only "aus Rechnung FDW-…"
+   * detail context reads this off `detail` so it never imports `invoices`.
+   */
+  rechnungBusinessId: string | null;
   /** donation only */
   spenderName: string | null;
   spenderEmail: string | null;
+  spenderAdresse: string | null;
   bescheinigungNr: string | null;
   spendeKind: string | null;
+  zweckbindungKind: "zweckfrei" | "zweckgebunden" | null;
+  zweckbindungText: string | null;
+  wertermittlungMethode: string | null;
+  zustandBeschreibung: string | null;
+  herkunftsbelegFileId: string | null;
+  betriebsvermoegen: boolean | null;
   timeline: AuditTimelineEntry[];
 }
 
@@ -647,12 +673,24 @@ export async function getTransactionDetail(
       externName: r.externName ?? null,
       bezahltVonMemberId: r.bezahltVonMemberId ?? null,
       belegDriveFileId: r.belegDriveFileId ?? null,
-      belegOriginalName: r.belegOriginalName ?? null,
+      belegFileId: r.belegFileId ?? null,
+      // belegMimeType/belegOriginalName are filled from the shared `files`
+      // lookup below (sourced from files.mime_type / files.original_filename).
+      belegMimeType: null,
+      belegOriginalName: null,
       approvedAt: r.approvedAt?.toISOString() ?? null,
+      rechnungBusinessId: null,
       spenderName: null,
       spenderEmail: null,
+      spenderAdresse: null,
       bescheinigungNr: null,
       spendeKind: null,
+      zweckbindungKind: null,
+      zweckbindungText: null,
+      wertermittlungMethode: null,
+      zustandBeschreibung: null,
+      herkunftsbelegFileId: null,
+      betriebsvermoegen: null,
       timeline: [],
     };
   } else if (kind === "income") {
@@ -663,6 +701,16 @@ export async function getTransactionDetail(
       .limit(1);
     const r = rows[0];
     if (!r) return null;
+    // aus-Rechnung link: the linked Ausgangsrechnung's business_id via the same
+    // correlated source as the Phase-2 Einnahmen list (invoices.paid_by_income_id
+    // = income.id). `.orderBy(createdAt, id).limit(1)` resolves deterministically
+    // if multiple invoices ever point at one income row. NULL when unlinked.
+    const invRows = await db
+      .select({ rechnungBusinessId: invoices.businessId })
+      .from(invoices)
+      .where(eq(invoices.paidByIncomeId, r.id))
+      .orderBy(invoices.createdAt, invoices.id)
+      .limit(1);
     base = {
       id: r.id,
       kind: "income",
@@ -688,12 +736,22 @@ export async function getTransactionDetail(
       externName: null,
       bezahltVonMemberId: null,
       belegDriveFileId: r.belegDriveFileId ?? null,
-      belegOriginalName: r.belegOriginalName ?? null,
+      belegFileId: r.belegFileId ?? null,
+      belegMimeType: null,
+      belegOriginalName: null,
       approvedAt: null,
+      rechnungBusinessId: invRows[0]?.rechnungBusinessId ?? null,
       spenderName: null,
       spenderEmail: null,
+      spenderAdresse: null,
       bescheinigungNr: null,
       spendeKind: null,
+      zweckbindungKind: null,
+      zweckbindungText: null,
+      wertermittlungMethode: null,
+      zustandBeschreibung: null,
+      herkunftsbelegFileId: null,
+      betriebsvermoegen: null,
       timeline: [],
     };
   } else {
@@ -730,18 +788,49 @@ export async function getTransactionDetail(
       externEmail: r.spenderEmail ?? null,
       externName: r.spenderName ?? null,
       bezahltVonMemberId: r.memberId ?? null,
+      // donations have no legacy Drive Beleg column (newer Spenden model).
       belegDriveFileId: null,
+      belegFileId: r.belegFileId ?? null,
+      belegMimeType: null,
       belegOriginalName: null,
       approvedAt: null,
+      rechnungBusinessId: null,
       spenderName: r.spenderName ?? null,
       spenderEmail: r.spenderEmail ?? null,
+      spenderAdresse: r.spenderAdresse ?? null,
       bescheinigungNr: r.bescheinigungNr ?? null,
       spendeKind: r.spendeKind,
+      zweckbindungKind: r.zweckbindungKind,
+      zweckbindungText: r.zweckbindungText ?? null,
+      wertermittlungMethode: r.wertermittlungMethode ?? null,
+      zustandBeschreibung: r.zustandBeschreibung ?? null,
+      herkunftsbelegFileId: r.herkunftsbelegFileId ?? null,
+      betriebsvermoegen: r.betriebsvermoegen ?? null,
       timeline: [],
     };
   }
 
   if (!base) return null;
+
+  // Beleg metadata (all kinds): resolve mime_type / original_filename off the
+  // normalized `files` row when a Beleg FK is present. NOT the legacy
+  // beleg_drive_file_id / beleg_original_name text columns — the §11 viewer +
+  // Phases 5/6 read belegFileId/belegMimeType/belegOriginalName off `detail`.
+  if (base.belegFileId) {
+    const fileRows = await db
+      .select({
+        mimeType: files.mimeType,
+        originalFilename: files.originalFilename,
+      })
+      .from(files)
+      .where(eq(files.id, base.belegFileId))
+      .limit(1);
+    const f = fileRows[0];
+    if (f) {
+      base.belegMimeType = f.mimeType;
+      base.belegOriginalName = f.originalFilename;
+    }
+  }
 
   // Load audit_log timeline (reverse chrono)
   const entityKind =
