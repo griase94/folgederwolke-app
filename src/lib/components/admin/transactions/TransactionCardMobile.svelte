@@ -8,22 +8,35 @@
            bezahlt_von               (kind pill • status pill)
            Datum
 
-  Each card is a tap-target navigating to the detail page. We rely on the
-  same TransactionRow data shape — no new domain helpers required.
+  Each card is a tap-target navigating to the detail page.
 
-  TODO(per-tab mobile signals): this card is typed to the shared `TransactionRow`
-  and the scaffold bridges the per-tab row with a contained `as unknown as`
-  cast, so per-tab-only signals are LOST on mobile: the Einnahmen 🔗
-  `rechnungBusinessId` aus-Rechnung link, and the Spenden `spenderName` /
-  `bescheinigungNr` Bescheinigung state. Surfacing them needs the card to become
-  generic over `BaseTxRow` (like the desktop columns) or `TransactionRow` to
-  carry the union — a bigger retype deferred out of this shared-kit batch.
+  Per-tab scan signals (combined-review high): the card row is typed as a
+  `BaseTxRow` plus the OPTIONAL per-tab display fields, so a single-kind tab list
+  can surface its load-bearing signal on mobile — the Einnahmen aus-Rechnung
+  (`rechnungBusinessId`) link and the Spenden Bescheinigung state
+  (`bescheinigungNr` → "Nr. …" / "ohne Bescheinigung"). Fields absent on a given
+  tab's row are simply `undefined` and their block doesn't render.
 -->
 <script lang="ts">
-	import type { TransactionRow } from '$lib/server/domain/transactions.js';
+	import type { BaseTxRow } from '$lib/server/domain/transactions.js';
 	import { Money } from '$lib/components/ui/money/index.js';
 	import Lock from '@lucide/svelte/icons/lock';
+	import Link from '@lucide/svelte/icons/link';
 	import { statusPresentation } from '$lib/domain/transaction-status.js';
+
+	/**
+	 * The mobile card reads the shared base fields plus a tab's OPTIONAL display
+	 * columns. Each per-tab `listXPage` row (Ausgaben/Einnahmen/Spenden) is a
+	 * `BaseTxRow` subtype, so it is assignable here; missing fields are undefined.
+	 */
+	type CardRow = BaseTxRow & {
+		status?: string | null;
+		bezahltVonDisplay?: string | null;
+		rechnungsdatum?: string | null;
+		rechnungBusinessId?: string | null;
+		bescheinigungNr?: string | null;
+		spenderName?: string | null;
+	};
 
 	let {
 		row,
@@ -33,7 +46,7 @@
 		selectable = false,
 		showKindPill = true,
 	}: {
-		row: TransactionRow;
+		row: CardRow;
 		selected: boolean;
 		ontoggle: (id: string) => void;
 		detailHref?: string;
@@ -149,6 +162,33 @@
 					].join(' ')}
 				>
 					{statusPresentation(row.status).label}
+				</span>
+			{/if}
+
+			<!-- Einnahmen scan signal: the aus-Rechnung link the desktop 🔗 column
+			     shows; otherwise invisible on mobile. -->
+			{#if row.kind === 'income' && row.rechnungBusinessId}
+				<span
+					class="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-700"
+					data-testid="card-rechnung"
+				>
+					<Link class="size-3" aria-hidden="true" />
+					aus Rechnung {row.rechnungBusinessId}
+				</span>
+			{/if}
+
+			<!-- Spenden scan signal: the central Bescheinigung action state
+			     (issued B-number vs still ausstehend) — the donation tab's primary
+			     check-on-the-go. -->
+			{#if row.kind === 'donation'}
+				<span
+					class={[
+						'inline-flex items-center rounded-full px-2 py-0.5 font-medium',
+						row.bescheinigungNr ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700',
+					].join(' ')}
+					data-testid="card-bescheinigung"
+				>
+					{row.bescheinigungNr ? `Bescheinigung ${row.bescheinigungNr}` : 'ohne Bescheinigung'}
 				</span>
 			{/if}
 

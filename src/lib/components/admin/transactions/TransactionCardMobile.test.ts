@@ -17,7 +17,15 @@ import type { TransactionRow } from "$lib/server/domain/transactions.js";
 
 afterEach(() => cleanup());
 
-function makeRow(overrides: Partial<TransactionRow> = {}): TransactionRow {
+// The card accepts BaseTxRow + the optional per-tab display fields; extend the
+// base row with them so the per-tab scan-signal tests can set them.
+type TestRow = TransactionRow & {
+  rechnungBusinessId?: string | null;
+  bescheinigungNr?: string | null;
+  spenderName?: string | null;
+};
+
+function makeRow(overrides: Partial<TestRow> = {}): TestRow {
   return {
     id: "row-1",
     kind: "expense",
@@ -84,5 +92,54 @@ describe("TransactionCardMobile", () => {
     });
     await fireEvent.click(screen.getByLabelText("Auswählen"));
     expect(ontoggle).toHaveBeenCalledWith("row-1");
+  });
+
+  // ── Per-tab scan signals (combined-review high #3) ────────────────────────
+
+  it("Einnahmen card surfaces the aus-Rechnung link when linked", () => {
+    render(TransactionCardMobile, {
+      props: baseProps({
+        row: makeRow({
+          kind: "income",
+          rechnungBusinessId: "FDW-2026-007",
+        }),
+        showKindPill: false,
+      }),
+    });
+    const badge = screen.getByTestId("card-rechnung");
+    expect(badge.textContent).toContain("FDW-2026-007");
+  });
+
+  it("Einnahmen card omits the aus-Rechnung badge when not invoice-linked", () => {
+    render(TransactionCardMobile, {
+      props: baseProps({
+        row: makeRow({ kind: "income", rechnungBusinessId: null }),
+        showKindPill: false,
+      }),
+    });
+    expect(screen.queryByTestId("card-rechnung")).toBeNull();
+  });
+
+  it("Spenden card shows the issued Bescheinigung number", () => {
+    render(TransactionCardMobile, {
+      props: baseProps({
+        row: makeRow({ kind: "donation", bescheinigungNr: "B-2026-003" }),
+        showKindPill: false,
+      }),
+    });
+    const badge = screen.getByTestId("card-bescheinigung");
+    expect(badge.textContent).toContain("B-2026-003");
+  });
+
+  it("Spenden card shows 'ohne Bescheinigung' when none issued yet", () => {
+    render(TransactionCardMobile, {
+      props: baseProps({
+        row: makeRow({ kind: "donation", bescheinigungNr: null }),
+        showKindPill: false,
+      }),
+    });
+    expect(screen.getByTestId("card-bescheinigung").textContent).toContain(
+      "ohne Bescheinigung",
+    );
   });
 });

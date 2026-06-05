@@ -359,12 +359,12 @@
 		<!-- ── Mobile cards (<md) ────────────────────────────────────────────── -->
 		<div class="flex flex-col gap-2 md:hidden">
 			{#each rows as row (row.id)}
-				<!-- The legacy mobile card is typed to `TransactionRow`; the generic
-				     `Row` is a `BaseTxRow` subtype that carries `kind` + the fields
-				     the card reads (others are {#if}-guarded inside it), so bridge
-				     with one contained cast here rather than per-tab at every call. -->
+				<!-- The card row is typed `BaseTxRow & {optional per-tab fields}`, so the
+				     generic `Row` (a BaseTxRow subtype) passes directly — no cast — and
+				     the card can surface this tab's scan signal (Einnahmen aus-Rechnung
+				     / Spenden Bescheinigung) from the per-tab columns it carries. -->
 				<TransactionCardMobile
-					row={row as unknown as TxnRow}
+					{row}
 					selected={bulk ? bulk.selectedIds.includes(row.id) : false}
 					ontoggle={bulk ? bulk.onToggle : () => {}}
 					detailHref={`${detailHrefBase}/${row.id}`}
