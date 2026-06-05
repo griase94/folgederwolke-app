@@ -12,6 +12,16 @@
 		statusHint?: string;
 		/** Form action, e.g. "?/create". */
 		action: string;
+		/**
+		 * Form encoding. Defaults to `'multipart/form-data'` so file inputs (Beleg,
+		 * Sachspende Herkunftsbeleg) transmit their bytes — a urlencoded POST drops
+		 * them silently. Pass `'application/x-www-form-urlencoded'` for a file-free
+		 * form if ever needed.
+		 */
+		enctype?:
+			| 'multipart/form-data'
+			| 'application/x-www-form-urlencoded'
+			| 'text/plain';
 		/** Footer Speichern label reflecting the mode, e.g. "Ausgabe anlegen". */
 		submitLabel: string;
 		/** True while the action is in flight — disables Speichern + skips the guard. */
@@ -46,6 +56,7 @@
 		title,
 		statusHint,
 		action,
+		enctype = 'multipart/form-data',
 		submitLabel,
 		submitting,
 		dirty,
@@ -120,7 +131,7 @@
 	</header>
 
 	<!-- ── Scrollable body: per-tab fields ────────────────────────────────── -->
-	<form id="entry-form" method="POST" {action} class="flex min-h-0 flex-1 flex-col">
+	<form id="entry-form" method="POST" {action} {enctype} class="flex min-h-0 flex-1 flex-col">
 		<div data-slot="entry-body" class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
 			{@render fields()}
 		</div>

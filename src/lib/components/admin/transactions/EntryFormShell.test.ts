@@ -69,6 +69,26 @@ describe("EntryFormShell — shared contract", () => {
     expect(container.querySelector('[data-slot="entry-footer"]')).toBeTruthy();
   });
 
+  it("sets enctype=multipart/form-data on the form by default (file uploads transmit)", () => {
+    const { container } = render(EntryFormShell, { props: baseProps() });
+    const form = container.querySelector("form#entry-form") as HTMLFormElement;
+    expect(form).toBeTruthy();
+    // The browser reflects an unknown enctype to the urlencoded default, so we
+    // assert the attribute the component wrote rather than the form's enctype
+    // getter (which happy-dom may normalize).
+    expect(form.getAttribute("enctype")).toBe("multipart/form-data");
+  });
+
+  it("honors a custom enctype prop", () => {
+    const { container } = render(EntryFormShell, {
+      props: baseProps({ enctype: "application/x-www-form-urlencoded" }),
+    });
+    const form = container.querySelector("form#entry-form") as HTMLFormElement;
+    expect(form.getAttribute("enctype")).toBe(
+      "application/x-www-form-urlencoded",
+    );
+  });
+
   it("the Speichern button reflects submitLabel and is disabled until dirty", async () => {
     const { rerender } = render(EntryFormShell, {
       props: baseProps({ dirty: false }),

@@ -17,16 +17,12 @@
 	let submitting = $state(false);
 
 	onMount(() => {
-		// MITIGATION (review HIGH): the shared EntryFormShell <form> has no
-		// `enctype`, so the browser defaults to application/x-www-form-urlencoded
-		// and the optional Beleg file bytes never transmit (the server's
-		// `instanceof File && size>0` guard would be false). Force the rendered
-		// form to multipart so the Beleg actually uploads. The proper fix is an
-		// EntryFormShell `enctype` prop on the base (tracked separately).
+		// The shared EntryFormShell now defaults its <form> enctype to
+		// multipart/form-data, so the optional Beleg bytes transmit. This page
+		// only flips `submitting` on submit so the success redirect doesn't trip
+		// the dirty-guard.
 		const form = document.getElementById('entry-form');
 		if (form instanceof HTMLFormElement) {
-			form.enctype = 'multipart/form-data';
-			// Flip `submitting` on submit so the redirect doesn't trip the guard.
 			form.addEventListener('submit', () => {
 				submitting = true;
 			});

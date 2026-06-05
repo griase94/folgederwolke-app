@@ -6,10 +6,9 @@
 	 * The shell owns the sticky header/footer, the single Speichern button, and
 	 * the unsaved-changes guard (fires identically on × / backdrop / browser-back
 	 * while `dirty`). This page owns: the dirty flag, the submitting flag, the
-	 * onClose navigation back to the list, and — because the shell's `<form>` has
-	 * no `enctype` prop — setting `enctype="multipart/form-data"` on the shell
-	 * form element on mount so the Beleg file uploads correctly (the shell stays
-	 * read-only; we only set an attribute on its already-rendered form).
+	 * onClose navigation back to the list. The shell now owns the
+	 * `enctype="multipart/form-data"` (its `enctype` prop defaults to it) so the
+	 * Beleg file uploads correctly — this page only flips `submitting` on submit.
 	 */
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -43,13 +42,10 @@
 	}
 
 	onMount(() => {
-		// The shared EntryFormShell form has no enctype prop; set it on the
-		// already-rendered form so the Beleg file field transmits as multipart.
+		// Native submit → flip submitting so the shell disables Speichern + skips
+		// the dirty-guard for the form navigation. (Enctype is owned by the shell.)
 		const formEl = document.getElementById('entry-form') as HTMLFormElement | null;
 		if (formEl) {
-			formEl.enctype = 'multipart/form-data';
-			// Native submit → flip submitting so the shell disables Speichern + skips
-			// the dirty-guard for the form navigation.
 			formEl.addEventListener('submit', () => {
 				submitting = true;
 			});
