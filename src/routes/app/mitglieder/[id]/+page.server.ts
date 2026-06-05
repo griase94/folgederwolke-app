@@ -89,7 +89,7 @@ export const load: PageServerLoad = async ({ params }) => {
   const currentYear = berlinYear();
 
   // ── Org constants for mail preview ───────────────────────────────────────
-  const mailFrom = env.MAIL_FROM || "noreply@folgederwolke.de";
+  const mailFrom = env.MAIL_FROM;
 
   // ── Find open beitrag for current year (for reminder defaults) ───────────
   const currentYearBeitrag = beitragRows.find((b) => b.year === currentYear);
