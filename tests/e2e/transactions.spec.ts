@@ -6,6 +6,7 @@
  * mark-erstattet flows require fixture data and are tagged @phase-5-extended.
  */
 import { test, expect } from "@playwright/test";
+import { loginAs } from "./helpers/sign-in.js";
 
 test.describe("Transactions list @phase-5", () => {
   test.beforeEach(async ({ page }) => {
@@ -134,6 +135,7 @@ test.describe("White-label payer label @phase-1", () => {
   test("verein payer display uses the configured runtime name", async ({
     page,
   }) => {
+    await loginAs(page, "admin");
     await page.goto("/app/transactions/neu");
     // Default type is Ausgabe → bezahltVonKind defaults to 'verein'.
     await expect(page.getByTestId("bezahlt-von-kind")).toHaveValue("verein");
