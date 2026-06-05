@@ -290,7 +290,7 @@
 	function buildPayload(): string {
 		const bv =
 			bezahltVonKind === 'verein'
-				? { kind: 'verein' as const }
+				? { kind: 'verein' as const, display_name: page.data.vereinName }
 				: bezahltVonKind === 'member'
 					? {
 							kind: 'member' as const,
@@ -384,7 +384,7 @@
 		browser
 			? buildPayload()
 			: JSON.stringify({
-					bezahlt_von: { kind: 'verein' },
+					bezahlt_von: { kind: 'verein', display_name: page.data.vereinName },
 					bezeichnung: '',
 					betragCents: 0,
 					currency: 'EUR'
