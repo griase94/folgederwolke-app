@@ -35,7 +35,14 @@
 	// toast ("9 erstattet, 1 festgeschrieben", spec §7.1).
 	let selectedIds = $state<string[]>([]);
 
-	type RowStatus = 'erstattet' | 'bereits-erstattet' | 'festgeschrieben' | 'fehler';
+	/** Structured per-row bulk summary (§8) — mirrors the server's BulkSummary. */
+	interface BulkSummary {
+		erstattet: string[];
+		festgeschrieben: string[];
+		bereitsBezahlt: string[];
+		notFound: string[];
+		fehler: { id: string; error: string }[];
+	}
 
 	function toggleSelect(id: string) {
 		selectedIds = selectedIds.includes(id)
@@ -43,20 +50,22 @@
 			: [...selectedIds, id];
 	}
 
-	/** Render the per-row summary as a single German toast (§7.1). */
-	function summarize(results: { status: RowStatus }[]) {
-		const n = (s: RowStatus) => results.filter((r) => r.status === s).length;
-		const erstattet = n('erstattet');
-		const bereits = n('bereits-erstattet');
-		const festgeschrieben = n('festgeschrieben');
-		const fehler = n('fehler');
+	/** Render the structured per-row summary as a single German toast (§8). */
+	function summarize(summary: BulkSummary) {
 		const parts: string[] = [];
-		if (erstattet > 0) parts.push(`${erstattet} erstattet`);
-		if (bereits > 0) parts.push(`${bereits} bereits erstattet`);
-		if (festgeschrieben > 0) parts.push(`${festgeschrieben} festgeschrieben`);
-		if (fehler > 0) parts.push(`${fehler} fehlgeschlagen`);
+		if (summary.erstattet.length) parts.push(`${summary.erstattet.length} erstattet`);
+		if (summary.bereitsBezahlt.length)
+			parts.push(`${summary.bereitsBezahlt.length} bereits erstattet`);
+		if (summary.festgeschrieben.length)
+			parts.push(`${summary.festgeschrieben.length} festgeschrieben`);
+		if (summary.notFound.length) parts.push(`${summary.notFound.length} nicht gefunden`);
+		if (summary.fehler.length) parts.push(`${summary.fehler.length} fehlgeschlagen`);
 		const msg = parts.join(', ') || 'Keine Auslagen verarbeitet';
-		if (festgeschrieben > 0 || fehler > 0) toast.warning(msg);
+		const hadProblem =
+			summary.festgeschrieben.length > 0 ||
+			summary.notFound.length > 0 ||
+			summary.fehler.length > 0;
+		if (hadProblem) toast.warning(msg);
 		else toast.success(msg);
 	}
 
@@ -68,8 +77,8 @@
 		const res = await fetch(action, { method: 'POST', body: fd });
 		const result = deserialize(await res.text()) as ActionResult;
 		if (result.type === 'success' && result.data) {
-			const data = result.data as { results?: { status: RowStatus }[] };
-			if (data.results) summarize(data.results);
+			const payload = result.data as { summary?: BulkSummary };
+			if (payload.summary) summarize(payload.summary);
 			selectedIds = [];
 			await invalidateAll();
 		} else if (result.type === 'failure') {

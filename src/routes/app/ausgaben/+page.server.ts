@@ -126,25 +126,50 @@ type RowStatus =
   | "erstattet"
   | "bereits-erstattet"
   | "festgeschrieben"
+  | "nicht-gefunden"
   | "fehler";
 interface RowResult {
   id: string;
   status: RowStatus;
-  /** Present for `festgeschrieben` / `fehler` so the toast can show the reason. */
+  /** Present for the non-success rows so the toast can show the reason. */
   error?: string;
+}
+
+/**
+ * Structured per-row summary (§8): the BulkActionsBar / PostSepa toast renders
+ * it as "N erstattet, M festgeschrieben, …" instead of one concatenated error
+ * string. Each bucket holds the affected expense IDs (or {id,error} for the
+ * generic-error bucket).
+ *
+ * TODO bereits-bezahlt bucket: `markExpenseErstattet` only reports
+ * `alreadyErstattet` (already REIMBURSED). The richer "already paid directly by
+ * the Verein" detection depends on the shared `markExpenseAsPaid` already-paid
+ * fix landing on the base; until then `bereitsBezahlt` is populated solely from
+ * `alreadyErstattet` and never sees Verein-direct double-pays (those never enter
+ * the member/extern bulk pool anyway).
+ */
+interface BulkSummary {
+  erstattet: string[];
+  festgeschrieben: string[];
+  bereitsBezahlt: string[];
+  notFound: string[];
+  fehler: { id: string; error: string }[];
 }
 
 /**
  * Mark each selected expense as erstattet, ONE `markExpenseErstattet` per row.
  * Each call fires the SEPA-payout confirmation mail (no knob; the bulk pool is
- * member/extern-only). Returns a PER-ROW result array so the UI can show the
- * §7.1 partial-failure summary ("9 erstattet, 1 festgeschrieben") instead of
- * the legacy single `fail(409, "a; b")`.
+ * member/extern-only). Returns BOTH a per-row `results` array AND a structured
+ * `summary` (§8) so the UI can show the partial-failure summary toast
+ * ("9 erstattet, 1 festgeschrieben") instead of the legacy `fail(409, "a; b")`.
  */
 async function bulkMarkErstattet(
   request: Request,
   actorUserId: string,
-): Promise<{ ok: boolean; results: RowResult[] } | ReturnType<typeof fail>> {
+): Promise<
+  | { ok: boolean; results: RowResult[]; summary: BulkSummary }
+  | ReturnType<typeof fail>
+> {
   const data = await request.formData();
   const parsed = bulkMarkErstattetSchema.safeParse({
     expenseIds: data.get("expenseIds"),
@@ -157,6 +182,13 @@ async function bulkMarkErstattet(
 
   const { expenseIds, chosenDate, zahlungsartId } = parsed.data;
   const results: RowResult[] = [];
+  const summary: BulkSummary = {
+    erstattet: [],
+    festgeschrieben: [],
+    bereitsBezahlt: [],
+    notFound: [],
+    fehler: [],
+  };
 
   for (const expenseId of expenseIds) {
     const result = await markExpenseErstattet({
@@ -166,26 +198,39 @@ async function bulkMarkErstattet(
       actorUserId,
     });
     if (result.ok) {
+      if (result.alreadyErstattet) {
+        results.push({ id: expenseId, status: "bereits-erstattet" });
+        summary.bereitsBezahlt.push(expenseId);
+      } else {
+        results.push({ id: expenseId, status: "erstattet" });
+        summary.erstattet.push(expenseId);
+      }
+    } else if (result.status === 409) {
+      // 409 from the festschreibung gate (or the row being sealed).
       results.push({
         id: expenseId,
-        status: result.alreadyErstattet ? "bereits-erstattet" : "erstattet",
-      });
-    } else {
-      // 409 from the festschreibung gate (or the row being sealed) is the
-      // "festgeschrieben" partial-failure case; anything else is a generic row
-      // error. Either way it stays a PER-ROW status, never a thrown action fail.
-      results.push({
-        id: expenseId,
-        status: result.status === 409 ? "festgeschrieben" : "fehler",
+        status: "festgeschrieben",
         error: result.error,
       });
+      summary.festgeschrieben.push(expenseId);
+    } else if (result.status === 404) {
+      results.push({
+        id: expenseId,
+        status: "nicht-gefunden",
+        error: result.error,
+      });
+      summary.notFound.push(expenseId);
+    } else {
+      // Any other status (400/422/500/…) is a generic per-row error.
+      results.push({ id: expenseId, status: "fehler", error: result.error });
+      summary.fehler.push({ id: expenseId, error: result.error });
     }
   }
 
-  // `ok` reflects "no hard row errors" — partial festgeschrieben/already rows
-  // are expected outcomes the summary toast renders, not action failures.
-  const ok = results.every((r) => r.status !== "fehler");
-  return { ok, results };
+  // `ok` reflects "no hard row errors" — festgeschrieben / notFound / already
+  // rows are expected partial outcomes the summary toast renders, not failures.
+  const ok = summary.fehler.length === 0;
+  return { ok, results, summary };
 }
 
 export const actions = {

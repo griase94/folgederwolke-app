@@ -282,6 +282,59 @@ describe("/app/ausgaben ?/bulk-mark-erstattet (Phase 4)", () => {
     expect(byId["exp-3"]).toBe("erstattet");
   });
 
+  it("returns a structured per-row summary (erstattet/festgeschrieben/bereitsBezahlt/notFound/fehler buckets, §8)", async () => {
+    markExpenseErstattetMock.mockImplementation(
+      async (input: { expenseId: string }) => {
+        switch (input.expenseId) {
+          case "fest-1":
+            return {
+              ok: false as const,
+              status: 409,
+              error: "Jahr 2025 ist festgeschrieben",
+            };
+          case "gone-1":
+            return {
+              ok: false as const,
+              status: 404,
+              error: "Buchung nicht gefunden",
+            };
+          case "bereits-1":
+            return { ok: true as const, alreadyErstattet: true };
+          case "boom-1":
+            return { ok: false as const, status: 500, error: "DB-Fehler" };
+          default:
+            return { ok: true as const, alreadyErstattet: false };
+        }
+      },
+    );
+
+    const event = makeActionEvent({
+      expenseIds: "ok-1,fest-1,gone-1,bereits-1,boom-1",
+      chosenDate: "2026-05-10",
+      zahlungsartId: "11111111-1111-4111-8111-111111111111",
+    });
+    const result = (await runAction("bulk-mark-erstattet", event)) as {
+      ok: boolean;
+      summary: {
+        erstattet: string[];
+        festgeschrieben: string[];
+        bereitsBezahlt: string[];
+        notFound: string[];
+        fehler: { id: string; error: string }[];
+      };
+    };
+    expect(result.summary.erstattet).toEqual(["ok-1"]);
+    expect(result.summary.festgeschrieben).toEqual(["fest-1"]);
+    expect(result.summary.notFound).toEqual(["gone-1"]);
+    expect(result.summary.bereitsBezahlt).toEqual(["bereits-1"]);
+    expect(result.summary.fehler).toEqual([
+      { id: "boom-1", error: "DB-Fehler" },
+    ]);
+    // A hard row error → ok:false (the toast warns); pure festgeschrieben/already
+    // partial outcomes stay ok:true (expected, not a failure).
+    expect(result.ok).toBe(false);
+  });
+
   it("maps an already-reimbursed row to status 'bereits-erstattet'", async () => {
     markExpenseErstattetMock.mockImplementation(
       async (input: { expenseId: string }) =>
