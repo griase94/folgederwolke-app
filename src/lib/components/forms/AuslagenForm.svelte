@@ -6,7 +6,7 @@
 	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 	import BezahltVonPicker from './BezahltVonPicker.svelte';
 	import BelegUpload from './BelegUpload.svelte';
-	import { DATENSCHUTZ_TEXT, DATENSCHUTZ_VERSION } from '$lib/domain/datenschutz.js';
+	import { datenschutzText, DATENSCHUTZ_VERSION } from '$lib/domain/datenschutz.js';
 	import { makeDebouncedSave, saveDraft, loadDraft, clearDraft, type DraftMetadata } from '$lib/client/drafts.js';
 	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 	import { browser } from '$app/environment';
@@ -635,7 +635,7 @@
 		</CardHeader>
 		<CardContent class="flex flex-col gap-4">
 			<p class="text-muted-foreground whitespace-pre-line text-sm leading-relaxed">
-				{DATENSCHUTZ_TEXT}
+				{datenschutzText(page.data.kontaktEmail ?? '')}
 			</p>
 
 			<label class="flex cursor-pointer items-start gap-3">

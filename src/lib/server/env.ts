@@ -137,6 +137,13 @@ const schema = z.object({
     .transform((v) => v === "true"),
   /** Canonical public origin (https://folgederwolke-app.vercel.app). Required in prod. */
   PUBLIC_BASE_URL: z.string().default(""),
+  /**
+   * Public-facing contact email shown in the public Auslagen-form consent text.
+   * Build-time PUBLIC_ var: $lib/domain/datenschutz.ts (client-importable) reads
+   * it via $env/static/public, NOT via this server-side env object. Declared
+   * here too so it is documented + validated alongside the other PUBLIC_ vars.
+   */
+  PUBLIC_VEREIN_KONTAKT_EMAIL: z.string().default(""),
 
   // Cron auth
   /** Secret shared between Vercel cron scheduler and the app. */

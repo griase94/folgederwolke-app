@@ -5,6 +5,7 @@ import { test } from "@playwright/test";
 import { randomBytes, createHash } from "node:crypto";
 import { mkdir, appendFile } from "node:fs/promises";
 import { join } from "node:path";
+import { DATENSCHUTZ_VERSION } from "../../src/lib/domain/datenschutz.js";
 
 const DEV_BASE = "http://127.0.0.1:5175";
 const SHOTS_DIR =
@@ -311,7 +312,7 @@ test.describe("@julia-3", () => {
       betragCents: 100,
       currency: "EUR",
       rechnungsdatum: "2026-05-19",
-      consent_text_version: "2026-05-01-v1",
+      consent_text_version: DATENSCHUTZ_VERSION,
     });
     const statuses: number[] = [];
     for (let i = 0; i < 7; i++) {
