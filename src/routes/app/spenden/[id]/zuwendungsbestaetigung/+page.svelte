@@ -16,7 +16,7 @@
 	});
 
 	function pdfUrl(): string {
-		return `/app/transactions/${data.spende.id}/zuwendungsbestaetigung/pdf`;
+		return `/app/spenden/${data.spende.id}/zuwendungsbestaetigung/pdf`;
 	}
 </script>
 
@@ -34,7 +34,7 @@
 					: 'Geldspende'}
 			</p>
 		</div>
-		<Button variant="outline" href="/app/transactions/spenden">Zur&uuml;ck</Button>
+		<Button variant="outline" href={`/app/spenden/${data.spende.id}`}>Zur&uuml;ck</Button>
 	</div>
 
 	{#if !data.bescheinigungEnabled}

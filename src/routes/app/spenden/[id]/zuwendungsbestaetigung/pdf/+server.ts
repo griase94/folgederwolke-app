@@ -1,5 +1,5 @@
 /**
- * GET /app/transactions/[id]/zuwendungsbestaetigung/pdf
+ * GET /app/spenden/[id]/zuwendungsbestaetigung/pdf
  *
  * Streams the rendered Zuwendungsbestaetigung PDF for the given Spende.
  * Refuses if no bescheinigung_nr has been allocated yet (use the parent

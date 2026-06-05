@@ -1,5 +1,9 @@
 /**
- * /app/transactions/[id]/zuwendungsbestaetigung
+ * /app/spenden/[id]/zuwendungsbestaetigung
+ *
+ * (Phase 6 / Tier C3: MOVED here from /app/transactions/[id]/… — logic
+ * unchanged; reuses allocateBescheinigung/extractBmfPflichtfelder from
+ * spenden.ts + the BescheinigungsPreview component.)
  *
  * load(): returns Spende + BMF Pflichtfelder preview. Refuses to load if
  *         Bescheinigung is disabled in env (per masterplan §2.2 + §9) so
