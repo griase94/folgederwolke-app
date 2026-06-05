@@ -22,6 +22,7 @@
 <script lang="ts">
 	import type { TransactionRow } from '$lib/server/domain/transactions.js';
 	import { Money } from '$lib/components/ui/money/index.js';
+	import Lock from '@lucide/svelte/icons/lock';
 
 	let {
 		row,
@@ -164,7 +165,14 @@
 			{/if}
 
 			{#if isFestgeschrieben}
-				<span class="text-muted-foreground" title="Festgeschrieben" aria-label="Festgeschrieben">🔒</span>
+				<span
+					class="inline-flex items-center text-muted-foreground"
+					title="Festgeschrieben"
+					aria-label="Festgeschrieben"
+					role="img"
+				>
+					<Lock class="size-3.5" aria-hidden="true" />
+				</span>
 			{/if}
 
 			<span class="ml-auto text-muted-foreground">
