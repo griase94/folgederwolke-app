@@ -86,7 +86,7 @@
 	data-slot="entry-form-shell"
 	role="dialog"
 	aria-modal="true"
-	aria-label={title}
+	aria-labelledby="entry-form-title"
 >
 	<!-- ── Sticky header ──────────────────────────────────────────────────── -->
 	<header
@@ -94,7 +94,7 @@
 		class="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-border bg-background px-5 py-4"
 	>
 		<div class="min-w-0">
-			<h2 class="truncate text-lg font-semibold text-foreground">{title}</h2>
+			<h2 id="entry-form-title" class="truncate text-lg font-semibold text-foreground">{title}</h2>
 			{#if statusHint}
 				<p class="mt-0.5 truncate text-sm text-muted-foreground">{statusHint}</p>
 			{/if}

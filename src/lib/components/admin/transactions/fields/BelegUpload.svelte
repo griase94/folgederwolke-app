@@ -35,10 +35,11 @@
 </script>
 
 <div class="flex flex-col gap-2" data-slot="beleg-upload">
-	<span class="text-sm font-medium text-foreground">Beleg</span>
+	<label for="beleg-file" class="text-sm font-medium text-foreground">Beleg</label>
 
 	{#if !keinBeleg}
 		<input
+			id="beleg-file"
 			type="file"
 			name={fileName}
 			{accept}

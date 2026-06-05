@@ -85,7 +85,6 @@
 		{name}
 		{required}
 		{value}
-		aria-label="Kategorie"
 		onchange={onSelect}
 		class="h-11 min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
 	>

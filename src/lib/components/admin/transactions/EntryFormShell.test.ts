@@ -35,6 +35,7 @@ vi.mock("$app/stores", async () => {
 afterEach(() => {
   cleanup();
   vi.mocked(beforeNavigate).mockClear();
+  vi.unstubAllGlobals();
 });
 
 const fieldsSnippet = createRawSnippet(() => ({
@@ -106,5 +107,67 @@ describe("EntryFormShell — shared contract", () => {
     render(EntryFormShell, { props: baseProps() });
     expect(beforeNavigate).toHaveBeenCalledTimes(1);
     expect(typeof vi.mocked(beforeNavigate).mock.calls[0]![0]).toBe("function");
+  });
+
+  // ── Exercise the registered guard callback directly ──────────────────────
+  // Grab the function passed to beforeNavigate and invoke it with a fake nav
+  // arg, asserting the cancel() behavior across dirty/submitting states. The
+  // guard prompts via window.confirm — happy-dom doesn't implement confirm, so
+  // we stub it as a global (decline → cancel fires; confirm → nav proceeds).
+  function registeredGuard() {
+    return vi.mocked(beforeNavigate).mock.calls.at(-1)![0] as (nav: {
+      type: string;
+      to: { url: { pathname: string } } | null;
+      cancel: () => void;
+    }) => void;
+  }
+  const navAway = (cancel: () => void) => ({
+    type: "link",
+    to: { url: { pathname: "/app/ausgaben" } }, // different path → real nav-away
+    cancel,
+  });
+  /** Stub window.confirm to return `answer`; returns the spy. */
+  function stubConfirm(answer: boolean) {
+    const spy = vi.fn(() => answer);
+    vi.stubGlobal("confirm", spy);
+    return spy;
+  }
+
+  it("guard does NOT cancel when not dirty (clean navigation away is allowed)", () => {
+    const confirmSpy = stubConfirm(false);
+    render(EntryFormShell, { props: baseProps({ dirty: false }) });
+    const cancel = vi.fn();
+    registeredGuard()(navAway(cancel));
+    expect(cancel).not.toHaveBeenCalled();
+    expect(confirmSpy).not.toHaveBeenCalled(); // bailed before confirming
+  });
+
+  it("guard cancels a dirty nav-away when the user declines the confirm", () => {
+    const confirmSpy = stubConfirm(false);
+    render(EntryFormShell, { props: baseProps({ dirty: true }) });
+    const cancel = vi.fn();
+    registeredGuard()(navAway(cancel));
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("guard does NOT cancel a dirty nav-away when the user confirms", () => {
+    const confirmSpy = stubConfirm(true);
+    render(EntryFormShell, { props: baseProps({ dirty: true }) });
+    const cancel = vi.fn();
+    registeredGuard()(navAway(cancel));
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it("guard does NOT cancel while submitting, even when dirty (the submit owns its UX)", () => {
+    const confirmSpy = stubConfirm(false);
+    render(EntryFormShell, {
+      props: baseProps({ dirty: true, submitting: true }),
+    });
+    const cancel = vi.fn();
+    registeredGuard()(navAway(cancel));
+    expect(cancel).not.toHaveBeenCalled();
+    expect(confirmSpy).not.toHaveBeenCalled();
   });
 });

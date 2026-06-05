@@ -1,6 +1,5 @@
 <script lang="ts" module>
 	import type { Sphere } from '$lib/domain/sphere.js';
-	import { SPHERE_LABELS } from '$lib/domain/sphere.js';
 
 	/**
 	 * The §13 sphere palette — the single home for these tokens (lists, detail,
