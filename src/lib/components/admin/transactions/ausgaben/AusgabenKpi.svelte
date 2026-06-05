@@ -1,0 +1,50 @@
+<script lang="ts">
+	/**
+	 * AusgabenKpi — the Ausgaben list-header KPI strip (spec §7.1).
+	 *
+	 * A quiet header: the "Ausgaben" title, the year + booking count + total as a
+	 * calm anchor line, and a single DISAPPEARING pill — "N offen · älteste X Tage".
+	 *
+	 * The pill is the §7.1 delight: it renders ONLY when `offenCount > 0` (there
+	 * are approved-but-unreimbursed Auslagen waiting). With zero open rows the pill
+	 * is absent entirely — no "0 offen" nag. The age suffix ("· älteste X Tage")
+	 * appears only when an age is known (`oldestOpenAgeDays != null`).
+	 */
+	import Money from '$lib/components/ui/money/money.svelte';
+	import { ALL_YEARS, type YearScope } from '$lib/domain/year.js';
+
+	interface Props {
+		totalCents: number;
+		count: number;
+		offenCount: number;
+		oldestOpenAgeDays: number | null;
+		year: YearScope;
+	}
+
+	let { totalCents, count, offenCount, oldestOpenAgeDays, year }: Props = $props();
+
+	const yearLabel = $derived(year === ALL_YEARS ? 'Alle Jahre' : String(year));
+	const buchungenLabel = $derived(`${count} ${count === 1 ? 'Buchung' : 'Buchungen'}`);
+</script>
+
+<div data-testid="kpi-strip">
+	<h1 class="text-2xl font-bold tracking-tight text-foreground">Ausgaben</h1>
+	<div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+		<span>{yearLabel}</span>
+		<span aria-hidden="true">·</span>
+		<span>{buchungenLabel}</span>
+		<span aria-hidden="true">·</span>
+		<span>Summe <Money valueInCents={totalCents} /></span>
+	</div>
+
+	{#if offenCount > 0}
+		<!-- §7.1 disappearing pill: only present when there are open Auslagen. -->
+		<span
+			data-testid="offen-pill"
+			class="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+		>
+			{offenCount} offen{#if oldestOpenAgeDays != null}&nbsp;· älteste {oldestOpenAgeDays}
+				{oldestOpenAgeDays === 1 ? 'Tag' : 'Tage'}{/if}
+		</span>
+	{/if}
+</div>
