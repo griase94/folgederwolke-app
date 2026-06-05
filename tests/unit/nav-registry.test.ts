@@ -15,6 +15,19 @@ describe("nav registry — three tabs", () => {
       ]),
     );
   });
+  it('desktop sidebar shows "Ausgaben" for /app/ausgaben, with mobileLabel "Transaktionen"', () => {
+    const ausgaben = mainNavItems.find((i) => i.href === "/app/ausgaben");
+    expect(ausgaben?.label).toBe("Ausgaben");
+    expect(ausgaben?.mobileLabel).toBe("Transaktionen");
+  });
+  it("Einnahmen + Spenden keep their distinct desktop labels and carry no mobileLabel", () => {
+    const einnahmen = mainNavItems.find((i) => i.href === "/app/einnahmen");
+    const spenden = mainNavItems.find((i) => i.href === "/app/spenden");
+    expect(einnahmen?.label).toBe("Einnahmen");
+    expect(einnahmen?.mobileLabel).toBeUndefined();
+    expect(spenden?.label).toBe("Spenden");
+    expect(spenden?.mobileLabel).toBeUndefined();
+  });
   it("mobile Transaktionen tab is active on any of the three tab paths (+ their detail routes)", () => {
     expect(mobileTransaktionenActive("/app/ausgaben")).toBe(true);
     expect(mobileTransaktionenActive("/app/einnahmen/abc-123")).toBe(true);

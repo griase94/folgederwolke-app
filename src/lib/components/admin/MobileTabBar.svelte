@@ -79,7 +79,7 @@
 			>
 				<path d={ICONS[item.icon] ?? ''} />
 			</svg>
-			<span>{item.label}</span>
+			<span>{item.mobileLabel ?? item.label}</span>
 		</a>
 		<!-- eslint-enable svelte/no-navigation-without-resolve -->
 	{/each}
