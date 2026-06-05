@@ -59,7 +59,8 @@
 		festgeschriebenBis = null,
 	}: CashflowOverviewSectionProps = $props();
 
-	const transactionsBase = $derived(`/app/transactions?year=${cashflow.year}`);
+	// Phase 8 T6: /app/transactions retired → cashflow cards now link to /app/ausgaben with year filter.
+	const transactionsBase = $derived(`/app/ausgaben?year=${cashflow.year}`);
 
 	const saldoTone = $derived<'success' | 'danger' | 'default'>(
 		cashflow.saldoCents > 0 ? 'success' : cashflow.saldoCents < 0 ? 'danger' : 'default',

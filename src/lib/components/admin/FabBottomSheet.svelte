@@ -3,9 +3,9 @@
 
   Triggered by the MobileTabBar FAB. Shows 4 quick actions covering the
   most-common create flows on a Kassenwart's phone:
-    - Neue Ausgabe   → /app/transactions/neu?kind=ausgabe
-    - Neue Einnahme  → /app/transactions/neu?kind=einnahme
-    - Neue Spende    → /app/transactions/neu?kind=spende
+    - Neue Ausgabe   → /app/ausgaben/neu
+    - Neue Einnahme  → /app/einnahmen/neu
+    - Neue Spende    → /app/spenden/neu
     - Externe Auslage einreichen → /auslage-einreichen  (public outsider form)
       C7-4 — labelled explicitly as "Externe" so an admin tapping it isn't
       surprised to land on the IBAN-collecting public form. Admins file
@@ -51,23 +51,24 @@
 	// C7-6 — distinct lucide icons per action. Ausgabe = Minus (money
 	// leaving), Einnahme = Plus (money arriving), Spende = HandCoins
 	// (giving), Auslage = FileText (form / receipt).
+	// Phase 8 T6: /app/transactions/neu?kind=X retired → per-tab /app/{tab}/neu.
 	const ACTIONS = $derived<Action[]>([
 		{
-			href: '/app/transactions/neu?kind=ausgabe',
+			href: '/app/ausgaben/neu',
 			label: 'Neue Ausgabe',
 			hint: 'Beleg, Datum, Betrag',
 			icon: MinusIcon,
 			tone: 'bg-red-50 text-red-700'
 		},
 		{
-			href: '/app/transactions/neu?kind=einnahme',
+			href: '/app/einnahmen/neu',
 			label: 'Neue Einnahme',
 			hint: 'z.B. Zahlung einer Rechnung',
 			icon: PlusIcon,
 			tone: 'bg-emerald-50 text-emerald-700'
 		},
 		{
-			href: '/app/transactions/neu?kind=spende',
+			href: '/app/spenden/neu',
 			label: 'Neue Spende',
 			hint: 'Geld- oder Sachspende',
 			icon: HandCoinsIcon,

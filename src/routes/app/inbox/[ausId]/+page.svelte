@@ -96,7 +96,7 @@
 					size="sm"
 					onclick={() => {
 						// eslint-disable-next-line svelte/no-navigation-without-resolve
-						goto(`/app/transactions/${data.linkedExpense!.id}`);
+						goto(`/app/ausgaben/${data.linkedExpense!.id}`);
 					}}
 				>
 					Zur Transaktion →

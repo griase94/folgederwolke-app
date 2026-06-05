@@ -57,7 +57,7 @@
 			count={approvedNotErstattetCount}
 			label={sepaLabel}
 			cta={approvedNotErstattetCount > 0 ? 'SEPA XML kopieren →' : 'Transaktionen öffnen →'}
-			href="/app/transactions"
+			href="/app/ausgaben"
 			empty={approvedNotErstattetCount === 0}
 		/>
 
