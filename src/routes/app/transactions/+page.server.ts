@@ -1,58 +1,43 @@
 /**
- * /app/transactions — merged Ausgaben + Einnahmen + Spenden list.
+ * /app/transactions — LEGACY merged list route.
  *
- * load(): returns paginated transaction rows, zahlungsarten for dropdowns,
- *         and approved-pending-erstattet expenses for the SEPA action.
+ * Phase 3 (Task 10) replaced the merged list with three flat list routes
+ * (`/app/{ausgaben,einnahmen,spenden}`). The `load` now permanently redirects
+ * this path to `/app/ausgaben` (308 — preserves the request method and the
+ * query string, so a bookmarked `?year=`/filter survives the move).
  *
- * actions:
+ * The nested routes under this path (`[id]`, `[id]/zuwendungsbestaetigung`)
+ * still resolve — the 308 is on the LIST page's `load` only (review B2). The
+ * Bescheinigung route moves to `/app/spenden/[id]/…` in Phase 6 (C3).
+ *
+ * actions: kept reachable for the bulk/SEPA/quick-action POSTs still wired to
+ * this endpoint. Their per-tab homes land in Phase 4+; until then the
+ * `redirect` only supersedes the list-page GET, not the action POSTs.
  *   ?/bulk-mark-erstattet  — bulk markExpenseErstattet via existing helper
  *   ?/sepa-mark-erstattet  — post-SEPA modal: mark N as erstattet + notify
+ *   ?/markAsPaid           — quick "Bezahlt markieren" from the row kebab
  *   ?/unmark-erstattet     — 5-second undo window reversal (best-effort)
  */
 
-import { fail } from "@sveltejs/kit";
+import { fail, redirect } from "@sveltejs/kit";
 import { z } from "zod";
 import type { Actions, PageServerLoad } from "./$types.js";
-import {
-  listTransactions,
-  listZahlungsarten,
-  listApprovedPendingErstattet,
-  markExpenseAsPaid,
-} from "$lib/server/domain/transactions.js";
-import { parseKindFromUrl } from "$lib/domain/transaction-kind-url.js";
+import { markExpenseAsPaid } from "$lib/server/domain/transactions.js";
 import { markExpenseErstattet } from "$lib/server/domain/audit-inbox-actions.js";
 import { getDb } from "$lib/server/db/index.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { eq, isNull, and } from "drizzle-orm";
 
 // ---------------------------------------------------------------------------
-// load
+// load — 308 redirect to the new flat Ausgaben list (Phase 3, Task 10)
 // ---------------------------------------------------------------------------
 
 export const load: PageServerLoad = async ({ url }) => {
-  // C3-2: accept DE aliases (einnahme/ausgabe/spende, with plurals) in
-  // addition to the canonical EN kinds. Dashboard cards link with German
-  // names because that reads naturally to the treasurer.
-  const kind = parseKindFromUrl(url.searchParams.get("kind")) ?? undefined;
-  const search = url.searchParams.get("q") ?? undefined;
-  const yearParam = url.searchParams.get("year");
-  const year = yearParam ? parseInt(yearParam, 10) : undefined;
-  const monthParam = url.searchParams.get("month");
-  const month = monthParam ? parseInt(monthParam, 10) : undefined;
-
-  const [{ rows, total }, zahlungsarten, approvedPending] = await Promise.all([
-    listTransactions({ kind, search, year, month, limit: 100 }),
-    listZahlungsarten(),
-    listApprovedPendingErstattet(),
-  ]);
-
-  return {
-    rows,
-    total,
-    zahlungsarten,
-    approvedPending,
-    filters: { kind, search, year, month },
-  };
+  // Preserve any query (e.g. ?year=2024, ?kind=…, filters) onto the new path so
+  // bookmarks + dashboard deep-links keep working. 308 (vs 301/302) keeps the
+  // method + is the correct "permanently moved, don't re-issue as GET" code.
+  const target = url.search ? `/app/ausgaben${url.search}` : "/app/ausgaben";
+  redirect(308, target);
 };
 
 // ---------------------------------------------------------------------------
