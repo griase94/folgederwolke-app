@@ -69,6 +69,7 @@
 	 */
 	import { beforeNavigate } from '$app/navigation';
 	import Lock from '@lucide/svelte/icons/lock';
+	import { focusTrap } from '$lib/actions/focus-trap.js';
 
 	let {
 		detail,
@@ -141,6 +142,7 @@
 	aria-modal="true"
 	aria-labelledby="detail-modal-title"
 	tabindex="-1"
+	use:focusTrap
 	onkeydown={(e) => {
 		if (e.key === 'Escape') {
 			e.preventDefault();

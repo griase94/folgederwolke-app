@@ -51,6 +51,7 @@
 	 * and intercepts any navigation away while `dirty`.
 	 */
 	import { beforeNavigate } from '$app/navigation';
+	import { focusTrap } from '$lib/actions/focus-trap.js';
 
 	let {
 		title,
@@ -102,6 +103,7 @@
 	aria-modal="true"
 	aria-labelledby="entry-form-title"
 	tabindex="-1"
+	use:focusTrap
 	onkeydown={(e) => {
 		if (e.key === 'Escape') {
 			e.preventDefault();
