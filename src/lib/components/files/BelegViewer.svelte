@@ -276,7 +276,14 @@
 					</button>
 				{/if}
 
-				<!-- Original öffnen (graceful fallback + always available). -->
+				<!--
+					Original öffnen (spec §11 header control — opens the raw blob in a
+					new tab; always available). This is the canonical "Original öffnen"
+					control. The body render-failure fallback link below uses a
+					distinct accessible name ("Original in neuem Tab öffnen") so that
+					when the PDF fails to render and both are visible, screen-reader
+					users are not presented with two identically-named links.
+				-->
 				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 				<a
 					href={blobUrl}
@@ -339,6 +346,8 @@
 						href={blobUrl}
 						target="_blank"
 						rel="noopener noreferrer"
+						data-testid="beleg-fallback-link"
+						aria-label="Original in neuem Tab öffnen"
 						class="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted"
 					>
 						<ExternalLinkIcon class="size-4" aria-hidden="true" />

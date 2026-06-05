@@ -113,7 +113,7 @@ describe("BelegViewer", () => {
     });
   });
 
-  it("falls back to the Original öffnen link when the PDF cannot be rendered", async () => {
+  it("falls back to the body 'Original öffnen' link when the PDF cannot be rendered", async () => {
     pdfState.shouldReject = true;
     render(BelegViewer, {
       props: {
@@ -123,10 +123,25 @@ describe("BelegViewer", () => {
         mode: "inline",
       },
     });
-    const link = await screen.findByRole("link", { name: /Original öffnen/i });
-    expect((link as HTMLAnchorElement).getAttribute("href")).toBe(
-      "/api/files/f4/blob",
+    // The header always carries an "Original öffnen" icon-link; the BODY render-
+    // failure fallback is a separate link that only mounts once `pdfFailed`
+    // flips (a later microtask after the rejected getDocument). We scope to the
+    // body fallback via its testid so we deterministically assert the FALLBACK
+    // link — not the always-present header link — points at the blobUrl. The
+    // fallback also waits for the "Vorschau nicht verfügbar" copy, proving the
+    // canvas branch was abandoned and the graceful fallback rendered.
+    const fallback = (await screen.findByTestId(
+      "beleg-fallback-link",
+    )) as HTMLAnchorElement;
+    expect(screen.getByText(/Vorschau nicht verfügbar/i)).toBeTruthy();
+    expect(fallback.getAttribute("href")).toBe("/api/files/f4/blob");
+    // The body fallback carries a distinct accessible name so it is not a second
+    // link identically named "Original öffnen" for screen-reader users.
+    expect(fallback.getAttribute("aria-label")).toBe(
+      "Original in neuem Tab öffnen",
     );
+    // And the canvas branch is gone (we fell back, not rendered a blank canvas).
+    expect(document.querySelector("canvas")).toBeNull();
   });
 
   it("renders the inline shell (permanent viewer) for mode=inline", () => {
