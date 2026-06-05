@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import LockIcon from '@lucide/svelte/icons/lock';
 	import DetailModalShell from '$lib/components/admin/transactions/DetailModalShell.svelte';
 	import SpendeDetailFields from '$lib/components/admin/transactions/spenden/SpendeDetailFields.svelte';
 	import BelegViewer from '$lib/components/files/BelegViewer.svelte';
@@ -20,6 +19,14 @@
 	// Speichern button is hidden once a Bescheinigung was issued, too.
 	const issued = $derived(!!data.bescheinigungNr);
 	const lockedReadOnly = $derived(data.isFestgeschrieben || issued);
+	// The shell renders exactly ONE read-only notice (no local + shell double).
+	// Festschreibung wins its default wording; a bescheinigt-not-festgeschrieben
+	// Spende gets the Storno + Neu-Erfassung variant.
+	const lockNotice = $derived(
+		data.isFestgeschrieben
+			? 'Korrektur nur über Storno (Phase 2)'
+			: 'Bescheinigt — Storno + Neu-Erfassung (Phase 2)'
+	);
 
 	const bescheinigungHref = $derived(`/app/spenden/${detail.id}/zuwendungsbestaetigung`);
 
@@ -34,16 +41,6 @@
 </svelte:head>
 
 {#snippet fields()}
-	{#if issued && !data.isFestgeschrieben}
-		<div
-			data-testid="detail-bescheinigt-notice"
-			class="mb-4 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200"
-			role="note"
-		>
-			<LockIcon class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-			<span>Bescheinigt — Storno + Neu-Erfassung (Phase 2)</span>
-		</div>
-	{/if}
 	<SpendeDetailFields {detail} {errors} onDirty={() => (dirty = true)} />
 	{#if form?.error}
 		<p class="mt-3 text-sm text-red-600" data-testid="save-error">{form.error}</p>
@@ -115,6 +112,7 @@
 	<DetailModalShell
 		{detail}
 		isFestgeschrieben={lockedReadOnly}
+		{lockNotice}
 		{fields}
 		{beleg}
 		{workflowAction}

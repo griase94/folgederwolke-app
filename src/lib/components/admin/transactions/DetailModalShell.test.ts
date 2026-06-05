@@ -212,6 +212,29 @@ describe("DetailModalShell — shared contract", () => {
     ).toBeTruthy();
   });
 
+  it("read-only: shows a custom lockNotice when provided (instead of the default Storno text)", () => {
+    render(DetailModalShell, {
+      props: baseProps({
+        isFestgeschrieben: true,
+        lockNotice: "Bescheinigt — Storno + Neu-Erfassung (Phase 2)",
+      }),
+    });
+    expect(
+      screen.getByText(/Bescheinigt — Storno \+ Neu-Erfassung \(Phase 2\)/i),
+    ).toBeTruthy();
+    // The default text must NOT also appear (single notice, no double-notice).
+    expect(screen.queryByText(/Korrektur nur über Storno/i)).toBeNull();
+  });
+
+  it("read-only: defaults the lockNotice to the Festschreibung Storno text when none is passed", () => {
+    render(DetailModalShell, {
+      props: baseProps({ isFestgeschrieben: true }),
+    });
+    expect(
+      screen.getByText(/Korrektur nur über Storno \(Phase 2\)/i),
+    ).toBeTruthy();
+  });
+
   it("festgeschrieben: the workflowAction snippet STILL renders in the footer", () => {
     render(DetailModalShell, {
       props: baseProps({

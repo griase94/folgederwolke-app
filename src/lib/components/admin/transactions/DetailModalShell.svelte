@@ -13,6 +13,14 @@
 		/** True once the row is festgeschrieben → fields read-only, footer Save hidden. */
 		isFestgeschrieben: boolean;
 		/**
+		 * The amber read-only notice text shown when `isFestgeschrieben`. Defaults
+		 * to the Festschreibung wording ("Korrektur nur über Storno (Phase 2)").
+		 * The Spenden detail passes the bescheinigt variant ("Bescheinigt — Storno
+		 * + Neu-Erfassung (Phase 2)") so a bescheinigt-not-festgeschrieben Spende
+		 * shows exactly ONE correct notice (no local-notice + shell-notice double).
+		 */
+		lockNotice?: string;
+		/**
 		 * Left column — the tab renders `<BelegViewer …>` (or nothing). The shell
 		 * does NOT import BelegViewer and does NOT reach into `detail.belegFileId`;
 		 * the tab supplies this slot so e.g. Spenden can render `belegFileId` AND/OR
@@ -64,6 +72,7 @@
 	let {
 		detail,
 		isFestgeschrieben,
+		lockNotice = 'Korrektur nur über Storno (Phase 2)',
 		beleg,
 		fields,
 		workflowAction,
@@ -181,7 +190,7 @@
 					role="note"
 				>
 					<span aria-hidden="true">🔒</span>
-					<span>Korrektur nur über Storno (Phase 2)</span>
+					<span>{lockNotice}</span>
 				</div>
 			{/if}
 
