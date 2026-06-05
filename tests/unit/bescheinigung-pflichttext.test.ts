@@ -35,8 +35,9 @@ const BASE: BmfPflichtfelder = {
 describe("Task 1.6 — bescheidPflichttext Finanzamt + Zwecke", () => {
   it("freistellungsbescheid: renders the full Finanzamt name, no double 'Finanzamt'", () => {
     const lines = bescheidPflichttext(BASE).join("\n");
-    expect(lines).toContain("Finanzamt Musterstadt");
-    // The var already contains "Finanzamt" — the boilerplate must not prefix it.
+    // Freistellungsbescheid branch: BMF-verbatim genitive "des Finanzamts Musterstadt".
+    expect(lines).toContain("des Finanzamts Musterstadt");
+    // The var already contains "Finanzamt" — the boilerplate must not double-prefix it.
     expect(lines).not.toContain("Finanzamts Finanzamt");
     expect(lines).not.toContain("Finanzamt Finanzamt");
     expect(lines).toContain("der Foerderung des Sports");

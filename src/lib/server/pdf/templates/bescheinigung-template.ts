@@ -154,10 +154,17 @@ export function bescheidPflichttext(p: BmfPflichtfelder): string[] {
         "freistellungsbescheidVz missing — Bescheinigung renderer requires VZ",
       );
     }
+    // BMF-verbatim genitive: "des Finanzamts München". p.vereinFinanzamt holds the
+    // nominative full name (e.g. "Finanzamt München"); decline the leading word to
+    // genitive for this slot. A value not starting with "Finanzamt" is left as-is.
+    const finanzamtGenitiv = p.vereinFinanzamt.replace(
+      /^Finanzamt\b/,
+      "Finanzamts",
+    );
     lines.push(
       `Wir sind wegen Foerderung ${p.steuerbegueZwecke} nach dem letzten uns zugegangenen ` +
         `Freistellungsbescheid bzw. nach der Anlage zum Koerperschaftsteuerbescheid des ` +
-        `${p.vereinFinanzamt}, StNr. ${p.vereinSteuernummer}, ` +
+        `${finanzamtGenitiv}, StNr. ${p.vereinSteuernummer}, ` +
         `vom ${formatGermanDate(p.bescheidDatum)} fuer den letzten Veranlagungszeitraum ` +
         `${p.freistellungsbescheidVz} nach Paragraph 5 Abs. 1 Nr. 9 des Koerperschaftsteuergesetzes ` +
         `von der Koerperschaftsteuer und nach Paragraph 3 Nr. 6 des Gewerbesteuergesetzes von der Gewerbesteuer ` +
