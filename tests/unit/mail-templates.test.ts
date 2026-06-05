@@ -67,6 +67,8 @@ function expectBrandStrip(html: string) {
   // Verein name appears in strip (white text).
   expect(html).toMatch(/color:#ffffff/i);
   expect(html).toContain(VEREIN_NAME);
+  // White-label: the de-branded strip must never render the old FdW literal.
+  expect(html).not.toContain("Folge der Wolke");
   // No gradient — Gmail strips it (regression guard from Round E).
   expect(html).not.toMatch(/linear-gradient/);
   // No "Liebesbrief" subtitle in the brand strip — moved to body per UI-031.
