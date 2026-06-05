@@ -39,9 +39,14 @@ const createExpenseMock = vi.fn(async (_input: unknown) => ({
   id: "exp-new-1",
   businessId: "A-2026-001",
 }));
-const markExpenseAsPaidMock = vi.fn(async (_id: string, _params: unknown) => ({
-  ok: true as const,
-}));
+// Typed on the real result union so `.mockResolvedValueOnce` can return the
+// !ok branch (Fix 5a — verify the create action propagates a mark failure).
+type MarkPaidResult = { ok: true } | { ok: false; error: string };
+const markExpenseAsPaidMock = vi.fn(
+  async (_id: string, _params: unknown): Promise<MarkPaidResult> => ({
+    ok: true,
+  }),
+);
 
 vi.mock("$lib/server/domain/transactions.js", () => ({
   createExpense: createExpenseMock,
@@ -52,10 +57,15 @@ vi.mock("$lib/server/domain/transactions.js", () => ({
   ],
 }));
 
-const markExpenseErstattetMock = vi.fn(async (_input: unknown) => ({
-  ok: true as const,
-  alreadyErstattet: false,
-}));
+type ErstattetResult =
+  | { ok: true; alreadyErstattet: boolean }
+  | { ok: false; status: number; error: string };
+const markExpenseErstattetMock = vi.fn(
+  async (_input: unknown): Promise<ErstattetResult> => ({
+    ok: true,
+    alreadyErstattet: false,
+  }),
+);
 vi.mock("$lib/server/domain/audit-inbox-actions.js", () => ({
   markExpenseErstattet: markExpenseErstattetMock,
 }));
@@ -247,6 +257,29 @@ describe("ausgaben/neu ?/create — Verein auto-paid", () => {
     expect(paidParams.actorUserId).toBe("user-1");
     expect(markExpenseErstattetMock).not.toHaveBeenCalled();
   });
+
+  it("propagates a markExpenseAsPaid failure → fail(409), no redirect (Fix 5a)", async () => {
+    markExpenseAsPaidMock.mockResolvedValueOnce({
+      ok: false,
+      error: "Auslage ist festgeschrieben — Bezahlt-Markierung verweigert",
+    });
+    const event = makeEvent({
+      ...VEREIN_BASE,
+      bezahltVonKind: "verein",
+      bezahltVonDisplay: "Folge der Wolke e.V.",
+      zahlungsartId: ZAHLART_ID,
+      beleg: mkBelegFile(),
+    });
+
+    const result = (await runCreate(event)) as {
+      redirect?: { status: number };
+      fail?: { status?: number; data?: { error?: string } };
+    };
+    // The mark failed → the action surfaces it, does NOT redirect to the detail.
+    expect(result.redirect).toBeUndefined();
+    expect(result.fail?.status).toBe(409);
+    expect(result.fail?.data?.error).toContain("festgeschrieben");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -310,6 +343,56 @@ describe("ausgaben/neu ?/create — Mitglied + Schon bezahlt", () => {
 
     // This is the mailing path — markExpenseAsPaid (the no-mail path) must NOT fire.
     expect(markExpenseAsPaidMock).not.toHaveBeenCalled();
+  });
+
+  it("Mitglied + schonBezahlt + NO zahlungsartId → fail(422); markExpenseErstattet NOT called (Fix 5b)", async () => {
+    const event = makeEvent({
+      ...VEREIN_BASE,
+      bezahltVonKind: "member",
+      bezahltVonMemberId: MEMBER_ID,
+      bezahltVonDisplay: "Felix Muster",
+      schonBezahlt: "true",
+      erstattetAm: "2026-03-05",
+      // zahlungsartId intentionally omitted — markExpenseErstattet requires it.
+      beleg: mkBelegFile(),
+    });
+
+    const result = (await runCreate(event)) as {
+      redirect?: { status: number };
+      fail?: { status?: number; data?: { error?: string } };
+    };
+    expect(result.fail?.status).toBe(422);
+    expect(result.fail?.data?.error).toContain("Zahlungsart");
+    // The mailing helper must NOT be invoked without a Zahlungsart.
+    expect(markExpenseErstattetMock).not.toHaveBeenCalled();
+    expect(result.redirect).toBeUndefined();
+  });
+
+  it("propagates a markExpenseErstattet failure → fail(status), no redirect (Fix 5a)", async () => {
+    markExpenseErstattetMock.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      error: "Jahr 2025 ist festgeschrieben",
+    });
+    const event = makeEvent({
+      ...VEREIN_BASE,
+      bezahltVonKind: "member",
+      bezahltVonMemberId: MEMBER_ID,
+      bezahltVonDisplay: "Felix Muster",
+      schonBezahlt: "true",
+      zahlungsartId: ZAHLART_ID,
+      erstattetAm: "2026-03-05",
+      beleg: mkBelegFile(),
+    });
+
+    const result = (await runCreate(event)) as {
+      redirect?: { status: number };
+      fail?: { status?: number; data?: { error?: string } };
+    };
+    expect(markExpenseErstattetMock).toHaveBeenCalledTimes(1);
+    expect(result.redirect).toBeUndefined();
+    expect(result.fail?.status).toBe(409);
+    expect(result.fail?.data?.error).toContain("festgeschrieben");
   });
 });
 
