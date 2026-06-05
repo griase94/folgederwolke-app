@@ -40,6 +40,7 @@ import { berlinYear } from "$lib/domain/year.js";
 import { bus } from "$lib/server/events/index.js";
 import { logAudit } from "$lib/server/audit-log/index.js";
 import { env } from "$lib/server/env.js";
+import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
 import { pdfLibInvoiceRenderer } from "$lib/server/pdf/pdf-lib-renderer.js";
 import type {
   InvoicePdfRenderer,
@@ -663,6 +664,10 @@ async function loadRenderInput(invoiceId: string): Promise<InvoiceRenderInput> {
     unquote(settingsMap.get("verein.kassenwaert_name") ?? "") ||
     "Julia Schwarz";
 
+  // White-label: name + address come from the single settings→env Stammdaten
+  // reader (no hardcoded FdW literals).
+  const sd = await readStammdaten();
+
   return {
     invoiceNumber: inv.businessId,
     rechnungsdatum: inv.rechnungsdatum,
@@ -670,10 +675,10 @@ async function loadRenderInput(invoiceId: string): Promise<InvoiceRenderInput> {
     faelligkeitsDatum: inv.faelligkeitsDatum ?? null,
     leistungszeitraum: inv.leistungszeitraum,
     verein: {
-      name: env.VEREIN_NAME || "Folge der Wolke e.V.",
-      adresse: env.VEREIN_ADRESSE || "Westermuehlstrasse 6\n80469 Muenchen",
-      steuernummer: env.VEREIN_STEUERNUMMER || "",
-      vereinsregister: env.VEREIN_VR || "",
+      name: sd.name,
+      adresse: sd.adresse,
+      steuernummer: sd.steuernummer,
+      vereinsregister: sd.vr,
       iban:
         unquote(settingsMap.get("verein.iban") ?? "") || env.VEREIN_IBAN || "",
       bic: unquote(settingsMap.get("verein.bic") ?? "") || env.VEREIN_BIC || "",

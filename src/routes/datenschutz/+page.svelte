@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import type { PageData } from "./$types.js";
 	let { data }: { data: PageData } = $props();
 </script>
 
 <svelte:head>
-	<title>Datenschutzerklärung – Folge der Wolke</title>
+	<title>Datenschutzerklärung – {page.data.vereinName}</title>
 </svelte:head>
 
 <main class="container mx-auto max-w-3xl px-6 py-12">
@@ -16,6 +17,6 @@
 	</article>
 
 	<p class="text-muted-foreground mt-12 text-xs">
-		Version {data.version} · Folge der Wolke e.V.
+		Version {data.version} · {page.data.vereinName}
 	</p>
 </main>

@@ -20,7 +20,7 @@
 </script>
 
 <svelte:head>
-  <title>Auslage eingereicht – Folge der Wolke</title>
+  <title>Auslage eingereicht – {$page.data.vereinName}</title>
 </svelte:head>
 
 <main class="container mx-auto max-w-2xl px-6 py-16">
@@ -80,7 +80,7 @@
 
   <div class="mt-12 border-t pt-8">
     <p class="text-muted-foreground text-sm">
-      Bei Fragen wende dich an den Vorstand von Folge der Wolke e.V. Bitte halte deine
+      Bei Fragen wende dich an den Vorstand von {$page.data.vereinName}. Bitte halte deine
       Einreichungs-ID bereit.
     </p>
   </div>

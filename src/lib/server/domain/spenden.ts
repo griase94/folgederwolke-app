@@ -33,6 +33,7 @@ import { projects } from "$lib/server/db/schema/projects.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { bus } from "$lib/server/events/index.js";
 import { env } from "$lib/server/env.js";
+import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
 import { berlinYear } from "$lib/domain/year.js";
 
 // Re-exported so existing `import { berlinYear } from
@@ -57,6 +58,10 @@ export function isBescheinigungEnabled(): boolean {
   const typ = env.VEREIN_BESCHEID_TYP.trim();
   const datum = env.VEREIN_BESCHEID_DATUM.trim();
   if (!datum) return false;
+  // White-label: the steuerbegünstigte Zwecke are quoted verbatim in the BMF
+  // Pflichttext. Without them we cannot render a legally-valid receipt, so
+  // issuance is disabled (and the UI hides it) until configured.
+  if (env.VEREIN_STEUERBEGUENSTIGTE_ZWECKE.trim().length === 0) return false;
   if (typ === "freistellungsbescheid") {
     // BMF compliance: Freistellungsbescheid wording quotes the
     // Veranlagungszeitraum verbatim — without VZ we cannot render a
@@ -478,6 +483,12 @@ export interface BmfPflichtfelder {
   vereinSteuernummer: string;
   vereinVr: string;
   vereinAdresse: string;
+  /**
+   * Full name of the issuing Finanzamt (e.g. "Finanzamt München"). Rendered
+   * verbatim in the BMF Pflichttext — white-label: sourced from
+   * env.VEREIN_FINANZAMT, NOT extracted from the address city.
+   */
+  vereinFinanzamt: string;
   bescheidTyp: BescheidTyp;
   bescheidDatum: string; // YYYY-MM-DD
   /** Required iff bescheidTyp = feststellung_60a. */
@@ -630,12 +641,28 @@ export async function allocateBescheinigung(
       error: "VEREIN_SATZUNG_FASSUNG fehlt — Bescheinigung nicht erstellbar",
     };
   }
+  // White-label: the steuerbegünstigte Zwecke are quoted verbatim in the BMF
+  // Pflichttext. Refuse rather than render an empty Zweck (mirrors the VZ /
+  // Satzungsfassung 412 guards above).
+  if (env.VEREIN_STEUERBEGUENSTIGTE_ZWECKE.trim().length === 0) {
+    return {
+      ok: false,
+      status: 412,
+      error:
+        "VEREIN_STEUERBEGUENSTIGTE_ZWECKE fehlt — Bescheinigung nicht erstellbar",
+    };
+  }
 
+  // White-label: Verein-Stammdaten (name, address, Steuernummer, VR) come from
+  // the single settings→env reader; Finanzamt + Bescheid fields stay env
+  // (issuance config, not Stammdaten).
+  const sd = await readStammdaten();
   const pflichtfelder: BmfPflichtfelder = {
-    vereinName: env.VEREIN_NAME,
-    vereinSteuernummer: env.VEREIN_STEUERNUMMER,
-    vereinVr: env.VEREIN_VR,
-    vereinAdresse: env.VEREIN_ADRESSE,
+    vereinName: sd.name,
+    vereinSteuernummer: sd.steuernummer,
+    vereinVr: sd.vr,
+    vereinAdresse: sd.adresse,
+    vereinFinanzamt: env.VEREIN_FINANZAMT,
     bescheidTyp: typ,
     bescheidDatum: env.VEREIN_BESCHEID_DATUM,
     satzungsFassung: typ === "feststellung_60a" ? satzungsFassung : null,
@@ -675,9 +702,9 @@ export async function allocateBescheinigung(
  * when the user re-downloads the PDF after the initial allocation. Throws
  * if the Spende is missing required fields — caller must surface the error.
  */
-export function extractBmfPflichtfelder(
+export async function extractBmfPflichtfelder(
   sp: typeof donations.$inferSelect,
-): BmfPflichtfelder {
+): Promise<BmfPflichtfelder> {
   if (!isBescheinigungEnabled()) {
     throw new Error(
       "Bescheinigung disabled — Freistellungsbescheid fehlt in den Einstellungen",
@@ -705,17 +732,27 @@ export function extractBmfPflichtfelder(
       "VEREIN_SATZUNG_FASSUNG fehlt — Bescheinigung nicht renderbar",
     );
   }
+  // White-label: the steuerbegünstigte Zwecke are quoted verbatim — refuse
+  // rather than render an empty Zweck (mirrors the VZ / Satzungsfassung guards).
+  if (env.VEREIN_STEUERBEGUENSTIGTE_ZWECKE.trim().length === 0) {
+    throw new Error(
+      "VEREIN_STEUERBEGUENSTIGTE_ZWECKE fehlt — Bescheinigung nicht renderbar",
+    );
+  }
   const sacheBeschreibung =
     sp.spendeKind === "sachspende"
       ? sp.zweckbindungText?.includes("Sache:")
         ? (sp.zweckbindungText.split("Sache:")[1]?.trim() ?? null)
         : sp.zweckbindungText
       : null;
+  // White-label: Stammdaten from settings; Finanzamt + Bescheid from env.
+  const sd = await readStammdaten();
   return {
-    vereinName: env.VEREIN_NAME,
-    vereinSteuernummer: env.VEREIN_STEUERNUMMER,
-    vereinVr: env.VEREIN_VR,
-    vereinAdresse: env.VEREIN_ADRESSE,
+    vereinName: sd.name,
+    vereinSteuernummer: sd.steuernummer,
+    vereinVr: sd.vr,
+    vereinAdresse: sd.adresse,
+    vereinFinanzamt: env.VEREIN_FINANZAMT,
     bescheidTyp: typ,
     bescheidDatum: env.VEREIN_BESCHEID_DATUM,
     satzungsFassung: typ === "feststellung_60a" ? satzungsFassung : null,

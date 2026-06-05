@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { enhance } from '$app/forms';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -24,7 +25,7 @@
 </script>
 
 <svelte:head>
-	<title>Einstellungen – Folge der Wolke</title>
+	<title>Einstellungen – {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-2xl px-4 py-8 sm:px-6">

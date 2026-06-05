@@ -17,10 +17,13 @@
 
 	let {
 		open = $bindable(false),
+		vereinName = 'Verein',
 		members = [],
 		onSuccess
 	}: {
 		open: boolean;
+		/** Runtime Verein name (from $page.data.vereinName) — label + persisted display. */
+		vereinName?: string;
 		members?: Member[];
 		onSuccess?: (ausId: string) => void;
 	} = $props();
@@ -89,7 +92,7 @@
 	function buildPayload(): string {
 		const bv =
 			bezahltVonKind === 'verein'
-				? { kind: 'verein' as const }
+				? { kind: 'verein' as const, display_name: vereinName }
 				: bezahltVonKind === 'member'
 					? {
 							kind: 'member' as const,
@@ -184,7 +187,7 @@
 			<fieldset class="space-y-2">
 				<legend class="text-sm font-medium text-foreground">Wer hat bezahlt?</legend>
 				{#each [
-					{ value: 'verein', label: 'Folge der Wolke e.V.' },
+					{ value: 'verein', label: vereinName },
 					{ value: 'member', label: 'Vereinsmitglied' },
 					{ value: 'extern', label: 'Externe Person' }
 				] as opt (opt.value)}

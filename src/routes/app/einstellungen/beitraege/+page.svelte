@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	/**
 	 * /app/einstellungen/beitraege — Beitragssatz settings (Task 2.9 / spec §8).
 	 *
@@ -73,7 +74,7 @@
 </script>
 
 <svelte:head>
-	<title>Mitgliedsbeiträge – Einstellungen – Folge der Wolke</title>
+	<title>Mitgliedsbeiträge – Einstellungen – {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-3xl px-4 py-8 sm:px-6">

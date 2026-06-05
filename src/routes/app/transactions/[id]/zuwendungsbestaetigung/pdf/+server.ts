@@ -37,7 +37,7 @@ export const GET: RequestHandler = async ({ params }) => {
     throw error(409, "Bescheinigung wurde noch nicht ausgestellt");
   }
 
-  const pflichtfelder = extractBmfPflichtfelder(sp);
+  const pflichtfelder = await extractBmfPflichtfelder(sp);
   const out = await pdfLibBescheinigungRenderer.render(pflichtfelder);
 
   return new Response(out.bytes as unknown as BodyInit, {

@@ -36,6 +36,7 @@ function makeFakeTx() {
 
 const FIXTURE: AuskunftData = {
   email: "test@example.com",
+  vereinName: "Verein X e.V.",
   collectedAt: "2026-05-19T10:00:00.000Z",
   members: [
     {
@@ -169,6 +170,7 @@ describe("@phase-7 renderAuskunftPdf", () => {
     const { renderAuskunftPdf } = await import("$lib/server/pdf/auskunft.js");
     const empty: AuskunftData = {
       email: "empty@example.com",
+      vereinName: "Verein X e.V.",
       collectedAt: new Date().toISOString(),
       members: [],
       donations: [],

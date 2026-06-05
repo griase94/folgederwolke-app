@@ -186,8 +186,19 @@ describe("composeBezahltVonDisplay", async () => {
   const { composeBezahltVonDisplay } =
     await import("$lib/server/domain/auslagen.js");
 
-  it("verein → 'Verein'", () => {
+  it("verein → 'Verein' fallback when no runtime name supplied", () => {
     expect(composeBezahltVonDisplay({ kind: "verein" })).toBe("Verein");
+  });
+
+  it("verein → persists the runtime name captured at import time (white-label)", () => {
+    // Task 1.7: the importer passes the configured Verein name; the snapshot
+    // stores it verbatim instead of a hardcoded literal.
+    expect(
+      composeBezahltVonDisplay({
+        kind: "verein",
+        display_name: "Verein X e.V.",
+      }),
+    ).toBe("Verein X e.V.");
   });
 
   it("member → includes display_name", () => {

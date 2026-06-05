@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { enhance } from '$app/forms';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -41,7 +42,7 @@
 </script>
 
 <svelte:head>
-	<title>Anmelden – Folge der Wolke</title>
+	<title>Anmelden – {page.data.vereinName}</title>
 </svelte:head>
 
 <main class="flex min-h-screen items-center justify-center px-4">
@@ -64,7 +65,7 @@
 					<path d="M17.5 19a4.5 4.5 0 1 0 0-9 6 6 0 0 0-11.6-1.5A4 4 0 0 0 6 19z" />
 				</svg>
 			</div>
-			<p class="text-lg font-bold tracking-tight text-foreground">Folge der Wolke e.V.</p>
+			<p class="text-lg font-bold tracking-tight text-foreground">{page.data.vereinName}</p>
 		</div>
 
 		<div class="space-y-1">

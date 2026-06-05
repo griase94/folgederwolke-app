@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { enhance } from '$app/forms';
 	import { Button } from '$lib/components/ui/button/index.js';
 
@@ -12,7 +13,7 @@
 </script>
 
 <svelte:head>
-	<title>Anmeldung bestätigen – Folge der Wolke</title>
+	<title>Anmeldung bestätigen – {page.data.vereinName}</title>
 </svelte:head>
 
 <main class="flex min-h-screen items-center justify-center px-4">

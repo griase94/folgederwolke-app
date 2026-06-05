@@ -162,6 +162,31 @@ const schema = z.object({
   /** Verein contact phone — displayed in Rechnung v2 footer column 2. */
   VEREIN_CONTACT_PHONE: z.string().default(""),
 
+  // White-label Phase 1 — legal/tax identity fields. All `.default("")` (never
+  // `.min(1)`, which would throw at module load and break the CI build).
+  // Required-ness for the must-have subset is enforced prod-side in
+  // assertProductionEnvSafe() (Phase 4), never via Zod.
+  /** Vorstand / Vertretungsberechtigter — legal pages + cert signature line. */
+  VEREIN_VORSTAND: z.string().default(""),
+  /** Public-facing contact email — legal pages (Impressum/Datenschutz). */
+  VEREIN_KONTAKT_EMAIL: z.string().default(""),
+  /** Datenschutz-Aufsichtsbehörde (full name + address). */
+  VEREIN_AUFSICHTSBEHOERDE: z.string().default(""),
+  /** Registergericht (e.g. "Amtsgericht München") — Impressum. */
+  VEREIN_REGISTERGERICHT: z.string().default(""),
+  /**
+   * Full Finanzamt name (e.g. "Finanzamt München"). Rendered verbatim in the
+   * Zuwendungsbestätigung Pflichttext — replaces the old city-extraction from
+   * the address. Hold the FULL name including the word "Finanzamt".
+   */
+  VEREIN_FINANZAMT: z.string().default(""),
+  /** Default Mitgliedsbeitrag in integer cents (ADR-0003). 0 when unset. */
+  VEREIN_BEITRAG_DEFAULT_CENTS: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .default(0),
+
   // Spenden — Zuwendungsbestätigung (Bescheinigung) Pflichtfelder.
   // ZUWENDUNGSBESTAETIGUNG_ENABLED is derived 'auto' from BESCHEID_TYP +
   // VEREIN_FREISTELLUNGSBESCHEID_VZ (per masterplan §2.2 + §9). The presence
@@ -174,12 +199,13 @@ const schema = z.object({
   VEREIN_SATZUNG_FASSUNG: z.string().default(""),
   /** Veranlagungszeitraum (YYYY) — only meaningful with TYP=freistellungsbescheid. */
   VEREIN_FREISTELLUNGSBESCHEID_VZ: z.string().default(""),
-  /** "Steuerbegünstigte Zwecke" listed on the Bescheid (free text). */
-  VEREIN_STEUERBEGUENSTIGTE_ZWECKE: z
-    .string()
-    .default(
-      "Förderung der Kunst und Kultur sowie der Heimatpflege und Heimatkunde",
-    ),
+  /**
+   * "Steuerbegünstigte Zwecke" listed on the Bescheid (free text). No default
+   * (white-label Phase 1): the old FdW-specific default is removed so a fork
+   * can never accidentally issue a tax certificate quoting FdW's Satzungszweck.
+   * Cert issuance refuses when this is empty (spenden.ts guard).
+   */
+  VEREIN_STEUERBEGUENSTIGTE_ZWECKE: z.string().default(""),
 
   // Deployment metadata
   COMMIT_SHA: z.string().default("dev"),

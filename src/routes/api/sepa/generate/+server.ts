@@ -13,8 +13,7 @@ import type { RequestHandler } from "./$types.js";
 import { listApprovedPendingErstattet } from "$lib/server/domain/transactions.js";
 import {
   buildSepaInputs,
-  generateSepaXml,
-  loadSepaDebtorFromSettings,
+  generateSepaXmlFromSettings,
 } from "$lib/server/sepa/xml.js";
 
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -57,8 +56,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     error(422, "Keine Auslagen mit bekannter IBAN — bitte IBAN hinterlegen");
   }
 
-  const debtor = await loadSepaDebtorFromSettings();
-  const result = generateSepaXml(inputs, { debtor });
+  const result = await generateSepaXmlFromSettings(inputs);
 
   return json(result);
 };

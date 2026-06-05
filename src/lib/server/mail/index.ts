@@ -11,6 +11,7 @@
 import { getDb } from "$lib/server/db/index.js";
 import { sentMails } from "$lib/server/db/schema/mails.js";
 import { env } from "$lib/server/env.js";
+import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
 import { eq } from "drizzle-orm";
 import type { Component } from "svelte";
 import { getMailProvider } from "./provider.js";
@@ -47,13 +48,19 @@ async function loadTemplate(name: TemplateName) {
 // Subject lines
 // ---------------------------------------------------------------------------
 
-function subjectFor(
+export function subjectFor(
   name: TemplateName,
   props: Record<string, unknown>,
 ): string {
+  // Runtime Verein name (injected by sendMail from readStammdaten); never a
+  // hardcoded "Folge der Wolke" literal (white-label Phase 1, Task 2.2).
+  const vereinName =
+    typeof props.vereinName === "string" && props.vereinName.trim() !== ""
+      ? props.vereinName
+      : "Verein";
   switch (name) {
     case "magic_link":
-      return "Dein Anmelde-Link für Folge der Wolke";
+      return `Dein Anmelde-Link für ${vereinName}`;
     case "auslage_eingang":
       return `Deine Auslage ${props.ausId ?? ""} ist bei uns angekommen`;
     case "auslage_erstattet":
@@ -63,13 +70,13 @@ function subjectFor(
     case "beitrag_reminder":
       return `Erinnerung: dein Mitgliedsbeitrag ${props.jahr ?? ""} ist noch offen`;
     case "spende_bescheinigung":
-      return "Deine Aufwandsspenden-Bestätigung von Folge der Wolke e.V.";
+      return `Deine Aufwandsspenden-Bestätigung von ${vereinName}`;
     case "invoice_versendet":
-      return `Rechnung ${props.invoiceNumber ?? ""} von Folge der Wolke e.V.`;
+      return `Rechnung ${props.invoiceNumber ?? ""} von ${vereinName}`;
     case "auslage_approved":
-      return `${props.ausId ?? ""} genehmigt – Folge der Wolke e.V.`;
+      return `${props.ausId ?? ""} genehmigt – ${vereinName}`;
     default:
-      return "Nachricht von Folge der Wolke e.V.";
+      return `Nachricht von ${vereinName}`;
   }
 }
 
@@ -95,10 +102,25 @@ export async function sendMail<T extends TemplateName>(opts: {
   } = opts;
 
   const db = getDb();
-  const subject = subjectFor(
-    template,
-    props as unknown as Record<string, unknown>,
-  );
+
+  // ── Inject runtime Verein identity into every template's props ─────────────
+  // Sourced once from readStammdaten() (settings → env fallback). The shared
+  // MailFooter + the subjects + body wordmarks all render from these props,
+  // never a hardcoded "Folge der Wolke" literal (white-label Phase 1, Task 2.2).
+  // baseUrl threads PUBLIC_BASE_URL so EingangsMail can build an absolute
+  // status link (Task 2.3).
+  const sd = await readStammdaten();
+  const mergedProps = {
+    ...(props as unknown as Record<string, unknown>),
+    vereinName: sd.name,
+    adresse: sd.adresse,
+    vr: sd.vr,
+    steuernummer: sd.steuernummer,
+    stammdaten: sd,
+    baseUrl: env.PUBLIC_BASE_URL,
+  } as Record<string, unknown>;
+
+  const subject = subjectFor(template, mergedProps);
 
   // ── 1. Idempotency insert ──────────────────────────────────────────────────
   const inserted = await db
@@ -130,7 +152,7 @@ export async function sendMail<T extends TemplateName>(opts: {
   // unknown to satisfy renderMailTemplate's loose signature without losing safety.
   const { html, text } = renderMailTemplate(
     component as unknown as Component,
-    props as unknown as Record<string, unknown>,
+    mergedProps,
   );
 
   // ── 3. Send ────────────────────────────────────────────────────────────────

@@ -5,9 +5,10 @@
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { page } from '$app/state';
 
 	let {
-		heading = 'Willkommen bei Folge der Wolke',
+		heading,
 		body,
 		action
 	}: {
@@ -15,6 +16,11 @@
 		body?: string;
 		action?: Snippet;
 	} = $props();
+
+	// White-label: default the first-run heading to the runtime Verein name
+	// (from the root layout) instead of a hardcoded literal. An explicit
+	// `heading` prop still overrides.
+	const effectiveHeading = $derived(heading ?? `Willkommen bei ${page.data.vereinName}`);
 </script>
 
 <div class="flex flex-col items-center gap-6 px-6 py-24 text-center">
@@ -39,7 +45,7 @@
 	</div>
 
 	<div class="max-w-sm">
-		<h2 class="text-xl font-bold tracking-tight text-foreground">{heading}</h2>
+		<h2 class="text-xl font-bold tracking-tight text-foreground">{effectiveHeading}</h2>
 		{#if body}
 			<p class="mt-2 text-sm text-muted-foreground">{body}</p>
 		{/if}

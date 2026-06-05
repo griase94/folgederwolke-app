@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import AdminShell from '$lib/components/admin/AdminShell.svelte';
@@ -55,7 +56,7 @@
 </script>
 
 <svelte:head>
-	<title>Admin – Folge der Wolke</title>
+	<title>Admin – {page.data.vereinName}</title>
 </svelte:head>
 
 <AdminShell user={data.user}>

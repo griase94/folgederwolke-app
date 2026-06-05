@@ -12,6 +12,8 @@
 
 	interface Props {
 		kind: 'verein' | 'member' | 'extern';
+		/** Runtime Verein name (from $page.data.vereinName) used as the 'verein' label. */
+		vereinName?: string;
 		members?: Member[];
 		memberId?: string;
 		memberDisplayName?: string;
@@ -25,6 +27,7 @@
 
 	let {
 		kind = $bindable('verein'),
+		vereinName = 'Verein',
 		members = [],
 		memberId = $bindable(''),
 		memberDisplayName = $bindable(''),
@@ -75,7 +78,7 @@
 			<legend class="sr-only">Wer hat bezahlt?</legend>
 
 			{#each [
-				{ value: 'verein', label: 'Folge der Wolke e.V.' },
+				{ value: 'verein', label: vereinName },
 				{ value: 'member', label: 'Vereinsmitglied' },
 				{ value: 'extern', label: 'Externe Person' }
 			] as opt (opt.value)}

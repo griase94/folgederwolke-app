@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import CashflowOverviewSection from '$lib/components/admin/dashboard/CashflowOverviewSection.svelte';
 	import ChecklistSection from '$lib/components/admin/dashboard/ChecklistSection.svelte';
 	import RecentActivity from '$lib/components/admin/dashboard/RecentActivity.svelte';
@@ -57,7 +58,7 @@
 			{greeting()}, {displayName()} 👋
 		</h1>
 		<p class="mt-1 text-sm text-muted-foreground">
-			Folge der Wolke e.V. · Kassenführung · {data.cashflow.year}
+			{page.data.vereinName} · Kassenführung · {data.cashflow.year}
 		</p>
 	</div>
 

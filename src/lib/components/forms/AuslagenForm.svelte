@@ -10,6 +10,7 @@
 	import { makeDebouncedSave, saveDraft, loadDraft, clearDraft, type DraftMetadata } from '$lib/client/drafts.js';
 	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 	import { browser } from '$app/environment';
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { beforeNavigate } from '$app/navigation';
 
@@ -289,7 +290,7 @@
 	function buildPayload(): string {
 		const bv =
 			bezahltVonKind === 'verein'
-				? { kind: 'verein' as const }
+				? { kind: 'verein' as const, display_name: page.data.vereinName }
 				: bezahltVonKind === 'member'
 					? {
 							kind: 'member' as const,
@@ -383,7 +384,7 @@
 		browser
 			? buildPayload()
 			: JSON.stringify({
-					bezahlt_von: { kind: 'verein' },
+					bezahlt_von: { kind: 'verein', display_name: page.data.vereinName },
 					bezeichnung: '',
 					betragCents: 0,
 					currency: 'EUR'
@@ -458,6 +459,7 @@
 	<!-- ── Section 1: Wer hat bezahlt? ──────────────────────────────────────── -->
 	<BezahltVonPicker
 		bind:kind={bezahltVonKind}
+		vereinName={page.data.vereinName}
 		{members}
 		bind:memberId
 		bind:memberDisplayName

@@ -16,6 +16,14 @@ import { ALLOWED_BELEG_MIMES } from "./file-validation.js";
 const bezahltVonVereinSchema = z
   .object({
     kind: z.literal("verein"),
+    /**
+     * White-label (Phase 1): runtime Verein name captured at import time so
+     * the persisted `bezahlt_von_display` snapshot reflects the configured
+     * Verein, not a hardcoded literal. Optional — falls back to "Verein" when
+     * absent (older clients / no name configured). ADR-0007: 'verein' stays
+     * the stable discriminator; this is display-only.
+     */
+    display_name: z.string().max(120, "Anzeigename zu lang").optional(),
   })
   .strict();
 
@@ -161,14 +169,16 @@ export function validateAuslageInput(
  * Stored in bezahlt_von_display on insert — never recomputed from live data.
  *
  * Examples:
- *   verein → "Verein"
+ *   verein → "Folge der Wolke e.V." (runtime name) or "Verein" (fallback)
  *   member → "Mitglied: Max Mustermann"
  *   extern → "Extern: Jane Doe (DE25...3000)"
  */
 export function composeBezahltVonDisplay(bv: BezahltVon): string {
   switch (bv.kind) {
     case "verein":
-      return "Verein";
+      // White-label: persist the runtime Verein name captured at import time;
+      // fall back to the neutral "Verein" token when none was supplied.
+      return bv.display_name?.trim() || "Verein";
     case "member":
       return `Mitglied: ${bv.display_name}`;
     case "extern": {

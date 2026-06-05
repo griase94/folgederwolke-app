@@ -16,6 +16,7 @@
   manual-import-builder already wired up (ManualImportSheet).
 -->
 <script lang="ts">
+	import { page } from '$app/state';
 	import ManualImportSheet from '$lib/components/admin/inbox/ManualImportSheet.svelte';
 	import InboxList from '$lib/components/admin/inbox/InboxList.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -64,7 +65,7 @@
 </script>
 
 <svelte:head>
-	<title>Audit Inbox – Folge der Wolke</title>
+	<title>Audit Inbox – {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-3xl px-4 py-8 sm:px-6">
@@ -153,6 +154,7 @@
 <!-- ── ManualImportSheet ────────────────────────────────────────────────── -->
 <ManualImportSheet
 	bind:open={importSheetOpen}
+	vereinName={data.vereinName}
 	members={data.members}
 	onSuccess={onImportSuccess}
 />
