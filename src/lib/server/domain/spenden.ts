@@ -635,7 +635,16 @@ export async function allocateBescheinigung(
     }
     bescheinigungNr = await allocateBusinessId("B", year);
 
-    await tx
+    // `allocateBusinessId` commits on its OWN transaction, so between the
+    // re-check above and this UPDATE a CONCURRENT allocateBescheinigung call
+    // could have already set bescheinigung_nr for this donation. The
+    // `bescheinigung_nr IS NULL` guard then matches 0 rows — and our freshly
+    // allocated `bescheinigungNr` is orphaned (the row kept the WINNER's
+    // number). Mirror the markExpenseAsPaid "I won the race" pattern: use
+    // RETURNING as the authoritative "I actually wrote it" signal, and on a
+    // 0-row UPDATE re-read the row and return the idempotent winner instead of
+    // the number we never persisted.
+    const written = await tx
       .update(donations)
       .set({
         bescheinigungNr,
@@ -645,7 +654,21 @@ export async function allocateBescheinigung(
           sp.spendeKind === "sachspende" ? "sachspende" : "geldspende",
         updatedAt: new Date(),
       })
-      .where(and(eq(donations.id, donationId), sql`bescheinigung_nr IS NULL`));
+      .where(and(eq(donations.id, donationId), sql`bescheinigung_nr IS NULL`))
+      .returning({ bescheinigungNr: donations.bescheinigungNr });
+
+    if (written.length === 0) {
+      // We lost the race: a concurrent caller won. Re-read + surface THEIR
+      // number (the row's actual value), discarding our orphaned allocation.
+      const winner = await tx
+        .select({ bescheinigungNr: donations.bescheinigungNr })
+        .from(donations)
+        .where(eq(donations.id, donationId))
+        .limit(1);
+      if (winner[0]?.bescheinigungNr) {
+        bescheinigungNr = winner[0].bescheinigungNr;
+      }
+    }
   });
 
   const betragCents = sp.betragCents;
