@@ -14,7 +14,7 @@ import type { RequestHandler } from "./$types.js";
 import { listSpendenPage } from "$lib/server/domain/transactions.js";
 import { buildTransactionsCsv } from "$lib/server/export/transactions-csv.js";
 import { parseFilterState } from "$lib/domain/transaction-filters.js";
-import { currentBuchungsjahr, ALL_YEARS } from "$lib/domain/year.js";
+import { currentBuchungsjahr, ALL_YEARS, berlinYmd } from "$lib/domain/year.js";
 import { resolveLayoutYear } from "$lib/server/domain/layout-year.js";
 import { listAvailableYears } from "$lib/server/domain/years.js";
 
@@ -45,7 +45,9 @@ export const GET: RequestHandler = async ({ url }) => {
   const bytes = new TextEncoder().encode(csv);
 
   const yearLabel = yearScope === ALL_YEARS ? "alle" : String(yearScope);
-  const date = new Date().toISOString().slice(0, 10);
+  // ADR-0001: Berlin-local date (UTC .toISOString().slice(0,10) shows
+  // yesterday between ~22:00–23:59 Berlin time).
+  const date = berlinYmd();
   const filename = `spenden-${yearLabel}-${date}.csv`;
 
   return new Response(bytes, {
