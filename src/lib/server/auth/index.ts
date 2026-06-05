@@ -22,6 +22,7 @@ import { canonicalizeEmail } from "$lib/domain/email.js";
 import { ipToPrefix } from "$lib/domain/ip.js";
 import { sendMail } from "$lib/server/mail/index.js";
 import { sha256 } from "./hash.js";
+import { issueSession } from "./issue-session.js";
 import {
   checkIntentCookie,
   clearIntentCookie,
@@ -181,6 +182,12 @@ export async function getMagicLinkByToken(rawToken: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Issue session (extracted so the mint-session CLI can call it directly)
+// ---------------------------------------------------------------------------
+
+export { issueSession } from "./issue-session.js";
+
+// ---------------------------------------------------------------------------
 // Consume magic link (POST verify) — transactional (MUST-fix #1)
 // ---------------------------------------------------------------------------
 
@@ -237,15 +244,7 @@ export async function consumeMagicLink(
     // Upsert user
     const user = await upsertUser(tx, email);
 
-    // Create session
-    const sessionToken = randomBytes(32).toString("base64url");
-    const sessionHash = sha256(sessionToken);
-    await tx.insert(sessions).values({
-      userId: user.id,
-      tokenHash: sessionHash,
-      expiresAt: new Date(Date.now() + 30 * 86400_000),
-      lastUsedAt: new Date(),
-    });
+    const { token: sessionToken } = await issueSession(tx, user.id);
 
     setSessionCookie(cookies, sessionToken);
     clearIntentCookie(cookies);

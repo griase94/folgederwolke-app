@@ -459,3 +459,49 @@ To activate scheduled backups:
 6. First run: `gh workflow run "Files Backup"`.
 7. Verify destination has the expected files + `manifest.csv`.
 8. Document the rotation cadence (annual) in RUNBOOK §1.
+
+---
+
+## 7. Prod rollback
+
+### 7.1 Automatic
+
+After every successful prod deploy, `.github/workflows/post-deploy-smoke.yml`
+runs read-only smoke tests. If both attempts fail (with a 30s sleep between
+them):
+
+- A GitHub issue is filed with labels `incident` + `auto-rollback`.
+- `scripts/ci/vercel-rollback.sh` calls `POST /v1/projects/{id}/rollback/{depId}`
+  to promote the previous deployment to production.
+
+MTTR: ~3–5 minutes for runtime-caught bugs.
+
+**Known limitation**: `/healthz` is cached in-process for 30s per warm Lambda
+instance (see `src/routes/healthz/+server.ts`). A DB outage that occurs within
+30s of deploy may not be reflected if the cache was populated before the
+failure. The 2-attempt + 30s-sleep retry tends to outlast the cache window, but
+is not guaranteed.
+
+### 7.2 Manual rollback (when automatic isn't appropriate)
+
+1. Vercel dashboard → folgederwolke project → Deployments
+2. Filter by **READY** + **Production**
+3. Find the last-known-good deployment (the one immediately before the current
+   "Current" deployment)
+4. Click `…` → **Promote to Production**
+5. Confirm. Takes ~5 seconds; no rebuild
+
+**Why it's safe:**
+
+- All migrations follow the additive-first convention — rolling back the app
+  does not require rolling back the DB.
+- Vercel's instant promote flips the alias with no traffic loss.
+
+For **destructive migrations** (rare — the two-phase split convention forbids
+them without explicit planning): follow §2 (DB restore from Neon PITR) after
+the alias flip.
+
+### 7.3 Refreshing the preview Neon branch
+
+See `CLAUDE.md` → "Preview environment + post-deploy smoke" →
+"Refreshing preview from clean state" (`../CLAUDE.md#refreshing-preview-from-clean-state`).
