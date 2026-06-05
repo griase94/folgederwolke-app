@@ -143,7 +143,7 @@ function drawGap(ctx: DrawCtx, pts: number): void {
  * the wording. Source: BMF-Schreiben vom 24.04.2025, Anhang
  * "Mustervordrucke Zuwendungsbestaetigungen".
  */
-function bescheidPflichttext(p: BmfPflichtfelder): string[] {
+export function bescheidPflichttext(p: BmfPflichtfelder): string[] {
   const lines: string[] = [];
   if (p.bescheidTyp === "freistellungsbescheid") {
     // BMF compliance: Veranlagungszeitraum is asserted non-empty upstream
@@ -157,7 +157,7 @@ function bescheidPflichttext(p: BmfPflichtfelder): string[] {
     lines.push(
       `Wir sind wegen Foerderung ${p.steuerbegueZwecke} nach dem letzten uns zugegangenen ` +
         `Freistellungsbescheid bzw. nach der Anlage zum Koerperschaftsteuerbescheid des ` +
-        `Finanzamts ${maskOrtFromAdresse(p.vereinAdresse)}, StNr. ${p.vereinSteuernummer}, ` +
+        `${p.vereinFinanzamt}, StNr. ${p.vereinSteuernummer}, ` +
         `vom ${formatGermanDate(p.bescheidDatum)} fuer den letzten Veranlagungszeitraum ` +
         `${p.freistellungsbescheidVz} nach Paragraph 5 Abs. 1 Nr. 9 des Koerperschaftsteuergesetzes ` +
         `von der Koerperschaftsteuer und nach Paragraph 3 Nr. 6 des Gewerbesteuergesetzes von der Gewerbesteuer ` +
@@ -171,7 +171,7 @@ function bescheidPflichttext(p: BmfPflichtfelder): string[] {
     }
     lines.push(
       `Die Einhaltung der satzungsmaessigen Voraussetzungen nach den Paragraphen 51, 59, 60 und 61 AO ` +
-        `wurde vom Finanzamt ${maskOrtFromAdresse(p.vereinAdresse)}, StNr. ${p.vereinSteuernummer}, ` +
+        `wurde vom ${p.vereinFinanzamt}, StNr. ${p.vereinSteuernummer}, ` +
         `mit Bescheid vom ${formatGermanDate(p.bescheidDatum)} ` +
         `nach Paragraph 60a AO gesondert festgestellt. Wir foerdern nach unserer Satzung ` +
         `(Fassung vom ${formatGermanDate(p.satzungsFassung)}) ${p.steuerbegueZwecke}.`,
