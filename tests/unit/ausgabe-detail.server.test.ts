@@ -36,14 +36,14 @@ const ERSTATTET_DETAIL = {
   sphereSnapshot: "ideeller",
   sphereEffective: "ideeller",
   kategorieNameSnapshot: "Miete",
-  status: "erstattet",
-  erstattetAm: "2026-03-05",
+  status: "erstattet" as string,
+  erstattetAm: "2026-03-05" as string | null,
   bezahltVonDisplay: "Folge der Wolke e.V.",
   festgeschriebenAt: null as string | null,
   yearOfBuchung: 2026,
   kommentar: "monatlich",
   projectId: null,
-  zahlungsartId: "22222222-2222-4222-8222-222222222222",
+  zahlungsartId: "22222222-2222-4222-8222-222222222222" as string | null,
   externIban: null,
   externEmail: null,
   externName: null,
@@ -66,6 +66,15 @@ const ERSTATTET_DETAIL = {
   herkunftsbelegFileId: null,
   betriebsvermoegen: null,
   timeline: [],
+};
+
+// An OPEN (not-yet-erstattet) expense — used by the free-edit save tests, where
+// betrag/Kategorie mutation is allowed because no payment has been booked.
+const GEPRUEFT_DETAIL = {
+  ...ERSTATTET_DETAIL,
+  status: "geprueft",
+  erstattetAm: null,
+  zahlungsartId: null,
 };
 
 const getTransactionDetailMock = vi.fn(
@@ -297,7 +306,8 @@ describe("ausgaben/[id] ?/duplicate", () => {
 // ---------------------------------------------------------------------------
 
 describe("ausgaben/[id] ?/save", () => {
-  it("updates the editable fields when not festgeschrieben", async () => {
+  it("updates the editable fields of an OPEN expense", async () => {
+    getTransactionDetailMock.mockResolvedValueOnce(GEPRUEFT_DETAIL);
     const event = makeActionEvent("exp-1", {
       bezeichnung: "Raummiete April",
       betragCents: "46000",
@@ -313,9 +323,70 @@ describe("ausgaben/[id] ?/save", () => {
     expect(busEmitMock).toHaveBeenCalled();
   });
 
+  it("does NOT write zahlungsartId/erstattetAm/status (descriptive-only whitelist)", async () => {
+    getTransactionDetailMock.mockResolvedValueOnce(GEPRUEFT_DETAIL);
+    const event = makeActionEvent("exp-1", {
+      bezeichnung: "Raummiete April",
+      betragCents: "46000",
+      kategorieNameSnapshot: "Miete",
+    });
+    await actions["save"]!(event);
+    const setArg = updateSetMock.mock.calls[0]![0] as Record<string, unknown>;
+    // The SET must touch ONLY descriptive fields — never payment columns.
+    expect(setArg).not.toHaveProperty("zahlungsartId");
+    expect(setArg).not.toHaveProperty("erstattetAm");
+    expect(setArg).not.toHaveProperty("status");
+  });
+
+  it("preserves an erstattet row's zahlungsartId on a benign descriptive edit (Fix 1)", async () => {
+    // ERSTATTET_DETAIL has zahlungsartId set + status erstattet. Editing only
+    // the description (betrag/Kategorie unchanged) must succeed AND must not
+    // null out the reimbursement's payment method.
+    const event = makeActionEvent("exp-1", {
+      bezeichnung: "Raummiete März (Korrektur Schreibweise)",
+      betragCents: "45000", // unchanged
+      kommentar: "monatlich, korrigiert",
+      kategorieNameSnapshot: "Miete", // unchanged
+    });
+    const result = (await actions["save"]!(event)) as { ok?: boolean };
+    expect(result.ok).toBe(true);
+    const setArg = updateSetMock.mock.calls[0]![0] as Record<string, unknown>;
+    expect(setArg.bezeichnung).toBe("Raummiete März (Korrektur Schreibweise)");
+    // zahlungsartId is NOT in the SET payload → the DB keeps its stored value.
+    expect(setArg).not.toHaveProperty("zahlungsartId");
+  });
+
+  it("blocks a betrag change on an erstattet row with 409 → Storno (Fix 2)", async () => {
+    // betragCents changed (45000 → 46000) on an already-reimbursed row.
+    const event = makeActionEvent("exp-1", {
+      bezeichnung: "Raummiete März",
+      betragCents: "46000",
+      kategorieNameSnapshot: "Miete",
+    });
+    const result = (await actions["save"]!(event)) as {
+      status?: number;
+      data?: { error?: string };
+    };
+    expect(result.status).toBe(409);
+    expect(updateSetMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks a Kategorie change on an erstattet row with 409 → Storno (Fix 2)", async () => {
+    // Kategorie changed ("Miete" → "Bürobedarf") on an already-reimbursed row.
+    const event = makeActionEvent("exp-1", {
+      bezeichnung: "Raummiete März",
+      betragCents: "45000", // unchanged
+      kategorieNameSnapshot: "Bürobedarf",
+    });
+    const result = (await actions["save"]!(event)) as { status?: number };
+    expect(result.status).toBe(409);
+    expect(updateSetMock).not.toHaveBeenCalled();
+  });
+
   it("re-derives sphere from the Kategorie server-side — a tampered sphereSnapshot is ignored (§4.5)", async () => {
     // The body claims "ideeller", but the picked Kategorie ("Miete") resolves to
     // "wirtschaftlich". The write MUST use the resolved sphere, never the body's.
+    getTransactionDetailMock.mockResolvedValueOnce(GEPRUEFT_DETAIL);
     const event = makeActionEvent("exp-1", {
       bezeichnung: "Raummiete April",
       betragCents: "46000",
@@ -335,6 +406,7 @@ describe("ausgaben/[id] ?/save", () => {
   });
 
   it("guards the UPDATE atomically with isNull(festgeschriebenAt) in the WHERE (TOCTOU)", async () => {
+    getTransactionDetailMock.mockResolvedValueOnce(GEPRUEFT_DETAIL);
     const event = makeActionEvent("exp-1", {
       bezeichnung: "Raummiete April",
       betragCents: "46000",

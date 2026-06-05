@@ -90,8 +90,12 @@ const saveSchema = z.object({
     }),
   // NOTE: `sphereSnapshot` is intentionally NOT in this schema — it is DERIVED
   // server-side from the Kategorie (§4.5); a body value is never trusted.
+  // NOTE: `zahlungsartId` / `erstattetAm` / `status` are intentionally NOT in
+  // this schema either — ?/save is a DESCRIPTIVE-ONLY partial update. The
+  // payment state is owned by the mark-paid / Erstattung workflow, never by the
+  // edit form (which posts no zahlungsartId → a `?? null` here would silently
+  // wipe an already-booked reimbursement's payment method, Fix 1).
   projectId: z.string().uuid().nullable().optional(),
-  zahlungsartId: z.string().uuid().nullable().optional(),
 });
 
 const markPaidSchema = z.object({
@@ -115,7 +119,6 @@ export const actions = {
       rechnungsdatum: raw.rechnungsdatum || null,
       kommentar: raw.kommentar || null,
       projectId: raw.projectId || null,
-      zahlungsartId: raw.zahlungsartId || null,
     });
     if (!parsed.success) {
       return fail(422, {
@@ -143,9 +146,28 @@ export const actions = {
       parsed.data.kategorieNameSnapshot,
     );
 
+    // Payment-state guard (Fix 2): once an Auslage is `erstattet` the money has
+    // moved, so the tax-relevant axes (Betrag + Kategorie/Sphäre) are frozen —
+    // a correction must go through Storno, not a silent edit. Descriptive-only
+    // edits (Bezeichnung / Kommentar / Datum / Projekt) on an erstattet row stay
+    // allowed (and preserve the booked Zahlungsart, Fix 1). We compare the
+    // submitted Betrag/Kategorie against the stored values and reject a CHANGE.
+    if (detail.status === "erstattet") {
+      const betragChanged = parsed.data.betragCents !== detail.betragCents;
+      const kategorieChanged = kat.name !== detail.kategorieNameSnapshot;
+      if (betragChanged || kategorieChanged) {
+        return fail(409, {
+          error:
+            "Betrag und Kategorie einer erstatteten Auslage sind festgelegt — Korrektur nur über Storno.",
+        });
+      }
+    }
+
     const db = getDb();
     await db
       .update(expenses)
+      // DESCRIPTIVE-ONLY whitelist (Fix 1): never write zahlungsartId /
+      // erstattetAm / status here — those belong to the payment workflow.
       .set({
         bezeichnung: parsed.data.bezeichnung,
         betragCents: BigInt(parsed.data.betragCents),
@@ -154,7 +176,6 @@ export const actions = {
         kategorieNameSnapshot: kat.name,
         sphereSnapshot: kat.sphere,
         projectId: parsed.data.projectId ?? null,
-        zahlungsartId: parsed.data.zahlungsartId ?? null,
         updatedAt: new Date(),
       })
       // TOCTOU: guard the write atomically with the read-gate by re-asserting
