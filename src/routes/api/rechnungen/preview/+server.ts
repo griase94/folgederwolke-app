@@ -151,9 +151,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     leistungszeitraum: payload.leistungszeitraum?.trim() || null,
     verein: {
       name: sd.name,
-      adresse: env.VEREIN_ADRESSE || "Westermuehlstrasse 6\n80469 Muenchen",
-      steuernummer: env.VEREIN_STEUERNUMMER || "",
-      vereinsregister: env.VEREIN_VR || "",
+      adresse: sd.adresse,
+      steuernummer: sd.steuernummer,
+      vereinsregister: sd.vr,
       iban:
         unquote(settingsMap.get("verein.iban") ?? "") || env.VEREIN_IBAN || "",
       bic: unquote(settingsMap.get("verein.bic") ?? "") || env.VEREIN_BIC || "",
