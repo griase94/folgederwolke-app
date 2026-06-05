@@ -31,19 +31,23 @@ export interface EinnahmenCellSnippets {
 
 /**
  * Build the Einnahmen `ColumnDef<EinnahmenRow>[]` from the route-supplied cell
- * snippets. Sort keys (`gebuchtAm`, `businessId`, `betrag`) match the scaffold's
- * `?sort=` contract.
+ * snippets.
+ *
+ * TODO(sort): all columns are `sortable: false` for now — `listEinnahmenPage`
+ * hardcodes `ORDER BY gebuchtAm DESC` and ignores `?sort=`, so a clickable
+ * header would be a dead control (navigates `?sort=` but the result set never
+ * reorders). Re-enable `sortable: true` on Datum / Bezeichnung / Betrag once
+ * the shared server-side sort plumbing (Phase-2/scaffold) honors `?sort=&dir=`.
  */
 export function buildEinnahmenColumns(
   cells: EinnahmenCellSnippets,
 ): ColumnDef<EinnahmenRow>[] {
   return [
-    { key: "gebuchtAm", label: "Datum", sortable: true, render: cells.datum },
+    { key: "gebuchtAm", label: "Datum", render: cells.datum },
     { key: "businessId", label: "ID", render: cells.id },
     {
       key: "bezeichnung",
       label: "Bezeichnung",
-      sortable: true,
       render: cells.bezeichnung,
     },
     { key: "kategorie", label: "Kategorie", render: cells.kategorie },
@@ -52,7 +56,6 @@ export function buildEinnahmenColumns(
       key: "betrag",
       label: "Betrag",
       align: "right",
-      sortable: true,
       render: cells.betrag,
     },
   ];
