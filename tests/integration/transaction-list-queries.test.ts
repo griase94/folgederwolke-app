@@ -231,4 +231,77 @@ describe.skipIf(!dbConfigured)("per-tab paginated queries", () => {
     expect(ein.rows.every((r) => r.kind === "income")).toBe(true);
     expect(spe.rows.every((r) => r.kind === "donation")).toBe(true);
   });
+
+  // ── Sort plumbing (§13 sortable headers) ────────────────────────────────────
+  // PageOptions now carries sort?/dir?; each listXPage applies an ORDER-BY
+  // whitelist. Assert that a non-default sort actually reorders the rows.
+  it("ausgaben: sort=betrag dir=asc orders by amount ascending (and differs from the default)", async () => {
+    const state = parseFilterState("ausgaben", new URLSearchParams(""));
+    const opts = { state, year: ALL_YEARS, limit: 50, offset: 0 } as const;
+
+    const def = await listAusgabenPage(opts); // default gebuchtAm desc
+    const asc = await listAusgabenPage({ ...opts, sort: "betrag", dir: "asc" });
+
+    // The sorted page is monotonically non-decreasing in betragCents.
+    const amounts = asc.rows.map((r) => r.betragCents);
+    for (let i = 1; i < amounts.length; i++) {
+      expect(amounts[i]!).toBeGreaterThanOrEqual(amounts[i - 1]!);
+    }
+    // And the order genuinely changed vs. the default (corpus has > 1 expense
+    // with distinct amounts, so the id sequence must differ).
+    expect(asc.rows.map((r) => r.id)).not.toEqual(def.rows.map((r) => r.id));
+    // Same row set (a re-order, not a re-filter): totals + id-sets match.
+    expect(asc.total).toBe(def.total);
+    expect(new Set(asc.rows.map((r) => r.id))).toEqual(
+      new Set(def.rows.map((r) => r.id)),
+    );
+  });
+
+  it("ausgaben: an unknown sort key falls back to the default order (gebuchtAm desc)", async () => {
+    const state = parseFilterState("ausgaben", new URLSearchParams(""));
+    const opts = { state, year: ALL_YEARS, limit: 50, offset: 0 } as const;
+    const def = await listAusgabenPage(opts);
+    // A tampered/unlisted key (and even a non-whitelisted column) must NOT
+    // reorder — it falls back to gebuchtAm desc, identical to the default page.
+    const bogus = await listAusgabenPage({
+      ...opts,
+      sort: "sphereSnapshot",
+      dir: "asc",
+    });
+    expect(bogus.rows.map((r) => r.id)).toEqual(def.rows.map((r) => r.id));
+  });
+
+  it("spenden: sort=betrag dir=desc orders by amount descending", async () => {
+    const state = parseFilterState("spenden", new URLSearchParams(""));
+    const { rows } = await listSpendenPage({
+      state,
+      year: ALL_YEARS,
+      limit: 50,
+      offset: 0,
+      sort: "betrag",
+      dir: "desc",
+    });
+    const amounts = rows.map((r) => r.betragCents);
+    for (let i = 1; i < amounts.length; i++) {
+      expect(amounts[i]!).toBeLessThanOrEqual(amounts[i - 1]!);
+    }
+  });
+
+  it("einnahmen: sort=businessId dir=asc orders by businessId ascending (no LATERAL fan-out)", async () => {
+    const state = parseFilterState("einnahmen", new URLSearchParams(""));
+    const { rows, total } = await listEinnahmenPage({
+      state,
+      year: ALL_YEARS,
+      limit: 50,
+      offset: 0,
+      sort: "businessId",
+      dir: "asc",
+    });
+    const ids = rows.map((r) => r.businessId);
+    const sorted = [...ids].sort();
+    expect(ids).toEqual(sorted);
+    // The LATERAL join still must not duplicate rows under a custom sort.
+    expect(total).toBe(rows.length);
+    expect(new Set(rows.map((r) => r.id)).size).toBe(rows.length);
+  });
 });

@@ -11,7 +11,17 @@
  * No schema changes — read-only queries only (§5.4 spec).
  */
 
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  or,
+  sql,
+  type AnyColumn,
+  type SQL,
+} from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
@@ -406,6 +416,33 @@ export interface PageOptions {
   year: YearScope;
   limit: number;
   offset: number;
+  /**
+   * Optional sort key (the scaffold's `?sort=` column key). Each `listXPage`
+   * applies a per-tab ORDER-BY whitelist; an unknown/absent key falls back to
+   * the default `gebuchtAm desc`. `dir` is `'asc' | 'desc'` (default `'desc'`).
+   */
+  sort?: string;
+  dir?: "asc" | "desc";
+}
+
+/**
+ * Resolve a sort key against a per-tab whitelist → a Drizzle ORDER-BY clause.
+ * The whitelist maps the scaffold's column `key` (what `?sort=` carries) to the
+ * concrete column. Unknown/absent keys (or an empty `sort`) fall back to
+ * `gebuchtAm desc` so a tampered `?sort=` can never order by an unindexed /
+ * non-existent column. `dir` defaults to `desc`.
+ */
+function resolveOrderBy(
+  sort: string | undefined,
+  dir: "asc" | "desc" | undefined,
+  whitelist: Record<string, AnyColumn>,
+  defaultColumn: AnyColumn,
+): SQL {
+  const column = sort ? whitelist[sort] : undefined;
+  // Unknown/absent key → the default column, newest-first (gebuchtAm DESC),
+  // ignoring `dir` so a tampered `?sort=` can't order by an unlisted column.
+  if (!column) return desc(defaultColumn);
+  return (dir === "asc" ? asc : desc)(column);
 }
 
 /** Shared base columns every per-tab row projection includes. */
@@ -450,6 +487,19 @@ export async function listAusgabenPage(
   const db = getDb();
   const conds = buildAusgabenWhere(opts.state, opts.year);
   const where = conds.length ? and(...conds) : undefined;
+  // ORDER-BY whitelist (spec §13 sortable headers): the scaffold's column keys.
+  const orderBy = resolveOrderBy(
+    opts.sort,
+    opts.dir,
+    {
+      gebuchtAm: expenses.gebuchtAm,
+      businessId: expenses.businessId,
+      bezeichnung: expenses.bezeichnung,
+      betrag: expenses.betragCents,
+      status: expenses.status,
+    },
+    expenses.gebuchtAm,
+  );
   const [rows, countRows] = await Promise.all([
     db
       .select({
@@ -472,7 +522,7 @@ export async function listAusgabenPage(
       })
       .from(expenses)
       .where(where)
-      .orderBy(desc(expenses.gebuchtAm))
+      .orderBy(orderBy)
       .limit(opts.limit)
       .offset(opts.offset),
     db
@@ -526,6 +576,17 @@ export async function listEinnahmenPage(
   const db = getDb();
   const conds = buildEinnahmenWhere(opts.state, opts.year);
   const where = conds.length ? and(...conds) : undefined;
+  const orderBy = resolveOrderBy(
+    opts.sort,
+    opts.dir,
+    {
+      gebuchtAm: income.gebuchtAm,
+      businessId: income.businessId,
+      bezeichnung: income.bezeichnung,
+      betrag: income.betragCents,
+    },
+    income.gebuchtAm,
+  );
 
   // P2-06: correlated LATERAL subquery — references the outer `income.id`, so
   // it's LATERAL; `.orderBy(createdAt, id).limit(1)` picks one deterministically.
@@ -557,7 +618,7 @@ export async function listEinnahmenPage(
       .from(income)
       .leftJoinLateral(invLateral, sql`true`)
       .where(where)
-      .orderBy(desc(income.gebuchtAm))
+      .orderBy(orderBy)
       .limit(opts.limit)
       .offset(opts.offset),
     db
@@ -601,6 +662,19 @@ export async function listSpendenPage(
   const db = getDb();
   const conds = buildSpendenWhere(opts.state, opts.year);
   const where = conds.length ? and(...conds) : undefined;
+  // Donations have no `bezeichnung` column (the list label is derived from
+  // spenderName), so the sortable axes are Datum / ID / Spender / Betrag.
+  const orderBy = resolveOrderBy(
+    opts.sort,
+    opts.dir,
+    {
+      gebuchtAm: donations.gebuchtAm,
+      businessId: donations.businessId,
+      betrag: donations.betragCents,
+      spenderName: donations.spenderName,
+    },
+    donations.gebuchtAm,
+  );
   const [rows, countRows] = await Promise.all([
     db
       .select({
@@ -620,7 +694,7 @@ export async function listSpendenPage(
       })
       .from(donations)
       .where(where)
-      .orderBy(desc(donations.gebuchtAm))
+      .orderBy(orderBy)
       .limit(opts.limit)
       .offset(opts.offset),
     db

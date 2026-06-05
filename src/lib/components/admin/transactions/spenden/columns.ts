@@ -35,20 +35,28 @@ export interface SpendenColumnSnippets {
 export function spendenColumns(
   s: SpendenColumnSnippets,
 ): ColumnDef<SpendenRow>[] {
-  // NOTE: every column is `sortable: false` (omitted) for now. listSpendenPage
-  // hardcodes `ORDER BY donations.gebucht_am DESC` and ignores the scaffold's
-  // `?sort=`/`?dir=` params, so a clickable header would be a dead control (it
-  // navigates + reloads but the order never changes). The shared server-side
-  // sort plumbing lands in a later phase.
-  // TODO(phase: shared-sort): re-enable `sortable: true` on Datum / Spender /
-  // Betrag once listSpendenPage honours the `?sort`/`?dir` query params.
+  // Sorting: Datum / ID / Spender / Betrag are sortable — listSpendenPage
+  // applies an ORDER-BY whitelist keyed on these column keys, so the scaffold's
+  // `?sort=`/`?dir=` headers reorder the server result set. Art / Zweckbindung /
+  // Bescheinigung stay non-sortable (enum/derived display axes).
   return [
-    { key: "gebuchtAm", label: "Datum", render: s.datum },
-    { key: "businessId", label: "ID", render: s.id },
-    { key: "spenderName", label: "Spender", render: s.spender },
+    { key: "gebuchtAm", label: "Datum", sortable: true, render: s.datum },
+    { key: "businessId", label: "ID", sortable: true, render: s.id },
+    {
+      key: "spenderName",
+      label: "Spender",
+      sortable: true,
+      render: s.spender,
+    },
     { key: "spendeKind", label: "Art", render: s.art },
     { key: "zweckbindungKind", label: "Zweckbindung", render: s.zweckbindung },
-    { key: "betrag", label: "Betrag", align: "right", render: s.betrag },
+    {
+      key: "betrag",
+      label: "Betrag",
+      align: "right",
+      sortable: true,
+      render: s.betrag,
+    },
     { key: "bescheinigungNr", label: "Bescheinigung", render: s.bescheinigung },
   ];
 }

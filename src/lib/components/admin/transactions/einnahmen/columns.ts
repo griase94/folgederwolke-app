@@ -33,21 +33,21 @@ export interface EinnahmenCellSnippets {
  * Build the Einnahmen `ColumnDef<EinnahmenRow>[]` from the route-supplied cell
  * snippets.
  *
- * TODO(sort): all columns are `sortable: false` for now — `listEinnahmenPage`
- * hardcodes `ORDER BY gebuchtAm DESC` and ignores `?sort=`, so a clickable
- * header would be a dead control (navigates `?sort=` but the result set never
- * reorders). Re-enable `sortable: true` on Datum / Bezeichnung / Betrag once
- * the shared server-side sort plumbing (Phase-2/scaffold) honors `?sort=&dir=`.
+ * Sorting: Datum / ID / Bezeichnung / Betrag are sortable — `listEinnahmenPage`
+ * applies an ORDER-BY whitelist keyed on these column keys, so the scaffold's
+ * `?sort=&dir=` headers reorder the server result set. Kategorie / Sphäre stay
+ * non-sortable (the kategorie is a snapshot string; Sphäre is a visual rule).
  */
 export function buildEinnahmenColumns(
   cells: EinnahmenCellSnippets,
 ): ColumnDef<EinnahmenRow>[] {
   return [
-    { key: "gebuchtAm", label: "Datum", render: cells.datum },
-    { key: "businessId", label: "ID", render: cells.id },
+    { key: "gebuchtAm", label: "Datum", sortable: true, render: cells.datum },
+    { key: "businessId", label: "ID", sortable: true, render: cells.id },
     {
       key: "bezeichnung",
       label: "Bezeichnung",
+      sortable: true,
       render: cells.bezeichnung,
     },
     { key: "kategorie", label: "Kategorie", render: cells.kategorie },
@@ -56,6 +56,7 @@ export function buildEinnahmenColumns(
       key: "betrag",
       label: "Betrag",
       align: "right",
+      sortable: true,
       render: cells.betrag,
     },
   ];

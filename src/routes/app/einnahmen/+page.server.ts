@@ -36,12 +36,18 @@ export const load: PageServerLoad = async ({ url, parent }) => {
     1,
     Math.floor(Number(url.searchParams.get("page") ?? "1")) || 1,
   );
+  // Sort plumbing (§13): the scaffold emits ?sort=<column key>&dir=asc|desc;
+  // listEinnahmenPage applies the ORDER-BY whitelist (default gebuchtAm desc).
+  const sort = url.searchParams.get("sort") ?? undefined;
+  const dir = url.searchParams.get("dir") === "asc" ? "asc" : "desc";
   let page = requestedPage;
   let { rows, total } = await listEinnahmenPage({
     state,
     year: yearScope,
     limit: PAGE_SIZE,
     offset: (page - 1) * PAGE_SIZE,
+    sort,
+    dir,
   });
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   if (page > pages) {
@@ -51,6 +57,8 @@ export const load: PageServerLoad = async ({ url, parent }) => {
       year: yearScope,
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
+      sort,
+      dir,
     }));
   }
 
