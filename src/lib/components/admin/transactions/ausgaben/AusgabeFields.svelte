@@ -246,11 +246,10 @@
 		</div>
 	</div>
 
-	<!-- Kategorie (drives Sphäre strictly, §4.5) + inline SphereBadge -->
+	<!-- Kategorie (drives Sphäre strictly, §4.5) + inline SphereBadge.
+	     KategoriePicker owns its OWN <label for={id}> — no outer wrapper label
+	     (that produced a duplicate "Kategorie *" with a colliding `for`). -->
 	<div class="flex flex-col gap-1.5">
-		<label for="kategorie" class="text-sm font-medium text-foreground">
-			Kategorie <span class="text-destructive" aria-hidden="true">*</span>
-		</label>
 		<KategoriePicker
 			id="kategorie"
 			name="kategorieNameSnapshot"

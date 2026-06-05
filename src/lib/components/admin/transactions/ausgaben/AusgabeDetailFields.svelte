@@ -110,11 +110,13 @@
 		/>
 	</div>
 
+	<!-- KategoriePicker owns its single <label> — no outer wrapper label (that
+	     produced a duplicate "Kategorie" heading above the picker's own label). -->
 	<div class="flex flex-col gap-1.5">
-		<span class="text-sm font-medium text-foreground">Kategorie</span>
 		<KategoriePicker
 			id="d-kategorie"
 			name="kategorieNameSnapshot"
+			required
 			options={expenseKategorien}
 			value={kategorieName}
 			onChange={(name) => {
