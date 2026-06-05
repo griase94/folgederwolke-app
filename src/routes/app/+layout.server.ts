@@ -6,9 +6,13 @@
  *   - `availableYears`     — every Buchungsjahr the user may switch into
  *                            (newest first), each annotated with `closed`
  *                            per settings.festgeschrieben_bis.
- *   - `selectedYear`       — derived from `?year=NNNN` with the current
- *                            Buchungsjahr as fallback. List/dashboard pages
- *                            read this via `data.selectedYear`.
+ *   - `yearScope`          — the wider `YearScope` (`number | ALL_YEARS`). The
+ *                            three transaction *list* pages read this so the
+ *                            "Alle Jahre" (`?year=all`) scope survives (B1).
+ *   - `selectedYear`       — a *concrete* `number`: `yearScope` collapsed to the
+ *                            current Buchungsjahr when "Alle Jahre". Existing
+ *                            dashboard/Mitglieder/EÜR pages + the switcher
+ *                            highlight read this via `data.selectedYear`.
  *   - `currentYear`        — Berlin-TZ current Buchungsjahr (default selection).
  *   - `festgeschriebenBis` — for downstream gate checks (settings cache).
  *
@@ -27,11 +31,8 @@ import {
   listAvailableYears,
   type AvailableYear,
 } from "$lib/server/domain/years.js";
-import {
-  clampYearToAvailable,
-  currentBuchungsjahr,
-  selectYearFromUrl,
-} from "$lib/domain/year.js";
+import { ALL_YEARS, currentBuchungsjahr } from "$lib/domain/year.js";
+import { resolveLayoutYear } from "$lib/server/domain/layout-year.js";
 
 async function readFestgeschriebenBis(): Promise<number | null> {
   const db = getDb();
@@ -53,18 +54,30 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
   // locals.session is guaranteed non-null here because hooks.server.ts
   // redirects unauthenticated requests before this runs.
   const currentYear = currentBuchungsjahr();
-  const rawSelected = selectYearFromUrl(url.searchParams, currentYear);
 
   const [availableYears, festgeschriebenBis]: [AvailableYear[], number | null] =
     await Promise.all([listAvailableYears(), readFestgeschriebenBis()]);
 
-  // C2-6 cycle 2: clamp out-of-range `?year=` requests to the nearest available
-  // year so the switcher always has a checked segment. When `availableYears`
-  // is empty (fresh DB), `clampYearToAvailable` is a pass-through — that
-  // matches the contract documented on the helper and keeps existing tests
-  // that probe the layout in an empty fixture stable.
+  // Phase 3 (B1): resolve the wider year *scope*. Lists need the `ALL_YEARS`
+  // ("Alle Jahre") sentinel to survive — `resolveLayoutYear` passes `?year=all`
+  // through untouched and clamps concrete `?year=NNNN` to the nearest available
+  // year (so the switcher always has a checked segment). When `availableYears`
+  // is empty (fresh DB), the clamp is a pass-through — that matches the helper
+  // contract and keeps existing layout-in-empty-fixture tests stable.
   const availableYearNumbers = availableYears.map((y) => y.year);
-  const selectedYear = clampYearToAvailable(rawSelected, availableYearNumbers);
+  const yearScope = resolveLayoutYear(
+    url.searchParams,
+    currentYear,
+    availableYearNumbers,
+  );
+
+  // B1: keep a *concrete* `selectedYear: number` for every existing consumer —
+  // the switcher highlight + the dashboard/Mitglieder/EÜR pages and `Topbar`
+  // read `data.selectedYear` as a plain `number` (`selectedYear!: number`,
+  // `=== n` comparisons). When the scope is "Alle Jahre" there is no concrete
+  // selection, so fall back to the current Buchungsjahr. Do NOT widen
+  // `selectedYear` to `YearScope` — that would break those consumers.
+  const selectedYear = yearScope === ALL_YEARS ? currentYear : yearScope;
 
   // B-2 — expose PUBLIC_FORM_ENABLED to /app/* pages via $page.data.formEnabled
   // so the FabBottomSheet can gate its "Externe Auslage einreichen" action.
@@ -76,6 +89,7 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
   return {
     user: locals.session!.user,
     availableYears,
+    yearScope,
     selectedYear,
     currentYear,
     festgeschriebenBis,
