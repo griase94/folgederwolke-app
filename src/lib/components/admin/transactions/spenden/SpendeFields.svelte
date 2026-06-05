@@ -18,7 +18,11 @@
 <script lang="ts">
 	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 	import DerivedKategorieBadge from './DerivedKategorieBadge.svelte';
-	import type { SpendeKind, ZweckbindungKind } from '$lib/domain/spenden-kategorie.js';
+	import {
+		deriveDonationKategorieName,
+		type SpendeKind,
+		type ZweckbindungKind
+	} from '$lib/domain/spenden-kategorie.js';
 
 	interface MemberOpt {
 		id: string;
@@ -39,9 +43,18 @@
 		errors?: Record<string, string[]>;
 		/** Notify the parent that a field changed (drives EntryFormShell `dirty`). */
 		onDirty?: () => void;
+		/** name → Anlage-Gem-Zeile for the derivable donation Kategorien (from load). */
+		anlageGemZeilen?: Record<string, number | null>;
 	}
 
-	let { members = [], projects = [], values = {}, errors = {}, onDirty }: Props = $props();
+	let {
+		members = [],
+		projects = [],
+		values = {},
+		errors = {},
+		onDirty,
+		anlageGemZeilen = {}
+	}: Props = $props();
 
 	function v(key: string): string {
 		const raw = values[key];
@@ -58,6 +71,11 @@
 
 	const isSach = $derived(spendeKind === 'sachspende');
 	const isZweckgebunden = $derived(zweckbindungKind === 'zweckgebunden');
+
+	// Anlage-Gem-Zeile for the currently-derived Kategorie (reactive to the
+	// Spendenart/Zweckbindung pickers); null degrades gracefully in the badge.
+	const derivedKategorieName = $derived(deriveDonationKategorieName(spendeKind, zweckbindungKind));
+	const anlageGemZeile = $derived(anlageGemZeilen[derivedKategorieName] ?? null);
 
 	const selectedMember = $derived(members.find((m) => m.id === selectedMemberId));
 	// Member address autofill: surface the member's stored Adresse for the receipt.
@@ -411,5 +429,5 @@
 	</fieldset>
 
 	<!-- Read-only derived-Kategorie badge (NO Kategorie picker). -->
-	<DerivedKategorieBadge {spendeKind} {zweckbindungKind} />
+	<DerivedKategorieBadge {spendeKind} {zweckbindungKind} {anlageGemZeile} />
 </div>

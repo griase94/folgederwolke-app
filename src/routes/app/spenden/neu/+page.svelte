@@ -44,6 +44,7 @@
 	<SpendeFields
 		members={data.members}
 		projects={data.projects}
+		anlageGemZeilen={data.anlageGemZeilen}
 		{values}
 		{errors}
 		onDirty={() => (dirty = true)}
