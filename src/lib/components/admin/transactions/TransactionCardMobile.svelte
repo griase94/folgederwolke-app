@@ -49,7 +49,12 @@
 		row: CardRow;
 		selected: boolean;
 		ontoggle: (id: string) => void;
-		detailHref?: string;
+		/**
+		 * The per-tab detail URL, e.g. "/app/ausgaben/<id>". Required — the scaffold
+		 * always passes `${detailHrefBase}/${row.id}`. The old /app/transactions/
+		 * fallback is removed: that route is retired (T5 cleanup).
+		 */
+		detailHref: string;
 		/**
 		 * Whether the bulk-select checkbox renders. Only Ausgaben has a bulk
 		 * Erstattung workflow, so Einnahmen/Spenden pass `false` to avoid a no-op
@@ -63,7 +68,6 @@
 		 */
 		showKindPill?: boolean;
 	} = $props();
-	const resolvedDetailHref = $derived(detailHref ?? `/app/transactions/${row.id}?kind=${row.kind}`);
 
 	function fmtDate(iso: string | null): string {
 		if (!iso) return '—';
@@ -121,12 +125,13 @@
 	<!-- Main content: tap target is the link wrapping the text block. -->
 	<!-- eslint-disable svelte/no-navigation-without-resolve -->
 	<a
-		href={resolvedDetailHref}
+		href={detailHref}
 		class="flex min-w-0 flex-1 flex-col gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
 	>
 		<div class="flex items-start gap-2">
 			<div class="min-w-0 flex-1">
-				<p class="truncate font-medium text-foreground">{row.bezeichnung}</p>
+				<!-- T5: title tooltip surfaces the full text when truncated. -->
+				<p class="truncate font-medium text-foreground" title={row.bezeichnung}>{row.bezeichnung}</p>
 				{#if row.bezahltVonDisplay}
 					<p class="truncate text-xs text-muted-foreground">{row.bezahltVonDisplay}</p>
 				{/if}

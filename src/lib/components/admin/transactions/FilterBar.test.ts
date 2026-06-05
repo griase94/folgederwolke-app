@@ -82,4 +82,42 @@ describe("FilterBar", () => {
     expect(target).not.toMatch(/[?&]page=/);
     expect(target).not.toMatch(/status=/);
   });
+
+  // T5 a11y: aria-live region is always mounted so screen readers observe updates
+  it("T5: aria-live filter-count region is always in DOM (even with no active filters)", () => {
+    const { container } = render(FilterBar, {
+      props: {
+        tab: "ausgaben",
+        state: { enums: {}, members: {}, amount: {}, booleans: {} },
+        kategorieOptions: [],
+        memberOptions: [],
+      },
+    });
+    // The span must be present regardless of filter count so screen readers
+    // can observe text changes (mounted region, not toggled via {#if}).
+    const badge = container.querySelector('[data-testid="filter-count-badge"]');
+    expect(badge).toBeTruthy();
+    expect(badge?.getAttribute("aria-live")).toBe("polite");
+    // When no filters active, inner text is empty (the {#if} inside is the text,
+    // not the wrapper — wrapper is always in DOM).
+    expect(badge?.textContent?.trim()).toBe("");
+  });
+
+  it("T5: aria-live region updates text when filters become active", () => {
+    const { container } = render(FilterBar, {
+      props: {
+        tab: "ausgaben",
+        state: {
+          enums: { status: ["offen"] },
+          members: {},
+          amount: {},
+          booleans: {},
+        },
+        kategorieOptions: [],
+        memberOptions: [],
+      },
+    });
+    const badge = container.querySelector('[data-testid="filter-count-badge"]');
+    expect(badge?.textContent).toContain("1 aktive Filter");
+  });
 });

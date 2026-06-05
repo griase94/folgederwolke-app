@@ -97,6 +97,9 @@
 	let currentPage = $state(1);
 	let zoom = $state(1);
 	let pdfFailed = $state(false);
+	// T4: loading spinner — true from the start of loadPdf() until the first page
+	// renders (or load fails). Shown in the viewer body above the canvas.
+	let pdfLoading = $state(false);
 
 	// Canvas refs: the main (viewer) canvas and the small peek canvas (fold).
 	let mainCanvas = $state<HTMLCanvasElement | null>(null);
@@ -108,6 +111,7 @@
 
 	async function loadPdf(): Promise<void> {
 		if (!isPdf) return;
+		pdfLoading = true;
 		try {
 			const res = await fetch(blobUrl);
 			if (!res.ok) throw new Error(`blob fetch failed: ${res.status}`);
@@ -120,6 +124,8 @@
 			console.warn('[BelegViewer] PDF load failed, falling back to Original öffnen:', e);
 			pdfFailed = true;
 			peekFailed = true;
+		} finally {
+			pdfLoading = false;
 		}
 	}
 
@@ -213,6 +219,7 @@
 		currentPage = 1;
 		pdfFailed = false;
 		peekFailed = false;
+		pdfLoading = false;
 		pdfDoc = null;
 
 		let cancelled = false;
@@ -391,7 +398,22 @@
 		</div>
 
 		<!-- Body: scrollable viewer surface. -->
-		<div class="min-h-0 flex-1 overflow-auto bg-muted/20 p-4">
+		<div class="relative min-h-0 flex-1 overflow-auto bg-muted/20 p-4">
+			<!-- T4: PDF loading spinner — shown while the document is being fetched /
+			     parsed; cleared once the first page renders or an error fires. -->
+			{#if isPdf && pdfLoading && !pdfFailed}
+				<div
+					data-testid="pdf-spinner"
+					aria-label="PDF wird geladen…"
+					aria-live="polite"
+					class="absolute inset-0 flex items-center justify-center bg-muted/30"
+				>
+					<span
+						aria-hidden="true"
+						class="inline-block size-8 animate-spin rounded-full border-4 border-current border-t-transparent text-muted-foreground"
+					></span>
+				</div>
+			{/if}
 			{#if isImage}
 				<img
 					src={blobUrl}

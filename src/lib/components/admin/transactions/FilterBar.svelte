@@ -386,20 +386,22 @@
 		</div>
 
 		<!--
-		  Canonical active-filter count: always mounted (single source of truth for
-		  the `filter-count-badge` test id + the screen-reader announcement). The
-		  visual count pills on the two breakpoint triggers above are aria-hidden
-		  duplicates of this value.
+		  Canonical active-filter count: ALWAYS MOUNTED so screen readers observe
+		  the text change when filters are added or cleared (an aria-live region
+		  must be in the DOM before the text update fires — the {#if} pattern
+		  mounts+unmounts which AT cannot observe reliably). The visual count pills
+		  on the two breakpoint triggers above are aria-hidden duplicates.
+		  T5 fix: remove the {#if} wrapper so the region is always present.
 		-->
-		{#if activeFieldCount > 0}
-			<span
-				data-testid="filter-count-badge"
-				class="sr-only"
-				aria-live="polite"
-			>
+		<span
+			data-testid="filter-count-badge"
+			class="sr-only"
+			aria-live="polite"
+		>
+			{#if activeFieldCount > 0}
 				{activeFieldCount} aktive Filter
-			</span>
-		{/if}
+			{/if}
+		</span>
 
 		<!-- Saved views (Task 7): "Ansichten ▾" -->
 		<Popover.Root bind:open={viewsOpen}>

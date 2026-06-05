@@ -51,7 +51,7 @@
 	 *   empty states : UX-04 — two distinct zero-row cases (year-named vs no-matches)
 	 */
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { navigating, page } from '$app/stores';
 	import FilterBar from './FilterBar.svelte';
 	import StaleYearBanner from '$lib/components/admin/StaleYearBanner.svelte';
 	import TransactionCardMobile from './TransactionCardMobile.svelte';
@@ -190,6 +190,32 @@
 		if (value) onSort(value);
 	}
 
+	// ── T3: Export CTA ─────────────────────────────────────────────────────────
+	// href = /app/<tab>/export?<current query> — carries the active filter+sort
+	// so the server renders the same filtered+sorted set across ALL pages.
+	const exportHref = $derived(
+		(() => {
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local URL builder, not a reactive store
+			const qs = $page.url.searchParams.toString();
+			return `/app/${tab}/export${qs ? `?${qs}` : ''}`;
+		})()
+	);
+
+	// Pending state while the CSV streams — toggled on click, cleared when the
+	// browser fires the download link's load event. Kept simple: `aria-busy` is
+	// enough; no complex promise wiring needed for a streaming download link.
+	let exportPending = $state(false);
+
+	function onExportClick() {
+		if (total === 0) return;
+		exportPending = true;
+		// Reset after a short delay — the download happens off-page (no network
+		// event fires for a <a href> click), so we just clear the spinner quickly.
+		setTimeout(() => {
+			exportPending = false;
+		}, 1500);
+	}
+
 	// ── UX-04 reset: clear all filters → navigate to the unfiltered list ────────
 	function resetFilters() {
 		const qs = serializeFilterState(tab, {
@@ -225,15 +251,44 @@
 		<div class="min-w-0 flex-1">
 			{@render kpi()}
 		</div>
-		<!-- Desktop: primary CTA top-right of the header. -->
-		<!-- eslint-disable svelte/no-navigation-without-resolve -->
-		<a
-			href={newHref}
-			data-slot="new-cta"
-			class="hidden h-11 min-h-11 shrink-0 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 sm:inline-flex"
-		>
-			{newLabel}
-		</a>
+		<!-- Desktop: primary CTA + export CTA top-right of the header. -->
+		<div class="hidden shrink-0 items-center gap-2 sm:flex">
+			<!-- T3: Export CTA — exports the full filtered+sorted set across all pages. -->
+			<!-- eslint-disable svelte/no-navigation-without-resolve -->
+			<a
+				href={exportHref}
+				data-slot="export-cta"
+				data-testid="export-cta"
+				aria-disabled={total === 0 || undefined}
+				aria-busy={exportPending || undefined}
+				onclick={total === 0 ? (e) => e.preventDefault() : onExportClick}
+				title="Gefilterte und sortierte Liste vollständig herunterladen (alle Seiten)"
+				class={[
+					'inline-flex h-11 min-h-11 items-center justify-center gap-1.5 rounded-md border border-border bg-background px-4 text-sm font-medium transition-colors',
+					total === 0
+						? 'cursor-not-allowed opacity-50'
+						: 'hover:bg-accent',
+				].join(' ')}
+			>
+				{#if exportPending}
+					<span
+						aria-hidden="true"
+						class="inline-block size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent"
+					></span>
+				{/if}
+				Gefilterte Liste als CSV
+			</a>
+			<!-- eslint-enable svelte/no-navigation-without-resolve -->
+			<!-- eslint-disable svelte/no-navigation-without-resolve -->
+			<a
+				href={newHref}
+				data-slot="new-cta"
+				class="inline-flex h-11 min-h-11 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+			>
+				{newLabel}
+			</a>
+			<!-- eslint-enable svelte/no-navigation-without-resolve -->
+		</div>
 	</div>
 
 	<!-- ── Stale-year banner (Task 3) ───────────────────────────────────────── -->
@@ -247,6 +302,17 @@
 		{memberOptions}
 		resultCount={total}
 	/>
+
+	<!-- ── T4 Loading skeleton: shown while navigating to a new filter/sort/page ──
+	     Gated on the `navigating` store (not a wall-clock timer) so it only
+	     appears during real SvelteKit navigations; vanishes once settled. -->
+	{#if $navigating}
+		<div data-testid="list-skeleton" aria-busy="true" aria-label="Wird geladen…" class="flex flex-col gap-2">
+			{#each Array(5) as _, i (i)}
+				<div class="h-12 animate-pulse rounded-lg bg-muted"></div>
+			{/each}
+		</div>
+	{/if}
 
 	<!-- ── Bulk action bar (Ausgaben only) ──────────────────────────────────── -->
 	{#if bulk}
@@ -320,10 +386,13 @@
 								].join(' ')}
 							>
 								{#if col.sortable}
+									<!-- T5 a11y: native <button> is keyboard-operable (Enter/Space) by default.
+									     min-h-11 ensures ≥44 px tap target; focus-visible ring provides
+									     clear keyboard-focus indication. -->
 									<button
 										type="button"
 										onclick={() => onSort(col.key)}
-										class="inline-flex items-center gap-1 hover:text-foreground"
+										class="inline-flex min-h-11 items-center gap-1 rounded px-0.5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 									>
 										{col.label}
 										{#if currentSort === col.key}
