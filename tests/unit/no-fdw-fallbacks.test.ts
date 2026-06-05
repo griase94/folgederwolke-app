@@ -40,7 +40,7 @@ describe("no FdW identity fallbacks in src/ (Task 4.3)", () => {
   });
 
   it("a direct grep over src/ finds zero forbidden-fallback patterns", () => {
-    const res = spawnSync("grep", ["-rInE", PATTERNS, "src/"], {
+    const res = spawnSync("grep", ["-rIniE", PATTERNS, "src/"], {
       cwd: repoRoot,
       encoding: "utf8",
     });
