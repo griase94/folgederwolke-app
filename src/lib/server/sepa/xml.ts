@@ -10,15 +10,13 @@
  *  - BatchBooking = true
  *  - BIC optional (post-2016 SEPA)
  *  - RmtInf/Ustrd: "Erstattung {businessId}: {bezeichnung}"
- *  - Initiator from VEREIN_NAME env (ADR: env.ts)
+ *  - Initiator + debtor from a single readStammdaten() read (white-label)
  *
  * §5.5.1 "SEPA XML kopieren" spec.
  */
 
-import { env } from "$lib/server/env.js";
 import type { ApprovedExpense } from "$lib/server/domain/transactions.js";
-import { getDb } from "$lib/server/db/index.js";
-import { sql } from "drizzle-orm";
+import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
 
 export interface SepaTransactionInput {
   id: string;
@@ -36,8 +34,9 @@ export interface SepaTransactionInput {
  * the generator falls back to <Id>NOTPROVIDED</Id> placeholders — a
  * historical compatibility mode kept for tests/imports without DB access.
  *
- * In production, callers SHOULD pass values resolved from `settings`
- * (`verein.iban` + `verein.bic`) via {@link loadSepaDebtorFromSettings}.
+ * In production, callers use {@link generateSepaXmlFromSettings}, which reads
+ * `readStammdaten()` once and supplies both the debtor account and the
+ * initiator name from that single source.
  */
 export interface SepaDebtor {
   iban?: string | null;
@@ -45,6 +44,13 @@ export interface SepaDebtor {
 }
 
 export interface SepaXmlOptions {
+  /**
+   * Initiating party / debtor display name (the Verein). White-label: this is
+   * sourced from `readStammdaten().name` via {@link generateSepaXmlFromSettings}
+   * — never a hardcoded FdW literal. When omitted, an empty <Nm> is emitted
+   * (used only by pure unit tests that don't assert on the initiator).
+   */
+  initiatorName?: string;
   /** Debtor (Verein) account info. See {@link SepaDebtor}. */
   debtor?: SepaDebtor;
   /**
@@ -106,9 +112,10 @@ export function generateSepaXml(
     throw new Error("Keine Transaktionen für SEPA-XML vorhanden");
   }
 
-  const initiatorName = sanitizeSepaText(
-    env.VEREIN_NAME || "Folge der Wolke e.V.",
-  ).slice(0, 70);
+  const initiatorName = sanitizeSepaText(options.initiatorName ?? "").slice(
+    0,
+    70,
+  );
 
   const now = options.now ?? new Date();
   // XSD-strict validators (notably KBC, ING, Sparkassen profiles) reject
@@ -230,24 +237,23 @@ ${cdtTrfTxInf}
 // ---------------------------------------------------------------------------
 
 /**
- * Look up Verein IBAN/BIC from the `settings` table (`verein.iban`,
- * `verein.bic`). Returns blanks when unset.
+ * White-label: generate the SEPA document with a SINGLE source of Verein
+ * provenance. Reads `readStammdaten()` once and feeds the initiator/debtor
+ * name (`sd.name`) AND the debtor account (`sd.iban` / `sd.bic`) from that one
+ * read — so the InitgPty/Dbtr name can never diverge from the DbtrAcct it
+ * belongs to. Replaces the former split path (env+FdW fallback for the name,
+ * a separate settings reader for the account).
  */
-export async function loadSepaDebtorFromSettings(): Promise<SepaDebtor> {
-  const db = getDb();
-  const rows = await db.execute<{ key: string; value: unknown }>(
-    sql`SELECT key, value FROM settings WHERE key IN ('verein.iban', 'verein.bic')`,
-  );
-  const map = new Map<string, string>();
-  for (const r of rows as { key: string; value: unknown }[]) {
-    const v = r.value;
-    if (typeof v === "string") map.set(r.key, v);
-    else if (v !== null && v !== undefined) map.set(r.key, String(v));
-  }
-  return {
-    iban: map.get("verein.iban") ?? "",
-    bic: map.get("verein.bic") ?? "",
-  };
+export async function generateSepaXmlFromSettings(
+  transactions: SepaTransactionInput[],
+  options: Omit<SepaXmlOptions, "initiatorName" | "debtor"> = {},
+): Promise<SepaXmlResult> {
+  const sd = await readStammdaten();
+  return generateSepaXml(transactions, {
+    ...options,
+    initiatorName: sd.name,
+    debtor: { iban: sd.iban, bic: sd.bic },
+  });
 }
 
 /**
