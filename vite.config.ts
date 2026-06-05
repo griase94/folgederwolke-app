@@ -26,6 +26,10 @@ export default defineConfig({
       workbox: {
         // Precache app-shell JS/CSS/HTML
         globPatterns: ["client/**/*.{js,css,html,svg,png,ico,webmanifest}"],
+        // iOS reads splash launch images natively; the app never fetches them at
+        // runtime. Keep the multi-MB set out of the precache. (Matches both the
+        // adapter-node `client/**` glob namespace and any prefix variant.)
+        globIgnores: ["**/splash/**"],
         maximumFileSizeToCacheInBytes: 3_000_000,
         runtimeCaching: [
           // API responses must never be cached — they contain member/customer PII

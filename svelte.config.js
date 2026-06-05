@@ -30,6 +30,10 @@ const config = {
           "data:",
           "https://*.googleusercontent.com",
         ],
+        // app.html ships an inline <style> block + the #fdw-launch launch overlay
+        // (inline <svg>), which rely on 'unsafe-inline'. SvelteKit's auto CSP does NOT
+        // nonce the app.html template, so do not drop 'unsafe-inline' / add a nonce here
+        // without first moving those styles into a SvelteKit-governed component.
         "style-src": ["self", "unsafe-inline"],
         "script-src": ["self"],
         "connect-src": ["self"],

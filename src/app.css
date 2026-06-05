@@ -15,7 +15,7 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.43 0.2 350);
+  --primary: #be185d; /* BRAND_PINK — see src/lib/brand.ts */
   --primary-foreground: oklch(0.99 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -341,18 +341,22 @@
   }
 }
 
-/* Rosa primary ramp — overrides shadcn zinc primary with brand color */
+/* Brand pink ramp — overrides shadcn zinc primary with the brand color.
+   #be185d === Tailwind pink-700. Canonical value: src/lib/brand.ts (BRAND_PINK).
+   NOTE: this static @theme block intentionally overrides the earlier
+   `@theme inline { --color-primary: var(--primary) }` mapping (last definition wins).
+   Fine here: the app is light-only, so the .dark { --primary } path is inert. */
 @theme {
-  --color-primary: oklch(0.43 0.2 350); /* ≈ #BE185D rosa */
+  --color-primary: #be185d;
   --color-primary-foreground: oklch(0.99 0 0);
-  --color-primary-50: oklch(0.97 0.02 350);
-  --color-primary-100: oklch(0.94 0.05 350);
-  --color-primary-200: oklch(0.88 0.1 350);
-  --color-primary-300: oklch(0.79 0.13 350);
-  --color-primary-400: oklch(0.67 0.17 350);
-  --color-primary-500: oklch(0.56 0.19 350);
-  --color-primary-600: oklch(0.43 0.2 350);
-  --color-primary-700: oklch(0.36 0.18 350);
-  --color-primary-800: oklch(0.29 0.14 350);
-  --color-primary-900: oklch(0.22 0.1 350);
+  --color-primary-50: #fdf2f8;
+  --color-primary-100: #fce7f3;
+  --color-primary-200: #fbcfe8;
+  --color-primary-300: #f9a8d4;
+  --color-primary-400: #f472b6;
+  --color-primary-500: #ec4899;
+  --color-primary-600: #db2777;
+  --color-primary-700: #be185d;
+  --color-primary-800: #9d174d;
+  --color-primary-900: #831843;
 }
