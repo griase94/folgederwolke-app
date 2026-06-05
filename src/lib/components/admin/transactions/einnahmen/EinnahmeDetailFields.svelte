@@ -116,17 +116,28 @@
 	</div>
 
 	<!-- Geldeingang -->
+	<!--
+		The detail projection (getTransactionDetail, shared) does not currently
+		carry geld_eingang_datum, so this field cannot be pre-filled. The save
+		action only WRITES it when non-blank (a blank leaves the stored value
+		untouched), so a blank field is NOT data loss — the hint says so to the
+		admin. Hint can be dropped once the shared projection threads the value.
+	-->
 	<div class="flex flex-col gap-1.5">
 		<label for="detail-geld" class="text-sm font-medium text-foreground">Geldeingang</label>
 		<DateField
 			id="detail-geld"
 			name="geldEingangDatum"
 			value={geld}
+			aria-describedby="detail-geld-hint"
 			onchange={(iso) => {
 				geld = iso;
 				markDirty();
 			}}
 		/>
+		<p id="detail-geld-hint" class="text-xs text-muted-foreground">
+			Aktuelles Datum bleibt erhalten, wenn leer.
+		</p>
 	</div>
 
 	<!-- Kategorie (+ derived Sphäre) -->
