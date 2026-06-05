@@ -37,15 +37,20 @@
 <div class="flex flex-col gap-2" data-slot="beleg-upload">
 	<label for="beleg-file" class="text-sm font-medium text-foreground">Beleg</label>
 
-	{#if !keinBeleg}
-		<input
-			id="beleg-file"
-			type="file"
-			name={fileName}
-			{accept}
-			class="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-accent"
-		/>
-	{/if}
+	<!-- Keep the input MOUNTED (disabled + hidden in the kein-Beleg path) so the
+	     `for="beleg-file"` association never dangles. A disabled file input does
+	     not submit, so the server's `keinBeleg`/Begründung branch is unaffected.
+	     No bare "*" on "Beleg": it is gated (Beleg OR Begründung), not strictly
+	     required — the requirement is signalled by the Begründung asterisk below. -->
+	<input
+		id="beleg-file"
+		type="file"
+		name={fileName}
+		{accept}
+		disabled={keinBeleg}
+		class:hidden={keinBeleg}
+		class="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-accent"
+	/>
 
 	<label class="flex items-center gap-2 text-sm text-foreground">
 		<input
