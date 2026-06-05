@@ -351,7 +351,7 @@
 					when the PDF fails to render and both are visible, screen-reader
 					users are not presented with two identically-named links.
 				-->
-				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+				<!-- eslint-disable svelte/no-navigation-without-resolve -- blobUrl is an object/file URL, not a typed app route -->
 				<a
 					href={blobUrl}
 					target="_blank"
@@ -364,7 +364,6 @@
 				</a>
 
 				<!-- Download. -->
-				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 				<a
 					href={blobUrl}
 					download={originalFilename}
@@ -374,6 +373,7 @@
 				>
 					<DownloadIcon class="size-4" aria-hidden="true" />
 				</a>
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 
 				{#if mode === 'fold'}
 					<!-- Schließen (full-screen only). -->
@@ -408,7 +408,7 @@
 					<p class="text-sm text-muted-foreground">
 						Vorschau nicht verfügbar.
 					</p>
-					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+					<!-- eslint-disable svelte/no-navigation-without-resolve -- blobUrl is an object/file URL, not a typed app route -->
 					<a
 						href={blobUrl}
 						target="_blank"
@@ -420,6 +420,7 @@
 						<ExternalLinkIcon class="size-4" aria-hidden="true" />
 						Original öffnen
 					</a>
+					<!-- eslint-enable svelte/no-navigation-without-resolve -->
 				</div>
 			{/if}
 		</div>

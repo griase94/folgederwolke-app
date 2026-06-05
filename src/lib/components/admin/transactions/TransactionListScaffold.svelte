@@ -57,7 +57,7 @@
 	import type { TransactionRow as TxnRow } from '$lib/server/domain/transactions.js';
 	import type { YearScope } from '$lib/domain/year.js';
 	import { ALL_YEARS } from '$lib/domain/year.js';
-	import type { Snippet } from 'svelte';
+	// `Snippet` is imported in the module <script> above and is in scope here.
 
 	interface Props {
 		tab: TabKey;

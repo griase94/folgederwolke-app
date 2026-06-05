@@ -30,9 +30,21 @@ import { ALL_YEARS } from "../../src/lib/domain/year.js";
 // vi.mock — declared before the SUT imports
 // ---------------------------------------------------------------------------
 
-const listAusgabenPageMock = vi.fn(async () => ({ rows: [], total: 0 }));
-const listEinnahmenPageMock = vi.fn(async () => ({ rows: [], total: 0 }));
-const listSpendenPageMock = vi.fn(async () => ({ rows: [], total: 0 }));
+// `_opts: unknown` gives `.mock.calls[n][0]` a typed (non-empty-tuple) element
+// so the per-test `as {...}` arg casts below are narrowings of `unknown`, not
+// reads off a zero-arg `[]` tuple.
+const listAusgabenPageMock = vi.fn(async (_opts: unknown) => ({
+  rows: [],
+  total: 0,
+}));
+const listEinnahmenPageMock = vi.fn(async (_opts: unknown) => ({
+  rows: [],
+  total: 0,
+}));
+const listSpendenPageMock = vi.fn(async (_opts: unknown) => ({
+  rows: [],
+  total: 0,
+}));
 
 vi.mock("$lib/server/domain/transactions.js", () => ({
   listAusgabenPage: listAusgabenPageMock,
@@ -237,7 +249,9 @@ describe("/app/spenden load", () => {
 // ---------------------------------------------------------------------------
 
 async function runLoadExpectRedirect(
-  fn: (e: never) => Promise<unknown>,
+  // PageServerLoad returns MaybePromise<void | {...}>; `unknown` accepts that
+  // (a redirect throws, so the resolved value is never inspected anyway).
+  fn: (e: never) => unknown,
   event: never,
 ): Promise<{ status: number; location: string }> {
   try {

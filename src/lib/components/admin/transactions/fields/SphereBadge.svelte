@@ -24,7 +24,7 @@
 </script>
 
 <script lang="ts">
-	import type { Sphere } from '$lib/domain/sphere.js';
+	// `Sphere` is imported in the module <script> above and is in scope here.
 	import { SPHERE_LABELS as LABELS } from '$lib/domain/sphere.js';
 
 	let { sphere }: { sphere: Sphere } = $props();

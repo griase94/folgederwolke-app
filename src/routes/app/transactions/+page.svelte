@@ -1,47 +1,19 @@
 <script lang="ts">
-	import TransactionsList from '$lib/components/admin/transactions/TransactionsList.svelte';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import type { PageData } from './$types.js';
-
-	let { data }: { data: PageData } = $props();
+	// /app/transactions — legacy merged-list page (Phase 3, Task 10/11).
+	//
+	// The server `load` (+page.server.ts) ALWAYS `redirect(308)`s to
+	// /app/ausgaben, so this component never renders on a GET. It is kept
+	// body-less ONLY because SvelteKit requires a `+page.svelte` sibling for the
+	// `+page.server.ts` that still hosts the bulk / SEPA / markAsPaid actions
+	// (re-homed per tab in Phase 4+). Phase 8 retires the route entirely.
+	//
+	// No `data` props are read here — the old list referenced `data.rows` etc.,
+	// which no longer exist now that `load` only redirects.
 </script>
 
 <svelte:head>
 	<title>Transaktionen – Folge der Wolke</title>
 </svelte:head>
 
-<div class="container mx-auto max-w-6xl px-4 py-8 sm:px-6">
-	<!-- ── Header ──────────────────────────────────────────────────────────── -->
-	<div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-		<div>
-			<h1 class="text-2xl font-bold tracking-tight text-foreground">Transaktionen</h1>
-			<p class="mt-0.5 text-sm text-muted-foreground">
-				Ausgaben, Einnahmen und Spenden in einer Ansicht
-			</p>
-		</div>
-		<div class="flex gap-2">
-			<Button href="/app/transactions/neu" size="sm">
-				<svg
-					class="mr-1.5 h-4 w-4"
-					fill="none"
-					viewBox="0 0 24 24"
-					stroke="currentColor"
-					stroke-width="2"
-					aria-hidden="true"
-				>
-					<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-				</svg>
-				Neue Transaktion
-			</Button>
-		</div>
-	</div>
-
-	<!-- ── Transactions list ───────────────────────────────────────────────── -->
-	<TransactionsList
-		rows={data.rows}
-		total={data.total}
-		zahlungsarten={data.zahlungsarten}
-		approvedPending={data.approvedPending}
-		filters={data.filters}
-	/>
-</div>
+<!-- Never shown: `load` 308-redirects to /app/ausgaben server-side, before any
+     HTML is sent, so no fallback markup is needed (or reachable) here. -->

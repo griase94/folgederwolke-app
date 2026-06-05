@@ -42,11 +42,13 @@
 			<line x1="12" y1="17" x2="12.01" y2="17" />
 		</svg>
 		<span>Ansicht: {selectedYear} — nicht das laufende Jahr</span>
+		<!-- eslint-disable svelte/no-navigation-without-resolve -- query-only nav (?year=NNNN) on the current route, not a typed route id -->
 		<a
 			href="?year={currentYear}"
 			class="ml-auto shrink-0 underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-200"
 		>
 			Zu {currentYear} wechseln
 		</a>
+		<!-- eslint-enable svelte/no-navigation-without-resolve -->
 	</div>
 {/if}
