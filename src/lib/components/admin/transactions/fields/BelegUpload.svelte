@@ -50,6 +50,7 @@
 		type="file"
 		name={fileName}
 		{accept}
+		required={!keinBeleg}
 		disabled={keinBeleg}
 		class:hidden={keinBeleg}
 		class="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-accent"
