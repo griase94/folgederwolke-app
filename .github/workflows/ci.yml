@@ -98,9 +98,15 @@ jobs:
         # phase; catches accidental re-bundling of large libraries.
         run: node scripts/check-bundle-size.mjs
 
-  e2e:
-    name: e2e
+  e2e-shard:
+    name: e2e-shard
     runs-on: ubuntu-latest
+    # Fan the grep-selected specs across N parallel CI runners. fail-fast:false
+    # so one shard failing still lets the others finish (full signal in one run).
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     services:
       postgres:
         image: postgres:17
@@ -139,14 +145,35 @@ jobs:
           PGPASSWORD: postgres
         run: psql -h localhost -p 15432 -U postgres -c "CREATE DATABASE folgederwolke_dev;"
 
-      - name: E2E tests (cumulative phase-0…phase-9 + smoke)
+      - name: E2E tests (cumulative phase-0…phase-9 + smoke) — shard ${{ matrix.shard }}/3
         # Cumulative grep: each phase adds its tag — @phase-0|@phase-1|...|@phase-N
         # Bare @phase-3 (admin-shell/mitglieder/member-detail/beitraege-matrix) is
         # distinct from @phase-3-routing (the three-tab flat-list specs) — both kept.
         # Phases 3-6 and 8 added: three-tab routing/ausgaben/einnahmen/spenden + export+a11y suites.
         # @smoke = cross-cutting always-on checks (smoke-authed-routes.spec.ts:
         # every primary /app section renders < 500 for an admin).
-        run: pnpm test:e2e --grep '@phase-0|@phase-1|@phase-2|@phase-3|@phase-3-routing|@phase-4-ausgaben|@phase-5-einnahmen|@phase-6-spenden|@phase-8|@phase-9|@smoke'
+        # --shard splits the grep-selected specs across the matrix; each shard
+        # runs serially on its own postgres service + webServer (playwright
+        # workers:1, fullyParallel:false), so shards stay mutually isolated.
+        run: pnpm test:e2e --grep '@phase-0|@phase-1|@phase-2|@phase-3|@phase-3-routing|@phase-4-ausgaben|@phase-5-einnahmen|@phase-6-spenden|@phase-8|@phase-9|@smoke' --shard=${{ matrix.shard }}/3
+
+  # Single required status check named "e2e" (branch protection requires the
+  # literal context "e2e"). It aggregates the matrix: succeeds only if every
+  # e2e-shard succeeded. if:always() so a shard failure yields a definitive red
+  # "e2e" rather than a skip (a skipped required check blocks the merge).
+  e2e:
+    name: e2e
+    needs: [e2e-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all e2e shards passed
+        run: |
+          if [ "${{ needs.e2e-shard.result }}" != "success" ]; then
+            echo "e2e shards result: ${{ needs.e2e-shard.result }} — failing the e2e gate."
+            exit 1
+          fi
+          echo "All e2e shards passed."
 
   backup-restore-smoke:
     name: backup-restore-smoke
