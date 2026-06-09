@@ -475,7 +475,7 @@ async function resolveMembers(
     );
   const map = new Map<string, { id: string; displayName: string }>();
   for (const r of rows) {
-    map.set(r.emailCanonical, {
+    map.set(r.emailCanonical!, {
       id: r.id,
       displayName: `${r.vorname} ${r.nachname}`,
     });
