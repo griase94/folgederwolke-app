@@ -15,7 +15,7 @@
  *   kategorie "Bankgebühren" (expense, ideeller) must exist).
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createExpense } from "$lib/server/domain/transactions.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getDb } from "$lib/server/db/index.js";
@@ -45,6 +45,14 @@ describe.skipIf(!dbConfigured)(
         .returning({ id: users.id });
       if (!u) throw new Error("failed to seed actor user");
       ACTOR = u.id;
+    });
+
+    afterAll(async () => {
+      if (!ACTOR) return;
+      const db = getDb();
+      // expenses.created_by_user_id is ON DELETE RESTRICT — delete expenses first.
+      await db.delete(expenses).where(eq(expenses.createdByUserId, ACTOR));
+      await db.delete(users).where(eq(users.id, ACTOR));
     });
 
     it("expense with no Beleg but a Verzicht-Begründung persists + satisfies the CHECK", async () => {
