@@ -73,19 +73,14 @@ test.describe("@phase-8 Axe a11y scans — per-tab transaction routes", () => {
       page,
     }) => {
       await page.goto(tab.path);
-      // Wait for the scaffold to hydrate — the list table or empty-state
-      // must be visible before we scan.
-      await page
-        .waitForSelector(
-          '[data-testid="export-cta"], [data-testid="empty-state"]',
-          {
-            timeout: 10_000,
-          },
-        )
-        .catch(() => {
-          // Accept if neither selector is found (e.g. route still loading);
-          // axe will scan whatever is present.
-        });
+      // Wait for the scaffold to hydrate — export CTA (rows present) or
+      // one of the two real empty-state testids must be visible before scan.
+      // `empty-no-matches` = active filter with no hits; `empty-year` = year
+      // with no bookings. Both live in TransactionListScaffold.svelte.
+      await page.waitForSelector(
+        '[data-testid="export-cta"], [data-testid="empty-no-matches"], [data-testid="empty-year"]',
+        { timeout: 10_000 },
+      );
 
       const results = await new AxeBuilder({ page })
         .exclude('[data-testid="export-cta"]') // exclude the CTA itself from contrast rule only
