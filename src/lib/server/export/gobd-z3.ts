@@ -33,6 +33,18 @@ function isoDate(d: Date | string | null | undefined): string {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * The booking <Datum> for an income/expense EurRow: the cash-relevant date
+ * (= relevanz_datum) when present, else gebucht_am. Migration 0034 selects
+ * rows into a fiscal year by year_of_buchung = COALESCE(<cash>, gebucht_am),
+ * so the emitted date MUST be that same COALESCE — otherwise a record lands
+ * outside the declared [year-01-01, year-12-31] GoBD window. relevanzDatum is
+ * already an ISO YYYY-MM-DD string (a SQL `date`), so it needs no TZ handling.
+ */
+function relevanzDatum(row: EurRow): string {
+  return row.relevanzDatum ?? isoDate(row.gebuchtAm);
+}
+
 function eurAmount(cents: bigint | number): string {
   const n = typeof cents === "bigint" ? Number(cents) : cents;
   return (n / 100).toFixed(2);
@@ -74,7 +86,7 @@ export function generateGobdZ3Xml(input: GobdExportInput): string {
     journalRows.push(`    <Record>
       <Seq>${seq++}</Seq>
       <BelegNr>${escXml(row.businessId)}</BelegNr>
-      <Datum>${isoDate(row.gebuchtAm)}</Datum>
+      <Datum>${relevanzDatum(row)}</Datum>
       <Bezeichnung>${escXml(row.bezeichnung)}</Bezeichnung>
       <Art>Einnahme</Art>
       <Sphare>${escXml(row.sphereSnapshot)}</Sphare>
@@ -89,7 +101,7 @@ export function generateGobdZ3Xml(input: GobdExportInput): string {
     journalRows.push(`    <Record>
       <Seq>${seq++}</Seq>
       <BelegNr>${escXml(row.businessId)}</BelegNr>
-      <Datum>${isoDate(row.gebuchtAm)}</Datum>
+      <Datum>${relevanzDatum(row)}</Datum>
       <Bezeichnung>${escXml(row.bezeichnung)}</Bezeichnung>
       <Art>Ausgabe</Art>
       <Sphare>${escXml(row.sphereSnapshot)}</Sphare>

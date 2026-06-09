@@ -18,6 +18,17 @@ export type Sphere =
 export interface EurRow {
   businessId: string;
   gebuchtAm: Date;
+  /**
+   * The cash-relevant date (= relevanz_datum): abfluss_datum for expenses,
+   * geld_eingang_datum for income, zugewendet_am for donations. ISO
+   * `YYYY-MM-DD`, or null when no cash date is set yet. Migration 0034 derives
+   * `year_of_buchung` from COALESCE(<cash>, gebucht_am), so GoBD/CSV exports
+   * must emit COALESCE(relevanzDatum, gebuchtAm) as the booking `<Datum>` —
+   * otherwise a row selected into its cash-year carries a date outside the
+   * declared fiscal window. Donations populate this from zugewendet_am; the
+   * member_beitrags union populates it from gezahlt_am.
+   */
+  relevanzDatum: string | null;
   betragCents: bigint;
   sphereSnapshot: Sphere;
   kategorieId: string | null;

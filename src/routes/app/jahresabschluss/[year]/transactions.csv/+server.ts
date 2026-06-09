@@ -61,7 +61,10 @@ export const GET: RequestHandler = async ({ params }) => {
   for (const r of rows) {
     lines.push(
       csvRow([
-        r.gebuchtAm,
+        // Datum = cash-relevant date (relevanz_datum) the row booked under
+        // (migration 0034); falls back to gebucht_am. Matches the year filter
+        // so every Datum stays inside [year-01-01, year-12-31].
+        r.relevanzDatum ?? r.gebuchtAm,
         r.businessId,
         r.bezeichnung,
         KIND_LABEL[r.kind] ?? r.kind,

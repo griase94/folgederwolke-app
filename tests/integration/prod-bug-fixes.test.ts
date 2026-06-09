@@ -119,9 +119,11 @@ describe.skipIf(!dbConfigured)(
     });
 
     /**
-     * Seed a donation in the current Berlin year so the business_id year matches
-     * year_of_buchung (the DB constraint `donations_business_id_year_ck`).
-     * year_of_buchung is generated from gebucht_am (defaults to NOW()).
+     * Seed a donation with a current-Berlin-year zugewendet_am. Post-0034,
+     * year_of_buchung derives from the cash date — COALESCE(extract(year FROM
+     * zugewendet_am)::int, year_for_booking(gebucht_am)) — and the old
+     * business_id↔year coupling (`donations_business_id_year_ck`) was dropped,
+     * so the id-year segment no longer has to match year_of_buchung.
      */
     async function seedDonation(): Promise<string> {
       const now = new Date();
@@ -240,8 +242,10 @@ describe.skipIf(!dbConfigured)(
   "FIX-3: detail save writes kategorieId FK (not just name snapshot)",
   () => {
     // Use a far-future year so our rows are isolated from the corpus.
-    // year_of_buchung is a generated column derived from gebucht_am,
-    // so we pass gebuchtAm within the target year.
+    // year_of_buchung is a generated column: post-0034 it is
+    // COALESCE(extract(year FROM <cash>)::int, year_for_booking(gebucht_am)).
+    // These FIX-3 rows carry no cash date, so it falls back to gebucht_am —
+    // we therefore pass gebuchtAm within the target year.
     const TEST_YEAR_3 = 2097;
 
     function midYear(y: number): Date {

@@ -31,6 +31,7 @@ import { handleAuslageUpload } from "$lib/server/files/handleAuslageUpload.js";
 import { getDb } from "$lib/server/db/index.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { isNull } from "drizzle-orm";
+import { bookingYearFromCashDate } from "$lib/domain/year.js";
 
 function berlinYear(): number {
   return parseInt(
@@ -181,7 +182,15 @@ export const actions = {
 
     try {
       // Festschreibung gate BEFORE any side-effect (upload / allocate / insert).
-      const gate = await checkFestschreibungGate(year);
+      // The new income's year_of_buchung derives from geld_eingang_datum (the
+      // cash-in date) per migration 0034, so gate on year(geld_eingang_datum) —
+      // NOT the current calendar year. geldEingangDatum is optional;
+      // bookingYearFromCashDate falls back to the current Berlin year when null
+      // (matching the DB column's COALESCE → year_for_booking(gebucht_am=now())).
+      const gateYear = bookingYearFromCashDate(
+        parsed.data.geldEingangDatum ?? null,
+      );
+      const gate = await checkFestschreibungGate(gateYear);
       if (!gate.ok) return fail(gate.status, { error: gate.error });
 
       // OPTIONAL Beleg: upload only when a non-empty file was attached. No

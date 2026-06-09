@@ -43,7 +43,11 @@ export const load: PageServerLoad = async ({ params, url }) => {
     businessId: r.businessId,
     bezeichnung: r.bezeichnung,
     betragCents: r.betragCents,
-    gebuchtAm: r.gebuchtAm,
+    // The Buchungsliste sorts + displays the booking date. Post-0034 a row's
+    // fiscal year derives from the cash date, so the date shown must be the
+    // cash-relevant date (relevanz_datum) too — else a row filtered into year Y
+    // could display a date in Y±1. Fall back to gebucht_am when no cash date.
+    gebuchtAm: r.relevanzDatum ?? r.gebuchtAm,
     sphereSnapshot: r.sphereSnapshot,
     kategorieId: null,
     kategorieNameSnapshot: r.kategorieNameSnapshot,

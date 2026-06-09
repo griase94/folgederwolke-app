@@ -34,7 +34,7 @@ import {
   type BezahltVon,
 } from "$lib/server/domain/auslagen.js";
 import { DATENSCHUTZ_VERSION } from "$lib/server/domain/datenschutz.js";
-import { berlinYear } from "$lib/domain/year.js";
+import { berlinYear, bookingYearFromCashDate } from "$lib/domain/year.js";
 
 // ---------------------------------------------------------------------------
 // manualImportSubmission
@@ -186,16 +186,22 @@ async function fetchFestgeschriebenBis(): Promise<number | null> {
 }
 
 /**
- * Compute the Buchungsjahr (Europe/Berlin) used for the Festschreibung gate
- * given a submission's `rechnungsdatum`. Falls back to the current Berlin
- * year when rechnungsdatum is null. ADR-0001 + ADR-0006.
+ * Compute the Buchungsjahr used for the Festschreibung gate at approval time.
+ *
+ * Migration 0034 derives an expense's `year_of_buchung` from the CASH date:
+ *   COALESCE(extract(year FROM abfluss_datum)::int, year_for_booking(gebucht_am)).
+ * At approval the new `expenses` row is inserted with `abfluss_datum = NULL`
+ * (reimbursement hasn't happened yet) and `gebucht_am DEFAULT now()`, so it
+ * lands in `year_for_booking(now())` — the CURRENT Berlin Buchungsjahr.
+ *
+ * Therefore the gate must guard the LANDING year (current Berlin year), NOT the
+ * submission's `rechnungsdatum`. The receipt date is irrelevant to where the
+ * EÜR cash booking lands; gating on it would (a) wrongly block approving a
+ * prior-year receipt in an open current year, and (b) disagree with the DB
+ * festschreibung trigger, which also computes from the (null) abfluss → now().
+ * ADR-0001 + ADR-0006 + migration 0034.
  */
-function buchungsjahrForSubmission(rechnungsdatum: string | null): number {
-  if (rechnungsdatum) {
-    // YYYY-MM-DD — slice the year. The receipt date is already TZ-agnostic.
-    const y = parseInt(rechnungsdatum.slice(0, 4), 10);
-    if (Number.isFinite(y)) return y;
-  }
+function buchungsjahrForSubmission(): number {
   return berlinYear();
 }
 
@@ -312,7 +318,10 @@ export async function approveSubmission(
   }
 
   // ── 2. Festschreibung gate (ADR-0006) ──────────────────────────────────
-  const buchungsjahr = buchungsjahrForSubmission(submission.rechnungsdatum);
+  // Gate on the year the approved expense will LAND in (cash-derived). With
+  // abfluss NULL at approve, that's the current Berlin year — not the
+  // submission's rechnungsdatum. See buchungsjahrForSubmission() above.
+  const buchungsjahr = buchungsjahrForSubmission();
   const festBis = await fetchFestgeschriebenBis();
   if (festBis !== null && buchungsjahr <= festBis) {
     return {
@@ -763,8 +772,13 @@ export async function markExpenseErstattet(
     return { ok: true, alreadyErstattet: true };
   }
 
-  // Festschreibung gate — derive Buchungsjahr from gebucht_am (Berlin TZ).
-  const buchungsjahr = berlinYear(expense.gebuchtAm);
+  // Festschreibung gate (ADR-0006) — derive the Buchungsjahr from the cash
+  // date being WRITTEN. Reimbursement sets abfluss_datum = chosenDate, so
+  // year_of_buchung recomputes to year(chosenDate) (migration 0034). The app
+  // gate must guard THAT landing year, not year(gebucht_am) — otherwise it
+  // disagrees with the DB festschreibung trigger and a row could be rebucketed
+  // INTO a closed year while passing the app check.
+  const buchungsjahr = bookingYearFromCashDate(chosenDate, expense.gebuchtAm);
   const festBis = await fetchFestgeschriebenBis();
   if (festBis !== null && buchungsjahr <= festBis) {
     return {

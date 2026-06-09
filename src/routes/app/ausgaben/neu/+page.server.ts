@@ -49,6 +49,7 @@ import { members } from "$lib/server/db/schema/members.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { asc, isNull } from "drizzle-orm";
 import { handleAuslageUpload } from "$lib/server/files/handleAuslageUpload.js";
+import { bookingYearFromCashDate } from "$lib/domain/year.js";
 
 function berlinYear(): number {
   return parseInt(
@@ -353,8 +354,16 @@ export const actions = {
       });
     }
 
+    // Festschreibung gate (ADR-0006): the new expense's year_of_buchung
+    // derives from abfluss_datum (the cash-out date) per migration 0034, so
+    // gate on year(abfluss_datum) — NOT the current calendar year. Otherwise a
+    // prior-year cash-out booked in a closed year would pass the app gate and
+    // be rejected only by the DB trigger (opaque 23514). abfluss_datum is
+    // required by the Zod schema; bookingYearFromCashDate falls back to the
+    // current Berlin year if it were ever absent.
     const year = berlinYear();
-    const gate = await checkFestschreibungGate(year);
+    const gateYear = bookingYearFromCashDate(parsed.data.abfluss_datum);
+    const gate = await checkFestschreibungGate(gateYear);
     if (!gate.ok) return fail(gate.status, { error: gate.error });
 
     try {

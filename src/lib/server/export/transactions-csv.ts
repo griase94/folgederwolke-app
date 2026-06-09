@@ -92,7 +92,11 @@ export function buildTransactionsCsv(
         : sphereSnapshot;
 
     const rowCells: Array<string | number | null | undefined> = [
-      r.gebuchtAm,
+      // GoBD/EÜR Datum = the cash-relevant date (= relevanz_datum) the row was
+      // booked under (migration 0034). Falls back to gebucht_am when no cash
+      // date is set. Keeps the Datum inside the cash-year window the export
+      // filtered on.
+      r.relevanzDatum ?? r.gebuchtAm,
       r.businessId,
       r.bezeichnung,
       KIND_LABEL[r.kind] ?? r.kind,

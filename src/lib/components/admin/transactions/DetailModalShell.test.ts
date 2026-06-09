@@ -87,6 +87,7 @@ function makeDetail(
     betragCents: 1999,
     currency: "EUR",
     gebuchtAm: "2026-05-01",
+    relevanzDatum: null,
     rechnungsdatum: null,
     sphereSnapshot: "ideell",
     sphereEffective: "ideell",
