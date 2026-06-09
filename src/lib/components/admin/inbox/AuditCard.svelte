@@ -204,6 +204,7 @@
 			>
 				<input type="hidden" name="submissionId" value={submission.id} />
 				<div class="mb-2">
+					<!-- sphere is re-derived server-side by approveSubmission; no client snapshot needed -->
 					<KategoriePicker
 						id="approve-kategorie"
 						options={kategorieOptions}

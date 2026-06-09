@@ -29,7 +29,10 @@ import {
   approveSubmission,
   rejectSubmission,
 } from "$lib/server/domain/audit-inbox-actions.js";
-import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
+import {
+  listKategorieOptions,
+  IMPORT_SENTINEL_NAME,
+} from "$lib/server/domain/transaction-pickers.js";
 import { bus, registerHandlers } from "$lib/server/events/index.js";
 import { maskIban, type InboxSubmissionDetailView } from "$lib/domain/inbox.js";
 
@@ -112,7 +115,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   // "Unkategorisiert (Import)" is a sentinel for importer rows; the gate
   // requires a real Kategorie choice, so we strip it from the picker.
   const kategorieOptions = (await listKategorieOptions("expense"))
-    .filter((o) => o.name !== "Unkategorisiert (Import)")
+    .filter((o) => o.name !== IMPORT_SENTINEL_NAME)
     .map((o) => ({ name: o.name, sphere: o.sphere }));
 
   // ── Emit auslage.reviewed when an admin opens an undecided card. The

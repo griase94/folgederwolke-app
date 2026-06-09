@@ -26,6 +26,9 @@ import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
 import { members } from "$lib/server/db/schema/members.js";
 
+// The per-kind importer placeholder kategorie; excluded from interactive pickers.
+export const IMPORT_SENTINEL_NAME = "Unkategorisiert (Import)";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

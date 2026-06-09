@@ -244,7 +244,7 @@
 						<button
 							type="button"
 							onclick={() => { approveRevealed = false; kategorieName = ''; }}
-							class="min-h-11 rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted"
+							class="min-h-11 rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 						>Abbrechen</button>
 						<button
 							type="submit"

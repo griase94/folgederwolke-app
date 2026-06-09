@@ -23,7 +23,10 @@ import {
   approveSubmission,
   rejectSubmission,
 } from "$lib/server/domain/audit-inbox-actions.js";
-import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
+import {
+  listKategorieOptions,
+  IMPORT_SENTINEL_NAME,
+} from "$lib/server/domain/transaction-pickers.js";
 import type { InboxSubmissionView } from "$lib/domain/inbox.js";
 
 /**
@@ -146,7 +149,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   // Spec §4.6: expense Kategorie options for the inline-approve picker.
   // Exclude the Import sentinel — treasurer must choose a real Kategorie.
   const kategorieOptions = (await listKategorieOptions("expense"))
-    .filter((o) => o.name !== "Unkategorisiert (Import)")
+    .filter((o) => o.name !== IMPORT_SENTINEL_NAME)
     .map((o) => ({ name: o.name, sphere: o.sphere }));
 
   return {
