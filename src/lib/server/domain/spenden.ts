@@ -65,6 +65,11 @@ export function isBescheinigungEnabled(): boolean {
   // Pflichttext. Without them we cannot render a legally-valid receipt, so
   // issuance is disabled (and the UI hides it) until configured.
   if (env.VEREIN_STEUERBEGUENSTIGTE_ZWECKE.trim().length === 0) return false;
+  // White-label: the issuing Finanzamt name is interpolated verbatim into the
+  // BMF Pflichttext ("wurde vom Finanzamt … bestätigt"). The env default is ""
+  // — without it the receipt renders a legally-deficient "des , StNr. …", so
+  // issuance is disabled (and the UI hides it) until configured.
+  if (!env.VEREIN_FINANZAMT.trim()) return false;
   if (typ === "freistellungsbescheid") {
     // BMF compliance: Freistellungsbescheid wording quotes the
     // Veranlagungszeitraum verbatim — without VZ we cannot render a

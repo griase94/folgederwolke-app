@@ -54,4 +54,26 @@ describe("Task 1.6 — bescheidPflichttext Finanzamt + Zwecke", () => {
     expect(lines).not.toContain("Finanzamt Finanzamt");
     expect(lines).toContain("der Foerderung des Sports");
   });
+
+  // FIX-4 (board): the renderer must REFUSE rather than emit a legally-deficient
+  // "des , StNr. …" when the Finanzamt name is missing. Mirrors the existing
+  // VZ / Satzungsfassung throw guards. Guarded upstream too (isBescheinigungEnabled),
+  // this is the last-line defense at the PDF layer.
+  it("throws when vereinFinanzamt is blank (freistellungsbescheid)", () => {
+    expect(() =>
+      bescheidPflichttext({ ...BASE, vereinFinanzamt: "   " }),
+    ).toThrow(/vereinFinanzamt missing/);
+  });
+
+  it("throws when vereinFinanzamt is blank (feststellung_60a)", () => {
+    expect(() =>
+      bescheidPflichttext({
+        ...BASE,
+        bescheidTyp: "feststellung_60a",
+        satzungsFassung: "2022-06-01",
+        freistellungsbescheidVz: null,
+        vereinFinanzamt: "",
+      }),
+    ).toThrow(/vereinFinanzamt missing/);
+  });
 });

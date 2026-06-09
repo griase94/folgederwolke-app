@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import EntryFormShell from '$lib/components/admin/transactions/EntryFormShell.svelte';
 	import EinnahmeFields from '$lib/components/admin/transactions/einnahmen/EinnahmeFields.svelte';
 	import type { PageData } from './$types.js';
@@ -36,7 +37,7 @@
 </script>
 
 <svelte:head>
-	<title>Neue Einnahme – Folge der Wolke</title>
+	<title>Neue Einnahme – {$page.data.vereinName}</title>
 </svelte:head>
 
 {#snippet fields()}

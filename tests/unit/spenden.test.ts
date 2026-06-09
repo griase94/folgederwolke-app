@@ -326,4 +326,19 @@ describe("isBescheinigungEnabled — Freistellungsbescheid VZ Pflicht", () => {
     });
     expect(enabled).toBe(false);
   });
+
+  // FIX-4 (board): the issuing Finanzamt name is interpolated verbatim into the
+  // BMF Pflichttext ("des Finanzamts …" / "wurde vom Finanzamt …"). The env
+  // default is "" — an unconfigured deployer must NOT be able to issue a
+  // legally-deficient receipt, so issuance is gated off (UI hides it too).
+  it("returns false when VEREIN_FINANZAMT is empty (otherwise valid)", async () => {
+    const enabled = await loadWithEnv({
+      VEREIN_BESCHEID_TYP: "freistellungsbescheid",
+      VEREIN_BESCHEID_DATUM: "2024-03-15",
+      VEREIN_FREISTELLUNGSBESCHEID_VZ: "2024",
+      VEREIN_STEUERBEGUENSTIGTE_ZWECKE: "der Förderung des Sports",
+      VEREIN_FINANZAMT: "   ",
+    });
+    expect(enabled).toBe(false);
+  });
 });

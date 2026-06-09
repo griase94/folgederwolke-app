@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import EntryFormShell from '$lib/components/admin/transactions/EntryFormShell.svelte';
 	import SpendeFields from '$lib/components/admin/transactions/spenden/SpendeFields.svelte';
 	import type { ActionData, PageData } from './$types.js';
@@ -37,7 +38,7 @@
 </script>
 
 <svelte:head>
-	<title>Neue Spende – Folge der Wolke</title>
+	<title>Neue Spende – {$page.data.vereinName}</title>
 </svelte:head>
 
 {#snippet fields()}

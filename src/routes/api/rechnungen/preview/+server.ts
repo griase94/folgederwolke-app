@@ -127,9 +127,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   // White-label: name + address come from the single settings→env Stammdaten
   // reader (no hardcoded FdW literals).
   const sd = await readStammdaten();
+  // White-label: fall back to "" (not a hardcoded person) so an unconfigured
+  // deployment doesn't print the wrong name on the invoice preview.
   const kassenwaertName =
-    unquote(settingsMap.get("verein.kassenwaert_name") ?? "") ||
-    "Julia Schwarz";
+    unquote(settingsMap.get("verein.kassenwaert_name") ?? "") || "";
 
   const nettoCents = payload.nettoCents;
   const ustCents = 0;

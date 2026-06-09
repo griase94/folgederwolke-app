@@ -94,12 +94,11 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 async function previewPflichtfelder(sp: typeof donations.$inferSelect) {
+  // §4.3: read the real Sachspende column (NOT the legacy "Sache:" string) —
+  // mirrors allocateBescheinigung + extractBmfPflichtfelder so the preview's
+  // "Genaue Bezeichnung" matches the issued PDF.
   const sacheBeschreibung =
-    sp.spendeKind === "sachspende"
-      ? ((sp.zweckbindungText?.includes("Sache:")
-          ? (sp.zweckbindungText.split("Sache:")[1]?.trim() ?? null)
-          : sp.zweckbindungText) ?? null)
-      : null;
+    sp.spendeKind === "sachspende" ? (sp.zustandBeschreibung ?? null) : null;
   // White-label: Stammdaten preview mirrors the issued cert — settings-sourced
   // name/address/Steuernummer/VR, env-sourced Finanzamt + Bescheid config.
   const sd = await readStammdaten();

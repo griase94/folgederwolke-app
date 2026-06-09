@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from "$app/stores";
   import TransactionListScaffold from "$lib/components/admin/transactions/TransactionListScaffold.svelte";
   import SpendenKpi from "$lib/components/admin/transactions/spenden/SpendenKpi.svelte";
   import {
@@ -31,7 +32,7 @@
 </script>
 
 <svelte:head>
-  <title>Spenden – Folge der Wolke</title>
+  <title>Spenden – {$page.data.vereinName}</title>
 </svelte:head>
 
 {#snippet kpi()}

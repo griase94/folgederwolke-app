@@ -661,9 +661,10 @@ async function loadRenderInput(invoiceId: string): Promise<InvoiceRenderInput> {
   // settings.value is stored as JSONB strings, e.g. '"Julia Schwarz"'.
   // Strip the wrapping quotes if present.
   const unquote = (s: string): string => s.replace(/^"|"$/g, "");
+  // White-label: fall back to "" (not a hardcoded person) so an unconfigured
+  // deployment doesn't print the wrong name on invoices.
   const kassenwaertName =
-    unquote(settingsMap.get("verein.kassenwaert_name") ?? "") ||
-    "Julia Schwarz";
+    unquote(settingsMap.get("verein.kassenwaert_name") ?? "") || "";
 
   // White-label: name + address come from the single settings→env Stammdaten
   // reader (no hardcoded FdW literals).

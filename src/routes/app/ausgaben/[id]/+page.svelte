@@ -14,6 +14,7 @@
    *     duplicate-as-template action (?/duplicate → prefill /app/ausgaben/neu).
    */
   import { applyAction, enhance } from "$app/forms";
+  import { page } from "$app/stores";
   import { goto } from "$app/navigation";
   import { toast } from "svelte-sonner";
   import DetailModalShell from "$lib/components/admin/transactions/DetailModalShell.svelte";
@@ -57,7 +58,7 @@
 </script>
 
 <svelte:head>
-  <title>{data.detail.bezeichnung} – Ausgaben – Folge der Wolke</title>
+  <title>{data.detail.bezeichnung} – Ausgaben – {$page.data.vereinName}</title>
 </svelte:head>
 
 {#snippet fields()}

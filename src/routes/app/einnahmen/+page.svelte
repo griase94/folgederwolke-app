@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from "$app/stores";
   import TransactionListScaffold from "$lib/components/admin/transactions/TransactionListScaffold.svelte";
   import Money from "$lib/components/ui/money/money.svelte";
   import EinnahmenKpi from "$lib/components/admin/transactions/einnahmen/EinnahmenKpi.svelte";
@@ -27,7 +28,7 @@
 </script>
 
 <svelte:head>
-  <title>Einnahmen – Folge der Wolke</title>
+  <title>Einnahmen – {$page.data.vereinName}</title>
 </svelte:head>
 
 {#snippet kpi()}

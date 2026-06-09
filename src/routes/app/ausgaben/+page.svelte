@@ -9,6 +9,7 @@
    * badge —, Betrag right via Money, Status badge, chevron), and the bulk
    * action wiring (BulkActionsBar + SEPA + post-SEPA modals — Task 3).
    */
+  import { page } from "$app/stores";
   import TransactionListScaffold from "$lib/components/admin/transactions/TransactionListScaffold.svelte";
   import AusgabenKpi from "$lib/components/admin/transactions/ausgaben/AusgabenKpi.svelte";
   import { ausgabenColumns } from "$lib/components/admin/transactions/ausgaben/columns.js";
@@ -182,7 +183,7 @@
 </script>
 
 <svelte:head>
-  <title>Ausgaben – Folge der Wolke</title>
+  <title>Ausgaben – {$page.data.vereinName}</title>
 </svelte:head>
 
 <!-- ── KPI header strip ────────────────────────────────────────────────────── -->
