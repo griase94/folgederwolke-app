@@ -357,7 +357,7 @@
 		the search-icon + bell + user-menu at iPhone width. The breadcrumb
 		nav above already takes over from `sm:` upwards.
 	-->
-	<span class="hidden">Folge der Wolke</span>
+	<span class="hidden" data-testid="verein-wordmark">{$page.data.vereinName}</span>
 
 	<!-- Search input (desktop) -->
 	<div class="fdw-search-wrap relative hidden w-64 md:block xl:w-80">

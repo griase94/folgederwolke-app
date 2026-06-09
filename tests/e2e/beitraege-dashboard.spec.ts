@@ -146,4 +146,17 @@ test.describe("@phase-2 BeitragsuebersichtWidget", () => {
     // No overdue chip in the success state.
     await expect(page.getByTestId("beitragsuebersicht-overdue")).toHaveCount(0);
   });
+
+  test("confetti is suppressed when prefers-reduced-motion is set (Task 3.1)", async ({
+    page,
+  }) => {
+    // Emulate reduced-motion OS preference.
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await seedAllPaid();
+    await signIn(page);
+    await page.goto("/app");
+    await page.waitForLoadState("networkidle");
+    // The confetti div must never appear.
+    await expect(page.locator(".confetti-particle")).toHaveCount(0);
+  });
 });

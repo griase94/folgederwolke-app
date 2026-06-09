@@ -22,6 +22,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { building } from "$app/environment";
 import { getDb } from "$lib/server/db/index.js";
 import { env, assertVereinBankConsistent } from "$lib/server/env.js";
 import { validateIban } from "$lib/server/domain/iban.js";
@@ -129,22 +130,28 @@ function asStringArray(raw: unknown): string[] | null {
 }
 
 export async function readStammdaten(): Promise<StammdatenView> {
-  const db = getDb();
-  // Hard-coded IN-list — KEYS is closed and static, so literal interpolation
-  // is safe and avoids the array-bind pitfalls of drizzle's sql template
-  // (which spreads array params into multiple positional binds, breaking
-  // `ANY(...::text[])`).
-  const rows = (await db.execute<{ key: string; value: unknown }>(sql`
-    SELECT key, value FROM settings WHERE key IN (
-      'verein.name',
-      'verein.adresse',
-      'verein.iban',
-      'verein.bic',
-      'verein.steuernummer',
-      'verein.vr',
-      'verein.meta.vorstand_ids'
-    )
-  `)) as { key: string; value: unknown }[];
+  // During prerender/build there is no DB connection — return empty rows so
+  // every field falls back to env (the build, e.g. the prerendered legal pages,
+  // bakes the build-time env values). At runtime the DB is read normally.
+  let rows: { key: string; value: unknown }[] = [];
+  if (!building) {
+    const db = getDb();
+    // Hard-coded IN-list — KEYS is closed and static, so literal interpolation
+    // is safe and avoids the array-bind pitfalls of drizzle's sql template
+    // (which spreads array params into multiple positional binds, breaking
+    // `ANY(...::text[])`).
+    rows = (await db.execute<{ key: string; value: unknown }>(sql`
+      SELECT key, value FROM settings WHERE key IN (
+        'verein.name',
+        'verein.adresse',
+        'verein.iban',
+        'verein.bic',
+        'verein.steuernummer',
+        'verein.vr',
+        'verein.meta.vorstand_ids'
+      )
+    `)) as { key: string; value: unknown }[];
+  }
 
   const map = new Map<string, unknown>(rows.map((r) => [r.key, r.value]));
 

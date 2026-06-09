@@ -16,38 +16,19 @@ import type {
   InvoiceRenderOutput,
 } from "./invoice.js";
 import { renderRechnungV2, formatDE } from "./templates/rechnung-v2/index.js";
-
-function adresseLines(adresse: string): { line1: string; line2: string } {
-  const lines = (adresse ?? "")
-    .split(/[\r\n]+/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  return { line1: lines[0] ?? "", line2: lines[1] ?? "" };
-}
-
-function adresseSingleLine(adresse: string): string {
-  return (adresse ?? "")
-    .split(/[\r\n]+/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .join(" - ");
-}
+import { addressLines, addressOneLine } from "$lib/server/domain/address.js";
 
 export class PdfLibInvoiceRenderer implements InvoicePdfRenderer {
   async render(input: InvoiceRenderInput): Promise<InvoiceRenderOutput> {
-    const { line1, line2 } = adresseLines(input.verein.adresse);
-    const single = adresseSingleLine(input.verein.adresse);
     const bytes = await renderRechnungV2({
       verein: {
         name: input.verein.name,
-        adresseSingleLine: single,
-        adresseLine1: line1,
-        adresseLine2: line2,
+        adresseSingleLine: addressOneLine(input.verein.adresse),
+        adresseLines: addressLines(input.verein.adresse),
         vereinsregister: input.verein.vereinsregister,
         steuernummer: input.verein.steuernummer,
-        kontaktPerson: input.verein.kontaktPerson ?? "",
-        contactPhone: input.verein.contactPhone ?? "",
         contactEmail: input.verein.contactEmail ?? "",
+        contactPhone: input.verein.contactPhone ?? "",
         bankname: input.verein.bank ?? "",
         iban: input.verein.iban ?? "",
         bic: input.verein.bic ?? "",

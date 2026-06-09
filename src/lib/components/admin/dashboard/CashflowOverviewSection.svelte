@@ -147,7 +147,7 @@
 				href={einnahmenBase}
 			/>
 			<!-- C3-3: per-sphere subtotals beneath the headline card -->
-			<div class="grid grid-cols-4 gap-1" role="list" aria-label="Einnahmen nach Sphäre">
+			<div class="grid grid-cols-2 gap-1 sm:grid-cols-4" role="list" aria-label="Einnahmen nach Sphäre">
 				{#each SPHERE_ORDER as sphere (sphere)}
 					<div
 						role="listitem"
@@ -155,7 +155,7 @@
 						data-sphere={sphere}
 						class="flex flex-col items-start rounded-md border border-border bg-card px-2 py-1"
 					>
-						<span class="text-[0.65rem] uppercase tracking-wide text-muted-foreground">
+						<span class="text-xs uppercase tracking-wide text-muted-foreground">
 							{SPHERE_LABELS[sphere]}
 						</span>
 						<span class="text-xs font-medium tabular-nums" title={SPHERE_LABELS[sphere]}>
@@ -175,7 +175,7 @@
 				tone="expense"
 				href={ausgabenBase}
 			/>
-			<div class="grid grid-cols-4 gap-1" role="list" aria-label="Ausgaben nach Sphäre">
+			<div class="grid grid-cols-2 gap-1 sm:grid-cols-4" role="list" aria-label="Ausgaben nach Sphäre">
 				{#each SPHERE_ORDER as sphere (sphere)}
 					<div
 						role="listitem"
@@ -183,7 +183,7 @@
 						data-sphere={sphere}
 						class="flex flex-col items-start rounded-md border border-border bg-card px-2 py-1"
 					>
-						<span class="text-[0.65rem] uppercase tracking-wide text-muted-foreground">
+						<span class="text-xs uppercase tracking-wide text-muted-foreground">
 							{SPHERE_LABELS[sphere]}
 						</span>
 						<span class="text-xs font-medium tabular-nums" title={SPHERE_LABELS[sphere]}>

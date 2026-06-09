@@ -56,7 +56,7 @@
       "name": "Audit Inbox",
       "short_name": "Inbox",
       "description": "Prüf-Inbox für offene Belege",
-      "url": "/app/audit-inbox?source=shortcut",
+      "url": "/app/inbox?source=shortcut",
       "icons": [
         {
           "src": "/icons/icon-192.png",
@@ -69,7 +69,7 @@
       "name": "Neue Spende",
       "short_name": "Spende",
       "description": "Neue Spende erfassen",
-      "url": "/app/spenden/neu?source=shortcut",
+      "url": "/app/transactions/spenden?source=shortcut",
       "icons": [
         {
           "src": "/icons/icon-192.png",
@@ -82,7 +82,7 @@
       "name": "EÜR aktuelles Jahr",
       "short_name": "EÜR",
       "description": "Einnahmen-Überschuss-Rechnung des laufenden Jahres",
-      "url": "/app/eur?source=shortcut",
+      "url": "/app/jahresabschluss?source=shortcut",
       "icons": [
         {
           "src": "/icons/icon-192.png",

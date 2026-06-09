@@ -79,6 +79,11 @@
 		errors?: Record<string, string[]>;
 		/** Bubbled up so the page can track dirtiness for the shell footer. */
 		onDirty?: () => void;
+		/**
+		 * White-label (Phase 1): runtime Verein name for the bezahlt-von
+		 * display snapshot. Falls back to "Verein" when absent.
+		 */
+		vereinName?: string;
 	}
 
 	let {
@@ -89,6 +94,7 @@
 		values,
 		errors,
 		onDirty,
+		vereinName = 'Verein',
 	}: Props = $props();
 
 	const today = new Date().toISOString().slice(0, 10);
@@ -133,7 +139,7 @@
 
 	const selectedMember = $derived(members.find((m) => m.id === selectedMemberId));
 	const bezahltVonDisplay = $derived(() => {
-		if (bezahltVonKind === 'verein') return 'Folge der Wolke e.V.';
+		if (bezahltVonKind === 'verein') return vereinName;
 		if (bezahltVonKind === 'member' && selectedMember) {
 			return `${selectedMember.vorname} ${selectedMember.nachname}`.trim();
 		}

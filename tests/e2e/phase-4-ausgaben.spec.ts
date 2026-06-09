@@ -251,3 +251,23 @@ test.describe("@phase-4-ausgaben Ausgaben tab", () => {
     }
   });
 });
+
+test.describe("White-label payer label @phase-4-ausgaben", () => {
+  // The "Verein"-paid payer label must reflect the runtime vereinName from
+  // settings (exposed via the root layout), NOT a hardcoded "Folge der Wolke
+  // e.V." literal. The configured name varies by env (local ".env.test" adds a
+  // "(TEST)" suffix; CI sets the bare value), so assert the name root, not the
+  // exact suffix — rigorous dynamic-source checks live in the unit tests.
+  test("verein payer display uses the configured runtime name", async ({
+    page,
+  }) => {
+    if (!process.env["DATABASE_URL"]) test.skip();
+    await signIn(page);
+    await page.goto("/app/ausgaben/neu");
+    // Default bezahltVonKind for Ausgaben is 'verein'.
+    await expect(page.getByTestId("bezahlt-von-kind")).toHaveValue("verein");
+    // The persisted display name flows into the hidden bezahltVonDisplay input.
+    const display = page.locator('input[name="bezahltVonDisplay"]');
+    await expect(display).toHaveValue(/Folge der Wolke/);
+  });
+});

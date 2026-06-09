@@ -1,11 +1,12 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
 </script>
 
 <svelte:head>
-	<title>Jahresabschluss – Folge der Wolke</title>
+	<title>Jahresabschluss – {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="mx-auto max-w-2xl px-4 py-8 lg:px-8">

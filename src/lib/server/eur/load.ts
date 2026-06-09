@@ -29,7 +29,7 @@ import {
 } from "./index.js";
 import { isYearClosed } from "$lib/server/domain/jahresabschluss.js";
 import { getDb } from "$lib/server/db/index.js";
-import { env } from "$lib/server/env.js";
+import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
 import { berlinYear } from "$lib/domain/year.js";
 
 // ── Serialized payload shapes (returned to the client) ───────────────────────
@@ -280,7 +280,7 @@ export async function loadEurAggregatesForPdf(
   year: number,
 ): Promise<EurPdfAggregates> {
   const db = getDb();
-  const vereinName = env.VEREIN_NAME || "Folge der Wolke e.V.";
+  const { name: vereinName } = await readStammdaten();
 
   // Income + expense rows with the kategorien JOIN (PDF doesn't need
   // eur_zeile / anlage_gem_zeile itself, but bundle.zip does — pulling
@@ -432,6 +432,7 @@ export async function loadEurWorkspaceData(
 ): Promise<EurWorkspaceData> {
   const db = getDb();
   const priorYear = year - 1;
+  const { name: vereinName } = await readStammdaten();
 
   // 1. Income + expense rows for current + prior year, mirroring the
   //    v_eur_year UNION shape (without the kategorien JOIN — c1 doesn't
@@ -729,7 +730,7 @@ export async function loadEurWorkspaceData(
       totalBeitragRows: currentBeitrags.length,
       currentBuchungsjahr,
     },
-    vereinName: env.VEREIN_NAME || "Folge der Wolke e.V.",
+    vereinName,
     closed,
     spendenCount,
   });

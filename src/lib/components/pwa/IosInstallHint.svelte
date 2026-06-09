@@ -5,6 +5,8 @@
 	 * Shows a modal with Share → Add to Home Screen instructions.
 	 */
 
+	import { page } from '$app/state';
+
 	const STORAGE_KEY = 'fdw.ios-install-hint-dismissed';
 
 	let visible = $state(false);
@@ -101,7 +103,7 @@
 				App zum Startbildschirm hinzufügen
 			</h2>
 			<p class="mb-4 text-sm text-muted-foreground">
-				Installiere Folge der Wolke als App auf deinem iPhone oder iPad — kein App Store nötig.
+				Installiere {page.data.vereinName} als App auf deinem iPhone oder iPad — kein App Store nötig.
 			</p>
 
 			<ol class="space-y-3 text-sm text-foreground">

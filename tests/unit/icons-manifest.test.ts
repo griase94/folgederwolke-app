@@ -28,6 +28,7 @@ const expectedPngIcons: IconSpec[] = [
   { file: "apple-touch-icon.png", width: 180, height: 180 },
   { file: "favicon-16.png", width: 16, height: 16 },
   { file: "favicon-32.png", width: 32, height: 32 },
+  { file: "favicon-96.png", width: 96, height: 96 },
 ];
 
 function readPngDimensions(absPath: string): { width: number; height: number } {
@@ -54,11 +55,6 @@ describe("PWA icon pack — files exist", () => {
       expect(statSync(abs).size).toBeGreaterThan(0);
     });
   }
-
-  it("favicon.svg exists (small-canvas variant: solid pink + cloud + bolt, marble stripped)", () => {
-    const abs = resolve(staticDir, "favicon.svg");
-    expect(existsSync(abs)).toBe(true);
-  });
 
   it("favicon.ico exists", () => {
     const abs = resolve(staticDir, "favicon.ico");
@@ -255,15 +251,14 @@ describe("InstallPrompt dismissal persistence (PM-011 — bonus, part of cluster
   });
 });
 
-describe("scripts/build-favicons.sh — regeneration entrypoint exists", () => {
-  const sh = resolve(repoRoot, "scripts/build-favicons.sh");
-
-  it("file exists", () => {
-    expect(existsSync(sh)).toBe(true);
+describe("PWA asset generators — regeneration entrypoints exist", () => {
+  it("scripts/build-app-icons.ts exists (marble icon/favicon pack)", () => {
+    expect(existsSync(resolve(repoRoot, "scripts/build-app-icons.ts"))).toBe(
+      true,
+    );
   });
 
-  it("is marked executable", () => {
-    const mode = statSync(sh).mode;
-    expect(mode & 0o111).toBeGreaterThan(0);
+  it("scripts/build-splash.ts exists (iOS splash set)", () => {
+    expect(existsSync(resolve(repoRoot, "scripts/build-splash.ts"))).toBe(true);
   });
 });

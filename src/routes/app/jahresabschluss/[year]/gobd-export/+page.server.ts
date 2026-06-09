@@ -9,7 +9,7 @@ import { error } from "@sveltejs/kit";
 import { sql } from "drizzle-orm";
 import type { PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
-import { env } from "$lib/server/env.js";
+import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
 
 export const load: PageServerLoad = async ({ params }) => {
   const year = parseInt(params.year, 10);
@@ -31,9 +31,11 @@ export const load: PageServerLoad = async ({ params }) => {
       (SELECT count(*)::text FROM donations WHERE year_of_buchung = ${year})                       AS spenden
   `);
 
+  const { name: vereinName } = await readStammdaten();
+
   return {
     year,
-    vereinName: env.VEREIN_NAME || "Folge der Wolke e.V.",
+    vereinName,
     counts: {
       einnahmen: parseInt(counts[0]?.einnahmen ?? "0", 10),
       ausgaben: parseInt(counts[0]?.ausgaben ?? "0", 10),

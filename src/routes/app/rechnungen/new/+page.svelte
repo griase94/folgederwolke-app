@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import InvoiceForm from '$lib/components/admin/invoices/InvoiceForm.svelte';
 	import type { PageData, ActionData } from './$types.js';
 
@@ -34,7 +35,7 @@
 </script>
 
 <svelte:head>
-	<title>Neue Rechnung - Folge der Wolke</title>
+	<title>Neue Rechnung - {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-6xl px-4 py-8 sm:px-6">

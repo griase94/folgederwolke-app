@@ -27,6 +27,7 @@ import { idCounters } from "$lib/server/db/schema/id_counters.js";
 import { and, eq } from "drizzle-orm";
 import { berlinYear } from "$lib/domain/year.js";
 import { env } from "$lib/server/env.js";
+import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
 import { pdfLibInvoiceRenderer } from "$lib/server/pdf/pdf-lib-renderer.js";
 
 // Bounded draft schema — anything the renderer can survive is allowed, but
@@ -113,7 +114,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   // loadRenderInput so the preview is byte-for-byte identical to the saved
   // PDF for the same input.
   const settingsRows = await db.execute<{ key: string; value: unknown }>(
-    sql`SELECT key, value FROM settings WHERE key IN ('verein.iban', 'verein.bic', 'verein.bank', 'verein.kassenwaert_name')`,
+    sql`SELECT key, value FROM settings WHERE key IN ('verein.iban', 'verein.bic', 'verein.bank', 'verein.kassenwaert_name', 'verein.contact_phone')`,
   );
   const settingsMap = new Map<string, string>();
   for (const r of settingsRows as { key: string; value: unknown }[]) {
@@ -122,6 +123,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     else if (v !== null && v !== undefined) settingsMap.set(r.key, String(v));
   }
   const unquote = (s: string): string => s.replace(/^"|"$/g, "");
+
+  // White-label: name + address come from the single settings→env Stammdaten
+  // reader (no hardcoded FdW literals).
+  const sd = await readStammdaten();
   const kassenwaertName =
     unquote(settingsMap.get("verein.kassenwaert_name") ?? "") ||
     "Julia Schwarz";
@@ -145,18 +150,20 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     faelligkeitsDatum: payload.faelligkeitsDatum || null,
     leistungszeitraum: payload.leistungszeitraum?.trim() || null,
     verein: {
-      name: env.VEREIN_NAME || "Folge der Wolke e.V.",
-      adresse: env.VEREIN_ADRESSE || "Westermuehlstrasse 6\n80469 Muenchen",
-      steuernummer: env.VEREIN_STEUERNUMMER || "",
-      vereinsregister: env.VEREIN_VR || "",
+      name: sd.name,
+      adresse: sd.adresse,
+      steuernummer: sd.steuernummer,
+      vereinsregister: sd.vr,
       iban:
         unquote(settingsMap.get("verein.iban") ?? "") || env.VEREIN_IBAN || "",
       bic: unquote(settingsMap.get("verein.bic") ?? "") || env.VEREIN_BIC || "",
       bank:
         unquote(settingsMap.get("verein.bank") ?? "") || env.VEREIN_BANK || "",
-      kontaktPerson: env.VEREIN_KONTAKT_PERSON || "",
-      contactPhone: env.VEREIN_CONTACT_PHONE || "",
       contactEmail: env.MAIL_FROM || "",
+      contactPhone:
+        unquote(settingsMap.get("verein.contact_phone") ?? "") ||
+        env.VEREIN_CONTACT_PHONE ||
+        "",
     },
     customer: {
       name: customerName,

@@ -45,13 +45,58 @@ vi.mock("$lib/server/auth/cookies.js", () => ({
   unsign: vi.fn().mockReturnValue(null), // separate import path tested via hash.ts
 }));
 
-// Mock DB — stateful per-instance so spyOn works in each test
+// ---------------------------------------------------------------------------
+// Shared helper: build a joined session+user row for the new single-JOIN path
+// ---------------------------------------------------------------------------
+
+function makeJoinedRow(overrides: {
+  issuedAt?: Date;
+  lastUsedAt?: Date;
+  expiresAt?: Date;
+  emailCanonical?: string;
+}) {
+  const now = Date.now();
+  return {
+    sessionId: "sess-1",
+    sessionUserId: "user-1",
+    sessionTokenHash: sha256(TEST_SESSION_TOKEN),
+    sessionIssuedAt: overrides.issuedAt ?? new Date(now - 60_000),
+    sessionLastUsedAt: overrides.lastUsedAt ?? new Date(now - 30_000),
+    sessionExpiresAt: overrides.expiresAt ?? new Date(now + 30 * 86400_000),
+    sessionRevokedAt: null,
+    sessionDeviceFingerprint: null,
+    userId: "user-1",
+    userEmail: overrides.emailCanonical ?? "admin@example.com",
+    userEmailCanonical: overrides.emailCanonical ?? "admin@example.com",
+    userName: null,
+    userRole: "admin" as const,
+    userDisabledAt: null,
+    userCreatedAt: new Date(),
+    userUpdatedAt: new Date(),
+  };
+}
+
+// Mock DB — stateful per-instance so spyOn works in each test.
+// The `select` chain mirrors the new single-JOIN resolveSession path:
+//   db.select({...}).from(sessions).innerJoin(users,...).where(...).limit(1)
+// Returns [] by default (no session found); tests override via mockSelectRows.
+let mockSelectRows: unknown[] = [];
+const selectBuilder = {
+  from: vi.fn().mockReturnThis(),
+  innerJoin: vi.fn().mockReturnThis(),
+  where: vi.fn().mockReturnThis(),
+  limit: vi.fn(() => Promise.resolve(mockSelectRows)),
+};
+
 const mockDb = {
   execute: vi.fn().mockResolvedValue([{ n: 0 }]),
+  select: vi.fn(() => selectBuilder),
   insert: vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue([]) }),
   delete: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
   update: vi.fn().mockReturnValue({
-    set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
+    set: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({ catch: vi.fn().mockResolvedValue([]) }),
+    }),
   }),
   query: {
     sessions: { findFirst: vi.fn().mockResolvedValue(undefined) },
@@ -247,20 +292,19 @@ describe("@phase-1 Session idle timeout", () => {
     const now = Date.now();
     const eightDaysAgo = new Date(now - 8 * 86400_000);
 
-    vi.spyOn(mockDb.query.sessions, "findFirst").mockResolvedValueOnce({
-      id: "sess-idle",
-      userId: "user-1",
-      tokenHash: sha256(TEST_SESSION_TOKEN),
-      issuedAt: eightDaysAgo,
-      lastUsedAt: eightDaysAgo,
-      expiresAt: new Date(now + 30 * 86400_000),
-      revokedAt: null,
-      deviceFingerprint: null,
-    } as never);
+    // New single-JOIN path: prime the select builder to return an idle row.
+    mockSelectRows = [
+      makeJoinedRow({ issuedAt: eightDaysAgo, lastUsedAt: eightDaysAgo }),
+    ];
+    selectBuilder.limit = vi.fn(() => Promise.resolve(mockSelectRows));
 
     const mockCookies = { get: vi.fn(), set: vi.fn(), delete: vi.fn() };
     const result = await resolveSession(mockCookies as never);
     expect(result).toBeNull();
+
+    // Restore default (no rows).
+    mockSelectRows = [];
+    selectBuilder.limit = vi.fn(() => Promise.resolve(mockSelectRows));
   });
 });
 
@@ -275,16 +319,86 @@ describe("@phase-1 Session absolute timeout", () => {
     const now = Date.now();
     const thirtyOneDaysAgo = new Date(now - 31 * 86400_000);
 
-    vi.spyOn(mockDb.query.sessions, "findFirst").mockResolvedValueOnce({
-      id: "sess-abs",
-      userId: "user-1",
-      tokenHash: sha256(TEST_SESSION_TOKEN),
-      issuedAt: thirtyOneDaysAgo,
+    // New single-JOIN path: prime the select builder with an abs-expired row.
+    mockSelectRows = [
+      makeJoinedRow({
+        issuedAt: thirtyOneDaysAgo,
+        lastUsedAt: new Date(now - 30_000), // 30s ago — not idle-expired
+        expiresAt: new Date(now + 86400_000),
+      }),
+    ];
+    selectBuilder.limit = vi.fn(() => Promise.resolve(mockSelectRows));
+
+    const mockCookies = { get: vi.fn(), set: vi.fn(), delete: vi.fn() };
+    const result = await resolveSession(mockCookies as never);
+    expect(result).toBeNull();
+
+    mockSelectRows = [];
+    selectBuilder.limit = vi.fn(() => Promise.resolve(mockSelectRows));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. Single-JOIN resolveSession — valid session resolves with user (PR1)
+// ---------------------------------------------------------------------------
+
+describe("@phase-1 resolveSession single-JOIN (PR1)", () => {
+  it("returns ResolvedSession when joined row is valid and user is admin", async () => {
+    const { resolveSession } = await import("./index.js");
+
+    const now = Date.now();
+    const joined = makeJoinedRow({
+      issuedAt: new Date(now - 60_000), // 1 min old — not abs-expired
       lastUsedAt: new Date(now - 30_000), // 30s ago — not idle-expired
-      expiresAt: new Date(now + 86400_000),
-      revokedAt: null,
-      deviceFingerprint: null,
-    } as never);
+      expiresAt: new Date(now + 30 * 86400_000),
+      emailCanonical: "admin@example.com", // in ADMIN_EMAILS mock
+    });
+
+    mockSelectRows = [joined];
+    selectBuilder.limit = vi.fn(() => Promise.resolve(mockSelectRows));
+
+    const mockCookies = { get: vi.fn(), set: vi.fn(), delete: vi.fn() };
+    const result = await resolveSession(mockCookies as never);
+
+    expect(result).not.toBeNull();
+    expect(result?.user.id).toBe("user-1");
+    expect(result?.user.emailCanonical).toBe("admin@example.com");
+    expect(result?.user.role).toBe("admin");
+    // session shape preserved
+    expect(result?.session.id).toBe("sess-1");
+
+    mockSelectRows = [];
+    selectBuilder.limit = vi.fn(() => Promise.resolve(mockSelectRows));
+  });
+
+  it("returns null and deletes session when user is not in admin allowlist", async () => {
+    const { resolveSession } = await import("./index.js");
+
+    const now = Date.now();
+    const joined = makeJoinedRow({
+      issuedAt: new Date(now - 60_000),
+      lastUsedAt: new Date(now - 30_000),
+      expiresAt: new Date(now + 30 * 86400_000),
+      emailCanonical: "notanadmin@external.com", // NOT in ADMIN_EMAILS mock
+    });
+
+    mockSelectRows = [joined];
+    selectBuilder.limit = vi.fn(() => Promise.resolve(mockSelectRows));
+
+    const mockCookies = { get: vi.fn(), set: vi.fn(), delete: vi.fn() };
+    const result = await resolveSession(mockCookies as never);
+
+    expect(result).toBeNull();
+
+    mockSelectRows = [];
+    selectBuilder.limit = vi.fn(() => Promise.resolve(mockSelectRows));
+  });
+
+  it("returns null when no session row is found (unknown token)", async () => {
+    const { resolveSession } = await import("./index.js");
+
+    mockSelectRows = [];
+    selectBuilder.limit = vi.fn(() => Promise.resolve(mockSelectRows));
 
     const mockCookies = { get: vi.fn(), set: vi.fn(), delete: vi.fn() };
     const result = await resolveSession(mockCookies as never);

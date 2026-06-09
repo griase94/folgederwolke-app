@@ -89,7 +89,7 @@ export const load: PageServerLoad = async ({ params }) => {
   const currentYear = berlinYear();
 
   // ── Org constants for mail preview ───────────────────────────────────────
-  const mailFrom = env.MAIL_FROM || "noreply@folgederwolke.de";
+  const mailFrom = env.MAIL_FROM;
 
   // ── Find open beitrag for current year (for reminder defaults) ───────────
   const currentYearBeitrag = beitragRows.find((b) => b.year === currentYear);
@@ -99,7 +99,7 @@ export const load: PageServerLoad = async ({ params }) => {
   const defaultReminderYear = openYears[0]?.year ?? currentYear;
   const defaultReminderBetragCents = openYears[0]
     ? Number(openYears[0].betragCents)
-    : 6969; // fallback to default Satz (€69,69) when no open year row exists
+    : env.VEREIN_BEITRAG_DEFAULT_CENTS; // fallback default Satz when no open year row exists
 
   return {
     member: {
@@ -289,7 +289,7 @@ export const actions: Actions = {
 
     const betragCents = beitragRows[0]
       ? Number(beitragRows[0].betragCents)
-      : 6969; // fallback to default Satz (€69,69) when no beitrag row exists yet
+      : env.VEREIN_BEITRAG_DEFAULT_CENTS; // fallback default Satz when no beitrag row exists yet
 
     // Org bank details — env.VEREIN_* is the only source of truth. No
     // string-literal fallbacks: mismatched IBAN/BIC fallbacks were the

@@ -38,7 +38,7 @@
 </script>
 
 <svelte:head>
-	<title>Rechnungen - Folge der Wolke</title>
+	<title>Rechnungen - {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="container mx-auto max-w-5xl px-4 py-8 sm:px-6">

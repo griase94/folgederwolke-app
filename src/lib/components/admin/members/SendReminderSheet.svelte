@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { page } from '$app/state';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { toast } from 'svelte-sonner';
@@ -136,7 +137,7 @@
 						<div class="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-1.5">
 							<div class="grid grid-cols-[120px_1fr] gap-1 text-xs">
 								<span class="text-amber-700">Empfänger</span>
-								<span class="font-medium text-amber-900">Folge der Wolke e.V.</span>
+								<span class="font-medium text-amber-900">{page.data.vereinName}</span>
 							</div>
 							<div class="grid grid-cols-[120px_1fr] gap-1 text-xs">
 								<span class="text-amber-700">Betrag</span>

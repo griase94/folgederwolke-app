@@ -30,6 +30,8 @@ import {
   isBescheinigungEnabled,
 } from "$lib/server/domain/spenden.js";
 import { env } from "$lib/server/env.js";
+import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
+import { addressLines } from "$lib/server/domain/address.js";
 
 export const load: PageServerLoad = async ({ params }) => {
   const db = getDb();
@@ -47,19 +49,19 @@ export const load: PageServerLoad = async ({ params }) => {
   // If the row already has a bescheinigung_nr we surface those values;
   // otherwise we render placeholders to let the admin sanity-check before
   // hitting "Bescheinigung ausstellen".
-  let preview: ReturnType<typeof previewPflichtfelder> | null = null;
+  let preview: Awaited<ReturnType<typeof previewPflichtfelder>> | null = null;
   let alreadyIssued = false;
   let extractError: string | null = null;
 
   if (sp.bescheinigungNr) {
     alreadyIssued = true;
     try {
-      preview = extractBmfPflichtfelder(sp);
+      preview = await extractBmfPflichtfelder(sp);
     } catch (e) {
       extractError = (e as Error).message;
     }
   } else {
-    preview = previewPflichtfelder(sp);
+    preview = await previewPflichtfelder(sp);
   }
 
   return {
@@ -91,18 +93,24 @@ export const load: PageServerLoad = async ({ params }) => {
   };
 };
 
-function previewPflichtfelder(sp: typeof donations.$inferSelect) {
+async function previewPflichtfelder(sp: typeof donations.$inferSelect) {
   const sacheBeschreibung =
     sp.spendeKind === "sachspende"
       ? ((sp.zweckbindungText?.includes("Sache:")
           ? (sp.zweckbindungText.split("Sache:")[1]?.trim() ?? null)
           : sp.zweckbindungText) ?? null)
       : null;
+  // White-label: Stammdaten preview mirrors the issued cert — settings-sourced
+  // name/address/Steuernummer/VR, env-sourced Finanzamt + Bescheid config.
+  const sd = await readStammdaten();
   return {
-    vereinName: env.VEREIN_NAME,
-    vereinSteuernummer: env.VEREIN_STEUERNUMMER,
-    vereinVr: env.VEREIN_VR,
-    vereinAdresse: env.VEREIN_ADRESSE,
+    vereinName: sd.name,
+    vereinSteuernummer: sd.steuernummer,
+    vereinVr: sd.vr,
+    // Normalize to real newlines so the preview renders stacked (whitespace-pre-line);
+    // the issued PDF normalizes internally via addressLines/maskOrtFromAdresse.
+    vereinAdresse: addressLines(sd.adresse).join("\n"),
+    vereinFinanzamt: env.VEREIN_FINANZAMT,
     bescheidTyp: env.VEREIN_BESCHEID_TYP || "-",
     bescheidDatum: env.VEREIN_BESCHEID_DATUM || "-",
     satzungsFassung: env.VEREIN_SATZUNG_FASSUNG || null,

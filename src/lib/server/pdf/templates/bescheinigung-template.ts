@@ -23,6 +23,7 @@ import {
   type RGB,
 } from "pdf-lib";
 import type { BmfPflichtfelder } from "$lib/server/domain/spenden.js";
+import { addressLines } from "$lib/server/domain/address.js";
 
 // ── Geometry ──────────────────────────────────────────────────────────────
 const MM_TO_PT = 72 / 25.4;
@@ -143,7 +144,7 @@ function drawGap(ctx: DrawCtx, pts: number): void {
  * the wording. Source: BMF-Schreiben vom 24.04.2025, Anhang
  * "Mustervordrucke Zuwendungsbestaetigungen".
  */
-function bescheidPflichttext(p: BmfPflichtfelder): string[] {
+export function bescheidPflichttext(p: BmfPflichtfelder): string[] {
   const lines: string[] = [];
   if (p.bescheidTyp === "freistellungsbescheid") {
     // BMF compliance: Veranlagungszeitraum is asserted non-empty upstream
@@ -154,10 +155,17 @@ function bescheidPflichttext(p: BmfPflichtfelder): string[] {
         "freistellungsbescheidVz missing — Bescheinigung renderer requires VZ",
       );
     }
+    // BMF-verbatim genitive: "des Finanzamts München". p.vereinFinanzamt holds the
+    // nominative full name (e.g. "Finanzamt München"); decline the leading word to
+    // genitive for this slot. A value not starting with "Finanzamt" is left as-is.
+    const finanzamtGenitiv = p.vereinFinanzamt.replace(
+      /^Finanzamt\b/,
+      "Finanzamts",
+    );
     lines.push(
       `Wir sind wegen Foerderung ${p.steuerbegueZwecke} nach dem letzten uns zugegangenen ` +
         `Freistellungsbescheid bzw. nach der Anlage zum Koerperschaftsteuerbescheid des ` +
-        `Finanzamts ${maskOrtFromAdresse(p.vereinAdresse)}, StNr. ${p.vereinSteuernummer}, ` +
+        `${finanzamtGenitiv}, StNr. ${p.vereinSteuernummer}, ` +
         `vom ${formatGermanDate(p.bescheidDatum)} fuer den letzten Veranlagungszeitraum ` +
         `${p.freistellungsbescheidVz} nach Paragraph 5 Abs. 1 Nr. 9 des Koerperschaftsteuergesetzes ` +
         `von der Koerperschaftsteuer und nach Paragraph 3 Nr. 6 des Gewerbesteuergesetzes von der Gewerbesteuer ` +
@@ -171,7 +179,7 @@ function bescheidPflichttext(p: BmfPflichtfelder): string[] {
     }
     lines.push(
       `Die Einhaltung der satzungsmaessigen Voraussetzungen nach den Paragraphen 51, 59, 60 und 61 AO ` +
-        `wurde vom Finanzamt ${maskOrtFromAdresse(p.vereinAdresse)}, StNr. ${p.vereinSteuernummer}, ` +
+        `wurde vom ${p.vereinFinanzamt}, StNr. ${p.vereinSteuernummer}, ` +
         `mit Bescheid vom ${formatGermanDate(p.bescheidDatum)} ` +
         `nach Paragraph 60a AO gesondert festgestellt. Wir foerdern nach unserer Satzung ` +
         `(Fassung vom ${formatGermanDate(p.satzungsFassung)}) ${p.steuerbegueZwecke}.`,
@@ -197,12 +205,20 @@ function bescheidPflichttext(p: BmfPflichtfelder): string[] {
  * PLZ+Ort pattern (4-5 digits, whitespace, city name); return the city
  * portion only. Falls back to the last segment if no PLZ pattern is found.
  */
-function maskOrtFromAdresse(adr: string): string {
+export function maskOrtFromAdresse(adr: string): string {
   const segments = adr
+    // Normalize a literal backslash-n first: $env/dynamic/private returns
+    // process.env verbatim, so a Vercel value entered as "…\n…" reaches us as
+    // two characters, not a real newline. Without this the PLZ+Ort pattern
+    // never matches and the whole raw address (incl. literal \n) would print on
+    // the Zuwendungsbestätigung's "Ort, Datum" line. Mirrors addressLines().
+    .replace(/\\n/g, "\n")
     .split(/[,\n]/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
-  if (segments.length === 0) return adr;
+  // Content-free address (only whitespace/separators): still normalize the
+  // literal \n on the fallback so a misconfigured value can never print "\n".
+  if (segments.length === 0) return adr.replace(/\\n/g, "\n").trim();
 
   for (const seg of segments) {
     const match = seg.match(/^\d{4,5}\s+(.+)$/);
@@ -231,7 +247,11 @@ export async function drawBescheinigung(
     bold: true,
     color: COLOR_PRIMARY,
   });
-  drawText(ctx, p.vereinAdresse, { size: SIZE_SMALL, color: COLOR_MUTED });
+  // Multi-line postal address (DIN 5008) — each line stacked under the name
+  // (an optional c/o line, the street, then PLZ Ort).
+  for (const addrLine of addressLines(p.vereinAdresse)) {
+    drawText(ctx, addrLine, { size: SIZE_SMALL, color: COLOR_MUTED });
+  }
   drawText(
     ctx,
     `Steuernummer ${p.vereinSteuernummer} | Vereinsregister ${p.vereinVr}`,

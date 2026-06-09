@@ -38,7 +38,15 @@ import {
   selectYearFromUrl,
 } from "$lib/domain/year.js";
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, depends }) => {
+  // PR3b: register a scoped dependency so the optimistic Beitragsmatrix can
+  // reconcile via `invalidate('app:beitrags-matrix')` after a mutation —
+  // re-running ONLY this load instead of the whole `invalidateAll()` graph
+  // (which would re-fire the ~30-query dashboard load too). The mark-paid
+  // matrix data is produced here (loadMatrix + totalsByYear), so this load is
+  // the single re-fetch target.
+  depends("app:beitrags-matrix");
+
   const db = getDb();
   const view = url.searchParams.get("view") === "matrix" ? "matrix" : "list";
   const filter = url.searchParams.get("filter") as
@@ -388,7 +396,9 @@ export const actions: Actions = {
       )
       .limit(1);
 
-    const betragCents = beitragRow ? Number(beitragRow.betragCents) : 6969;
+    const betragCents = beitragRow
+      ? Number(beitragRow.betragCents)
+      : env.VEREIN_BEITRAG_DEFAULT_CENTS;
 
     const iban = env.VEREIN_IBAN;
     const bic = env.VEREIN_BIC;

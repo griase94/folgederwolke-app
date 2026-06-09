@@ -12,6 +12,7 @@
 	 */
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import EntryFormShell from '$lib/components/admin/transactions/EntryFormShell.svelte';
 	import AusgabeFields from '$lib/components/admin/transactions/ausgaben/AusgabeFields.svelte';
 	import type { AusgabeFormValues } from './+page.server.js';
@@ -54,7 +55,7 @@
 </script>
 
 <svelte:head>
-	<title>Neue Ausgabe – Folge der Wolke</title>
+	<title>Neue Ausgabe – {$page.data.vereinName}</title>
 </svelte:head>
 
 {#snippet fields()}
@@ -74,6 +75,7 @@
 		values={formValues}
 		errors={fieldErrors}
 		onDirty={() => (dirty = true)}
+		vereinName={$page.data.vereinName}
 	/>
 {/snippet}
 

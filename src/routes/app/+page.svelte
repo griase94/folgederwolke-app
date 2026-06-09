@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import CashflowOverviewSection from '$lib/components/admin/dashboard/CashflowOverviewSection.svelte';
 	import ChecklistSection from '$lib/components/admin/dashboard/ChecklistSection.svelte';
 	import RecentActivity from '$lib/components/admin/dashboard/RecentActivity.svelte';
@@ -6,6 +7,7 @@
 	import BeitragsuebersichtWidget from '$lib/components/admin/dashboard/BeitragsuebersichtWidget.svelte';
 	import TopProjekteWidget from '$lib/components/admin/dashboard/TopProjekteWidget.svelte';
 	import type { PageData } from './$types.js';
+	import { navigating } from '$app/state';
 
 	let { data }: { data: PageData } = $props();
 
@@ -21,16 +23,42 @@
 		if (n) return n.split(' ')[0] ?? n;
 		return data.user.email.split('@')[0] ?? data.user.email;
 	});
+
+	// Year-switch keep-previous: detect when the navigation is a same-path
+	// year change (only the ?year= param differs) so we can keep the previous
+	// KPI numbers visible but clearly greyed while the new data loads, rather
+	// than blanking the dashboard. This matches the "prior numbers visible but
+	// aria-busy" spec (Task 3.4 deep-eval P2).
+	//
+	// Note: SvelteKit's default behaviour already keeps old page data rendered
+	// until the new load completes (no blank flash) because the page component
+	// is not unmounted during same-route navigations. What we add here is just
+	// the subtle visual affordance (opacity-60 + aria-busy) so the user can
+	// tell a refresh is in-flight.
+	const isYearSwitch = $derived((): boolean => {
+		const nav = navigating;
+		if (!nav) return false;
+		const fromPath = nav.from?.url?.pathname ?? '';
+		const toPath = nav.to?.url?.pathname ?? '';
+		if (fromPath !== '/app' || toPath !== '/app') return false;
+		const fromYear = nav.from?.url?.searchParams?.get('year') ?? '';
+		const toYear = nav.to?.url?.searchParams?.get('year') ?? '';
+		return fromYear !== toYear;
+	});
 </script>
 
-<div class="mx-auto max-w-4xl px-4 py-8 lg:px-8">
+<div
+	class="mx-auto max-w-4xl px-4 py-8 lg:px-8"
+	aria-busy={isYearSwitch() ? 'true' : undefined}
+	style={isYearSwitch() ? 'opacity: 0.6; transition: opacity 150ms ease-in-out;' : undefined}
+>
 	<!-- Greeting header -->
 	<div class="mb-8">
 		<h1 class="text-2xl font-bold tracking-tight text-foreground">
 			{greeting()}, {displayName()} 👋
 		</h1>
 		<p class="mt-1 text-sm text-muted-foreground">
-			Folge der Wolke e.V. · Kassenführung · {data.cashflow.year}
+			{page.data.vereinName} · Kassenführung · {data.cashflow.year}
 		</p>
 	</div>
 

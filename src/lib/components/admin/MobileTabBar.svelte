@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { onMount } from 'svelte';
+	import { preloadData } from '$app/navigation';
 	import { mobileTabItems, mobileTransaktionenActive } from './nav-registry.js';
 	import FabBottomSheet from './FabBottomSheet.svelte';
 	import MoreSheet from './MoreSheet.svelte';
@@ -9,6 +11,38 @@
 		if (href === '/app') return current === '/app';
 		return current.startsWith(href);
 	}
+
+	// Speculative prefetch — on idle, preload the highest-frequency tab routes
+	// that are NOT the current page. Best-effort: uses requestIdleCallback when
+	// available, falls back to setTimeout(0). Only the top 2 non-active tab
+	// routes are prefetched to stay cheap. The tab bar only mounts in the
+	// browser (it's inside the app shell), so no SSR guard needed here.
+	const PREFETCH_HREFS = ['/app', '/app/inbox', '/app/projekte', '/app/ausgaben', '/app/einnahmen', '/app/spenden'];
+
+	onMount(() => {
+		const schedule = (cb: () => void) => {
+			if ('requestIdleCallback' in window) {
+				window.requestIdleCallback(cb, { timeout: 2000 });
+			} else {
+				setTimeout(cb, 0);
+			}
+		};
+
+		schedule(() => {
+			const current = $page.url.pathname;
+			const candidates = PREFETCH_HREFS.filter((href) => {
+				// Exclude the currently active route
+				if (href === '/app') return current !== '/app';
+				return !current.startsWith(href);
+			});
+			// Prefetch the first 2 candidates only
+			for (const href of candidates.slice(0, 2)) {
+				preloadData(href).catch(() => {
+					// Best-effort — silently ignore network errors
+				});
+			}
+		});
+	});
 
 	// Icon SVG paths used by mobile tab items.
 	// Zone-A 2026-05-21 — added FolderOpen for Projekte (now in bottom bar).

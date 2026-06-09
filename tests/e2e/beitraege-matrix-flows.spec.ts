@@ -187,6 +187,72 @@ test.describe("@phase-2 Beitragsmatrix — befreien (required reason)", () => {
   });
 });
 
+test.describe("@phase-2 Beitragsmatrix — undo toast keyboard (Task 3.2)", () => {
+  test("undo Rückgängig button in the toast is keyboard-reachable after mark-paid", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/app/mitglieder?view=matrix&year=${ANCHOR}`);
+
+    const erikaCell = cell(page, erika, ANCHOR);
+    await erikaCell.click();
+    await page.getByLabel("Bezahlt am").fill(`${ANCHOR}-05-15`);
+    await page.getByRole("button", { name: /Bezahlt/ }).click();
+
+    // Toast appears with the Rückgängig action button.
+    const undoBtn = page.getByRole("button", { name: "Rückgängig" });
+    await expect(undoBtn).toBeVisible({ timeout: 5000 });
+
+    // The button must be reachable by Tab keyboard navigation.
+    // Focus is currently on the newly-focussed open cell (auto-focus chain).
+    // Tab until we reach the Rückgängig button (within 10 presses).
+    let found = false;
+    for (let i = 0; i < 10; i++) {
+      await page.keyboard.press("Tab");
+      const focused = await page.evaluate(() =>
+        document.activeElement?.textContent?.trim(),
+      );
+      if (focused === "Rückgängig") {
+        found = true;
+        break;
+      }
+    }
+    expect(found, "Rückgängig button must be Tab-reachable").toBe(true);
+  });
+});
+
+test.describe("@phase-3 Beitragsmatrix — mobile bottom-sheet (PR3b 3.2)", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("on a phone viewport the mark-paid UI opens as a bottom Sheet and flips the cell", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto(`/app/mitglieder?view=matrix&year=${ANCHOR}`);
+
+    const erikaCell = cell(page, erika, ANCHOR);
+    await expect(erikaCell).toHaveAttribute("data-state", "open");
+    await erikaCell.click();
+
+    // Below sm the surface is the bottom Sheet, NOT the anchored popover.
+    const sheet = page.getByTestId("matrix-cell-sheet");
+    await expect(sheet).toBeVisible();
+
+    // The mark-paid content renders inside the sheet — drive it through.
+    const dateInput = page.getByLabel("Bezahlt am");
+    await expect(dateInput).toBeVisible();
+    await dateInput.fill(`${ANCHOR}-05-15`);
+    await page.getByRole("button", { name: /Bezahlt/ }).click();
+
+    // Optimistic flip + reconcile → cell is paid.
+    await expect(cell(page, erika, ANCHOR)).toHaveAttribute(
+      "data-state",
+      "paid",
+      { timeout: 5000 },
+    );
+  });
+});
+
 test.describe("@phase-2 Beitragsmatrix — storno + aufheben", () => {
   test("storno reverts a paid cell to open", async ({ page }) => {
     // Pre-pay Erika so we have a paid cell to storno.

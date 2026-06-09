@@ -41,6 +41,7 @@ import { berlinYear } from "$lib/domain/year.js";
 import { bus } from "$lib/server/events/index.js";
 import { logAudit } from "$lib/server/audit-log/index.js";
 import { env } from "$lib/server/env.js";
+import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
 import { pdfLibInvoiceRenderer } from "$lib/server/pdf/pdf-lib-renderer.js";
 import type {
   InvoicePdfRenderer,
@@ -648,7 +649,7 @@ async function loadRenderInput(invoiceId: string): Promise<InvoiceRenderInput> {
     .limit(1);
 
   const settingsRows = await db.execute<{ key: string; value: unknown }>(
-    sql`SELECT key, value FROM settings WHERE key IN ('verein.iban', 'verein.bic', 'verein.bank', 'verein.kassenwaert_name')`,
+    sql`SELECT key, value FROM settings WHERE key IN ('verein.iban', 'verein.bic', 'verein.bank', 'verein.kassenwaert_name', 'verein.contact_phone')`,
   );
   const settingsMap = new Map<string, string>();
   for (const r of settingsRows as { key: string; value: unknown }[]) {
@@ -664,6 +665,10 @@ async function loadRenderInput(invoiceId: string): Promise<InvoiceRenderInput> {
     unquote(settingsMap.get("verein.kassenwaert_name") ?? "") ||
     "Julia Schwarz";
 
+  // White-label: name + address come from the single settings→env Stammdaten
+  // reader (no hardcoded FdW literals).
+  const sd = await readStammdaten();
+
   return {
     invoiceNumber: inv.businessId,
     rechnungsdatum: inv.rechnungsdatum,
@@ -671,19 +676,22 @@ async function loadRenderInput(invoiceId: string): Promise<InvoiceRenderInput> {
     faelligkeitsDatum: inv.faelligkeitsDatum ?? null,
     leistungszeitraum: inv.leistungszeitraum,
     verein: {
-      name: env.VEREIN_NAME || "Folge der Wolke e.V.",
-      adresse: env.VEREIN_ADRESSE || "Westermuehlstrasse 6\n80469 Muenchen",
-      steuernummer: env.VEREIN_STEUERNUMMER || "",
-      vereinsregister: env.VEREIN_VR || "",
+      name: sd.name,
+      adresse: sd.adresse,
+      steuernummer: sd.steuernummer,
+      vereinsregister: sd.vr,
       iban:
         unquote(settingsMap.get("verein.iban") ?? "") || env.VEREIN_IBAN || "",
       bic: unquote(settingsMap.get("verein.bic") ?? "") || env.VEREIN_BIC || "",
       bank:
         unquote(settingsMap.get("verein.bank") ?? "") || env.VEREIN_BANK || "",
-      kontaktPerson: env.VEREIN_KONTAKT_PERSON || "",
-      contactPhone: env.VEREIN_CONTACT_PHONE || "",
       // Footer contact email reuses MAIL_FROM — no separate env var.
       contactEmail: env.MAIL_FROM || "",
+      // Footer contact phone — settings (in-app) wins over the env fallback.
+      contactPhone:
+        unquote(settingsMap.get("verein.contact_phone") ?? "") ||
+        env.VEREIN_CONTACT_PHONE ||
+        "",
     },
     customer: {
       name: inv.customerNameSnapshot,

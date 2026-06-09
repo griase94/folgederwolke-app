@@ -92,14 +92,18 @@ test.describe("@phase-3 Mitglieder — add member", () => {
     await page.fill('input[name="nachname"]', `E2E-${unique}`);
     await page.fill('input[name="email"]', `test-${unique}@example.com`);
 
-    // Submit
-    await page.click('button[type="submit"]:has-text("Hinzufügen")');
+    // Submit — button text is "Mitglied anlegen" (AddMemberDialog.svelte)
+    await page.click('button[type="submit"]:has-text("Mitglied anlegen")');
 
-    // Dialog closes; member appears in list
+    // Dialog closes; member appears in list.
+    // Target the visible link element (Nachname, Vorname) rather than the
+    // hidden <p class="truncate"> card that also contains the text.
     await expect(page.locator('[role="dialog"]')).not.toBeVisible({
       timeout: 5_000,
     });
-    await expect(page.locator(`text=E2E-${unique}`)).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: new RegExp(`E2E-${unique}`) }),
+    ).toBeVisible();
   });
 
   test("shows validation errors for missing required fields", async ({
@@ -112,9 +116,10 @@ test.describe("@phase-3 Mitglieder — add member", () => {
     await expect(page.locator('[role="dialog"]')).toBeVisible();
 
     // Submit without filling required fields — HTML5 required blocks submit,
-    // but we can check the dialog stays open
+    // but we can check the dialog stays open.
+    // Button text is "Mitglied anlegen" (AddMemberDialog.svelte).
     const submitBtn = page.locator(
-      'button[type="submit"]:has-text("Hinzufügen")',
+      'button[type="submit"]:has-text("Mitglied anlegen")',
     );
     await expect(submitBtn).toBeVisible();
   });

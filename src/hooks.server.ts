@@ -12,6 +12,7 @@ import { redirect } from "@sveltejs/kit";
 import { resolveSession } from "$lib/server/auth/index.js";
 import { registerHandlers } from "$lib/server/events/index.js";
 import { assertProductionEnvSafe } from "$lib/server/env.js";
+import { building } from "$app/environment";
 
 // ---------------------------------------------------------------------------
 // One-time startup safety checks
@@ -19,7 +20,10 @@ import { assertProductionEnvSafe } from "$lib/server/env.js";
 // In production: throws if SESSION_SECRET is missing/short or PUBLIC_BASE_URL
 // is unset — both would render auth insecure. See env.ts for the full list.
 // In dev: logs a warning and continues so local development isn't blocked.
-assertProductionEnvSafe();
+// Skipped during `building` (prerender): the build is not serving traffic, and
+// prerendered pages (e.g. the legal pages) must not require the full prod env at
+// build time. The check still runs at runtime on the first server request.
+if (!building) assertProductionEnvSafe();
 
 // ---------------------------------------------------------------------------
 // One-time event-handler registration (§4.1.1 #2)

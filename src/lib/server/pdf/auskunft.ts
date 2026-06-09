@@ -347,10 +347,13 @@ export interface AuskunftRenderOutput {
 export async function renderAuskunftPdf(
   data: AuskunftData,
 ): Promise<AuskunftRenderOutput> {
+  // White-label: cover header + PDF author come from the runtime Verein name
+  // carried on AuskunftData (collectAuskunft → readStammdaten), never a
+  // hardcoded "Folge der Wolke e.V." literal.
   const doc = await PDFDocument.create();
   doc.setTitle(`DSGVO Auskunft — ${data.email}`);
   doc.setSubject("Datenschutz-Auskunft gemäß Art. 15 DSGVO");
-  doc.setAuthor("Folge der Wolke e.V.");
+  doc.setAuthor(data.vereinName);
   doc.setProducer("folgederwolke-app");
   doc.setCreationDate(new Date());
 
@@ -368,7 +371,7 @@ export async function renderAuskunftPdf(
   };
 
   // ── Cover header ───────────────────────────────────────────────────────────
-  drawText(ctx, "Folge der Wolke e.V.", {
+  drawText(ctx, data.vereinName, {
     size: SIZE_SECTION,
     bold: true,
     color: COLOR_PRIMARY,

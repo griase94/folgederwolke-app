@@ -26,19 +26,18 @@ export default defineConfig({
       workbox: {
         // Precache app-shell JS/CSS/HTML
         globPatterns: ["client/**/*.{js,css,html,svg,png,ico,webmanifest}"],
+        // iOS reads splash launch images natively; the app never fetches them at
+        // runtime. Keep the multi-MB set out of the precache. (Matches both the
+        // adapter-node `client/**` glob namespace and any prefix variant.)
+        globIgnores: ["**/splash/**"],
         maximumFileSizeToCacheInBytes: 3_000_000,
         runtimeCaching: [
-          // Runtime cache for GET API calls: stale-while-revalidate, 60 s TTL.
+          // API responses must never be cached — they contain member/customer PII
+          // that would persist in Cache Storage past sign-out (PII leak).
+          // NetworkOnly passes requests straight through without caching.
           {
             urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
-            handler: "StaleWhileRevalidate",
-            options: {
-              cacheName: "fdw-api-runtime",
-              expiration: {
-                maxAgeSeconds: 60,
-                maxEntries: 100,
-              },
-            },
+            handler: "NetworkOnly",
           },
           // PM-006: background-sync queue for the public Auslagen form POST.
           // Workbox installs a BackgroundSyncPlugin under the hood from this

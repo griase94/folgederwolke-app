@@ -137,6 +137,13 @@ const schema = z.object({
     .transform((v) => v === "true"),
   /** Canonical public origin (https://folgederwolke-app.vercel.app). Required in prod. */
   PUBLIC_BASE_URL: z.string().default(""),
+  /**
+   * Public-facing contact email shown in the public Auslagen-form consent text.
+   * Build-time PUBLIC_ var: $lib/domain/datenschutz.ts (client-importable) reads
+   * it via $env/static/public, NOT via this server-side env object. Declared
+   * here too so it is documented + validated alongside the other PUBLIC_ vars.
+   */
+  PUBLIC_VEREIN_KONTAKT_EMAIL: z.string().default(""),
 
   // Cron auth
   /** Secret shared between Vercel cron scheduler and the app. */
@@ -146,6 +153,14 @@ const schema = z.object({
   VEREIN_NAME: z.string().default(""),
   VEREIN_STEUERNUMMER: z.string().default(""),
   VEREIN_VR: z.string().default(""),
+  /**
+   * Verein postal address — a multi-line German address (DIN 5008), each line
+   * on its own row, with an optional care-of line below the name:
+   *   "c/o Jonas Hackenberg\nWestermühlstraße 6\n80469 München".
+   * Rendered as stacked lines on invoices, the legal pages, and donation
+   * certificates; collapsed to one line in compact contexts (mail footer).
+   * See $lib/server/domain/address.ts.
+   */
   VEREIN_ADRESSE: z.string().default(""),
   /** Verein IBAN for Beitragsreminder + SEPA templates. */
   VEREIN_IBAN: z.string().default(""),
@@ -154,13 +169,37 @@ const schema = z.object({
   /** Verein Bankname (display). */
   VEREIN_BANK: z.string().default(""),
   /**
-   * Verein Kontakt-Person — displayed in the Rechnung v2 footer column 1
-   * ("℅ <name>"). Stable across Kassenwärtin rotation so it lives in env,
-   * not settings.
+   * Verein contact phone shown in the Rechnung footer contact column.
+   * Configurable: the invoice prefers the `verein.contact_phone` settings row
+   * (editable without redeploy) and falls back to this env var. Empty = no
+   * phone line on the invoice (the line is skipped).
    */
-  VEREIN_KONTAKT_PERSON: z.string().default(""),
-  /** Verein contact phone — displayed in Rechnung v2 footer column 2. */
   VEREIN_CONTACT_PHONE: z.string().default(""),
+
+  // White-label Phase 1 — legal/tax identity fields. All `.default("")` (never
+  // `.min(1)`, which would throw at module load and break the CI build).
+  // Required-ness for the must-have subset is enforced prod-side in
+  // assertProductionEnvSafe() (Phase 4), never via Zod.
+  /** Vorstand / Vertretungsberechtigter — legal pages + cert signature line. */
+  VEREIN_VORSTAND: z.string().default(""),
+  /** Public-facing contact email — legal pages (Impressum/Datenschutz). */
+  VEREIN_KONTAKT_EMAIL: z.string().default(""),
+  /** Datenschutz-Aufsichtsbehörde (full name + address). */
+  VEREIN_AUFSICHTSBEHOERDE: z.string().default(""),
+  /** Registergericht (e.g. "Amtsgericht München") — Impressum. */
+  VEREIN_REGISTERGERICHT: z.string().default(""),
+  /**
+   * Full Finanzamt name (e.g. "Finanzamt München"). Rendered verbatim in the
+   * Zuwendungsbestätigung Pflichttext — replaces the old city-extraction from
+   * the address. Hold the FULL name including the word "Finanzamt".
+   */
+  VEREIN_FINANZAMT: z.string().default(""),
+  /** Default Mitgliedsbeitrag in integer cents (ADR-0003). 0 when unset. */
+  VEREIN_BEITRAG_DEFAULT_CENTS: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .default(0),
 
   // Spenden — Zuwendungsbestätigung (Bescheinigung) Pflichtfelder.
   // ZUWENDUNGSBESTAETIGUNG_ENABLED is derived 'auto' from BESCHEID_TYP +
@@ -174,12 +213,13 @@ const schema = z.object({
   VEREIN_SATZUNG_FASSUNG: z.string().default(""),
   /** Veranlagungszeitraum (YYYY) — only meaningful with TYP=freistellungsbescheid. */
   VEREIN_FREISTELLUNGSBESCHEID_VZ: z.string().default(""),
-  /** "Steuerbegünstigte Zwecke" listed on the Bescheid (free text). */
-  VEREIN_STEUERBEGUENSTIGTE_ZWECKE: z
-    .string()
-    .default(
-      "Förderung der Kunst und Kultur sowie der Heimatpflege und Heimatkunde",
-    ),
+  /**
+   * "Steuerbegünstigte Zwecke" listed on the Bescheid (free text). No default
+   * (white-label Phase 1): the old FdW-specific default is removed so a fork
+   * can never accidentally issue a tax certificate quoting FdW's Satzungszweck.
+   * Cert issuance refuses when this is empty (spenden.ts guard).
+   */
+  VEREIN_STEUERBEGUENSTIGTE_ZWECKE: z.string().default(""),
 
   // Deployment metadata
   COMMIT_SHA: z.string().default("dev"),
@@ -380,5 +420,24 @@ export function assertProductionEnvSafe(): void {
     console.warn(
       `[env] ${err instanceof Error ? err.message : String(err)} — non-prod, continuing.`,
     );
+  }
+
+  // White-label Phase 4 (Task 4.1): VEREIN_NAME + MAIL_FROM are required in
+  // production. They carry Zod `.default("")` (NOT `.min(1)`, which would throw
+  // at module load and break the CI build); required-ness is enforced here,
+  // prod-gated, so the prerender/build (which skips this via `if (!building)`
+  // in hooks.server.ts) is unaffected. Appended AFTER the existing checks so
+  // order-sensitive tests in env-prod-asserts.test.ts don't shift.
+  if (isProd) {
+    if (env.VEREIN_NAME.trim() === "") {
+      throw new Error(
+        "VEREIN_NAME is required in production — it is the Verein identity shown across the app, mail footers, and legal pages. Set it via the Vercel project env.",
+      );
+    }
+    if (env.MAIL_FROM.trim() === "") {
+      throw new Error(
+        "MAIL_FROM is required in production — it is the From-address of every outgoing email. Set it via the Vercel project env.",
+      );
+    }
   }
 }

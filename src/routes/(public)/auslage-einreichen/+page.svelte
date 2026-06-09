@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import AuslagenForm from '$lib/components/forms/AuslagenForm.svelte';
 	import type { PageData, ActionData } from './$types.js';
 
@@ -15,10 +16,10 @@
 </script>
 
 <svelte:head>
-	<title>Auslage einreichen — Folge der Wolke e.V.</title>
+	<title>Auslage einreichen — {page.data.vereinName}</title>
 	<meta
 		name="description"
-		content="Auslagen-Erstattung für Folge der Wolke e.V. — Beleg einreichen und Erstattung erhalten."
+		content="Auslagen-Erstattung für {page.data.vereinName} — Beleg einreichen und Erstattung erhalten."
 	/>
 	<!-- viewport-fit=cover for iOS notch / safe-area support -->
 	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />

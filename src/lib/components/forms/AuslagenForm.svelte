@@ -6,10 +6,11 @@
 	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 	import BezahltVonPicker from './BezahltVonPicker.svelte';
 	import BelegUpload from './BelegUpload.svelte';
-	import { DATENSCHUTZ_TEXT, DATENSCHUTZ_VERSION } from '$lib/domain/datenschutz.js';
+	import { datenschutzText, DATENSCHUTZ_VERSION } from '$lib/domain/datenschutz.js';
 	import { makeDebouncedSave, saveDraft, loadDraft, clearDraft, type DraftMetadata } from '$lib/client/drafts.js';
 	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 	import { browser } from '$app/environment';
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { beforeNavigate } from '$app/navigation';
 
@@ -130,6 +131,8 @@
 	let draftRestored = $state(false);
 	let hasUnsavedChanges = $state(false);
 	let ctaBottomOffset = $state(0);
+	/** Set when the user tries to submit while offline — cleared on next submit attempt. */
+	let offlineError = $state(false);
 
 	// Idempotency key: generated once per page load
 	const submissionNonce = crypto.randomUUID();
@@ -287,7 +290,7 @@
 	function buildPayload(): string {
 		const bv =
 			bezahltVonKind === 'verein'
-				? { kind: 'verein' as const }
+				? { kind: 'verein' as const, display_name: page.data.vereinName }
 				: bezahltVonKind === 'member'
 					? {
 							kind: 'member' as const,
@@ -325,6 +328,25 @@
 			e.preventDefault();
 			return;
 		}
+
+		// PR4: Offline guard — intercept before the native POST reaches the network.
+		// navigator.onLine is browser-only; this handler only runs in the browser
+		// (it's an event handler), so no SSR guard needed. When offline we:
+		//   1. prevent the native POST (which would show the browser's connection-error page)
+		//   2. ensure the current draft is flushed to IndexedDB immediately
+		//   3. show an honest inline message — no false auto-send promise
+		// The online path is completely unaffected: we only enter this branch when
+		// navigator.onLine === false.
+		if (typeof navigator !== 'undefined' && !navigator.onLine) {
+			e.preventDefault();
+			offlineError = true;
+			// Force-flush any pending debounced keystrokes to IndexedDB right now.
+			// saveDraft is best-effort; we never block the user on its result.
+			void saveDraft(getDraftMetadata(), belegFile);
+			return;
+		}
+
+		offlineError = false;
 		isSubmitting = true;
 
 		// Mark all fields as blurred to show all validation errors
@@ -362,7 +384,7 @@
 		browser
 			? buildPayload()
 			: JSON.stringify({
-					bezahlt_von: { kind: 'verein' },
+					bezahlt_von: { kind: 'verein', display_name: page.data.vereinName },
 					bezeichnung: '',
 					betragCents: 0,
 					currency: 'EUR'
@@ -376,6 +398,15 @@
 	const submitDisabled = $derived(
 		isSubmitting || !belegFile || !rechnungsdatum
 	);
+
+	// Name only the field(s) actually missing so the hint is precise. Uses
+	// "Rechnungsdatum" to match the field's visible <Label>.
+	const submitHint = $derived.by(() => {
+		const missing: string[] = [];
+		if (!belegFile) missing.push('einen Beleg hochladen');
+		if (!rechnungsdatum) missing.push('das Rechnungsdatum angeben');
+		return missing.length > 0 ? `Bitte zuerst ${missing.join(' und ')}.` : '';
+	});
 </script>
 
 <form
@@ -411,6 +442,13 @@
 		</div>
 	{/if}
 
+	<!-- PR4: Offline submit error -->
+	{#if offlineError}
+		<div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-4 py-3 text-sm" role="alert">
+			Keine Internetverbindung — dein Entwurf ist gespeichert. Bitte sende erneut ab, sobald du wieder online bist.
+		</div>
+	{/if}
+
 	<!-- Server error -->
 	{#if serverError}
 		<div class="bg-destructive/10 text-destructive rounded-lg px-4 py-3 text-sm" role="alert">
@@ -421,6 +459,7 @@
 	<!-- ── Section 1: Wer hat bezahlt? ──────────────────────────────────────── -->
 	<BezahltVonPicker
 		bind:kind={bezahltVonKind}
+		vereinName={page.data.vereinName}
 		{members}
 		bind:memberId
 		bind:memberDisplayName
@@ -596,7 +635,7 @@
 		</CardHeader>
 		<CardContent class="flex flex-col gap-4">
 			<p class="text-muted-foreground whitespace-pre-line text-sm leading-relaxed">
-				{DATENSCHUTZ_TEXT}
+				{datenschutzText(page.data.kontaktEmail ?? '')}
 			</p>
 
 			<label class="flex cursor-pointer items-start gap-3">
@@ -645,12 +684,18 @@
 					Bitte alle Pflichtfelder ausfüllen.
 				</p>
 			{/if}
+			{#if submitDisabled && !isSubmitting && submitHint}
+				<p id="submit-hint" class="text-muted-foreground mb-2 text-center text-xs">
+					{submitHint}
+				</p>
+			{/if}
 			<Button
 				type="submit"
 				class="w-full"
 				size="lg"
 				disabled={submitDisabled}
 				aria-busy={isSubmitting}
+				aria-describedby={submitDisabled && !isSubmitting ? 'submit-hint' : undefined}
 				data-testid="auslage-submit"
 			>
 				{#if isSubmitting}

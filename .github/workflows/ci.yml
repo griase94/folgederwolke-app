@@ -91,6 +91,13 @@ jobs:
         # env.ts is defensive — build works with empty/missing secrets
         run: pnpm build
 
+      - name: Bundle size gate
+        # Fails if the largest client JS chunk or total client JS exceeds the
+        # thresholds documented in scripts/check-bundle-size.mjs (~10 % above
+        # the PR0 baseline). Locks in the pdfjs lazy-load split from a prior
+        # phase; catches accidental re-bundling of large libraries.
+        run: node scripts/check-bundle-size.mjs
+
   e2e:
     name: e2e
     runs-on: ubuntu-latest

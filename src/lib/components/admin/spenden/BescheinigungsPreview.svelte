@@ -62,7 +62,7 @@
 		<div>
 			<dt class="text-xs uppercase tracking-wide text-muted-foreground">Verein</dt>
 			<dd class="font-medium">{preview.vereinName}</dd>
-			<dd class="text-xs text-muted-foreground">{preview.vereinAdresse}</dd>
+			<dd class="whitespace-pre-line text-xs text-muted-foreground">{preview.vereinAdresse}</dd>
 			<dd class="text-xs text-muted-foreground">
 				Steuernr. {preview.vereinSteuernummer} &middot; {preview.vereinVr}
 			</dd>

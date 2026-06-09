@@ -13,7 +13,7 @@
 </script>
 
 <svelte:head>
-	<title>Jahresabschluss {data.year} – Folge der Wolke</title>
+	<title>Jahresabschluss {data.year} – {page.data.vereinName}</title>
 </svelte:head>
 
 <div class="mx-auto max-w-6xl px-4 py-6 safe-top lg:px-8 lg:py-8">

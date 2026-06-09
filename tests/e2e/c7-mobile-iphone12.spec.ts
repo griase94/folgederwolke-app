@@ -61,7 +61,9 @@ async function signIn(
 }
 
 // ─── File-scope: iPhone 12 emulation applies to every test below ────────
-test.use({ ...devices["iPhone 12"] });
+// devices["iPhone 12"] sets defaultBrowserType: "webkit"; CI only installs
+// Chromium (.github/workflows/ci.yml), so override browserName to "chromium".
+test.use({ ...devices["iPhone 12"], browserName: "chromium" });
 
 test.beforeEach(async () => {
   if (!process.env["DATABASE_URL"]) {
@@ -167,6 +169,34 @@ test.describe("@phase-7 C7 mobile-polish (iPhone 12)", () => {
   test("PM-009 on iPhone 12, Ausgaben renders card variant (no table)", async ({
     page,
   }) => {
+    // Seed one income row so the list (not empty-state) renders.
+    const { default: postgres } = await import("postgres");
+    const client = postgres(process.env["DATABASE_URL"] ?? "", {
+      prepare: false,
+      max: 1,
+    });
+    try {
+      const rows = await client<{ id: string; name: string; sphere: string }[]>`
+        SELECT id, name, sphere FROM kategorien WHERE kind = 'income' LIMIT 1
+      `;
+      if (!rows[0]) throw new Error("No income kategorie in seed");
+      const kat = rows[0];
+      // Use a far-future year so the row never collides with real data.
+      const FY = 2097;
+      await client`
+        INSERT INTO income (
+          business_id, gebucht_am, betrag_cents, bezeichnung,
+          kategorie_id, kategorie_name_snapshot, sphere_snapshot
+        ) VALUES (
+          ${`E-${FY}-009`}, ${`${FY}-06-01 10:00:00+02`}, 1000,
+          'PM-009 mobile card test',
+          ${kat.id}, ${kat.name}, ${kat.sphere}::sphere
+        ) ON CONFLICT (business_id) DO NOTHING
+      `;
+    } finally {
+      await client.end();
+    }
+
     await signIn(page);
     await page.goto("/app/ausgaben");
 
