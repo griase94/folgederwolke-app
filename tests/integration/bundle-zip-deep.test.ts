@@ -18,7 +18,9 @@
  */
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
+import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { InMemoryMockFileStorage } from "$lib/server/files/in-memory-mock-impl.js";
 import { assembleBelegAttachments } from "$lib/server/export/beleg-attachments.js";
 import { buildJahresabschlussBundle } from "$lib/server/export/bundle.js";
@@ -69,16 +71,26 @@ async function seedExpenseWithBeleg(args: {
     uploadedBySubmitterEmail: "test@x.de",
   });
   const db = getDb();
+  // Resolve a real expense kategorie_id — migration 0031 made this NOT NULL.
+  const [katRow] = await db
+    .select({ id: kategorien.id, name: kategorien.name })
+    .from(kategorien)
+    .where(eq(kategorien.kind, "expense"))
+    .limit(1);
+  if (!katRow)
+    throw new Error("seedExpenseWithBeleg: no expense kategorie seeded");
   await db.execute(sql`
     INSERT INTO expenses (
       business_id, source, gebucht_am, betrag_cents, currency,
-      bezeichnung, kategorie_name_snapshot, sphere_snapshot, sphere_override,
+      bezeichnung, kategorie_id, kategorie_name_snapshot,
+      sphere_snapshot, sphere_override,
       bezahlt_von_kind, bezahlt_von_display, status, beleg_file_id
     ) VALUES (
       ${args.expenseBusinessId}, 'app',
       ${`${args.year}-06-15 10:00:00+02`}::timestamptz,
       1000, 'EUR',
-      ${args.bezeichnung}, '(Unkategorisiert)', ${args.sphereSnapshot},
+      ${args.bezeichnung}, ${katRow.id}::uuid, ${katRow.name},
+      ${args.sphereSnapshot},
       ${args.sphereOverride ?? null},
       'verein', 'Verein', 'geprueft',
       ${args.fileId}::uuid
