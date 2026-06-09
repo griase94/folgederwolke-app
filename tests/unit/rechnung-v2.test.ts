@@ -87,10 +87,18 @@ describe("Rechnung v2 — fixture renders", () => {
     });
     await assertSensiblePdf(bytes);
     await writeOut("beate", bytes);
-    // Commit a copy under tests/fixtures/expected for the baseline.
-    const expectedPath = "tests/fixtures/expected/rechnung-v2-beate-uwe.pdf";
-    await mkdir(dirname(expectedPath), { recursive: true });
-    await writeFile(expectedPath, bytes);
+    // Refresh the committed visual baseline ONLY on explicit request
+    // (`UPDATE_FIXTURES=1 pnpm test …`). A normal test run must NOT mutate a
+    // committed file — auto-writing it on every run left
+    // tests/fixtures/expected/rechnung-v2-beate-uwe.pdf perpetually dirty in the
+    // working tree (the actual bug). The baseline is a visual reference to open
+    // and eyeball, not a byte-diff target: pdf-lib's compressed object streams
+    // aren't fully byte-deterministic run-to-run.
+    if (process.env["UPDATE_FIXTURES"] === "1") {
+      const expectedPath = "tests/fixtures/expected/rechnung-v2-beate-uwe.pdf";
+      await mkdir(dirname(expectedPath), { recursive: true });
+      await writeFile(expectedPath, bytes);
+    }
   });
 
   it("renders WITHOUT a Zusatz line (2-line address)", async () => {
