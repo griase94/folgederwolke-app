@@ -44,7 +44,7 @@ function berlinYear(): number {
 // load
 // ---------------------------------------------------------------------------
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ url }) => {
   const db = getDb();
   const [incomeKategorien, allProjects] = await Promise.all([
     listKategorieOptions("income"),
@@ -61,7 +61,11 @@ export const load: PageServerLoad = async () => {
     sphere: k.sphere,
   }));
 
-  return { kategorien, projects: allProjects };
+  // ?projectId= prefill: project detail +Einnahme CTA carries this param so
+  // the project picker pre-selects the originating project (C1-PRJ-A §4.3).
+  const initialProjectId = url.searchParams.get("projectId") ?? "";
+
+  return { kategorien, projects: allProjects, initialProjectId };
 };
 
 // ---------------------------------------------------------------------------

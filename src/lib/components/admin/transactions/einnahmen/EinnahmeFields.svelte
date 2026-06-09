@@ -30,13 +30,17 @@
 		projects: { id: string; name: string }[];
 		/** Fired on the first edit so the tab can flip the shell's `dirty`. */
 		onDirty?: () => void;
+		/** Pre-selected project id (from ?projectId= URL param). */
+		initialProjectId?: string;
 	}
 
-	let { kategorien, projects, onDirty }: Props = $props();
+	let { kategorien, projects, onDirty, initialProjectId = '' }: Props = $props();
 
 	// ── Field state ───────────────────────────────────────────────────────────
 	let betragEur = $state('');
 	let geldEingangDatum = $state('');
+	// svelte-ignore state_referenced_locally
+	let projectId = $state(initialProjectId);
 	let kategorieName = $state('');
 	// Sphere is DISPLAY-ONLY here — createIncome re-derives it server-side from
 	// the chosen kategorie (§4.5). We mirror the picker's derived sphere into a
@@ -124,7 +128,9 @@
 		<select
 			id="projectId"
 			name="projectId"
+			bind:value={projectId}
 			onchange={markDirty}
+			data-testid="transaction-project-picker"
 			class="h-11 min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
 		>
 			<option value="">— kein Projekt —</option>

@@ -44,6 +44,7 @@
 	<EinnahmeFields
 		kategorien={data.kategorien}
 		projects={data.projects}
+		initialProjectId={data.initialProjectId}
 		onDirty={() => (dirty = true)}
 	/>
 {/snippet}

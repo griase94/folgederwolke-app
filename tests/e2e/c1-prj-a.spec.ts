@@ -100,11 +100,13 @@ async function seedProjectWithSaldo(
         INSERT INTO expenses (
           business_id, gebucht_am, betrag_cents, bezeichnung,
           kategorie_id, kategorie_name_snapshot, sphere_snapshot,
-          bezahlt_von_kind, bezahlt_von_display, status, project_id
+          bezahlt_von_kind, bezahlt_von_display, status, project_id,
+          beleg_verzicht_grund
         ) VALUES (
           ${`A-${FY}-${suffix}`}, ${TS}, ${ausgabenCents},
           ${`c1prja-${tag} exp`}, ${kE.id}, ${kE.name}, ${kE.sphere}::sphere,
-          'verein', 'Verein', 'zu_pruefen', ${projectId}::uuid
+          'verein', 'Verein', 'zu_pruefen', ${projectId}::uuid,
+          'c1prja seed — kein Beleg erforderlich'
         )`;
     }
     return projectId;
