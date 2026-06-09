@@ -21,8 +21,10 @@ import { members } from "$lib/server/db/schema/members.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { createSpende } from "$lib/server/domain/spenden.js";
+import { checkFestschreibungGate } from "$lib/server/domain/transactions.js";
 import { deriveDonationKategorieName } from "$lib/domain/spenden-kategorie.js";
 import { handleAuslageUpload } from "$lib/server/files/handleAuslageUpload.js";
+import { berlinYear } from "$lib/domain/year.js";
 
 // The distinct derived-Kategorie names a Spende can book into (Sachspende
 // collapses regardless of Zweckbindung). Used to resolve each one's
@@ -99,6 +101,13 @@ async function uploadOptional(
 export const actions: Actions = {
   create: async ({ request, locals }) => {
     const userId = locals.session?.user.id ?? null;
+
+    // Festschreibung gate BEFORE any side-effect (upload / allocate / insert).
+    // Uses the current Berlin year (the Spende date is not yet parsed here;
+    // mirroring einnahmen/neu which gates on the same berlinYear()).
+    const gate = await checkFestschreibungGate(berlinYear(new Date()));
+    if (!gate.ok) return fail(gate.status, { error: gate.error });
+
     const data = await request.formData();
 
     // Optional Beleg uploads → file ids (encouraged, not enforced, §4.3).

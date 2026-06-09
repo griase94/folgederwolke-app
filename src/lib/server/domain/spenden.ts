@@ -24,7 +24,7 @@
  */
 
 import { z } from "zod";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { donations } from "$lib/server/db/schema/donations.js";
 import { members } from "$lib/server/db/schema/members.js";
@@ -472,7 +472,12 @@ export async function editSpende(
 
   const isSach = d.spende_kind === "sachspende";
 
-  await db
+  // TOCTOU: guard the write atomically — `festgeschrieben_at IS NULL` AND
+  // `bescheinigung_nr IS NULL` in the WHERE so a concurrent Festschreibung or
+  // Bescheinigung allocation between the SELECT above and this UPDATE cannot
+  // silently overwrite a now-sealed or now-bescheinigt row. Use `.returning()`
+  // as the authoritative "I actually wrote it" signal (0 rows = lost the race).
+  const written = await db
     .update(donations)
     .set({
       zugewendetAm: d.zugewendet_am,
@@ -505,7 +510,44 @@ export async function editSpende(
       projectId: d.project_id && d.project_id.length > 0 ? d.project_id : null,
       updatedAt: new Date(),
     })
-    .where(eq(donations.id, idVal));
+    .where(
+      and(
+        eq(donations.id, idVal),
+        isNull(donations.festgeschriebenAt),
+        isNull(donations.bescheinigungNr),
+      ),
+    )
+    .returning({ id: donations.id });
+
+  if (written.length === 0) {
+    // Re-read to distinguish festgeschrieben vs. bescheinigt (both are 409 but
+    // with different messages — mirror the pre-check message contract so the
+    // caller can surface the right error to the user).
+    const cur = await db
+      .select({
+        bescheinigungNr: donations.bescheinigungNr,
+        festgeschriebenAt: donations.festgeschriebenAt,
+      })
+      .from(donations)
+      .where(eq(donations.id, idVal))
+      .limit(1);
+    if (!cur[0]) {
+      return { ok: false, status: 404, error: "Spende nicht gefunden" };
+    }
+    if (cur[0].bescheinigungNr) {
+      return {
+        ok: false,
+        status: 409,
+        error:
+          "Spende ist bereits bescheinigt — Storno + Neu-Erfassung notwendig (Phase 2)",
+      };
+    }
+    return {
+      ok: false,
+      status: 409,
+      error: "Buchungsjahr ist festgeschrieben (ADR-0006)",
+    };
+  }
 
   await bus.emit("spende.edited", {
     donationId: idVal,

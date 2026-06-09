@@ -16,7 +16,7 @@
  */
 
 import { error, fail, redirect } from "@sveltejs/kit";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getTransactionDetail } from "$lib/server/domain/transactions.js";
 import {
@@ -78,7 +78,26 @@ export const actions: Actions = {
       });
     }
     const db = getDb();
-    await db.delete(donations).where(eq(donations.id, params.id));
+    // TOCTOU: guard the DELETE atomically — `festgeschrieben_at IS NULL` AND
+    // `bescheinigung_nr IS NULL` in the WHERE so a concurrent Festschreibung or
+    // Bescheinigung allocation between the SELECT above and this DELETE cannot
+    // silently remove a now-sealed or now-bescheinigt row.
+    const deleted = await db
+      .delete(donations)
+      .where(
+        and(
+          eq(donations.id, params.id),
+          isNull(donations.festgeschriebenAt),
+          isNull(donations.bescheinigungNr),
+        ),
+      )
+      .returning({ id: donations.id });
+    if (deleted.length === 0) {
+      return fail(409, {
+        error:
+          "Spende konnte nicht gelöscht werden — Jahr ist festgeschrieben oder Bescheinigung wurde ausgestellt",
+      });
+    }
     redirect(303, "/app/spenden");
   },
 };

@@ -147,6 +147,7 @@ export const actions = {
         bezeichnung: parsed.data.bezeichnung,
         betragCents: BigInt(parsed.data.betragCents),
         ...geldUpdate,
+        kategorieId: kat.id,
         kategorieNameSnapshot: kat.name,
         sphereSnapshot: kat.sphere,
         projectId: parsed.data.projectId ?? null,

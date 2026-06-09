@@ -99,6 +99,8 @@ export function buildAusgabenWhere(s: FilterState, year: YearScope): SQL[] {
 
 export function buildEinnahmenWhere(s: FilterState, year: YearScope): SQL[] {
   const c: SQL[] = []; // typed SQL[] so Task 9 `pnpm check` passes
+  // Exclude superseded (Storno-chained) rows — mirrors einnahmen-kpi.ts livePredicate.
+  c.push(isNull(income.supersedesId));
   if (year !== ALL_YEARS) c.push(eq(income.yearOfBuchung, year));
   if (s.search) c.push(ilike(income.bezeichnung, `%${s.search}%`));
   // P2-04: s.enums.kategorie holds kategorieNameSnapshot strings (not ids), per Task 1 contract.
