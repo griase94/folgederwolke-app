@@ -175,7 +175,36 @@ All git worktrees live in **one dedicated sibling folder**, never sprawled as
 - **Every push to `main`** triggers two independent things:
   - Vercel auto-deploys the app.
   - `.github/workflows/migrate.yml` runs `pnpm tsx scripts/migrate.ts` against Neon (gated on the `NEON_MIGRATE_DATABASE_URL` repo secret).
-- **Migrations** live in `drizzle/<NNNN>_*.sql`. Generate via `pnpm drizzle-kit generate`. The migrator reads `drizzle/meta/_journal.json` and applies anything not in Neon's `drizzle.__drizzle_migrations` table (matched by SHA256 hash).
+- **Migrations** live in `drizzle/<NNNN>_*.sql`, declared in `drizzle/meta/_journal.json`.
+- **NEVER hand-write a `drizzle/*.sql` file or hand-edit `_journal.json`.** Let the
+  generator own both the SQL file AND its journal entry (idx + `when` timestamp):
+  - Schema change → edit `src/lib/server/db/schema/`, then `pnpm drizzle-kit generate`.
+  - Custom DDL the differ can't express (GRANT / role / function / trigger / view) →
+    `pnpm drizzle-kit generate --custom --name <slug>`, then write the SQL into the
+    generated empty file. The tool still owns the journal entry + `when`.
+  - This rule exists because hand-typed 2025 `when` values in 0026–0028 (PR #92)
+    silently broke prod — see below.
+- **How the migrator actually decides (this is NOT hash-based):** it reads
+  `MAX(created_at)` from `drizzle.__drizzle_migrations` **once**, then applies every
+  journal entry whose `when` (folderMillis) is **strictly greater** than that max, in
+  idx order. The SHA256 hash is _stored_, never consulted for the apply decision. On an
+  empty DB the max is undefined, so every entry applies regardless of `when` — which is
+  why fresh-DB CI cannot catch an ordering bug.
+- **INVARIANT: `when` must be strictly increasing by idx.** A non-monotonic dip makes
+  the migrator silently skip the dipped entry (and anything that needed it) on the real
+  incremental prod path → schema drift → prod 500s, green CI. Three guards enforce this:
+  `tests/unit/migration-journal-integrity.test.ts` (PR-time, DB-free),
+  `scripts/assert-migrations-applied.ts` in `migrate.yml` (every declared migration
+  present by content hash), and the `/healthz` `migrations` canary checked by
+  `post-deploy-smoke.yml`.
+- **One-time journal repair** (only if a corruption already shipped): a `when` you set
+  by hand MUST be a real epoch-ms, strictly monotonic by idx, AND greater than the live
+  prod `MAX(created_at)` — otherwise the entry either re-applies or stays skipped.
+- **Idempotent migrations** — the migrator runs the WHOLE pending batch in ONE
+  transaction, so any statement that throws against pre-existing state rolls back every
+  migration in that batch. Write `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`,
+  and guard `ADD CONSTRAINT` with a `pg_constraint` `DO $$ … $$` check, so a partial or
+  hand-patched DB (and a re-applied batch) can't wedge the whole transaction.
 - **Destructive migrations**: split into two phases — additive migration ships first, code change second, DROP last. Don't ship code that requires a not-yet-applied schema change.
 - **Manual hotfix to Neon**: avoid. If you must, follow `docs/RUNBOOK.md §6.4` to keep `__drizzle_migrations` in sync, or the next auto-migrate will try to re-apply and likely fail.
 - **GitHub secrets**: documented in `README.md` "Deploying to production" → "GitHub Actions secrets" table. Use `gh secret list` to inspect, `gh secret set <NAME> --body '<value>'` to add or rotate.

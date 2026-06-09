@@ -14,9 +14,19 @@ SET beitrag_exempt_reason = 'Ehrenmitgliedschaft (Backfill)'
 WHERE beitrag_exempt = true
   AND (beitrag_exempt_reason IS NULL OR length(trim(beitrag_exempt_reason)) = 0);
 
--- Step 2: enforce — any future INSERT or UPDATE must satisfy this rule
-ALTER TABLE members
-  ADD CONSTRAINT members_beitrag_exempt_reason_when_exempt_ck CHECK (
-    beitrag_exempt = false
-    OR (beitrag_exempt_reason IS NOT NULL AND length(trim(beitrag_exempt_reason)) > 0)
-  );
+-- Step 2: enforce — any future INSERT or UPDATE must satisfy this rule.
+-- Guarded (no ADD CONSTRAINT IF NOT EXISTS in Postgres) so this batch stays
+-- idempotent — any throw would roll back the whole 0026-0029 transaction.
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'members_beitrag_exempt_reason_when_exempt_ck'
+      AND conrelid = 'members'::regclass
+  ) THEN
+    ALTER TABLE members
+      ADD CONSTRAINT members_beitrag_exempt_reason_when_exempt_ck CHECK (
+        beitrag_exempt = false
+        OR (beitrag_exempt_reason IS NOT NULL AND length(trim(beitrag_exempt_reason)) > 0)
+      );
+  END IF;
+END $$;
