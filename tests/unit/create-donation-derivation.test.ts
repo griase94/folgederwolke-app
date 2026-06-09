@@ -11,7 +11,7 @@
  *   income kategorien "Geldspende zweckgebunden" / "Sachspende" must exist).
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createDonation } from "$lib/server/domain/transactions.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getDb } from "$lib/server/db/index.js";
@@ -19,6 +19,7 @@ import { donations } from "$lib/server/db/schema/donations.js";
 import { users } from "$lib/server/db/schema/users.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
 import { registerHandlers } from "$lib/server/events/index.js";
+import postgres from "postgres";
 import { and, eq } from "drizzle-orm";
 
 const DATABASE_URL = process.env["DATABASE_URL"] ?? "";
@@ -43,6 +44,26 @@ describe.skipIf(!dbConfigured)(
       if (!u) throw new Error("failed to seed actor user");
       ACTOR = u.id;
     });
+
+    afterAll(async () => {
+      if (!ACTOR) return;
+      const db = getDb();
+      // donations.created_by_user_id is ON DELETE SET NULL — delete explicitly.
+      await db.delete(donations).where(eq(donations.createdByUserId, ACTOR));
+      // audit_log.actor_user_id is ON DELETE RESTRICT and app_runtime cannot
+      // DELETE from audit_log (ADR-0004), so use the superuser connection.
+      const admin = postgres(process.env["DIRECT_DATABASE_URL"] ?? "", {
+        prepare: false,
+        max: 1,
+      });
+      try {
+        await admin`DELETE FROM audit_log WHERE actor_user_id = ${ACTOR}`;
+      } finally {
+        await admin.end();
+      }
+      await db.delete(users).where(eq(users.id, ACTOR));
+    });
+
     it("zweckgebunden Geldspende → 'Geldspende zweckgebunden', ideeller, kategorie_id set", async () => {
       const businessId = await allocateBusinessId("S", 2026);
       const { id } = await createDonation({
@@ -124,6 +145,24 @@ describe.skipIf(!dbConfigured)(
         .returning({ id: users.id });
       if (!u) throw new Error("failed to seed audit actor user");
       AUDIT_ACTOR = u.id;
+    });
+
+    afterAll(async () => {
+      if (!AUDIT_ACTOR) return;
+      const db = getDb();
+      await db
+        .delete(donations)
+        .where(eq(donations.createdByUserId, AUDIT_ACTOR));
+      const admin = postgres(process.env["DIRECT_DATABASE_URL"] ?? "", {
+        prepare: false,
+        max: 1,
+      });
+      try {
+        await admin`DELETE FROM audit_log WHERE actor_user_id = ${AUDIT_ACTOR}`;
+      } finally {
+        await admin.end();
+      }
+      await db.delete(users).where(eq(users.id, AUDIT_ACTOR));
     });
 
     it("writes exactly one donation/create audit_log row for the new donation", async () => {
