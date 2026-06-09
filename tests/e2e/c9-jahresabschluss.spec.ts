@@ -108,16 +108,17 @@ test.describe("@phase-9 C9-JUL-lite GoBD-Z3 export + isYearClosed", () => {
     expect(names.length).toBeGreaterThanOrEqual(3);
   });
 
-  test("buchungsliste for empty 2025 shows 'Erste Buchung anlegen' CTA", async ({
+  test("buchungsliste for empty year shows 'Erste Buchung anlegen' CTA", async ({
     page,
   }) => {
-    // The isYearClosed honesty fix: pre-refactor, `isYearClosed(2025)`
-    // returned true for an empty 2025 (no rows matched the
-    // `festgeschrieben_at IS NULL` filter) and hid this CTA in production.
-    // Post-refactor it derives from settings.festgeschrieben_bis, which
-    // the test seed leaves unset.
+    // The isYearClosed honesty fix: pre-refactor, `isYearClosed` returned true
+    // for an empty year (no rows matched the `festgeschrieben_at IS NULL`
+    // filter) and hid this CTA in production. Post-refactor it derives from
+    // settings.festgeschrieben_bis, which the test seed leaves unset.
+    // Use a far-future year (2099) that is guaranteed empty in the test DB
+    // and unaffected by the transaction corpus seeded for 2024-2026.
     await signIn(page);
-    const res = await page.goto(`/app/jahresabschluss/2025/buchungsliste`);
+    const res = await page.goto(`/app/jahresabschluss/2099/buchungsliste`);
     expect(res?.status()).toBe(200);
     await expect(
       page.locator('[data-testid="buchungsliste-empty-new-year"]'),
