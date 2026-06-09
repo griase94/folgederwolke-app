@@ -171,7 +171,7 @@ test.describe("@phase-9 B-1 InvoiceForm effect loop fix", () => {
     await expect(page).toHaveURL(/\/app\/rechnungen\/new/);
   });
 
-  test("dirty /transactions/neu form prompts on sidebar navigate-away", async ({
+  test("dirty /ausgaben/neu form prompts on sidebar navigate-away", async ({
     page,
   }) => {
     await signIn(page);
@@ -192,9 +192,12 @@ test.describe("@phase-9 B-1 InvoiceForm effect loop fix", () => {
       .first()
       .click();
 
+    // Wait for the dialog to fire and be dismissed (beforeNavigate guard is
+    // synchronous but Playwright dialog handling is async).
     await page.waitForTimeout(300);
 
     expect(dialogFired).toBe(true);
-    await expect(page).toHaveURL(/\/app\/transactions\/neu/);
+    // Dismissed → still on /app/ausgaben/neu (guard cancelled the navigation)
+    await expect(page).toHaveURL(/\/app\/ausgaben\/neu/);
   });
 });
