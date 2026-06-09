@@ -648,7 +648,7 @@ async function loadRenderInput(invoiceId: string): Promise<InvoiceRenderInput> {
     .limit(1);
 
   const settingsRows = await db.execute<{ key: string; value: unknown }>(
-    sql`SELECT key, value FROM settings WHERE key IN ('verein.iban', 'verein.bic', 'verein.bank', 'verein.kassenwaert_name')`,
+    sql`SELECT key, value FROM settings WHERE key IN ('verein.iban', 'verein.bic', 'verein.bank', 'verein.kassenwaert_name', 'verein.contact_phone')`,
   );
   const settingsMap = new Map<string, string>();
   for (const r of settingsRows as { key: string; value: unknown }[]) {
@@ -686,6 +686,11 @@ async function loadRenderInput(invoiceId: string): Promise<InvoiceRenderInput> {
         unquote(settingsMap.get("verein.bank") ?? "") || env.VEREIN_BANK || "",
       // Footer contact email reuses MAIL_FROM — no separate env var.
       contactEmail: env.MAIL_FROM || "",
+      // Footer contact phone — settings (in-app) wins over the env fallback.
+      contactPhone:
+        unquote(settingsMap.get("verein.contact_phone") ?? "") ||
+        env.VEREIN_CONTACT_PHONE ||
+        "",
     },
     customer: {
       name: inv.customerNameSnapshot,

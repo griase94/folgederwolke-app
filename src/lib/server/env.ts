@@ -168,6 +168,13 @@ const schema = z.object({
   VEREIN_BIC: z.string().default(""),
   /** Verein Bankname (display). */
   VEREIN_BANK: z.string().default(""),
+  /**
+   * Verein contact phone shown in the Rechnung footer contact column.
+   * Configurable: the invoice prefers the `verein.contact_phone` settings row
+   * (editable without redeploy) and falls back to this env var. Empty = no
+   * phone line on the invoice (the line is skipped).
+   */
+  VEREIN_CONTACT_PHONE: z.string().default(""),
 
   // White-label Phase 1 — legal/tax identity fields. All `.default("")` (never
   // `.min(1)`, which would throw at module load and break the CI build).

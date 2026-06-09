@@ -28,6 +28,7 @@ export class PdfLibInvoiceRenderer implements InvoicePdfRenderer {
         vereinsregister: input.verein.vereinsregister,
         steuernummer: input.verein.steuernummer,
         contactEmail: input.verein.contactEmail ?? "",
+        contactPhone: input.verein.contactPhone ?? "",
         bankname: input.verein.bank ?? "",
         iban: input.verein.iban ?? "",
         bic: input.verein.bic ?? "",
