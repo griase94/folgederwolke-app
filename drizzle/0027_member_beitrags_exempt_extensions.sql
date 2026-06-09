@@ -7,21 +7,32 @@
 -- (§55 AO Selbstlosigkeit — legally required justification for waived fees).
 --
 -- All columns use DEFAULT values so existing rows keep valid state.
-
+--
+-- Idempotent: this batch (0026-0029) applies in ONE transaction, so any throw
+-- against pre-existing state rolls back the whole batch (incl. the 0029 grant).
+-- IF NOT EXISTS + a guarded CONSTRAINT keep a partial/hand-patched DB safe.
 ALTER TABLE member_beitrags
-  ADD COLUMN is_exempt        boolean     NOT NULL DEFAULT false,
-  ADD COLUMN exempt_reason    text,
-  ADD COLUMN paid_via_income_id uuid      REFERENCES income(id) ON DELETE SET NULL,
-  ADD COLUMN beitrag_klasse   text,
-  ADD COLUMN source           source_kind NOT NULL DEFAULT 'app';
+  ADD COLUMN IF NOT EXISTS is_exempt          boolean     NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS exempt_reason      text,
+  ADD COLUMN IF NOT EXISTS paid_via_income_id uuid        REFERENCES income(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS beitrag_klasse     text,
+  ADD COLUMN IF NOT EXISTS source             source_kind NOT NULL DEFAULT 'app';
 
--- DB-level enforcement of the §55 AO requirement:
--- if is_exempt=true, exempt_reason must be non-null and non-blank.
-ALTER TABLE member_beitrags
-  ADD CONSTRAINT member_beitrags_exempt_reason_when_exempt_ck CHECK (
-    is_exempt = false
-    OR (exempt_reason IS NOT NULL AND length(trim(exempt_reason)) > 0)
-  );
+-- DB-level enforcement of the §55 AO requirement (if is_exempt=true, reason
+-- must be non-blank). Postgres has no ADD CONSTRAINT IF NOT EXISTS, so guard it.
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'member_beitrags_exempt_reason_when_exempt_ck'
+      AND conrelid = 'member_beitrags'::regclass
+  ) THEN
+    ALTER TABLE member_beitrags
+      ADD CONSTRAINT member_beitrags_exempt_reason_when_exempt_ck CHECK (
+        is_exempt = false
+        OR (exempt_reason IS NOT NULL AND length(trim(exempt_reason)) > 0)
+      );
+  END IF;
+END $$;
 
 COMMENT ON COLUMN member_beitrags.is_exempt IS
   'Per-year Befreiung. Effective exemption = members.beitrag_exempt OR member_beitrags.is_exempt.';
