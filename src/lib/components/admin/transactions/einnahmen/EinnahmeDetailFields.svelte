@@ -43,6 +43,8 @@
     onDirty?: () => void;
     /** Bubbled so the page can feed the shell's `saving` flag during a ?/save. */
     onSaving?: (v: boolean) => void;
+    /** FIX B (review): fired on a successful ?/save so the page can reset `dirty`. */
+    onSaved?: () => void;
   }
 
   let {
@@ -56,6 +58,7 @@
     projects,
     onDirty,
     onSaving,
+    onSaved,
   }: Props = $props();
 
   const FORM_ID = "detail-form";
@@ -91,7 +94,11 @@
       result: import("@sveltejs/kit").ActionResult;
     }) => {
       onSaving?.(false);
-      if (result.type === "failure") {
+      if (result.type === "success") {
+        // FIX B (review): confirm save + reset dirty so Speichern stays disabled.
+        toast.success("Änderungen gespeichert");
+        onSaved?.();
+      } else if (result.type === "failure") {
         const err = (result.data as { error?: string } | undefined)?.error;
         toast.error(err ?? "Fehler beim Speichern");
       }

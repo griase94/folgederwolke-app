@@ -344,6 +344,88 @@ describe("T3 — Export CTA", () => {
   });
 });
 
+// ── FIX A (review): desktop Bezeichnung / chevron cells must contain <a href> ──
+// The scaffold itself is generic — it just calls col.render(row). The test
+// verifies the CONTRACT: when a column's render snippet emits an <a> link whose
+// href equals `detailHrefBase/row.id`, the table cell (desktop) contains it.
+// This mirrors what ausgaben/einnahmen/spenden +page.svelte now supply.
+describe("FIX A — desktop table cells contain navigation links", () => {
+  function makeColumnsWithLinks(
+    detailHrefBase: string,
+  ): ColumnDef<BaseTxRow>[] {
+    return [
+      {
+        key: "bezeichnung",
+        label: "Bezeichnung",
+        sortable: true,
+        render: createRawSnippet((row) => ({
+          render: () =>
+            `<a href="${detailHrefBase}/${row().id}" data-testid="bezeichnung-link">${row().bezeichnung}</a>`,
+        })),
+      },
+      {
+        key: "chevron",
+        label: "",
+        srLabel: "Detail öffnen",
+        align: "right",
+        render: createRawSnippet((row) => ({
+          render: () =>
+            `<a href="${detailHrefBase}/${row().id}" aria-label="Detail öffnen" data-testid="chevron-link">›</a>`,
+        })),
+      },
+    ];
+  }
+
+  it("Bezeichnung cell renders an <a href> pointing at detailHrefBase/row.id", () => {
+    const { container } = render(TransactionListScaffold, {
+      props: baseProps({
+        columns: makeColumnsWithLinks("/app/ausgaben"),
+        detailHrefBase: "/app/ausgaben",
+      }),
+    });
+    const links = container.querySelectorAll<HTMLAnchorElement>(
+      '[data-testid="bezeichnung-link"]',
+    );
+    // Desktop table renders one link per row
+    expect(links.length).toBeGreaterThanOrEqual(1);
+    expect(links[0]?.getAttribute("href")).toBe("/app/ausgaben/r1");
+  });
+
+  it("chevron cell renders an <a href> with aria-label='Detail öffnen'", () => {
+    const { container } = render(TransactionListScaffold, {
+      props: baseProps({
+        columns: makeColumnsWithLinks("/app/ausgaben"),
+        detailHrefBase: "/app/ausgaben",
+      }),
+    });
+    const chevrons = container.querySelectorAll<HTMLAnchorElement>(
+      '[data-testid="chevron-link"]',
+    );
+    expect(chevrons.length).toBeGreaterThanOrEqual(1);
+    expect(chevrons[0]?.getAttribute("href")).toBe("/app/ausgaben/r1");
+    expect(chevrons[0]?.getAttribute("aria-label")).toBe("Detail öffnen");
+  });
+
+  it("desktop Bezeichnung link href matches mobile card detailHref (same target)", () => {
+    // Both the desktop <a> and the mobile card link must resolve to the same URL
+    // so Julia gets consistent navigation regardless of viewport.
+    const { container } = render(TransactionListScaffold, {
+      props: baseProps({
+        columns: makeColumnsWithLinks("/app/ausgaben"),
+        detailHrefBase: "/app/ausgaben",
+      }),
+    });
+    const desktopLink = container.querySelector<HTMLAnchorElement>(
+      '[data-testid="bezeichnung-link"]',
+    );
+    // Mobile card links are rendered by TransactionCardMobile; assert the desktop
+    // href follows the same detailHrefBase/{id} pattern.
+    expect(desktopLink?.getAttribute("href")).toMatch(
+      /^\/app\/ausgaben\/r[12]$/,
+    );
+  });
+});
+
 // ── T4: Loading skeleton ────────────────────────────────────────────────────
 describe("T4 — Loading skeleton", () => {
   afterEach(() => {

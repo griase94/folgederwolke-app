@@ -121,3 +121,41 @@ describe("FilterBar", () => {
     expect(badge?.textContent).toContain("1 aktive Filter");
   });
 });
+
+// ── FIX C (review): result-count aria-live + pluralization ───────────────
+describe("FIX C — result-count span: aria-live + pluralization", () => {
+  function renderBar(resultCount: number) {
+    const { container } = render(FilterBar, {
+      props: {
+        tab: "ausgaben" as const,
+        state: { enums: {}, members: {}, amount: {}, booleans: {} },
+        kategorieOptions: [],
+        memberOptions: [],
+        resultCount,
+      },
+    });
+    return container.querySelector<HTMLElement>('[data-slot="result-count"]');
+  }
+
+  it("result-count span has aria-live='polite' and aria-atomic='true'", () => {
+    const span = renderBar(5);
+    expect(span).not.toBeNull();
+    expect(span?.getAttribute("aria-live")).toBe("polite");
+    expect(span?.getAttribute("aria-atomic")).toBe("true");
+  });
+
+  it("renders '1 Ergebnis' (singular) when resultCount === 1", () => {
+    const span = renderBar(1);
+    expect(span?.textContent?.trim()).toBe("1 Ergebnis");
+  });
+
+  it("renders '0 Ergebnisse' (plural) when resultCount === 0", () => {
+    const span = renderBar(0);
+    expect(span?.textContent?.trim()).toBe("0 Ergebnisse");
+  });
+
+  it("renders '2 Ergebnisse' (plural) when resultCount === 2", () => {
+    const span = renderBar(2);
+    expect(span?.textContent?.trim()).toBe("2 Ergebnisse");
+  });
+});

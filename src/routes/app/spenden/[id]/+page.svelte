@@ -48,6 +48,7 @@
     {errors}
     onDirty={() => (dirty = true)}
     onSaving={(v) => (saving = v)}
+    onSaved={() => (dirty = false)}
   />
   {#if form?.error}
     <p class="mt-3 text-sm text-red-600" data-testid="save-error">
@@ -114,13 +115,19 @@
     </a>
     <!-- eslint-enable svelte/no-navigation-without-resolve -->
   {:else}
-    <span
+    <!-- FIX E (review): native disabled <button> is keyboard-focusable and exposes
+         the reason via aria-label (not just a hover title). A plain <span> is
+         invisible to keyboard users and AT because it has no role or tabindex. -->
+    <button
+      type="button"
+      disabled
+      aria-disabled="true"
       data-testid="bescheinigung-disabled"
-      title="Freistellungsbescheid fehlt in den Einstellungen"
+      aria-label="Bescheinigung erstellen (Freistellungsbescheid fehlt in den Einstellungen)"
       class="border-border bg-muted text-muted-foreground/60 inline-flex h-11 min-h-11 cursor-not-allowed items-center justify-center rounded-md border px-4 text-sm font-medium"
     >
       Bescheinigung erstellen
-    </span>
+    </button>
   {/if}
 {/snippet}
 

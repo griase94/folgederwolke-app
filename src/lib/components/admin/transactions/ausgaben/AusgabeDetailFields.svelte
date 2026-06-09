@@ -37,10 +37,18 @@
     onDirty?: () => void;
     /** Bubbled so the page can feed the shell's `saving` flag during a ?/save. */
     onSaving?: (v: boolean) => void;
+    /** FIX B (review): fired on a successful ?/save so the page can reset `dirty`. */
+    onSaved?: () => void;
   }
 
-  let { detail, expenseKategorien, projects, onDirty, onSaving }: Props =
-    $props();
+  let {
+    detail,
+    expenseKategorien,
+    projects,
+    onDirty,
+    onSaving,
+    onSaved,
+  }: Props = $props();
 
   // svelte-ignore state_referenced_locally
   let betragCents = $state(String(detail.betragCents));
@@ -71,7 +79,11 @@
       result: import("@sveltejs/kit").ActionResult;
     }) => {
       onSaving?.(false);
-      if (result.type === "failure") {
+      if (result.type === "success") {
+        // FIX B (review): confirm save + reset dirty so Speichern stays disabled.
+        toast.success("Änderungen gespeichert");
+        onSaved?.();
+      } else if (result.type === "failure") {
         const err = (result.data as { error?: string } | undefined)?.error;
         toast.error(err ?? "Fehler beim Speichern");
       }

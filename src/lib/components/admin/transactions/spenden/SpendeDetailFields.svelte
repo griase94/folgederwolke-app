@@ -34,9 +34,11 @@
     onDirty?: () => void;
     /** Bubbled so the page can feed the shell's `saving` flag during a ?/save. */
     onSaving?: (v: boolean) => void;
+    /** FIX B (review): fired on a successful ?/save so the page can reset `dirty`. */
+    onSaved?: () => void;
   }
 
-  let { detail, errors = {}, onDirty, onSaving }: Props = $props();
+  let { detail, errors = {}, onDirty, onSaving, onSaved }: Props = $props();
 
   type SpendeKind = "geldspende" | "sachspende";
   type ZweckbindungKind = "zweckfrei" | "zweckgebunden";
@@ -60,6 +62,14 @@
 
   let zweckbindungKind = $state<ZweckbindungKind>(initialZweckbindung);
   let zugewendetAm = $state(initialZugewendet);
+
+  // FIX D (review): mirror AusgabeDetailFields/EinnahmeDetailFields — reactive
+  // $derived replaces the fragile document.querySelector betragCents update.
+  // svelte-ignore state_referenced_locally
+  let betragEur = $state(untrack(() => detail.betragCents / 100));
+  const betragCentsOut = $derived(
+    Math.round(parseFloat(String(betragEur || "0")) * 100),
+  );
 
   const ZWECKBINDUNGEN: readonly [ZweckbindungKind, string][] = [
     ["zweckfrei", "Zweckfrei"],
@@ -87,7 +97,11 @@
       result: import("@sveltejs/kit").ActionResult;
     }) => {
       onSaving?.(false);
-      if (result.type === "failure") {
+      if (result.type === "success") {
+        // FIX B (review): confirm save + reset dirty so Speichern stays disabled.
+        toast.success("Änderungen gespeichert");
+        onSaved?.();
+      } else if (result.type === "failure") {
         const err = (result.data as { error?: string } | undefined)?.error;
         toast.error(err ?? "Fehler beim Speichern");
       }
@@ -197,23 +211,18 @@
         class="text-muted-foreground absolute top-1/2 left-3 -translate-y-1/2 text-sm"
         >€</span
       >
+      <!-- FIX D (review): bind to $state betragEur; $derived betragCentsOut
+           replaces the fragile document.querySelector hidden-input update. -->
       <input
         id="detail-betrag"
         type="number"
         step="0.01"
         min="0.01"
-        value={detail.betragCents / 100}
-        oninput={(e) => {
-          const val = parseFloat((e.target as HTMLInputElement).value) || 0;
-          const hidden = document.querySelector<HTMLInputElement>(
-            '#detail-form input[name="betragCents"]',
-          );
-          if (hidden) hidden.value = String(Math.round(val * 100));
-          markDirty();
-        }}
+        bind:value={betragEur}
+        oninput={markDirty}
         class="border-border bg-background focus:ring-primary w-full rounded-md border py-2 pr-3 pl-8 text-sm focus:ring-2 focus:outline-none"
       />
-      <input type="hidden" name="betragCents" value={detail.betragCents} />
+      <input type="hidden" name="betragCents" value={betragCentsOut} />
     </div>
   </div>
 

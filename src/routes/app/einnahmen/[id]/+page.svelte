@@ -36,6 +36,7 @@
     projects={data.projects}
     onDirty={() => (dirty = true)}
     onSaving={(v) => (saving = v)}
+    onSaved={() => (dirty = false)}
   />
 {/snippet}
 

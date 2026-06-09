@@ -8,22 +8,51 @@
  * — it shows a fixed chip + a hidden spende_kind input pinned to the row's kind.
  */
 
-import { render, screen, cleanup } from "@testing-library/svelte";
+import { render, screen, cleanup, fireEvent } from "@testing-library/svelte";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import SpendeDetailFields from "./SpendeDetailFields.svelte";
 
-// The form now uses `use:enhance` for T4 save-failure toasts. The real enhance
-// action throws in happy-dom (its form-clone drops method="POST"), so stub
-// $app/forms + svelte-sonner — these tests only assert the static markup.
+// The form uses `use:enhance`. We capture the enhance callback so FIX B tests
+// can drive the success/failure paths. Static-markup tests (below) don't need
+// to invoke it — they just need the mock present so the form renders.
+const { toastMock, getCapturedEnhance, setCapturedEnhance } = vi.hoisted(() => {
+  const toastMock = {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn(),
+  };
+  let capturedEnhance: ((opts: { result: unknown }) => Promise<void>) | null =
+    null;
+  return {
+    toastMock,
+    getCapturedEnhance: () => capturedEnhance,
+    setCapturedEnhance: (
+      v: ((opts: { result: unknown }) => Promise<void>) | null,
+    ) => {
+      capturedEnhance = v;
+    },
+  };
+});
+
 vi.mock("$app/forms", () => ({
-  enhance: () => ({ destroy() {} }),
+  enhance: (
+    _form: HTMLFormElement,
+    cb: () => (opts: { result: unknown }) => Promise<void>,
+  ) => {
+    setCapturedEnhance(cb());
+    return { destroy() {} };
+  },
   applyAction: vi.fn(),
 }));
-vi.mock("svelte-sonner", () => ({
-  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn(), info: vi.fn() },
-}));
+vi.mock("svelte-sonner", () => ({ toast: toastMock }));
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  setCapturedEnhance(null);
+  toastMock.success.mockClear();
+  toastMock.error.mockClear();
+});
 
 function detail(overrides: Record<string, unknown> = {}) {
   return {
@@ -114,5 +143,67 @@ describe("SpendeDetailFields — Spendenart is read-only (no 422 dead end)", () 
         'input[name="zustand_beschreibung"]',
       )?.value,
     ).toBe("Gebraucht, gut erhalten");
+  });
+});
+
+// ── FIX B (review): success toast + onSaved callback ─────────────────────
+describe("SpendeDetailFields — FIX B: success toast + onSaved callback", () => {
+  it("calls toast.success and onSaved when result.type === 'success'", async () => {
+    const onSaved = vi.fn();
+    render(SpendeDetailFields, { props: { detail: detail(), onSaved } });
+    const enhance = getCapturedEnhance();
+    expect(enhance).not.toBeNull();
+    await enhance!({ result: { type: "success", data: { ok: true } } });
+    expect(toastMock.success).toHaveBeenCalledWith("Änderungen gespeichert");
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(toastMock.error).not.toHaveBeenCalled();
+  });
+
+  it("calls toast.error and NOT onSaved when result.type === 'failure'", async () => {
+    const onSaved = vi.fn();
+    render(SpendeDetailFields, { props: { detail: detail(), onSaved } });
+    const enhance = getCapturedEnhance();
+    expect(enhance).not.toBeNull();
+    await enhance!({
+      result: {
+        type: "failure",
+        data: { error: "Bescheinigt — kein Editieren" },
+      },
+    });
+    expect(toastMock.error).toHaveBeenCalledWith(
+      "Bescheinigt — kein Editieren",
+    );
+    expect(toastMock.success).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+});
+
+// ── FIX D (review): betragCents hidden input derives reactively from betragEur
+describe("SpendeDetailFields — FIX D: betragCents reactive derivation", () => {
+  it("hidden betragCents reflects the initial detail value on render", () => {
+    const { container } = render(SpendeDetailFields, {
+      props: { detail: detail({ betragCents: 5000 }) },
+    });
+    const hidden = container.querySelector<HTMLInputElement>(
+      'input[name="betragCents"]',
+    );
+    expect(hidden).not.toBeNull();
+    // 5000 cents → rendered as 5000 (the derived value from 50 * 100)
+    expect(Number(hidden?.value)).toBe(5000);
+  });
+
+  it("hidden betragCents updates when the visible number input changes", async () => {
+    const { container } = render(SpendeDetailFields, {
+      props: { detail: detail({ betragCents: 5000 }) },
+    });
+    const visibleInput =
+      container.querySelector<HTMLInputElement>("#detail-betrag");
+    expect(visibleInput).not.toBeNull();
+    // Simulate the user typing 12.50 → betragCents must become 1250
+    await fireEvent.input(visibleInput!, { target: { value: "12.50" } });
+    const hidden = container.querySelector<HTMLInputElement>(
+      'input[name="betragCents"]',
+    );
+    expect(Number(hidden?.value)).toBe(1250);
   });
 });
