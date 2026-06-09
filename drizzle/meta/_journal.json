@@ -239,6 +239,13 @@
       "when": 1781034190269,
       "tag": "0033_auslagen_submission_nonce",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1781035606505,
+      "tag": "0034_booking_year_from_cashflow",
+      "breakpoints": true
     }
   ]
 }

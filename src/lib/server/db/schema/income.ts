@@ -41,8 +41,13 @@ export const income = pgTable(
     gebuchtAm: timestamp("gebucht_am", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    // STORED generated column — booking year derives from the CASH-flow date
+    // (Geldeingang per § 11 EStG), falling back to year_for_booking(gebucht_am)
+    // when no cash date is recorded yet. `extract(year FROM date)` is IMMUTABLE
+    // (the `::timestamptz` form is only STABLE and rejected by a STORED column).
+    // Migration 0034 applies this.
     yearOfBuchung: integer("year_of_buchung").generatedAlwaysAs(
-      sql`year_for_booking(gebucht_am)`,
+      sql`COALESCE(extract(year FROM geld_eingang_datum)::int, year_for_booking(gebucht_am))`,
     ),
 
     // --- Domain dates ---
