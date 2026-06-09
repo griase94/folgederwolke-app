@@ -18,7 +18,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const getTransactionDetailMock = vi.fn();
 const editSpendeMock = vi.fn();
-const deleteDonationMock = vi.fn();
+// The delete action now chains `.delete(donations).where(...).returning(...)`
+// (FIX-1 review: atomic TOCTOU guard). `deleteWhereMock` captures the WHERE
+// predicate; `deleteReturningMock` resolves the deleted-rows array whose length
+// the route inspects (0 → 409, >=1 → 303 redirect).
+const deleteWhereMock = vi.fn();
+const deleteReturningMock = vi.fn();
 
 vi.mock("$lib/server/domain/transactions.js", () => ({
   getTransactionDetail: getTransactionDetailMock,
@@ -28,11 +33,17 @@ vi.mock("$lib/server/domain/spenden.js", () => ({
   isBescheinigungEnabled: () => true,
 }));
 
-// The detail route deletes via a small helper / direct db call; we stub the db
-// layer so ?/delete is exercisable without a real DB.
+// The detail route deletes via a direct db call; we stub the db layer so
+// ?/delete is exercisable without a real DB. The chain is
+// `.delete(donations).where(predicate).returning({ id })`.
 vi.mock("$lib/server/db/index.js", () => ({
   getDb: () => ({
-    delete: () => ({ where: deleteDonationMock }),
+    delete: () => ({
+      where: (...args: unknown[]) => {
+        deleteWhereMock(...args);
+        return { returning: deleteReturningMock };
+      },
+    }),
   }),
 }));
 
@@ -99,8 +110,10 @@ async function expectFail(p: unknown): Promise<number> {
 beforeEach(() => {
   getTransactionDetailMock.mockReset();
   editSpendeMock.mockReset();
-  deleteDonationMock.mockReset();
-  deleteDonationMock.mockResolvedValue(undefined);
+  deleteWhereMock.mockReset();
+  deleteReturningMock.mockReset();
+  // Default: the atomic-guarded DELETE matched one row (happy path).
+  deleteReturningMock.mockResolvedValue([{ id: "d-1" }]);
 });
 
 describe("/app/spenden/[id] load", () => {
@@ -170,26 +183,28 @@ describe("/app/spenden/[id] ?/save", () => {
 });
 
 describe("/app/spenden/[id] ?/delete", () => {
-  it("blocks deletion once bescheinigt (409)", async () => {
+  it("blocks deletion once bescheinigt (409) — short-circuited by the pre-read", async () => {
     getTransactionDetailMock.mockResolvedValue(
       detail({ bescheinigungNr: "B-2026-001" }),
     );
     const status = await expectFail(del(actionEvent("d-1")));
     expect(status).toBe(409);
-    expect(deleteDonationMock).not.toHaveBeenCalled();
+    // Pre-read guard rejects before reaching the DELETE chain.
+    expect(deleteWhereMock).not.toHaveBeenCalled();
   });
 
-  it("blocks deletion when festgeschrieben (409)", async () => {
+  it("blocks deletion when festgeschrieben (409) — short-circuited by the pre-read", async () => {
     getTransactionDetailMock.mockResolvedValue(
       detail({ festgeschriebenAt: "2026-12-31T00:00:00.000Z" }),
     );
     const status = await expectFail(del(actionEvent("d-1")));
     expect(status).toBe(409);
-    expect(deleteDonationMock).not.toHaveBeenCalled();
+    expect(deleteWhereMock).not.toHaveBeenCalled();
   });
 
   it("deletes a pre-Bescheinigung donation then redirects to the list", async () => {
     getTransactionDetailMock.mockResolvedValue(detail());
+    deleteReturningMock.mockResolvedValue([{ id: "d-1" }]); // one row matched
     try {
       await del(actionEvent("d-1"));
       throw new Error("expected delete to redirect");
@@ -197,6 +212,21 @@ describe("/app/spenden/[id] ?/delete", () => {
       expect((err as { status: number }).status).toBe(303);
       expect((err as { location: string }).location).toBe("/app/spenden");
     }
-    expect(deleteDonationMock).toHaveBeenCalledTimes(1);
+    // The atomic-guarded DELETE chain (.where(...).returning(...)) ran exactly once.
+    expect(deleteWhereMock).toHaveBeenCalledTimes(1);
+    expect(deleteReturningMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces 409 when the atomic-guarded DELETE matches 0 rows (TOCTOU race lost)", async () => {
+    // Pre-read passes (not bescheinigt / not festgeschrieben at read time), but a
+    // concurrent Festschreibung/Bescheinigung between the read and the write means
+    // the atomic WHERE (isNull festgeschriebenAt + isNull bescheinigungNr) matches
+    // 0 rows. The route must then return 409 instead of a silent 303.
+    getTransactionDetailMock.mockResolvedValue(detail());
+    deleteReturningMock.mockResolvedValue([]); // 0 rows deleted
+    const status = await expectFail(del(actionEvent("d-1")));
+    expect(status).toBe(409);
+    expect(deleteWhereMock).toHaveBeenCalledTimes(1);
+    expect(deleteReturningMock).toHaveBeenCalledTimes(1);
   });
 });
