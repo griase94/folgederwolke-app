@@ -35,22 +35,33 @@ test.describe("@smoke authenticated app routes", () => {
     page,
   }) => {
     await loginAs(page, "admin");
+    // Positive auth assertion: loginAs must have produced an authenticated
+    // session on /app. Without this, a regressed auth path would silently
+    // redirect every /app route to /sign-in (which returns 200 < 500) and this
+    // smoke would FALSE-PASS while testing the login page instead of the app.
+    await expect(page).toHaveURL(/\/app(\/|$|\?)/);
 
     const failures: string[] = [];
     for (const route of ROUTES) {
       const res = await page.goto(route, { waitUntil: "domcontentloaded" });
       const status = res?.status() ?? 0;
-      // < 500 (and a real response) is "not crashed". We deliberately tolerate
-      // 3xx/4xx so the check is robust to redirects/guards and only fails on
-      // the 5xx server-crash class this smoke exists to catch.
+      const landed = page.url();
+      // Fail on the 5xx server-crash class (what this smoke exists to catch).
+      // Tolerate 3xx/4xx so the check is robust to redirects/guards — EXCEPT a
+      // bounce to /sign-in, which means we lost the session (auth regression),
+      // not that the route is healthy.
       if (status === 0 || status >= 500) {
         failures.push(`${route} → ${status || "no response"}`);
+      } else if (/\/sign-in/.test(landed)) {
+        failures.push(
+          `${route} → redirected to ${landed} (session lost — not authenticated)`,
+        );
       }
     }
 
     expect(
       failures,
-      `authenticated routes returning 5xx / no response: ${failures.join(", ")}`,
+      `authenticated routes failing (5xx / no response / bounced to sign-in): ${failures.join(", ")}`,
     ).toEqual([]);
   });
 });
