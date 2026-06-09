@@ -430,7 +430,7 @@ If a future migration fails mid-deploy:
 ### 6.3 Adding a new migration
 
 1. Edit `src/lib/server/db/schema/...` for schema changes.
-2. `pnpm drizzle-kit generate` produces `drizzle/<NNNN>_<name>.sql` + a snapshot.
+2. `pnpm drizzle-kit generate` produces `drizzle/<NNNN>_<name>.sql` + a snapshot + a journal entry. For custom DDL the schema-differ can't express (GRANT / role / function / trigger / view), run `pnpm drizzle-kit generate --custom --name <slug>` and write the SQL into the generated empty file. **Never create the `.sql` file or the `_journal.json` entry by hand** — the generator owns the journal entry and its `when` timestamp. Hand-typed `when` values (with the wrong year) silently broke prod in PR #92; `tests/unit/migration-journal-integrity.test.ts` now blocks a non-monotonic journal at PR time.
 3. Inspect the generated SQL — drizzle-kit doesn't catch every case (e.g., it can't generate FK constraint changes well). Edit if needed.
 4. Test locally: `pnpm dev:reset` (purges volume and re-bootstraps with the new migration).
 5. Commit migration file + snapshot + journal entry together.
@@ -459,3 +459,33 @@ To activate scheduled backups:
 6. First run: `gh workflow run "Files Backup"`.
 7. Verify destination has the expected files + `manifest.csv`.
 8. Document the rotation cadence (annual) in RUNBOOK §1.
+
+### 6.6 Repairing a corrupted journal (non-monotonic `when`)
+
+Symptom: `scripts/assert-migrations-applied.ts` fails in the `migrate` workflow
+(a declared migration is missing by content hash), or `/healthz` reports
+`migrations.applied < expected`, or
+`tests/unit/migration-journal-integrity.test.ts` fails — i.e. one or more
+`drizzle/meta/_journal.json` entries have a `when` that is **not** strictly
+greater than the previous idx. The migrator applies an entry only when its
+`when > MAX(created_at)` in `drizzle.__drizzle_migrations` (computed once), so a
+dipped entry is silently skipped on the incremental prod path while a fresh
+(empty-DB) apply still works — green CI, broken prod.
+
+Repair:
+
+1. Find the live high-water mark (note: the migrator stores `created_at` = the
+   applied entry's `when`/folderMillis, so the HWM is itself a `when` value):
+   `psql "$NEON_DIRECT_URL" -tAc "select max(created_at) from drizzle.__drizzle_migrations;"`
+2. In `_journal.json`, rewrite the offending `when` values so the whole array is
+   **strictly increasing by idx**. Because the apply test is strict `>`: entries
+   already applied in prod must keep a `when` **≤** the high-water mark (so they
+   are NOT re-applied), and each not-yet-applied entry you want to land must be
+   **>** the high-water mark. Use real epoch-ms values, never round placeholders.
+3. `pnpm test --run tests/unit/migration-journal-integrity.test.ts` must pass.
+4. `pnpm dev:reset` to confirm a from-scratch apply still succeeds end-to-end.
+5. Commit, open a PR, merge. On merge the `migrate` workflow applies the
+   newly-eligible entries and `assert-migrations-applied.ts` confirms the count.
+6. If pre-launch (data disposable): a full Neon reset + reseed against the
+   now-monotonic journal is the cleanest re-sync — every migration re-applies in
+   order. Post-launch, prefer the surgical step-2 repair.

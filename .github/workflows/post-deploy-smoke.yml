@@ -58,17 +58,30 @@ jobs:
         run: |
           set -euo pipefail
           deadline=$(( $(date +%s) + 180 ))
-          actual=""
-          db_status=""
-          blob_status=""
+          actual=""; db_status=""; blob_status=""
+          mig_applied=-2; mig_expected=-2
           while [ "$(date +%s)" -lt "$deadline" ]; do
             payload=$(curl -fsS --max-time 10 "${BASE_URL}/healthz" || true)
             if [ -n "$payload" ]; then
-              actual=$(printf '%s' "$payload"      | jq -r '.sha  // ""' 2>/dev/null || true)
-              db_status=$(printf '%s' "$payload"   | jq -r '.db   // ""' 2>/dev/null || true)
-              blob_status=$(printf '%s' "$payload" | jq -r '.blob // ""' 2>/dev/null || true)
+              actual=$(printf '%s' "$payload"       | jq -r '.sha  // ""' 2>/dev/null || true)
+              db_status=$(printf '%s' "$payload"    | jq -r '.db   // ""' 2>/dev/null || true)
+              blob_status=$(printf '%s' "$payload"  | jq -r '.blob // ""' 2>/dev/null || true)
+              # Gate on the canary COUNTS as numbers (not .migrations.ok: jq's
+              # `//` treats the boolean false like null, so '.ok // ""' can never
+              # yield "false"). `// -2` defaults a missing field to -2.
+              #   expected <= 0 : build exposes no canary (e.g. a rollback)
+              #   applied  <  0 : canary present but count unavailable (e.g. the
+              #                   app_runtime grant migration hasn't run yet) —
+              #                   "unknown", NOT a skip; defer to the migrate job
+              #   applied < expected (both >=0) : BEHIND — migrate racing/skipped
+              #   applied >= expected           : green
+              mig_applied=$(printf '%s' "$payload"  | jq -r '.migrations.applied  // -2' 2>/dev/null || echo -2)
+              mig_expected=$(printf '%s' "$payload" | jq -r '.migrations.expected // -2' 2>/dev/null || echo -2)
+              [[ "$mig_applied"  =~ ^-?[0-9]+$ ]] || mig_applied=-2
+              [[ "$mig_expected" =~ ^-?[0-9]+$ ]] || mig_expected=-2
               if [ "$actual" = "${EXPECTED:0:7}" ] || [ "$actual" = "$EXPECTED" ]; then
-                echo "match: alias serving ${EXPECTED:0:7} (db=$db_status blob=$blob_status)"
+                echo "match: alias serving ${EXPECTED:0:7} (db=$db_status blob=$blob_status migrations=$mig_applied/$mig_expected)"
+                # db / blob are not subject to a deploy race — fail hard.
                 if [ "$db_status" != "ok" ]; then
                   echo "::error::/healthz reports db=$db_status (expected ok)"
                   exit 1
@@ -77,15 +90,28 @@ jobs:
                   echo "::error::/healthz reports blob=$blob_status (expected ok)"
                   exit 1
                 fi
-                exit 0
+                if [ "$mig_expected" -le 0 ]; then
+                  echo "ok: db/blob green; deployed build exposes no schema canary (nothing to gate)"
+                  exit 0
+                fi
+                if [ "$mig_applied" -lt 0 ]; then
+                  echo "ok: db/blob green; canary count unavailable (applied=$mig_applied) — deferring to the migrate workflow's assert"
+                  exit 0
+                fi
+                if [ "$mig_applied" -ge "$mig_expected" ]; then
+                  echo "ok: schema canary green (migrations $mig_applied/$mig_expected)"
+                  exit 0
+                fi
+                echo "wait: schema BEHIND ($mig_applied/$mig_expected) — migrate workflow catching up"
+              else
+                echo "wait: alias serves '$actual', want '${EXPECTED:0:7}' (db=$db_status blob=$blob_status migrations=$mig_applied/$mig_expected)"
               fi
-              echo "wait: alias serves '$actual', want '${EXPECTED:0:7}' (db=$db_status blob=$blob_status)"
             else
               echo "wait: /healthz did not respond"
             fi
             sleep 5
           done
-          echo "::error::production alias did not flip to ${EXPECTED:0:7} within 180s (last seen sha=$actual, db=$db_status, blob=$blob_status)"
+          echo "::error::within 180s the production alias did not flip to ${EXPECTED:0:7} with a green schema canary (last: sha=$actual db=$db_status blob=$blob_status migrations=$mig_applied/$mig_expected). If sha matched but the schema stayed BEHIND (applied<expected), a migration was SKIPPED or the migrate workflow failed — check the 'migrate' run and drizzle/meta/_journal.json ordering."
           exit 1
 
       - name: Probe a representative public route

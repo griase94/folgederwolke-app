@@ -68,10 +68,20 @@ jobs:
           echo "All required secrets are set — proceeding with backup."
 
       # ── 1. Install tools ───────────────────────────────────────────────────
-      - name: Install PostgreSQL client + age
+      - name: Install PostgreSQL 17 client + age
+        # Neon runs Postgres 17.8. Ubuntu's default postgresql-client is 16.x,
+        # and pg_dump REFUSES to dump a newer server ("server version mismatch"),
+        # so the distro client silently broke nightly backups after the PG17
+        # upgrade. Pin the client from the PostgreSQL apt repo — same block as
+        # the ci.yml backup-test job (keep them in sync).
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends postgresql-client age
+          sudo apt-get install -y --no-install-recommends curl ca-certificates lsb-release age
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+          echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+          pg_dump --version
 
       # ── 2. Dump ────────────────────────────────────────────────────────────
       - name: Dump database

@@ -56,6 +56,8 @@ describe("CI e2e grep coverage (F3)", () => {
     expect(grepTags).toContain("@phase-6-spenden");
     expect(grepTags).toContain("@phase-8");
     expect(grepTags).toContain("@phase-9");
+    // @smoke added from main: cross-cutting always-on authenticated-route check.
+    expect(grepTags).toContain("@smoke");
   });
 
   it("PWA share_target spec is covered by the CI grep (F3)", () => {
@@ -73,8 +75,12 @@ describe("CI e2e grep coverage (F3)", () => {
   // PWA is on this list because the share_target POST is the primary
   // untrusted-origin entry point into the public Auslage form (CSRF-bypass
   // surface). Three-tab specs added in FIX-1 so a future grep drop is caught.
+  // smoke-authed-routes is here because it is the only always-on check that
+  // every authenticated /app section renders without a 5xx — the net for the
+  // route-crash class. Add others here as new critical-path entry points ship.
   const criticalSpecs = [
     "pwa.spec.ts",
+    "smoke-authed-routes.spec.ts",
     "phase-3-routing.spec.ts",
     "phase-4-ausgaben.spec.ts",
     "phase-5-einnahmen.spec.ts",

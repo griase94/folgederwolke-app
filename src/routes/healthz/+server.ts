@@ -3,12 +3,23 @@ import { getDb } from "$lib/server/db/index.js";
 import { sql } from "drizzle-orm";
 import { getSheetsClient } from "$lib/server/drive/sheets-client.js";
 import { getFileStorage } from "$lib/server/files/storage.js";
+import { expectedMigrationCount } from "$lib/server/db/migration-status.js";
 import { env } from "$lib/server/env.js";
+
+interface MigrationStatus {
+  /** Rows in drizzle.__drizzle_migrations, or -1 if the query failed. */
+  applied: number;
+  /** Migrations the deployed bundle was built against. */
+  expected: number;
+  /** false when prod is BEHIND the deployed code (a migration was skipped). */
+  ok: boolean;
+}
 
 interface HealthState {
   db: "ok" | "fail";
   sheets: "ok" | "fail";
   blob: "ok" | "fail";
+  migrations: MigrationStatus;
 }
 
 // Module-level guard prevents upload storm if probe is missing AND /healthz
@@ -48,6 +59,28 @@ async function check(): Promise<HealthState> {
     }
   }
 
+  // Schema canary: how many migrations are applied vs. how many the deployed
+  // bundle expects. Catches the silent-skip class (PR #92) post-deploy. -1 on
+  // any query failure (table missing / DB down) so `ok` is conservatively false.
+  let migrations: MigrationStatus = {
+    applied: -1,
+    expected: expectedMigrationCount,
+    ok: false,
+  };
+  try {
+    const rows = (await getDb().execute(
+      sql`select count(*)::int as applied from drizzle.__drizzle_migrations`,
+    )) as unknown as Array<{ applied: number }>;
+    const applied = Number(rows[0]?.applied ?? -1);
+    migrations = {
+      applied,
+      expected: expectedMigrationCount,
+      ok: applied >= expectedMigrationCount,
+    };
+  } catch {
+    // leave the conservative { applied: -1, ok: false } default
+  }
+
   let blob: "ok" | "fail" = "fail";
   try {
     const storage = await getFileStorage();
@@ -83,7 +116,7 @@ async function check(): Promise<HealthState> {
     blob = "fail";
   }
 
-  return { db, sheets, blob };
+  return { db, sheets, blob, migrations };
 }
 
 export const GET: RequestHandler = async () => {
