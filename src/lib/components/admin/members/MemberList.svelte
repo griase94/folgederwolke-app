@@ -3,6 +3,7 @@
 	import MemberCardMobile from './MemberCardMobile.svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import NoEntries from '$lib/components/empty/NoEntries.svelte';
+	import SearchNoResults from '$lib/components/empty/SearchNoResults.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { MemberView } from '$lib/domain/members.js';
 
@@ -10,16 +11,32 @@
 		members,
 		years,
 		loading = false,
+		query = '',
+		selectable = false,
+		selectedIds,
+		onToggleSelect,
 		onEdit,
-		onAdd
+		onAdd,
+		onClearSearch
 	}: {
 		members: MemberView[];
 		years: number[];
 		loading?: boolean;
+		/** Active search term — distinguishes "no data yet" from "no matches". */
+		query?: string;
+		/** Bulk-select mode — desktop rows render a leading checkbox. */
+		selectable?: boolean;
+		/** Set of selected member ids (reactive). */
+		selectedIds?: ReadonlySet<string>;
+		onToggleSelect?: (id: string, checked: boolean) => void;
 		onEdit: (m: MemberView) => void;
 		/** Optional CTA — when provided the empty state renders an "anlegen" button. */
 		onAdd?: () => void;
+		/** Clears the active search from the "Keine Treffer" state. */
+		onClearSearch?: () => void;
 	} = $props();
+
+	const hasQuery = $derived(query.trim().length > 0);
 </script>
 
 {#if loading}
@@ -39,6 +56,9 @@
 			</div>
 		{/each}
 	</div>
+{:else if members.length === 0 && hasQuery}
+	<!-- A search simply matched nothing — not a first-run empty Verein. -->
+	<SearchNoResults {query} onClear={onClearSearch} />
 {:else if members.length === 0}
 	<NoEntries entity="Mitglieder" hint="Lege das erste Mitglied an, um loszulegen.">
 		{#snippet action()}
@@ -75,7 +95,14 @@
 	>
 		{#each members as member (member.id)}
 			<div role="listitem">
-				<MemberRow {member} {years} {onEdit} />
+				<MemberRow
+					{member}
+					{years}
+					{onEdit}
+					{selectable}
+					selected={selectedIds?.has(member.id) ?? false}
+					{onToggleSelect}
+				/>
 			</div>
 		{/each}
 	</div>

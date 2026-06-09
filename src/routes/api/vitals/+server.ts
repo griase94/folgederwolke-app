@@ -1,12 +1,19 @@
+import { dev } from "$app/environment";
 import type { RequestHandler } from "./$types.js";
 
 /**
  * POST /api/vitals
  *
  * Receives a JSON body with browser performance timings and logs them as a
- * structured line so Vercel log drains (and local stdout) capture them.
- * No auth required — metrics contain only timing numbers and the URL path.
- * Returns 204 No Content on success.
+ * structured line so the dev stdout captures them. No auth required — metrics
+ * contain only timing numbers and the URL path. Returns 204 No Content on
+ * success.
+ *
+ * The structured log is emitted in dev only — there is no production log-drain
+ * consumer for it, and a 20-person Verein generates a beacon on every page load
+ * which would otherwise flood the prod logs. The endpoint contract (accept the
+ * beacon, return 204) is unchanged in production; only the local log line is
+ * gated.
  *
  * Expected body shape:
  *   { fcp, ttfb, domContentLoaded, hydrated, route, source }
@@ -43,7 +50,7 @@ export const POST: RequestHandler = async ({ request }) => {
       route: typeof body.route === "string" ? body.route.slice(0, 128) : null,
       source: typeof body.source === "string" ? body.source.slice(0, 32) : null,
     };
-    console.log("[vitals]", JSON.stringify(safe));
+    if (dev) console.log("[vitals]", JSON.stringify(safe));
   } catch {
     // Malformed body — still return 204 so the client-side fetch doesn't
     // surface a console error.

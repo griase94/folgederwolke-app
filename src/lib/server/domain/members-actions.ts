@@ -29,7 +29,7 @@ import {
 import { bus } from "$lib/server/events/index.js";
 import { berlinYmd } from "$lib/domain/year.js";
 import { requireAdmin } from "$lib/server/domain/require-role.js";
-import { getBeitragssatz } from "$lib/server/domain/beitragssatz.js";
+import { findBeitragssatz } from "$lib/server/domain/beitragssatz.js";
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -54,6 +54,21 @@ export type RestoreMemberResult = { ok: true } | ActionFailure;
 export type MarkBeitragPaidResult = { ok: true } | ActionFailure;
 export type MarkBeitragUnpaidResult = { ok: true } | ActionFailure;
 export type SetBeitragExemptResult = { ok: true } | ActionFailure;
+
+/**
+ * Missing-Beitragssatz failure (422). Surfaced when an admin tries to mark a
+ * year paid / befreit before any Satz is configured for that year — e.g. a
+ * future year the matrix/MemberCardMobile can reach. Returning a friendly
+ * 422 instead of letting `getBeitragssatz` throw avoids the opaque 500 the
+ * treasurer would otherwise hit (members-actions findings).
+ */
+function noBeitragssatzFailure(year: number): ActionFailure {
+  return {
+    ok: false,
+    status: 422,
+    error: `Für ${year} ist kein Beitragssatz hinterlegt — bitte zuerst unter Einstellungen festlegen.`,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // addMember
@@ -346,11 +361,20 @@ export async function markBeitragPaid(args: {
   }
 
   // Phase 1: read Satz from beitragssatz_by_year (no hardcoded default).
-  const cents = await getBeitragssatz(year);
+  // A missing Satz is a configuration gap, not a server error → friendly 422.
+  const cents = await findBeitragssatz(year);
+  if (cents === null) {
+    return noBeitragssatzFailure(year);
+  }
 
   const db = getDb();
 
-  // Upsert: insert a new row if none exists, update paidCents + gezahltAm if it does.
+  // Upsert: insert a new row (betragCents = current Satz) if none exists; on
+  // conflict mark it paid for the FULL existing betragCents WITHOUT clobbering
+  // betragCents. A previously-recorded amount (e.g. a partial Satz from a year
+  // whose Satz later changed, or a manually-adjusted dues row) must survive —
+  // overwriting betragCents here would silently rewrite a member's recorded
+  // obligation to whatever the current Satz happens to be (ADR-0006 spirit).
   await db
     .insert(memberBeitrags)
     .values({
@@ -364,7 +388,8 @@ export async function markBeitragPaid(args: {
     .onConflictDoUpdate({
       target: [memberBeitrags.memberId, memberBeitrags.year],
       set: {
-        paidCents: cents,
+        // Pay the recorded obligation in full; do NOT touch betragCents.
+        paidCents: sql`${memberBeitrags.betragCents}`,
         gezahltAm,
         updatedAt: sql`now()`,
       },
@@ -377,6 +402,69 @@ export async function markBeitragPaid(args: {
   });
 
   return { ok: true };
+}
+
+export type MarkBeitragPaidBulkResult =
+  | {
+      ok: true;
+      paidCount: number;
+      skipped: { memberId: string; error: string }[];
+    }
+  | ActionFailure;
+
+/**
+ * Mark a single year as paid for many members in one go (Mitglieder bulk
+ * "Als bezahlt markieren"). Each member runs through the same `markBeitragPaid`
+ * path — so every row gets the festschreibung gate, the Satz lookup, the
+ * betragCents-preserving upsert, and an audit event — and per-member failures
+ * (e.g. a festgeschriebenes Jahr, a missing Satz) are collected rather than
+ * aborting the whole batch. The admin gate runs ONCE up front.
+ *
+ * NOTE: this is intentionally a sequence of per-member atomic upserts, not one
+ * wrapping DB transaction, because each `markBeitragPaid` emits its own audit
+ * event on success (ADR-0004 append-only) — a partial batch leaves a correct,
+ * per-member-consistent trail rather than silently rolling audit rows back.
+ */
+export async function markBeitragPaidBulk(args: {
+  memberIds: string[];
+  year: number;
+  gezahltAm: string;
+  actorUserId: string | null;
+  actorRole?: string | null;
+}): Promise<MarkBeitragPaidBulkResult> {
+  const { memberIds, year, gezahltAm, actorUserId, actorRole } = args;
+
+  const denial = requireAdmin(actorRole);
+  if (denial) return denial;
+
+  if (!Number.isFinite(year)) {
+    return { ok: false, status: 400, error: "Ungültige Parameter" };
+  }
+  // De-dupe + drop empties so a malformed payload can't double-post a member.
+  const ids = [...new Set(memberIds.filter((id) => id && id.trim() !== ""))];
+  if (ids.length === 0) {
+    return { ok: false, status: 400, error: "Keine Mitglieder ausgewählt." };
+  }
+
+  let paidCount = 0;
+  const skipped: { memberId: string; error: string }[] = [];
+
+  for (const memberId of ids) {
+    const result = await markBeitragPaid({
+      memberId,
+      year,
+      gezahltAm,
+      actorUserId,
+      actorRole,
+    });
+    if (result.ok) {
+      paidCount += 1;
+    } else {
+      skipped.push({ memberId, error: result.error ?? "Fehler" });
+    }
+  }
+
+  return { ok: true, paidCount, skipped };
 }
 
 /**
@@ -475,12 +563,9 @@ export async function setBeitragExempt(args: {
     return { ok: false, status: 409, error: "Jahr ist festgeschrieben" };
   }
 
-  // Fetch Satz for the upsert's betragCents
-  const cents = await getBeitragssatz(year);
-
   const db = getDb();
 
-  // Fetch prev state for audit payload
+  // Fetch prev state for audit payload + to decide whether we even need a Satz.
   const [prev] = await db
     .select()
     .from(memberBeitrags)
@@ -489,15 +574,30 @@ export async function setBeitragExempt(args: {
     )
     .limit(1);
 
+  // The Satz is only needed to seed betragCents on a brand-new row. When a row
+  // already exists we update its exempt flags WITHOUT touching betragCents, so
+  // exempting an existing row never depends on a configured Satz. Only require
+  // (and 422 on) a missing Satz when we'd have to INSERT.
+  let insertBetragCents = 0n;
+  if (!prev) {
+    const cents = await findBeitragssatz(year);
+    if (cents === null) {
+      return noBeitragssatzFailure(year);
+    }
+    insertBetragCents = cents;
+  }
+
   const trimmedReason = exempt ? reason!.trim() : null;
 
-  // Upsert: create row if missing, update exempt fields if it exists
+  // Upsert: create row if missing, update exempt fields if it exists. On
+  // conflict betragCents is intentionally left untouched (preserve a prior
+  // recorded amount — same invariant as markBeitragPaid).
   await db
     .insert(memberBeitrags)
     .values({
       memberId,
       year,
-      betragCents: cents,
+      betragCents: insertBetragCents,
       paidCents: 0n,
       isExempt: exempt,
       exemptReason: trimmedReason,

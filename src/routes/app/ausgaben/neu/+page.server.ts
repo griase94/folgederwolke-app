@@ -28,6 +28,7 @@
 
 import { fail, redirect } from "@sveltejs/kit";
 import { z } from "zod";
+import { isoCalendarDate } from "$lib/domain/date.js";
 import type { Actions, PageServerLoad } from "./$types.js";
 import {
   createExpense,
@@ -245,12 +246,10 @@ const expenseSchema = z.object({
   kommentar: z.string().max(2000).nullable().optional(),
   projectId: z.string().uuid().nullable().optional(),
   // EÜR §11 EStG: invoice date + cash-out (Abfluss) date both required.
-  rechnungsdatum: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Rechnungsdatum erforderlich (YYYY-MM-DD)"),
-  abfluss_datum: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Abfluss-Datum erforderlich (YYYY-MM-DD)"),
+  // `isoCalendarDate` rejects impossible dates (2026-02-30) as a 422 field
+  // error instead of letting them reach a Postgres ::date cast → opaque 500.
+  rechnungsdatum: isoCalendarDate,
+  abfluss_datum: isoCalendarDate,
   // Admin direct path defaults to Verein-paid (members come via the public
   // Auslage form); the tab can switch to member/extern.
   bezahltVonKind: z.enum(["verein", "member", "extern"]).default("verein"),
@@ -266,11 +265,7 @@ const expenseSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "true"),
-  erstattetAm: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable()
-    .optional(),
+  erstattetAm: isoCalendarDate.nullable().optional(),
 });
 
 // ---------------------------------------------------------------------------

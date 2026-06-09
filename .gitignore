@@ -40,3 +40,4 @@ vite.config.ts.timestamp-*
 
 # Visual brainstorming companion artifacts
 .superpowers/
+.build/

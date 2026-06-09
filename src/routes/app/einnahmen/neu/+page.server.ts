@@ -18,6 +18,7 @@
 
 import { fail, redirect } from "@sveltejs/kit";
 import { z } from "zod";
+import { isoCalendarDate } from "$lib/domain/date.js";
 import type { Actions, PageServerLoad } from "./$types.js";
 import {
   createIncome,
@@ -39,6 +40,29 @@ function berlinYear(): number {
     10,
   );
 }
+
+/**
+ * The form re-hydration shape — echoed back on a 422 so the entry form keeps
+ * what the user typed (Ausgaben/Spenden parity). `betragEur` is the EUROS
+ * string the display input binds (cents are derived from it client-side).
+ */
+export interface EinnahmeFormValues {
+  bezeichnung: string;
+  betragEur: string;
+  geldEingangDatum: string;
+  kategorieName: string;
+  projectId: string;
+  kommentar: string;
+}
+
+const EMPTY_VALUES: EinnahmeFormValues = {
+  bezeichnung: "",
+  betragEur: "",
+  geldEingangDatum: "",
+  kategorieName: "",
+  projectId: "",
+  kommentar: "",
+};
 
 // ---------------------------------------------------------------------------
 // load
@@ -65,7 +89,14 @@ export const load: PageServerLoad = async ({ url }) => {
   // the project picker pre-selects the originating project (C1-PRJ-A §4.3).
   const initialProjectId = url.searchParams.get("projectId") ?? "";
 
-  return { kategorien, projects: allProjects, initialProjectId };
+  // A fresh visit seeds the form with empty values (Ausgaben parity); a 422
+  // re-hydrate replaces these with the echoed submission via `form.values`.
+  return {
+    kategorien,
+    projects: allProjects,
+    initialProjectId,
+    values: EMPTY_VALUES,
+  };
 };
 
 // ---------------------------------------------------------------------------
@@ -86,14 +117,47 @@ const incomeSchema = z.object({
     }),
   // Optional kategorie id (createIncome resolves by NAME — id is not honored).
   kategorieId: z.string().uuid().nullable().optional(),
-  geldEingangDatum: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable()
-    .optional(),
+  // `isoCalendarDate` rejects impossible dates (2026-02-30) as a 422 field
+  // error instead of letting them reach a Postgres ::date cast → opaque 500.
+  geldEingangDatum: isoCalendarDate.nullable().optional(),
   projectId: z.string().uuid().nullable().optional(),
   kommentar: z.string().max(2000).nullable().optional(),
 });
+
+// ---------------------------------------------------------------------------
+// 422 re-hydration helpers (Ausgaben/Spenden parity)
+// ---------------------------------------------------------------------------
+
+/** Re-build the form values from the submitted FormData so a 422 re-hydrates. */
+function valuesFromForm(data: FormData): EinnahmeFormValues {
+  const str = (k: string): string => {
+    const v = data.get(k);
+    return typeof v === "string" ? v : "";
+  };
+  const cents = str("betragCents");
+  const centsNum = Number(cents);
+  return {
+    bezeichnung: str("bezeichnung"),
+    // Echo the typed euros back (the hidden betragCents mirrors it client-side).
+    betragEur: cents && Number.isFinite(centsNum) ? String(centsNum / 100) : "",
+    geldEingangDatum: str("geldEingangDatum"),
+    kategorieName: str("kategorieNameSnapshot"),
+    projectId: str("projectId"),
+    kommentar: str("kommentar"),
+  };
+}
+
+/** Map Zod issues → per-field error messages (first message wins per field). */
+function errorsFromIssues(
+  issues: readonly { path: readonly PropertyKey[]; message: string }[],
+): Record<string, string[]> {
+  const errors: Record<string, string[]> = {};
+  for (const issue of issues) {
+    const key = String(issue.path[0] ?? "_");
+    if (!errors[key]) errors[key] = [issue.message];
+  }
+  return errors;
+}
 
 // ---------------------------------------------------------------------------
 // actions
@@ -114,8 +178,12 @@ export const actions = {
 
     const parsed = incomeSchema.safeParse(raw);
     if (!parsed.success) {
+      // Echo the submitted values + per-field errors so the form re-hydrates
+      // (Ausgaben/Spenden parity) instead of wiping everything.
       return fail(422, {
         error: "Ungültige Eingabe",
+        values: valuesFromForm(data),
+        errors: errorsFromIssues(parsed.error.issues),
         issues: parsed.error.issues,
       });
     }
@@ -145,7 +213,11 @@ export const actions = {
             uploadErr instanceof Error
               ? uploadErr.message
               : "Beleg konnte nicht hochgeladen werden.";
-          return fail(422, { error: msg, errors: { beleg: [msg] } });
+          return fail(422, {
+            error: msg,
+            values: valuesFromForm(data),
+            errors: { beleg: [msg] },
+          });
         }
       }
 

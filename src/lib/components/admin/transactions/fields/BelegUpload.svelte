@@ -22,6 +22,12 @@
 		keinBeleg?: boolean;
 		/** Bound: the Begründung text (kein-Beleg path). */
 		begruendung?: string;
+		/**
+		 * Per-field error from a 422 (the server's `errors.beleg[0]`), e.g. the
+		 * Beleg-or-Begründung gate or an upload failure. Rendered inline under the
+		 * field so the Beleg gate gets the same feedback as the other Ausgabe fields.
+		 */
+		error?: string;
 	}
 
 	let {
@@ -31,6 +37,7 @@
 		accept = 'image/*,application/pdf',
 		keinBeleg = $bindable(false),
 		begruendung = $bindable(''),
+		error,
 	}: Props = $props();
 </script>
 
@@ -53,6 +60,7 @@
 		required={!keinBeleg}
 		disabled={keinBeleg}
 		class:hidden={keinBeleg}
+		aria-invalid={error ? true : undefined}
 		class="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-accent"
 	/>
 
@@ -83,5 +91,12 @@
 				class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
 			></textarea>
 		</div>
+	{/if}
+
+	<!-- Per-field error (the §4.1 Beleg-or-Begründung gate / upload failure). The
+	     gate spans the whole field (file OR Begründung), so it renders once at the
+	     bottom of the block rather than under a single input. -->
+	{#if error}
+		<p class="text-xs text-destructive">{error}</p>
 	{/if}
 </div>

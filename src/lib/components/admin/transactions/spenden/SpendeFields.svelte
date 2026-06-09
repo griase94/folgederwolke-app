@@ -77,6 +77,14 @@
 	let spenderAdresse = $state(v('spender_adresse'));
 	let spenderEmail = $state(v('spender_email'));
 
+	// Betrag is entered as euros in a display input; the canonical integer-cents
+	// value is mirrored into a hidden field the server validates. Reactive
+	// $state/$derived (mirrors AusgabeFields + the already-fixed SpendeDetailFields)
+	// replaces the fragile document.querySelector hidden-input write — a Svelte
+	// re-render can no longer clobber the imperatively-set hidden value.
+	let betragEur = $state(v('betragCents') ? String(Number(v('betragCents')) / 100) : '');
+	const betragCentsOut = $derived(Math.round(parseFloat(betragEur || '0') * 100));
+
 	const isSach = $derived(spendeKind === 'sachspende');
 	const isZweckgebunden = $derived(zweckbindungKind === 'zweckgebunden');
 
@@ -204,17 +212,12 @@
 				min="0.01"
 				required
 				placeholder="0,00"
-				value={v('betragCents') ? String(Number(v('betragCents')) / 100) : ''}
-				oninput={(e) => {
-					const val = parseFloat((e.target as HTMLInputElement).value) || 0;
-					const hidden = document.querySelector<HTMLInputElement>('input[name="betragCents"]');
-					if (hidden) hidden.value = String(Math.round(val * 100));
-					markDirty();
-				}}
+				bind:value={betragEur}
+				oninput={markDirty}
 				data-testid="betrag-eur-input"
 				class="w-full rounded-md border border-border bg-background py-2 pr-3 pl-8 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 			/>
-			<input type="hidden" name="betragCents" value={v('betragCents')} />
+			<input type="hidden" name="betragCents" value={betragCentsOut} />
 		</div>
 	</div>
 

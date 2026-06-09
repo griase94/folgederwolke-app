@@ -247,15 +247,21 @@
 				Ablehnen
 			</Button>
 
-			<!-- Aufwandsspende stub (Phase 2 deferred) -->
+			<!--
+				Aufwandsspende stub (Phase 2 deferred). De-emphasized (ghost) and
+				labelled "In Vorbereitung" so it does not masquerade as a working
+				peer action to Freigeben/Ablehnen; clicking opens an explanatory
+				modal rather than starting a workflow.
+			-->
 			<Button
 				type="button"
-				variant="outline"
-				class="h-11 sm:flex-1"
+				variant="ghost"
+				class="h-11 gap-1.5 text-muted-foreground sm:flex-1"
 				onclick={() => (aufwandsspendeOpen = true)}
 				disabled={approving}
 			>
-				→ Verzicht spenden
+				Verzicht spenden
+				<Badge variant="secondary">In Vorbereitung</Badge>
 			</Button>
 		</div>
 

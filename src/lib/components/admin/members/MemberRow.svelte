@@ -1,16 +1,29 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance, deserialize } from '$app/forms';
 	import { toast } from 'svelte-sonner';
 	import { invalidateAll } from '$app/navigation';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import BeitragsBadge from './BeitragsBadge.svelte';
+	import MarkPaidControl from './MarkPaidControl.svelte';
 	import { beitragStatusFor, type MemberView } from '$lib/domain/members.js';
+	import { currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
 
 	let {
 		member,
 		years,
-		onEdit
-	}: { member: MemberView; years: number[]; onEdit: (m: MemberView) => void } = $props();
+		onEdit,
+		selectable = false,
+		selected = false,
+		onToggleSelect
+	}: {
+		member: MemberView;
+		years: number[];
+		onEdit: (m: MemberView) => void;
+		/** Bulk-select mode — renders a leading checkbox + hides the kebab. */
+		selectable?: boolean;
+		selected?: boolean;
+		onToggleSelect?: (id: string, checked: boolean) => void;
+	} = $props();
 
 	// Deterministic avatar color from name hash
 	function nameHash(s: string): number {
@@ -42,8 +55,74 @@
 		return (vorname.charAt(0) ?? '') + (nachname.charAt(0) ?? '');
 	}
 
-	let markingYear = $state<number | null>(null);
 	let dropdownOpen = $state(false);
+
+	// The whole row is the anchor for the mark-paid popover (the kebab item that
+	// opens it unmounts when the menu closes, so we can't anchor to the item).
+	let rowEl = $state<HTMLElement | null>(null);
+
+	// Controlled MarkPaidControl: the kebab "Beitrag {year} bezahlt" items open
+	// the SAME rich popover the matrix uses (date + live EÜR line + undo toast)
+	// instead of the old fire-and-forget hidden form with no date field
+	// (markpaid-no-date-undo-toast-list-detail finding).
+	let markPaidOpen = $state(false);
+	let markPaidYear = $state<number | null>(null);
+	let markPaidBetragCents = $state(0);
+	let markPaidOverdue = $state(false);
+
+	function openMarkPaid(year: number) {
+		const b = member.beitrags[year];
+		markPaidYear = year;
+		markPaidBetragCents = b?.betragCents ?? 0;
+		// Overdue isn't tracked per-year on MemberView; the matrix derives it from
+		// dates. The popover only uses it to surface the "Erinnerung" shortcut, so
+		// treating list rows as non-overdue here is safe.
+		markPaidOverdue = false;
+		dropdownOpen = false;
+		// Open after the menu has closed so focus management doesn't fight.
+		queueMicrotask(() => (markPaidOpen = true));
+	}
+
+	// Reminder target = current Buchungsjahr (ADR-0001), clamped to the visible
+	// window. Only meaningful for an unpaid, non-exempt member with an email.
+	const reminderYear = $derived(
+		years.length > 0 ? clampYearToAvailable(currentBuchungsjahr(), years) : null,
+	);
+	const reminderStatus = $derived.by(() => {
+		if (reminderYear === null) return 'open';
+		const b = member.beitrags[reminderYear];
+		return b ? beitragStatusFor(b) : 'open';
+	});
+	const canRemind = $derived(
+		reminderYear !== null &&
+			!!member.email &&
+			!member.beitragExempt &&
+			reminderStatus !== 'paid' &&
+			reminderStatus !== 'waived',
+	);
+
+	async function sendReminder() {
+		dropdownOpen = false;
+		if (!canRemind || reminderYear === null) return;
+		const fd = new FormData();
+		fd.set('memberId', member.id);
+		fd.set('year', String(reminderYear));
+		try {
+			const res = await fetch('?/send-reminder', { method: 'POST', body: fd });
+			const result = deserialize(await res.text());
+			if (result.type === 'success') {
+				toast.success(`Erinnerung an ${member.vorname} ${member.nachname} gesendet`);
+			} else if (result.type === 'failure') {
+				toast.error(
+					(result.data?.['error'] as string | undefined) ?? 'Erinnerung konnte nicht gesendet werden.',
+				);
+			} else {
+				toast.error('Erinnerung konnte nicht gesendet werden.');
+			}
+		} catch {
+			toast.error('Erinnerung konnte nicht gesendet werden.');
+		}
+	}
 
 	// C3-DISC: the soft-delete form lives OUTSIDE the DropdownMenu.Content so
 	// it survives the menu's unmount-on-close. The menu item just confirms +
@@ -61,10 +140,30 @@
 </script>
 
 <div
+	bind:this={rowEl}
 	class="group flex items-center gap-4 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md"
 	data-testid="member-row"
 	data-member-id={member.id}
 >
+	<!-- Bulk-select checkbox (only in select mode). Disabled for members the
+	     bulk "Als bezahlt" can't sensibly touch: befreite or ausgetretene. -->
+	{#if selectable}
+		{@const selectDisabled = member.beitragExempt || !!member.austrittsDatum}
+		<label
+			class="flex shrink-0 items-center {selectDisabled ? 'opacity-40' : ''}"
+			aria-label="{member.vorname} {member.nachname} auswählen"
+		>
+			<input
+				type="checkbox"
+				checked={selected}
+				disabled={selectDisabled}
+				data-testid="member-row-select"
+				onchange={(e) => onToggleSelect?.(member.id, e.currentTarget.checked)}
+				class="h-5 w-5 rounded border-input text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
+			/>
+		</label>
+	{/if}
+
 	<!-- Avatar -->
 	<div
 		class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold {avatarColor(member.vorname + member.nachname)}"
@@ -112,7 +211,9 @@
 		{/each}
 	</div>
 
-	<!-- Actions kebab — shadcn DropdownMenu (focus trap + Esc + arrow nav built-in) -->
+	<!-- Actions kebab — shadcn DropdownMenu (focus trap + Esc + arrow nav built-in).
+	     Hidden in bulk-select mode where the only interaction is the checkbox. -->
+	{#if !selectable}
 	<DropdownMenu.Root bind:open={dropdownOpen}>
 		<DropdownMenu.Trigger
 			aria-label="Aktionen für {member.vorname} {member.nachname}"
@@ -150,59 +251,52 @@
 				Bearbeiten
 			</DropdownMenu.Item>
 
-			<!-- Mark beitrag paid (one item per unpaid year) -->
+			<!-- Mark beitrag paid (one item per unpaid year). Opens the shared
+			     MarkPaidControl popover (date + live EÜR line + undo toast) rather
+			     than firing a hidden form with no date field. -->
 			{#each years as year (year)}
 				{@const b = member.beitrags[year]}
 				{@const status = b ? beitragStatusFor(b) : 'open'}
-				{#if status !== 'paid'}
-					<form
-						method="POST"
-						action="?/mark-beitrag-paid"
-						use:enhance={() => {
-							markingYear = year;
-							return async ({ update }) => {
-								await update();
-								markingYear = null;
-								dropdownOpen = false;
-							};
+				{#if status !== 'paid' && status !== 'waived' && !member.beitragExempt}
+					<DropdownMenu.Item
+						onSelect={(e) => {
+							e.preventDefault();
+							openMarkPaid(year);
 						}}
 					>
-						<input type="hidden" name="member_id" value={member.id} />
-						<input type="hidden" name="year" value={year} />
-						<DropdownMenu.Item
-							onSelect={(e) => {
-								// Let form submit naturally; prevent menu from closing early
-								e.preventDefault();
-								(e.currentTarget as HTMLElement).closest('form')?.requestSubmit();
-							}}
-							disabled={markingYear === year}
+						<svg
+							class="h-4 w-4 text-green-600"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke="currentColor"
+							stroke-width="2"
+							aria-hidden="true"
 						>
-							<svg
-								class="h-4 w-4 text-green-600"
-								fill="none"
-								viewBox="0 0 24 24"
-								stroke="currentColor"
-								stroke-width="2"
-								aria-hidden="true"
-							>
-								<path
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-								/>
-							</svg>
-							Beitrag {year} bezahlt
-						</DropdownMenu.Item>
-					</form>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+							/>
+						</svg>
+						Beitrag {year} bezahlt…
+					</DropdownMenu.Item>
 				{/if}
 			{/each}
 
 			<DropdownMenu.Separator />
 
-			<!-- Send reminder (placeholder) -->
-			<DropdownMenu.Item class="text-muted-foreground" onSelect={() => (dropdownOpen = false)}>
+			<!-- Send reminder — wired to the real ?/send-reminder action (mirrors the
+			     matrix path). Disabled when there's nothing to remind about. -->
+			<DropdownMenu.Item
+				data-testid="member-row-erinnerung"
+				disabled={!canRemind}
+				onSelect={(e) => {
+					e.preventDefault();
+					sendReminder();
+				}}
+			>
 				<svg
-					class="h-4 w-4"
+					class="h-4 w-4 text-muted-foreground"
 					fill="none"
 					viewBox="0 0 24 24"
 					stroke="currentColor"
@@ -247,6 +341,7 @@
 			</DropdownMenu.Item>
 		</DropdownMenu.Content>
 	</DropdownMenu.Root>
+	{/if}
 
 	<!-- Soft-delete form lives outside DropdownMenu.Content so the menu's
 		 unmount-on-close doesn't tear the form out of the DOM mid-submit. -->
@@ -284,4 +379,21 @@
 	>
 		<input type="hidden" name="id" value={member.id} />
 	</form>
+
+	<!-- Shared mark-paid surface, anchored to the row. Controlled (no trigger
+	     snippet) because the kebab item that opens it unmounts on menu close.
+	     Re-keyed by year so the popover's internal date/EÜR state resets per year. -->
+	{#if markPaidYear !== null}
+		{#key markPaidYear}
+			<MarkPaidControl
+				bind:open={markPaidOpen}
+				anchor={rowEl}
+				memberId={member.id}
+				year={markPaidYear}
+				memberName="{member.vorname} {member.nachname}"
+				betragCents={markPaidBetragCents}
+				isOverdue={markPaidOverdue}
+			/>
+		{/key}
+	{/if}
 </div>

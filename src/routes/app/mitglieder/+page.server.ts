@@ -28,6 +28,7 @@ import {
   softDeleteMember,
   restoreMember,
   markBeitragPaid,
+  markBeitragPaidBulk,
   markBeitragUnpaid,
   setBeitragExempt,
 } from "$lib/server/domain/members-actions.js";
@@ -260,6 +261,49 @@ export const actions: Actions = {
     }
 
     return { action: "mark-beitrag-paid", success: true };
+  },
+
+  // ── Bulk mark Beitrag paid (Mitglieder list multi-select) ───────────────────
+  "mark-beitrag-paid-bulk": async ({ request, locals }) => {
+    const userId = locals.session?.user.id ?? null;
+    const userRole = locals.session?.user.role ?? null;
+    const formData = await request.formData();
+    // memberIds posted as repeated "memberId" fields.
+    const memberIds = formData
+      .getAll("memberId")
+      .map((v) => v.toString())
+      .filter(Boolean);
+    const yearStr = formData.get("year")?.toString() ?? "";
+    const year = parseInt(yearStr, 10);
+    const gezahltAm = formData.get("gezahltAm")?.toString() || berlinYmd();
+
+    if (memberIds.length === 0 || !Number.isFinite(year)) {
+      return fail(400, {
+        action: "mark-beitrag-paid-bulk",
+        error: "Ungültige Parameter",
+      });
+    }
+
+    const result = await markBeitragPaidBulk({
+      memberIds,
+      year,
+      gezahltAm,
+      actorUserId: userId,
+      actorRole: userRole,
+    });
+    if (!result.ok) {
+      return fail(result.status, {
+        action: "mark-beitrag-paid-bulk",
+        error: result.error,
+      });
+    }
+
+    return {
+      action: "mark-beitrag-paid-bulk",
+      success: true,
+      paidCount: result.paidCount,
+      skippedCount: result.skipped.length,
+    };
   },
 
   // ── Task 2.8: Mark Beitrag unpaid (storno) ──────────────────────────────────

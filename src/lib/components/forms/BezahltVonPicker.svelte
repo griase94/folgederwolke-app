@@ -119,6 +119,7 @@
 						class="border-input bg-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-base md:text-sm focus-visible:ring-2 focus-visible:outline-none"
 						onchange={onMemberSelect}
 						onblur={() => markBlurred('member_id')}
+						aria-invalid={!!getError('bezahlt_von.member_id')}
 						aria-describedby={getError('bezahlt_von.member_id') ? 'err-member_id' : undefined}
 					>
 						<option value="">— Mitglied wählen —</option>
@@ -131,7 +132,7 @@
 					<input type="hidden" name="member_email" value={memberEmail} />
 				{/if}
 				{#if getError('bezahlt_von.member_id')}
-					<p id="err-member_id" class="text-destructive text-xs">{getError('bezahlt_von.member_id')}</p>
+					<p id="err-member_id" class="text-destructive text-xs" role="alert">{getError('bezahlt_von.member_id')}</p>
 				{/if}
 			</div>
 		{/if}
@@ -155,7 +156,7 @@
 						aria-describedby={getError('bezahlt_von.name') ? 'err-extern-name' : undefined}
 					/>
 					{#if getError('bezahlt_von.name')}
-						<p id="err-extern-name" class="text-destructive text-xs">{getError('bezahlt_von.name')}</p>
+						<p id="err-extern-name" class="text-destructive text-xs" role="alert">{getError('bezahlt_von.name')}</p>
 					{/if}
 				</div>
 
@@ -178,7 +179,7 @@
 					<!-- Normalized (no spaces) for server -->
 					<input type="hidden" name="extern_iban" value={externIban} />
 					{#if getError('bezahlt_von.iban')}
-						<p id="err-extern-iban" class="text-destructive text-xs">{getError('bezahlt_von.iban')}</p>
+						<p id="err-extern-iban" class="text-destructive text-xs" role="alert">{getError('bezahlt_von.iban')}</p>
 					{/if}
 				</div>
 
@@ -201,7 +202,7 @@
 						aria-describedby={getError('bezahlt_von.email') ? 'err-extern-email' : undefined}
 					/>
 					{#if getError('bezahlt_von.email')}
-						<p id="err-extern-email" class="text-destructive text-xs">{getError('bezahlt_von.email')}</p>
+						<p id="err-extern-email" class="text-destructive text-xs" role="alert">{getError('bezahlt_von.email')}</p>
 					{/if}
 				</div>
 			</div>

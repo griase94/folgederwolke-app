@@ -15,10 +15,11 @@ import { getDb } from "$lib/server/db/index.js";
 import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
 
 /**
- * Returns the Beitragssatz in euro cents for the given year.
- * Throws if no row exists for the year.
+ * Returns the Beitragssatz in euro cents for the given year, or `null` when
+ * no row exists. Prefer this in action paths so a missing Satz becomes a
+ * user-facing 422 (see members-actions.ts) instead of an uncaught 500.
  */
-export async function getBeitragssatz(year: number): Promise<bigint> {
+export async function findBeitragssatz(year: number): Promise<bigint | null> {
   const db = getDb();
   const [row] = await db
     .select({ cents: beitragssatzByYear.cents })
@@ -26,11 +27,21 @@ export async function getBeitragssatz(year: number): Promise<bigint> {
     .where(eq(beitragssatzByYear.year, year))
     .limit(1);
 
-  if (!row) {
+  return row?.cents ?? null;
+}
+
+/**
+ * Returns the Beitragssatz in euro cents for the given year.
+ * Throws if no row exists for the year.
+ */
+export async function getBeitragssatz(year: number): Promise<bigint> {
+  const cents = await findBeitragssatz(year);
+
+  if (cents === null) {
     throw new Error(`No Beitragssatz for year ${year}`);
   }
 
-  return row.cents;
+  return cents;
 }
 
 /**

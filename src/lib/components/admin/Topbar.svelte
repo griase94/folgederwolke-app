@@ -328,7 +328,7 @@
 <svelte:window onkeydown={handleGlobalKeydown} />
 
 <header
-	class="safe-top sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background/95 px-4 backdrop-blur-sm supports-[backdrop-filter]:bg-background/80 lg:px-6"
+	class="safe-top sticky top-0 z-30 flex min-h-14 items-center gap-4 border-b border-border bg-background/95 px-4 backdrop-blur-sm supports-[backdrop-filter]:bg-background/80 lg:px-6"
 >
 	<!-- Breadcrumbs -->
 	<nav aria-label="Breadcrumb" class="hidden flex-1 items-center gap-1 text-sm sm:flex">
@@ -488,28 +488,12 @@
 		{/if}
 	</div>
 
-	<!-- Mobile search icon (opens full-screen overlay — Phase 6) -->
-	<button
-		type="button"
-		class="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:hidden"
-		aria-label="Suche öffnen"
-	>
-		<svg
-			xmlns="http://www.w3.org/2000/svg"
-			width="18"
-			height="18"
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="2"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-		>
-			<circle cx="11" cy="11" r="8" />
-			<path d="m21 21-4.35-4.35" />
-		</svg>
-	</button>
+	<!--
+		No mobile (<md) search affordance: there is no mobile search backend, so
+		a tappable icon here would be a dead no-op. The desktop search above
+		(`hidden md:block`) covers ≥md; mobile users reach entities via the
+		bottom tab bar + list filters.
+	-->
 
 	<!-- Year switcher (C2 — sticky in topbar) -->
 	{#if yearData().availableYears.length > 0 && yearData().selectedYear !== null}
@@ -538,29 +522,11 @@
 		</div>
 	{/if}
 
-	<!-- Notification bell stub -->
-	<button
-		type="button"
-		class="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-		aria-label="Benachrichtigungen (demnächst)"
-		disabled
-	>
-		<svg
-			xmlns="http://www.w3.org/2000/svg"
-			width="18"
-			height="18"
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="2"
-			stroke-linecap="round"
-			stroke-linejoin="round"
-			aria-hidden="true"
-		>
-			<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-			<path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-		</svg>
-	</button>
+	<!--
+		Notification bell removed: no notifications feature exists, so a disabled
+		"demnächst" bell only added visual noise and a non-actionable control.
+		Reinstate a real bell here once the feature ships.
+	-->
 
 	<!-- PWA install prompt (Android / Chrome — hidden until beforeinstallprompt fires) -->
 	<InstallPrompt />

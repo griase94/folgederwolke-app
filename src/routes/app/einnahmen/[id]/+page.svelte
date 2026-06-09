@@ -4,12 +4,18 @@
   import DetailModalShell from "$lib/components/admin/transactions/DetailModalShell.svelte";
   import BelegViewer from "$lib/components/files/BelegViewer.svelte";
   import EinnahmeDetailFields from "$lib/components/admin/transactions/einnahmen/EinnahmeDetailFields.svelte";
-  import type { PageData } from "./$types.js";
+  import type { ActionData, PageData } from "./$types.js";
 
-  let { data }: { data: PageData } = $props();
+  let { data, form }: { data: PageData; form: ActionData } = $props();
 
   let dirty = $state(false);
   let saving = $state(false);
+
+  // Per-field errors from a failed ?/save (mirrors Spenden) — surfaced inline in
+  // the detail fields in addition to the toast that use:enhance already shows.
+  const errors = $derived(
+    (form as { errors?: Record<string, string[]> } | null)?.errors ?? {},
+  );
 
   const detail = $derived(data.detail);
   const hasBeleg = $derived(!!detail.belegFileId);
@@ -34,6 +40,7 @@
     kommentar={detail.kommentar}
     kategorien={data.kategorien}
     projects={data.projects}
+    {errors}
     onDirty={() => (dirty = true)}
     onSaving={(v) => (saving = v)}
     onSaved={() => (dirty = false)}

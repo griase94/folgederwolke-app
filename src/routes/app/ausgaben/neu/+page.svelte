@@ -10,7 +10,6 @@
 	 * `enctype="multipart/form-data"` (its `enctype` prop defaults to it) so the
 	 * Beleg file uploads correctly — this page only flips `submitting` on submit.
 	 */
-	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import EntryFormShell from '$lib/components/admin/transactions/EntryFormShell.svelte';
@@ -21,6 +20,9 @@
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	let dirty = $state(false);
+	// `submitting` is flipped by EntryFormShell on the form's submit event (same
+	// tick the POST begins) so the shell's beforeNavigate guard skips on the
+	// success redirect AND the Speichern button disables to block a double-submit.
 	let submitting = $state(false);
 
 	// On a failed submit the action echoes the typed values + per-field errors so
@@ -41,17 +43,6 @@
 		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		goto('/app/ausgaben');
 	}
-
-	onMount(() => {
-		// Native submit → flip submitting so the shell disables Speichern + skips
-		// the dirty-guard for the form navigation. (Enctype is owned by the shell.)
-		const formEl = document.getElementById('entry-form') as HTMLFormElement | null;
-		if (formEl) {
-			formEl.addEventListener('submit', () => {
-				submitting = true;
-			});
-		}
-	});
 </script>
 
 <svelte:head>
@@ -83,7 +74,7 @@
 	title="Neue Ausgabe"
 	action="?/create"
 	submitLabel="Ausgabe anlegen"
-	{submitting}
+	bind:submitting
 	{dirty}
 	{fields}
 	{onClose}

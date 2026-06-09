@@ -21,6 +21,7 @@
 
 import { error, fail } from "@sveltejs/kit";
 import { z } from "zod";
+import { isoCalendarDate } from "$lib/domain/date.js";
 import type { Actions, PageServerLoad } from "./$types.js";
 import {
   getTransactionDetail,
@@ -70,11 +71,7 @@ export const load: PageServerLoad = async ({ params }) => {
 const saveIncomeSchema = z.object({
   bezeichnung: z.string().min(1).max(500),
   betragCents: z.coerce.number().int().positive(),
-  geldEingangDatum: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable()
-    .optional(),
+  geldEingangDatum: isoCalendarDate.nullable().optional(),
   kategorieNameSnapshot: z.string().max(200).optional(),
   // NOTE: `sphereSnapshot` is intentionally NOT accepted from the client (§4.5 —
   // the Sphäre is strictly DERIVED from the Kategorie server-side; a tampered or
@@ -83,6 +80,18 @@ const saveIncomeSchema = z.object({
   projectId: z.string().uuid().nullable().optional(),
   kommentar: z.string().max(2000).nullable().optional(),
 });
+
+/** Map Zod issues → per-field error messages (first message wins per field). */
+function errorsFromIssues(
+  issues: readonly { path: readonly PropertyKey[]; message: string }[],
+): Record<string, string[]> {
+  const errors: Record<string, string[]> = {};
+  for (const issue of issues) {
+    const key = String(issue.path[0] ?? "_");
+    if (!errors[key]) errors[key] = [issue.message];
+  }
+  return errors;
+}
 
 // ---------------------------------------------------------------------------
 // actions — ONLY `save` (no mark-paid, no duplicate).
@@ -104,6 +113,7 @@ export const actions = {
     if (!parsed.success) {
       return fail(422, {
         error: "Ungültige Eingabe",
+        errors: errorsFromIssues(parsed.error.issues),
         issues: parsed.error.issues,
       });
     }

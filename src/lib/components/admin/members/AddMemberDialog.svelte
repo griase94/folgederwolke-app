@@ -63,6 +63,14 @@
 					loading = false;
 					if (result.type === 'failure') {
 						errors = (result.data?.errors as Record<string, string[]>) ?? {};
+					} else if (result.type === 'error') {
+						// An uncaught server error (500) → SvelteKit would otherwise swap
+						// to the error page and discard the typed-in values. Keep the
+						// dialog open with a generic message (mirrors the delete path's
+						// error handling) and do NOT call update().
+						errors = {
+							_: ['Mitglied konnte nicht angelegt werden. Bitte erneut versuchen.'],
+						};
 					} else if (result.type === 'success') {
 						open = false;
 						reset();

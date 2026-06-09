@@ -14,14 +14,25 @@
 export function parseEuroToCents(input: string): bigint {
   const trimmed = input.trim();
   if (!trimmed) throw new Error("parseEuroToCents: empty input");
-  // German format: "1.234,56" → strip dots, replace comma with dot.
-  // English fallback: "1234.56" stays.
-  // Heuristic: if both `.` and `,` present, treat `.` as thousands sep.
+  // Disambiguate the separators (de-DE primary, English fallback):
+  //   - both `.` and `,` present → `.` is a thousands sep, `,` is the decimal
+  //     ("1.234,56" → 1234.56).
+  //   - only `,` present → `,` is the decimal ("12,50" → 12.50).
+  //   - only `.` present → ambiguous. A single dot followed by exactly 1–2
+  //     digits is the decimal point (English fallback "1234.56", "12,5"-typo
+  //     "12.5"). Anything else — multiple dots, or a single dot with a 3-digit
+  //     group like "1.234" — is German thousands grouping and the dots are
+  //     stripped ("1.234" → 1234, "1.234.567" → 1234567).
   let normalized = trimmed;
   if (normalized.includes(",") && normalized.includes(".")) {
     normalized = normalized.replace(/\./g, "").replace(",", ".");
   } else if (normalized.includes(",")) {
     normalized = normalized.replace(",", ".");
+  } else if (normalized.includes(".")) {
+    const dotCount = (normalized.match(/\./g) ?? []).length;
+    const trailing = normalized.length - normalized.lastIndexOf(".") - 1;
+    const dotIsDecimal = dotCount === 1 && (trailing === 1 || trailing === 2);
+    if (!dotIsDecimal) normalized = normalized.replace(/\./g, "");
   }
   const negative = normalized.startsWith("-");
   if (negative) normalized = normalized.slice(1);

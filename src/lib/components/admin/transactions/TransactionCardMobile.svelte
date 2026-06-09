@@ -110,7 +110,12 @@
 	     the tab opts in (`selectable`) — Ausgaben has the bulk Erstattung flow;
 	     Einnahmen/Spenden would otherwise show a no-op checkbox. -->
 	{#if selectable}
-		<label class="flex shrink-0 items-start pt-0.5">
+		<!-- ≥44px tap target: the wrapping label provides the touch area (centered),
+		     the visual checkbox stays 16px. The −ml/−my pulls the larger hit area
+		     back so it doesn't add visible padding to the card row. -->
+		<label
+			class="-my-3 -ml-1 flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center"
+		>
 			<input
 				type="checkbox"
 				checked={selected}
@@ -136,11 +141,7 @@
 					<p class="truncate text-xs text-muted-foreground">{row.bezahltVonDisplay}</p>
 				{/if}
 			</div>
-			<Money
-				valueInCents={moneyCents}
-				forceSign={row.kind === 'expense' ? 'auto' : 'auto'}
-				class="shrink-0 text-base"
-			/>
+			<Money valueInCents={moneyCents} forceSign="auto" class="shrink-0 text-base" />
 		</div>
 
 		<div class="flex flex-wrap items-center gap-1.5 text-xs">

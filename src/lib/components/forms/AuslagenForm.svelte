@@ -521,7 +521,7 @@
 				/>
 				<div class="flex justify-between">
 					{#if getError('bezeichnung')}
-						<p id="err-bezeichnung" class="text-destructive text-xs">{getError('bezeichnung')}</p>
+						<p id="err-bezeichnung" class="text-destructive text-xs" role="alert">{getError('bezeichnung')}</p>
 					{:else}
 						<span></span>
 					{/if}
@@ -555,7 +555,7 @@
 					/>
 				</div>
 				{#if getError('betragCents')}
-					<p id="err-betragCents" class="text-destructive text-xs">{getError('betragCents')}</p>
+					<p id="err-betragCents" class="text-destructive text-xs" role="alert">{getError('betragCents')}</p>
 				{/if}
 			</div>
 
@@ -667,7 +667,7 @@
 			<input type="hidden" name="consent_text_version" value={DATENSCHUTZ_VERSION} />
 
 			{#if getError('consent')}
-				<p id="err-consent" class="text-destructive text-xs">{getError('consent')}</p>
+				<p id="err-consent" class="text-destructive text-xs" role="alert">{getError('consent')}</p>
 			{/if}
 		</CardContent>
 	</Card>

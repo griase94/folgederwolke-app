@@ -33,6 +33,8 @@
     detail: TransactionDetail;
     expenseKategorien: KategorieRow[];
     projects: ProjectRow[];
+    /** Per-field errors from a failed ?/save (keyed by field name). */
+    errors?: Record<string, string[]>;
     /** Bubbled so the page can flip the shell's `dirty` flag. */
     onDirty?: () => void;
     /** Bubbled so the page can feed the shell's `saving` flag during a ?/save. */
@@ -45,10 +47,15 @@
     detail,
     expenseKategorien,
     projects,
+    errors = {},
     onDirty,
     onSaving,
     onSaved,
   }: Props = $props();
+
+  function err(field: string): string | null {
+    return errors[field]?.[0] ?? null;
+  }
 
   // svelte-ignore state_referenced_locally
   let betragCents = $state(String(detail.betragCents));
@@ -112,8 +119,12 @@
       required
       maxlength={500}
       value={detail.bezeichnung}
+      aria-invalid={err("bezeichnung") ? true : undefined}
       class="border-border bg-background focus:ring-primary rounded-md border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
     />
+    {#if err("bezeichnung")}
+      <p class="text-destructive text-xs">{err("bezeichnung")}</p>
+    {/if}
   </div>
 
   <div class="flex flex-col gap-1.5">
@@ -137,10 +148,14 @@
             parseFloat((e.currentTarget as HTMLInputElement).value) || 0;
           betragCents = String(Math.round(v * 100));
         }}
+        aria-invalid={err("betragCents") ? true : undefined}
         class="border-border bg-background focus:ring-primary w-full rounded-md border py-2 pr-3 pl-8 text-sm focus:ring-2 focus:outline-none"
       />
       <input type="hidden" name="betragCents" value={betragCents} />
     </div>
+    {#if err("betragCents")}
+      <p class="text-destructive text-xs">{err("betragCents")}</p>
+    {/if}
   </div>
 
   <div class="flex flex-col gap-1.5">
@@ -156,6 +171,9 @@
         markDirty();
       }}
     />
+    {#if err("rechnungsdatum")}
+      <p class="text-destructive text-xs">{err("rechnungsdatum")}</p>
+    {/if}
   </div>
 
   <!-- KategoriePicker owns its single <label> — no outer wrapper label (that
@@ -177,6 +195,9 @@
     <div class="mt-1">
       <SphereBadge sphere={kategorieSphere} />
     </div>
+    {#if err("kategorieNameSnapshot")}
+      <p class="text-destructive text-xs">{err("kategorieNameSnapshot")}</p>
+    {/if}
   </div>
 
   {#if projects.length > 0}
