@@ -21,8 +21,9 @@
  *   kategorien exist.
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import {
   createExpense,
@@ -31,6 +32,9 @@ import {
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { users } from "$lib/server/db/schema/users.js";
 import { files } from "$lib/server/db/schema/files.js";
+import { expenses } from "$lib/server/db/schema/expenses.js";
+import { donations } from "$lib/server/db/schema/donations.js";
+import postgres from "postgres";
 
 const DATABASE_URL = process.env["DATABASE_URL"] ?? "";
 const DIRECT_DATABASE_URL = process.env["DIRECT_DATABASE_URL"] ?? "";
@@ -73,6 +77,31 @@ describe.skipIf(!dbConfigured)("migration 0031 constraints", () => {
       .returning({ id: files.id });
     if (!f) throw new Error("failed to seed beleg file");
     BELEG_FILE_ID = f.id;
+  });
+
+  afterAll(async () => {
+    if (!ACTOR) return;
+    const db = getDb();
+    // 1. Delete expenses (beleg_file_id ON DELETE RESTRICT refs BELEG_FILE_ID)
+    await db.delete(expenses).where(eq(expenses.createdByUserId, ACTOR));
+    // 2. Delete donations (created_by_user_id ON DELETE SET NULL — clean up explicitly)
+    await db.delete(donations).where(eq(donations.createdByUserId, ACTOR));
+    // 3. Delete audit_log via superuser (app_runtime cannot DELETE, ADR-0004)
+    const admin = postgres(process.env["DIRECT_DATABASE_URL"] ?? "", {
+      prepare: false,
+      max: 1,
+    });
+    try {
+      await admin`DELETE FROM audit_log WHERE actor_user_id = ${ACTOR}`;
+    } finally {
+      await admin.end();
+    }
+    // 4. Delete file (uploaded_by_user_id ON DELETE RESTRICT — delete before user)
+    if (BELEG_FILE_ID) {
+      await db.delete(files).where(eq(files.id, BELEG_FILE_ID));
+    }
+    // 5. Delete user (now no FK refs remain)
+    await db.delete(users).where(eq(users.id, ACTOR));
   });
 
   // ----- Structural -------------------------------------------------------
