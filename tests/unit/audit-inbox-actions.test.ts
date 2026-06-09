@@ -69,10 +69,11 @@ interface ExpenseRow {
   externEmail: string | null;
   kategorieId: string | null;
   kategorieNameSnapshot: string | null;
+  sphereSnapshot: string | null;
 }
 
-// P1-T9: the seeded per-kind "Unkategorisiert (Import)" sentinel kategorie
-// (Task 5) that approveSubmission resolves to fill a non-null kategorie_id.
+// The seeded expense kategorie that approveSubmission resolves by name to
+// stamp kategorie_id / kategorie_name_snapshot / sphere_snapshot.
 interface KategorieRow {
   id: string;
   kind: "expense" | "income";
@@ -89,11 +90,9 @@ interface MemberRow {
 const submissionsStore = new Map<string, SubmissionRow>();
 const expensesStore = new Map<string, ExpenseRow>();
 const membersStore = new Map<string, MemberRow>();
-// P1-T9: kategorien store, seeded each test with the expense Import sentinel
-// so approveSubmission's sentinel resolution finds a row.
+// kategorien store, seeded each test with one expense kategorie so
+// approveSubmission's name-authoritative resolution finds a row.
 const kategorienStore = new Map<string, KategorieRow>();
-const IMPORT_SENTINEL_NAME = "Unkategorisiert (Import)";
-let importSentinelId = "";
 // festBis = null → no festschreibung.
 let festBisOverride: number | null = null;
 
@@ -154,6 +153,7 @@ function makeExpense(overrides: Partial<ExpenseRow> = {}): ExpenseRow {
     externEmail: null,
     kategorieId: null,
     kategorieNameSnapshot: null,
+    sphereSnapshot: null,
     ...overrides,
   };
   expensesStore.set(id, row);
@@ -213,10 +213,10 @@ function makeDbFake() {
               : true,
           );
         } else if (ctx.table === "kategorien") {
-          // P1-T9: the sentinel resolution does
-          // where(and(eq(kind,…), eq(name,…))). The `and(...)` mock collapses
-          // to its first arg (the kind eq), so we filter by kind only — the
-          // store holds a single expense sentinel, so this is unambiguous.
+          // resolveKategorieByName does where(and(eq(kind,…), eq(name,…))).
+          // The `and(...)` mock collapses to its first arg (the kind eq), so
+          // we filter by kind only — the store holds a single expense
+          // kategorie, so this is unambiguous.
           rows = [...kategorienStore.values()].filter((r) =>
             ctx.whereField
               ? r[ctx.whereField as keyof KategorieRow] === ctx.whereValue
@@ -282,11 +282,14 @@ function makeDbFake() {
               (ctx.values.bezahltVonMemberId as string | null) ?? null,
             externEmail: (ctx.values.externEmail as string | null) ?? null,
             externName: (ctx.values.externName as string | null) ?? null,
-            // P1-T9: thread the kategorie fields the INSERT sets so the test
-            // can assert a non-null kategorie_id on the stored expense.
+            // Thread the kategorie + sphere fields the INSERT sets so the
+            // tests can assert the chosen Kategorie + derived sphere on the
+            // stored expense.
             kategorieId: (ctx.values.kategorieId as string | null) ?? null,
             kategorieNameSnapshot:
               (ctx.values.kategorieNameSnapshot as string | null) ?? null,
+            sphereSnapshot:
+              (ctx.values.sphereSnapshot as string | null) ?? null,
           });
           return Promise.resolve([{ id: row.id, businessId: row.businessId }]);
         }
@@ -438,7 +441,7 @@ vi.mock("$lib/server/db/schema/zahlungsarten.js", () => ({
   zahlungsarten: { _kind: "zahlungsarten" },
 }));
 
-// P1-T9: approveSubmission resolves the expense Import sentinel via
+// approveSubmission resolves the chosen Kategorie via
 // select().from(kategorien).where(and(eq(kind), eq(name))). Mock the schema
 // shape so the fake's `from` tags the table correctly.
 vi.mock("$lib/server/db/schema/kategorien.js", () => ({
@@ -497,13 +500,16 @@ beforeEach(() => {
   nextExpenseId = 1;
   uniqueViolationOnNextInsert = false;
 
-  // P1-T9: seed the expense Import sentinel (Task 5 seeds this for real).
-  importSentinelId = "kat-import-expense";
-  kategorienStore.set(importSentinelId, {
-    id: importSentinelId,
+  // The gate resolves the CHOSEN Kategorie by name. The drizzle fake's
+  // kategorien branch filters by kind only (the `and(...)` mock drops the
+  // name eq), so keep EXACTLY ONE expense kategorie in the store so
+  // resolveKategorieByName is unambiguous.
+  kategorienStore.clear();
+  kategorienStore.set("kat-buero", {
+    id: "kat-buero",
     kind: "expense",
-    name: IMPORT_SENTINEL_NAME,
-    sphere: "ideeller",
+    name: "Bürobedarf",
+    sphere: "wirtschaftlich",
   });
 });
 
@@ -522,6 +528,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
 
     expect(result.ok).toBe(true);
@@ -547,12 +554,14 @@ describe("approveSubmission — idempotency", () => {
     const first = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
     if (!first.ok) throw new Error("first call failed");
 
     const second = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
 
     expect(second.ok).toBe(true);
@@ -579,6 +588,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
 
     expect(result.ok).toBe(false);
@@ -590,6 +600,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: "does-not-exist",
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -603,6 +614,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
 
     expect(result.ok).toBe(false);
@@ -624,6 +636,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -634,28 +647,59 @@ describe("approveSubmission — idempotency", () => {
     expect(exp.externEmail).toBe("lea@example.com");
   });
 
-  it("sets a non-null kategorie_id (interim Import sentinel)", async () => {
-    // arrange: a pending submission via the existing in-memory helper.
-    const sub = makeSubmission({ businessId: "AUS-2026-009" });
+  it("stamps the chosen Kategorie + derives sphere from it (spec §4.6/§4.5)", async () => {
+    const sub = makeSubmission({ businessId: "AUS-2026-101" });
 
-    // act
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
+
     expect(result.ok).toBe(true);
     if (!result.ok) return;
+    const exp = expensesStore.get(result.expenseId)!;
+    expect(exp.kategorieNameSnapshot).toBe("Bürobedarf");
+    expect(exp.sphereSnapshot).toBe("wirtschaftlich"); // NOT the old hardcoded "ideeller"
 
-    // assert: the approved expense carries the seeded sentinel's id, and the
-    // snapshot is CONSISTENT with the resolved sentinel name (not the old
-    // hardcoded "(Unkategorisiert)" placeholder).
-    const [row] = [...expensesStore.values()].filter(
-      (r) => r.id === result.expenseId,
+    // ApprovalMail carries the chosen kategorie, not the sentinel.
+    const mailEmit = emitMock.mock.calls.find(
+      (c) => c[0] === "auslage.approved",
     );
-    expect(row).toBeDefined();
-    expect(row!.kategorieId).not.toBeNull();
-    expect(row!.kategorieId).toBe(importSentinelId);
-    expect(row!.kategorieNameSnapshot).toBe(IMPORT_SENTINEL_NAME);
+    expect(mailEmit?.[1]).toMatchObject({ kategorie: "Bürobedarf" });
+  });
+
+  it("rejects approval with no Kategorie (400, no expense created)", async () => {
+    const sub = makeSubmission({ businessId: "AUS-2026-102" });
+
+    const result = await approveSubmission({
+      submissionId: sub.id,
+      actorUserId: "admin-1",
+      kategorieName: "  ",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.status).toBe(400);
+    expect(expensesStore.size).toBe(0);
+  });
+
+  it("returns a graceful 400 (not a 500) when the chosen Kategorie no longer exists", async () => {
+    // Simulate a stale/renamed Kategorie: empty the store so the name resolves
+    // to nothing. resolveKategorieByName THROWS; the gate must catch → 400.
+    kategorienStore.clear();
+    const sub = makeSubmission({ businessId: "AUS-2026-103" });
+
+    const result = await approveSubmission({
+      submissionId: sub.id,
+      actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.status).toBe(400);
+    expect(expensesStore.size).toBe(0);
   });
 });
 
@@ -841,8 +885,16 @@ describe("approveSubmission — concurrent race (A1)", () => {
     // throws SQLSTATE 23505 on the second insert (same businessId), and the
     // domain helper catches it, re-reads, and returns the winner's expense.
     const [a, b] = await Promise.all([
-      approveSubmission({ submissionId: sub.id, actorUserId: "admin-1" }),
-      approveSubmission({ submissionId: sub.id, actorUserId: "admin-2" }),
+      approveSubmission({
+        submissionId: sub.id,
+        actorUserId: "admin-1",
+        kategorieName: "Bürobedarf",
+      }),
+      approveSubmission({
+        submissionId: sub.id,
+        actorUserId: "admin-2",
+        kategorieName: "Bürobedarf",
+      }),
     ]);
 
     expect(a.ok).toBe(true);
