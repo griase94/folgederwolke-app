@@ -5,14 +5,14 @@ import { resolve } from "node:path";
 /**
  * Regression guard for the c/o-address change.
  *
- * The invoice footer used to render a hardcoded care-of glyph "℅ {kontaktPerson}"
- * plus a separate contact-phone line. Both were removed: a care-of is now just a
- * normal "c/o …" line of the multi-line VEREIN_ADRESSE (rendered with the rest of
- * the address), and no personal phone number appears on invoices.
+ * The invoice footer used to render a hardcoded care-of glyph "℅ {kontaktPerson}".
+ * That was retired: a care-of is now just a normal "c/o …" line of the multi-line
+ * VEREIN_ADRESSE (rendered with the rest of the address). The `kontaktPerson` field
+ * is gone from the type, so a reference wouldn't even compile — this guards the
+ * template source so the glyph + field can't creep back.
  *
- * This guards the template source so neither can creep back. The retired
- * kontaktPerson/contactPhone fields are also gone from the type, so a reference
- * would not even compile — this is the belt to that suspenders.
+ * (The contact PHONE is unrelated and legitimate again — a configurable
+ * `contactPhone` in the footer contact column — so it is NOT forbidden here.)
  */
 const TEMPLATE_SRC = readFileSync(
   resolve(
