@@ -263,7 +263,7 @@ test.describe("@phase-9 C7-INBOX full — filter chips + inline actions", () => 
 
     await page.goto("/app/inbox?status=Offen");
 
-    // Find our card and click Genehmigen.
+    // Find our card and click the reveal trigger.
     const card = page
       .locator(
         `[data-testid="inbox-card-wrapper"][data-aus-id="${seeded.businessId}"]`,
@@ -271,9 +271,9 @@ test.describe("@phase-9 C7-INBOX full — filter chips + inline actions", () => 
       .first();
     await expect(card).toBeVisible();
 
-    const approveBtn = card.getByTestId("inbox-card-approve");
-    await expect(approveBtn).toBeVisible();
-    await approveBtn.click();
+    await card.getByTestId("inbox-card-approve-start").click();
+    await card.getByLabel("Kategorie").selectOption({ index: 1 });
+    await card.getByTestId("inbox-card-approve").click();
 
     // After the action, the toast appears + invalidateAll re-renders without
     // our card in Offen.
@@ -302,5 +302,21 @@ test.describe("@phase-9 C7-INBOX full — filter chips + inline actions", () => 
     // The audit_log row is still written by the bus handler.
     // We assert the approval-side-effect chain didn't crash.
     expect(mails).toBeInstanceOf(Array);
+  });
+
+  test("@phase-9 detail card approves only after a Kategorie is chosen", async ({
+    page,
+  }) => {
+    const seeded = await seedPendingSubmission("DET");
+    await page.goto(`/app/inbox/${seeded.businessId}`);
+
+    const approve = page.locator('button:has-text("Freigeben")');
+    await expect(approve).toBeDisabled(); // gated until a Kategorie is picked
+
+    await page.getByLabel("Kategorie").selectOption({ index: 1 });
+    await expect(approve).toBeEnabled();
+    await approve.click();
+
+    await expect(page.getByText("Freigegeben")).toBeVisible();
   });
 });

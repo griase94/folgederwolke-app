@@ -9,7 +9,7 @@
  * needed; the guard must short-circuit before they are called.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Hoist mocks before any imports that reference $lib/... paths.
 vi.mock("$lib/server/domain/audit-inbox-actions.js", () => ({
@@ -103,6 +103,46 @@ describe("?/inline-approve — admin role guard", () => {
     const fd = makeFormData({ submissionId: "sub-2" });
     const result = await callAction("inline-approve", fd, "steuerberater");
     expect((result as { status: number }).status).toBe(403);
+    expect(approveSubmission).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: inline-approve kategorieName gate (spec §4.6)
+// ---------------------------------------------------------------------------
+
+describe("?/inline-approve — kategorieName gate", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("inline-approve forwards the chosen kategorieName to approveSubmission", async () => {
+    vi.mocked(approveSubmission).mockResolvedValue({
+      ok: true,
+      created: true,
+      expenseId: "e1",
+      expenseBusinessId: "AUS-2026-200",
+    });
+    const fd = makeFormData({
+      submissionId: "sub-1",
+      kategorieName: "Bürobedarf",
+    });
+
+    await callAction("inline-approve", fd, "admin");
+
+    expect(approveSubmission).toHaveBeenCalledWith({
+      submissionId: "sub-1",
+      actorUserId: "user-1",
+      kategorieName: "Bürobedarf",
+    });
+  });
+
+  it("inline-approve without a kategorieName returns 400 and never calls approveSubmission", async () => {
+    const fd = makeFormData({ submissionId: "sub-1" });
+
+    const result = await callAction("inline-approve", fd, "admin");
+
+    expect((result as { status: number }).status).toBe(400);
     expect(approveSubmission).not.toHaveBeenCalled();
   });
 });

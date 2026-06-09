@@ -23,6 +23,7 @@ import {
   approveSubmission,
   rejectSubmission,
 } from "$lib/server/domain/audit-inbox-actions.js";
+import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
 import type { InboxSubmissionView } from "$lib/domain/inbox.js";
 
 /**
@@ -142,6 +143,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     email: m.email ?? undefined,
   }));
 
+  // Spec §4.6: expense Kategorie options for the inline-approve picker.
+  // Exclude the Import sentinel — treasurer must choose a real Kategorie.
+  const kategorieOptions = (await listKategorieOptions("expense"))
+    .filter((o) => o.name !== "Unkategorisiert (Import)")
+    .map((o) => ({ name: o.name, sphere: o.sphere }));
+
   return {
     submissions,
     members: memberList,
@@ -152,6 +159,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       geprueft: Number(counts?.geprueft ?? 0),
       abgelehnt: Number(counts?.abgelehnt ?? 0),
     },
+    kategorieOptions,
   };
 };
 
@@ -282,7 +290,16 @@ export const actions: Actions = {
       return fail(400, { error: "submissionId fehlt" });
     }
 
-    const result = await approveSubmission({ submissionId, actorUserId });
+    const kategorieName = String(formData.get("kategorieName") ?? "").trim();
+    if (!kategorieName) {
+      return fail(400, { error: "Bitte eine Kategorie wählen" });
+    }
+
+    const result = await approveSubmission({
+      submissionId,
+      actorUserId,
+      kategorieName,
+    });
     if (!result.ok) {
       return fail(result.status, { error: result.error });
     }
