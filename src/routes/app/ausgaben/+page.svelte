@@ -222,11 +222,13 @@
 
 {#snippet bezeichnungCell(row: AusgabenRow)}
   <!-- FIX A (review): primary discoverable link so desktop Julia can open a booking. -->
+  <!-- eslint-disable svelte/no-navigation-without-resolve -->
   <a
     href={`/app/ausgaben/${row.id}`}
     class="font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
     >{row.bezeichnung}</a
   >
+  <!-- eslint-enable svelte/no-navigation-without-resolve -->
   {#if row.bezahltVonDisplay}
     <span class="mt-0.5 block text-xs text-muted-foreground"
       >{row.bezahltVonDisplay}</span
@@ -262,12 +264,14 @@
 
 {#snippet chevronCell(row: AusgabenRow)}
   <!-- FIX A (review): real <a> so chevron is keyboard-focusable on desktop. -->
+  <!-- eslint-disable svelte/no-navigation-without-resolve -->
   <a
     href={`/app/ausgaben/${row.id}`}
     aria-label="Detail öffnen"
     class="inline-flex h-11 min-h-11 w-11 min-w-11 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
     ><span aria-hidden="true">›</span></a
   >
+  <!-- eslint-enable svelte/no-navigation-without-resolve -->
 {/snippet}
 
 <!-- ── Bulk action bar (rendered by the scaffold above the list) ───────────── -->

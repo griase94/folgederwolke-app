@@ -51,6 +51,7 @@
 
 {#snippet bezeichnungCell(row: EinnahmenRow)}
   <!-- FIX A (review): primary discoverable link so desktop Julia can open a booking. -->
+  <!-- eslint-disable svelte/no-navigation-without-resolve -->
   <a
     href={`/app/einnahmen/${row.id}`}
     class="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
@@ -59,6 +60,7 @@
       rechnungBusinessId={row.rechnungBusinessId}
     /></a
   >
+  <!-- eslint-enable svelte/no-navigation-without-resolve -->
 {/snippet}
 
 {#snippet kategorieCell(row: EinnahmenRow)}

@@ -65,7 +65,6 @@
 
   // FIX D (review): mirror AusgabeDetailFields/EinnahmeDetailFields — reactive
   // $derived replaces the fragile document.querySelector betragCents update.
-  // svelte-ignore state_referenced_locally
   let betragEur = $state(untrack(() => detail.betragCents / 100));
   const betragCentsOut = $derived(
     Math.round(parseFloat(String(betragEur || "0")) * 100),
