@@ -28,7 +28,11 @@ describe.skipIf(!dbConfigured)(
   "loadDashboardKpis perf on 1k-row fixture",
   () => {
     let sql: ReturnType<typeof postgres>;
-    const PERF_YEAR = 2024;
+    // Must NOT overlap with corpus years (2024/2025/2026 with 9xx-prefixed
+    // business-ids). Use a far-future year so the afterAll cleanup pattern
+    // `LIKE 'X-YYYY-9%'` never deletes corpus rows (E-2024-901/902,
+    // A-2024-901/902 etc.) that other tests depend on.
+    const PERF_YEAR = 2041;
 
     beforeAll(async () => {
       // Seed 1000 income + 1000 expense rows in the test DB. Use the direct
