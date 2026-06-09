@@ -171,7 +171,7 @@ test.describe("@phase-9 B-1 InvoiceForm effect loop fix", () => {
     await expect(page).toHaveURL(/\/app\/rechnungen\/new/);
   });
 
-  test("dirty /ausgaben/neu form prompts on sidebar navigate-away", async ({
+  test("dirty /ausgaben/neu form prompts on navigate-away (backdrop close)", async ({
     page,
   }) => {
     await signIn(page);
@@ -187,10 +187,14 @@ test.describe("@phase-9 B-1 InvoiceForm effect loop fix", () => {
       await d.dismiss();
     });
 
-    await page
-      .getByRole("link", { name: /übersicht/i })
-      .first()
-      .click();
+    // /app/ausgaben/neu renders an EntryFormShell with a full-viewport backdrop
+    // (fixed inset-0 z-40) and a dialog shell on top (z-50). The dialog element
+    // captures keyboard events; pressing Escape fires onClose() → goto('/app/ausgaben')
+    // → beforeNavigate intercepts and shows window.confirm (UX-02). This exercises
+    // the same dirty-guard codepath as a user pressing Escape to dismiss the sheet.
+    // Focus the dialog first so the keydown handler is reached.
+    await page.locator('[data-slot="entry-form-shell"]').focus();
+    await page.keyboard.press("Escape");
 
     // Wait for the dialog to fire and be dismissed (beforeNavigate guard is
     // synchronous but Playwright dialog handling is async).
