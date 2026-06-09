@@ -439,5 +439,15 @@ export function assertProductionEnvSafe(): void {
         "MAIL_FROM is required in production — it is the From-address of every outgoing email. Set it via the Vercel project env.",
       );
     }
+    // ADMIN_EMAILS is the SOLE admin gate (src/lib/server/auth/allowlist.ts).
+    // Empty in production = a silent total admin lockout: every authenticated
+    // route 403s and nobody can administer the Verein. A fresh white-label
+    // deploy that forgot to set it would look "up" (public form works) while
+    // being unusable. Fail loudly at boot instead.
+    if ((env.ADMIN_EMAILS || process.env["ADMIN_EMAILS"] || "").trim() === "") {
+      throw new Error(
+        "ADMIN_EMAILS is required in production — it is the only admin allowlist; empty locks every admin out of the app. Set it (comma-separated emails) via the Vercel project env.",
+      );
+    }
   }
 }
