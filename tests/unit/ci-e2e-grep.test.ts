@@ -49,6 +49,9 @@ describe("CI e2e grep coverage (F3)", () => {
     expect(grepTags).toContain("@phase-0");
     expect(grepTags).toContain("@phase-1");
     expect(grepTags).toContain("@phase-2");
+    // Bare @phase-3 (admin-shell/mitglieder/member-detail/beitraege-matrix) is
+    // distinct from @phase-3-routing — main's gate, restored after the resync.
+    expect(grepTags).toContain("@phase-3");
     // Three-tab phases added in FIX-1:
     expect(grepTags).toContain("@phase-3-routing");
     expect(grepTags).toContain("@phase-4-ausgaben");
@@ -77,10 +80,15 @@ describe("CI e2e grep coverage (F3)", () => {
   // surface). Three-tab specs added in FIX-1 so a future grep drop is caught.
   // smoke-authed-routes is here because it is the only always-on check that
   // every authenticated /app section renders without a 5xx — the net for the
-  // route-crash class. Add others here as new critical-path entry points ship.
+  // route-crash class. Bare @phase-3 specs (main's coverage, restored after the
+  // resync). Add others here as new critical-path entry points ship.
   const criticalSpecs = [
     "pwa.spec.ts",
     "smoke-authed-routes.spec.ts",
+    "admin-shell.spec.ts",
+    "mitglieder.spec.ts",
+    "member-detail.spec.ts",
+    "beitraege-matrix-flows.spec.ts",
     "phase-3-routing.spec.ts",
     "phase-4-ausgaben.spec.ts",
     "phase-5-einnahmen.spec.ts",

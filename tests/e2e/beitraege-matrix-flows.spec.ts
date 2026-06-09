@@ -59,6 +59,31 @@ async function seed(): Promise<void> {
     process.env["DIRECT_DATABASE_URL"] ?? process.env["DATABASE_URL"] ?? "";
   const sql = postgres(url, { prepare: false, max: 1 });
   try {
+    // This spec wants a clean two-member slate, so it does a blanket
+    // `DELETE FROM members`. But the globalSetup corpus seed
+    // (scripts/seed-fixtures.ts) inserts member-paid `expenses` and
+    // `auslagen_submissions` (bezahlt_von_kind='member') referencing fixture
+    // members. Both tables FK member_id with ON DELETE SET NULL, and both carry
+    // a bezahlt_von discriminated-union CHECK that requires member_id NOT NULL
+    // when kind='member'. Deleting the members would SET NULL those ids and
+    // violate the union constraint (expenses_bezahlt_von_union_ck /
+    // auslagen_submissions_bezahlt_von_union_ck). Repoint any member-paid row
+    // to 'verein' FIRST — this satisfies the union (verein needs member_id NULL
+    // + all extern_* NULL) and removes the FK dependency so the delete is safe.
+    await sql`
+      UPDATE expenses
+         SET bezahlt_von_kind = 'verein',
+             bezahlt_von_member_id = NULL,
+             extern_name = NULL, extern_iban = NULL, extern_email = NULL
+       WHERE bezahlt_von_member_id IS NOT NULL
+    `;
+    await sql`
+      UPDATE auslagen_submissions
+         SET bezahlt_von_kind = 'verein',
+             bezahlt_von_member_id = NULL,
+             extern_name = NULL, extern_iban = NULL, extern_email = NULL
+       WHERE bezahlt_von_member_id IS NOT NULL
+    `;
     await sql`DELETE FROM member_beitrags`;
     await sql`DELETE FROM members`;
     await sql`

@@ -141,10 +141,12 @@ jobs:
 
       - name: E2E tests (cumulative phase-0…phase-9 + smoke)
         # Cumulative grep: each phase adds its tag — @phase-0|@phase-1|...|@phase-N
+        # Bare @phase-3 (admin-shell/mitglieder/member-detail/beitraege-matrix) is
+        # distinct from @phase-3-routing (the three-tab flat-list specs) — both kept.
         # Phases 3-6 and 8 added: three-tab routing/ausgaben/einnahmen/spenden + export+a11y suites.
         # @smoke = cross-cutting always-on checks (smoke-authed-routes.spec.ts:
         # every primary /app section renders < 500 for an admin).
-        run: pnpm test:e2e --grep '@phase-0|@phase-1|@phase-2|@phase-3-routing|@phase-4-ausgaben|@phase-5-einnahmen|@phase-6-spenden|@phase-8|@phase-9|@smoke'
+        run: pnpm test:e2e --grep '@phase-0|@phase-1|@phase-2|@phase-3|@phase-3-routing|@phase-4-ausgaben|@phase-5-einnahmen|@phase-6-spenden|@phase-8|@phase-9|@smoke'
 
   backup-restore-smoke:
     name: backup-restore-smoke
