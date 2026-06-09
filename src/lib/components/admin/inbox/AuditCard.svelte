@@ -211,6 +211,7 @@
 					<!-- sphere is re-derived server-side by approveSubmission; no client snapshot needed -->
 					<KategoriePicker
 						id="approve-kategorie"
+						name="kategorieName"
 						options={kategorieOptions}
 						value={kategorieName}
 						onChange={(n) => (kategorieName = n)}

@@ -169,8 +169,8 @@
 	</div>
 
 	<!-- Kategorie (+ derived Sphäre via the shared picker). The submitted field is
-	     `kategorieNameSnapshot` — the name the server's incomeSchema reads (the
-	     picker's default `name` is `kategorieName`, which the schema ignores). -->
+	     `kategorieNameSnapshot` — the name the server's incomeSchema reads (and the
+	     picker's default). Kept explicit here for parity with the other tx forms. -->
 	<div class="flex flex-col gap-1.5">
 		<KategoriePicker
 			name="kategorieNameSnapshot"

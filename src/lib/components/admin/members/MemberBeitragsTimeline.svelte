@@ -259,6 +259,7 @@
 								memberName={displayName}
 								betragCents={b.betragCents}
 								actionBase="/app/mitglieder"
+								allowExempt={false}
 							>
 								{#snippet trigger({ props })}
 									<button

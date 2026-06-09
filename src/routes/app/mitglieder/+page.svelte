@@ -313,6 +313,8 @@
 			query={searchQuery}
 			selectable={selectMode}
 			{selectedIds}
+			{bulkYear}
+			satzByYear={data.satzByYear}
 			onToggleSelect={toggleSelect}
 			onEdit={openEdit}
 			onAdd={() => (addOpen = true)}

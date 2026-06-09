@@ -43,6 +43,12 @@
 		onSphere: (sphere: Sphere) => void;
 		/** Optional: a label/field id so the form can wire <label for>. */
 		id?: string;
+		/**
+		 * The submitted form-field name. Defaults to `kategorieNameSnapshot` —
+		 * the field EVERY transaction create/save schema reads (P2-04). The inbox
+		 * approve forms read a plain `kategorieName` instead, so they pass
+		 * `name="kategorieName"` explicitly.
+		 */
 		name?: string;
 		required?: boolean;
 	}
@@ -53,7 +59,7 @@
 		onChange,
 		onSphere,
 		id = 'kategorie',
-		name = 'kategorieName',
+		name = 'kategorieNameSnapshot',
 		required = false,
 	}: Props = $props();
 

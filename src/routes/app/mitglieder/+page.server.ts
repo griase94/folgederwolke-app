@@ -17,6 +17,7 @@ import { and, inArray } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
+import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
 import {
   beitragYearsRange,
   memberBeitragsTotals,
@@ -79,6 +80,23 @@ export const load: PageServerLoad = async ({ url, depends }) => {
       );
   }
 
+  // Per-year Beitragssatz (configured fee) for the window. Used to seed the
+  // mark-paid popover's amount when a member has NO member_beitrags row yet for
+  // an open year — otherwise the confirm heading shows "0,00 €" while the server
+  // would actually book the configured Satz (markpaid-popover-zero-betrag).
+  let satzRows: { year: number; cents: bigint }[] = [];
+  if (years.length > 0) {
+    satzRows = await db
+      .select({
+        year: beitragssatzByYear.year,
+        cents: beitragssatzByYear.cents,
+      })
+      .from(beitragssatzByYear)
+      .where(inArray(beitragssatzByYear.year, years));
+  }
+  const satzByYear: Record<number, number> = {};
+  for (const s of satzRows) satzByYear[s.year] = Number(s.cents);
+
   // Build a lookup map: memberId → year → beitrag row
   const beitragMap: Record<string, Record<number, (typeof beitrags)[0]>> = {};
   for (const b of beitrags) {
@@ -107,6 +125,7 @@ export const load: PageServerLoad = async ({ url, depends }) => {
     filter,
     years,
     totalsByYear,
+    satzByYear,
     matrix,
     members: allMembers.map((m) => ({
       id: m.id,

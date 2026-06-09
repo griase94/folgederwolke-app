@@ -22,6 +22,7 @@
 import { error, fail } from "@sveltejs/kit";
 import { z } from "zod";
 import { isoCalendarDate } from "$lib/domain/date.js";
+import { errorsFromIssues } from "$lib/domain/zod-errors.js";
 import type { Actions, PageServerLoad } from "./$types.js";
 import {
   getTransactionDetail,
@@ -80,18 +81,6 @@ const saveIncomeSchema = z.object({
   projectId: z.string().uuid().nullable().optional(),
   kommentar: z.string().max(2000).nullable().optional(),
 });
-
-/** Map Zod issues → per-field error messages (first message wins per field). */
-function errorsFromIssues(
-  issues: readonly { path: readonly PropertyKey[]; message: string }[],
-): Record<string, string[]> {
-  const errors: Record<string, string[]> = {};
-  for (const issue of issues) {
-    const key = String(issue.path[0] ?? "_");
-    if (!errors[key]) errors[key] = [issue.message];
-  }
-  return errors;
-}
 
 // ---------------------------------------------------------------------------
 // actions — ONLY `save` (no mark-paid, no duplicate).

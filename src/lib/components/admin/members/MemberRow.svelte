@@ -14,6 +14,8 @@
 		onEdit,
 		selectable = false,
 		selected = false,
+		bulkYear = null,
+		satzByYear = {},
 		onToggleSelect
 	}: {
 		member: MemberView;
@@ -22,6 +24,16 @@
 		/** Bulk-select mode — renders a leading checkbox + hides the kebab. */
 		selectable?: boolean;
 		selected?: boolean;
+		/**
+		 * The year the bulk "Als bezahlt" targets. The checkbox is enabled only
+		 * for members the bulk action can sensibly touch in THIS year — must match
+		 * +page.svelte's `selectableMembers` gate (open, non-exempt, active) so a
+		 * row that's already paid (or exempt/ausgetreten) for the year can't be
+		 * ticked and re-paid.
+		 */
+		bulkYear?: number | null;
+		/** Per-year configured Beitragssatz (cents) — seeds the mark-paid popover. */
+		satzByYear?: Record<number, number>;
 		onToggleSelect?: (id: string, checked: boolean) => void;
 	} = $props();
 
@@ -73,7 +85,10 @@
 	function openMarkPaid(year: number) {
 		const b = member.beitrags[year];
 		markPaidYear = year;
-		markPaidBetragCents = b?.betragCents ?? 0;
+		// Seed with the recorded amount if a row exists, else the configured
+		// Beitragssatz for the year — so the confirm heading matches the amount the
+		// server books (never a misleading "0,00 €" for a row that doesn't exist yet).
+		markPaidBetragCents = b?.betragCents ?? satzByYear[year] ?? 0;
 		// Overdue isn't tracked per-year on MemberView; the matrix derives it from
 		// dates. The popover only uses it to surface the "Erinnerung" shortcut, so
 		// treating list rows as non-overdue here is safe.
@@ -146,9 +161,18 @@
 	data-member-id={member.id}
 >
 	<!-- Bulk-select checkbox (only in select mode). Disabled for members the
-	     bulk "Als bezahlt" can't sensibly touch: befreite or ausgetretene. -->
+	     bulk "Als bezahlt" can't sensibly touch in the bulk year: befreite,
+	     ausgetretene, OR already-not-open (paid/waived) for that year — mirrors
+	     +page.svelte's selectableMembers gate so an already-paid member can't be
+	     ticked and re-paid. -->
 	{#if selectable}
-		{@const selectDisabled = member.beitragExempt || !!member.austrittsDatum}
+		{@const bulkBeitrag = bulkYear !== null ? member.beitrags[bulkYear] : null}
+		{@const bulkStatus = bulkBeitrag ? beitragStatusFor(bulkBeitrag) : 'open'}
+		{@const selectDisabled =
+			bulkYear === null ||
+			member.beitragExempt ||
+			!!member.austrittsDatum ||
+			bulkStatus !== 'open'}
 		<label
 			class="flex shrink-0 items-center {selectDisabled ? 'opacity-40' : ''}"
 			aria-label="{member.vorname} {member.nachname} auswählen"
@@ -393,6 +417,7 @@
 				memberName="{member.vorname} {member.nachname}"
 				betragCents={markPaidBetragCents}
 				isOverdue={markPaidOverdue}
+				allowExempt={false}
 			/>
 		{/key}
 	{/if}

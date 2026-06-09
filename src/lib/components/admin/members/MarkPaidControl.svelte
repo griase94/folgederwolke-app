@@ -36,6 +36,7 @@
 		betragCents,
 		isOverdue = false,
 		isLocked = false,
+		allowExempt = true,
 		open = $bindable(false),
 		anchor = null,
 		actionBase = '',
@@ -48,6 +49,15 @@
 		betragCents: number;
 		isOverdue?: boolean;
 		isLocked?: boolean;
+		/**
+		 * Forwarded to MarkPaidPopover to show/hide the "Befreien" affordance.
+		 * Default true. The list (MemberRow), mobile card (MemberCardMobile) and
+		 * detail timeline (MemberBeitragsTimeline) pass `false` because they don't
+		 * reflect per-year `member_beitrags.isExempt` — exempting there would give
+		 * no visible feedback and keep offering "Bezahlt". Per-year Befreien stays
+		 * matrix-only (the matrix renders MarkPaidPopover directly with the default).
+		 */
+		allowExempt?: boolean;
 		/**
 		 * Route prefix for the form-action POSTs. Defaults to '' (the current
 		 * route). The member DETAIL route only implements `mark-beitrag-paid` +
@@ -221,6 +231,7 @@
 		{betragCents}
 		{isOverdue}
 		{isLocked}
+		{allowExempt}
 		{submitting}
 		onPaid={handlePaid}
 		onExempt={handleExempt}

@@ -14,28 +14,40 @@
 export function parseEuroToCents(input: string): bigint {
   const trimmed = input.trim();
   if (!trimmed) throw new Error("parseEuroToCents: empty input");
-  // Disambiguate the separators (de-DE primary, English fallback):
-  //   - both `.` and `,` present → `.` is a thousands sep, `,` is the decimal
-  //     ("1.234,56" → 1234.56).
+  // Strip the sign FIRST so the separator heuristics below operate on the bare
+  // digit/separator string (matters for the dot-only thousands-grouping regex,
+  // which must not see a leading "-").
+  const negative = trimmed.startsWith("-");
+  let normalized = negative ? trimmed.slice(1) : trimmed;
+  // Disambiguate the separators (de-DE primary, English fallback). This MUST
+  // stay byte-for-byte equivalent to the client parser `parseBetragCents` in
+  // `$lib/client/parse-betrag.ts` so the same input never parses 10.000× apart
+  // (one parser, one set of de-DE rules — see money.test.ts cross-checks):
+  //   - both `.` and `,` present → the LAST separator is the decimal one
+  //     ("1.234,56" → German → 1234.56; "1,234.56" → English → 1234.56).
   //   - only `,` present → `,` is the decimal ("12,50" → 12.50).
-  //   - only `.` present → ambiguous. A single dot followed by exactly 1–2
-  //     digits is the decimal point (English fallback "1234.56", "12,5"-typo
-  //     "12.5"). Anything else — multiple dots, or a single dot with a 3-digit
-  //     group like "1.234" — is German thousands grouping and the dots are
-  //     stripped ("1.234" → 1234, "1.234.567" → 1234567).
-  let normalized = trimmed;
+  //   - only `.` present → the dots are thousands separators ONLY when the
+  //     whole string matches /^\d{1,3}(\.\d{3})+$/ (1–3 digits then one or more
+  //     ".ddd" groups, e.g. "1.234" → 1234, "1.234.567" → 1234567). Otherwise
+  //     the dot is a decimal point ("12.5" → 12.5, "1234.56" → 1234.56, and a
+  //     malformed "1.2345"/"1.234.56" falls through to the digit-shape guard
+  //     below and throws).
   if (normalized.includes(",") && normalized.includes(".")) {
-    normalized = normalized.replace(/\./g, "").replace(",", ".");
+    const lastComma = normalized.lastIndexOf(",");
+    const lastDot = normalized.lastIndexOf(".");
+    if (lastComma > lastDot) {
+      normalized = normalized.replace(/\./g, "").replace(",", ".");
+    } else {
+      normalized = normalized.replace(/,/g, "");
+    }
   } else if (normalized.includes(",")) {
     normalized = normalized.replace(",", ".");
   } else if (normalized.includes(".")) {
-    const dotCount = (normalized.match(/\./g) ?? []).length;
-    const trailing = normalized.length - normalized.lastIndexOf(".") - 1;
-    const dotIsDecimal = dotCount === 1 && (trailing === 1 || trailing === 2);
-    if (!dotIsDecimal) normalized = normalized.replace(/\./g, "");
+    if (/^\d{1,3}(\.\d{3})+$/.test(normalized)) {
+      normalized = normalized.replace(/\./g, "");
+    }
+    // else: dot is a decimal separator (English style) — already JS-friendly.
   }
-  const negative = normalized.startsWith("-");
-  if (negative) normalized = normalized.slice(1);
   const parts = normalized.split(".");
   if (parts.length > 2) {
     throw new Error(`parseEuroToCents: invalid number ${input}`);

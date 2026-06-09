@@ -43,6 +43,7 @@
   import * as Sheet from "$lib/components/ui/sheet/index.js";
   import { Combobox } from "$lib/components/ui/combobox/index.js";
   import { MultiselectChip } from "$lib/components/ui/multiselect-chip/index.js";
+  import { parseEuroToCents, formatCentsAsEuro } from "$lib/domain/money.js";
 
   type Option = { value: string; label: string };
   /** Canonical member-option shape (Phase-3 scaffold + Task-6 `listMemberOptions`). */
@@ -157,6 +158,30 @@
     navigate(next);
   }
 
+  // Clone `filterState` AND fold in any in-flight enum overlay, cancelling the
+  // pending debounce. The non-enum mutators (member / amount / boolean / search)
+  // navigate immediately; without this they would clone ONLY the URL-derived
+  // `filterState`, and the later debounced flush would re-clone a now-stale
+  // `filterState` — silently dropping a mid-burst enum toggle. By committing the
+  // overlay into the SAME `next` they navigate with, the enum change rides along
+  // in that single navigation instead of being lost.
+  function cloneWithPendingEnums(): FilterState {
+    const next = clone(filterState);
+    if (pendingEnums) {
+      if (enumNavTimer) {
+        clearTimeout(enumNavTimer);
+        enumNavTimer = null;
+      }
+      next.enums = { ...next.enums };
+      for (const [k, vals] of Object.entries(pendingEnums)) {
+        if (vals.length) next.enums[k] = vals;
+        else delete next.enums[k];
+      }
+      pendingEnums = null;
+    }
+    return next;
+  }
+
   function setEnum(key: string, values: string[]) {
     // Seed the overlay from the current effective state so concurrent keys keep
     // their pending values, then stage this key's new selection.
@@ -177,14 +202,14 @@
   }
 
   function setMember(key: string, id: string | undefined) {
-    const next = clone(filterState);
+    const next = cloneWithPendingEnums();
     if (id) next.members[key] = id;
     else delete next.members[key];
     navigate(next);
   }
 
   function setBoolean(key: string, on: boolean) {
-    const next = clone(filterState);
+    const next = cloneWithPendingEnums();
     if (on) next.booleans[key] = true;
     else delete next.booleans[key];
     navigate(next);
@@ -195,19 +220,23 @@
   // The inputs are EUROS, so we parse de-DE-tolerant (accept the German comma
   // decimal) and convert to cents; the chip + input value convert cents → euros.
 
-  /** Parse a de-DE euros string → integer cents (or undefined for empty/invalid). */
+  /**
+   * Parse a de-DE euros string → integer cents (or undefined for empty/invalid).
+   * Delegates to the shared `parseEuroToCents` (the ONE de-DE parser, aligned
+   * with the client `parseBetragCents`) so the filter bar can't drift from the
+   * separator rules used everywhere else. `parseEuroToCents` throws on
+   * empty/malformed and returns a bigint that may be negative; we map a throw →
+   * undefined and clamp negatives away (a negative amount filter is meaningless).
+   */
   function eurosToCents(raw: string): number | undefined {
-    const trimmed = raw.trim();
-    if (trimmed === "") return undefined;
-    // Accept "12,50" (de-DE) and "12.50": strip thousands separators, normalize
-    // the decimal comma to a dot, then parse.
-    const normalized = trimmed
-      .replace(/\s/g, "")
-      .replace(/\.(?=\d{3}(\D|$))/g, "") // drop "." used as a thousands separator
-      .replace(",", ".");
-    const euros = Number(normalized);
-    if (!Number.isFinite(euros) || euros < 0) return undefined;
-    return Math.round(euros * 100);
+    if (raw.trim() === "") return undefined;
+    try {
+      const cents = parseEuroToCents(raw);
+      if (cents < 0n) return undefined;
+      return Number(cents);
+    } catch {
+      return undefined;
+    }
   }
 
   /** Format integer cents → a de-DE euros input value (e.g. 1250 → "12,5"). */
@@ -218,14 +247,11 @@
 
   /** Format integer cents → a de-DE currency chip label (e.g. 1250 → "12,50 €"). */
   function centsToChipLabel(cents: number): string {
-    return (cents / 100).toLocaleString("de-DE", {
-      style: "currency",
-      currency: "EUR",
-    });
+    return formatCentsAsEuro(BigInt(cents));
   }
 
   function setAmount(field: "betragMin" | "betragMax", raw: string) {
-    const next = clone(filterState);
+    const next = cloneWithPendingEnums();
     const cents = eurosToCents(raw);
     if (cents != null) next.amount[field] = cents;
     else delete next.amount[field];
@@ -233,7 +259,7 @@
   }
 
   function setSearch(raw: string) {
-    const next = clone(filterState);
+    const next = cloneWithPendingEnums();
     const trimmed = raw.trim();
     if (trimmed) next.search = trimmed.slice(0, 200);
     else delete next.search;

@@ -14,6 +14,8 @@
 		query = '',
 		selectable = false,
 		selectedIds,
+		bulkYear = null,
+		satzByYear = {},
 		onToggleSelect,
 		onEdit,
 		onAdd,
@@ -28,6 +30,10 @@
 		selectable?: boolean;
 		/** Set of selected member ids (reactive). */
 		selectedIds?: ReadonlySet<string>;
+		/** The year the bulk "Als bezahlt" targets — gates each row's checkbox. */
+		bulkYear?: number | null;
+		/** Per-year configured Beitragssatz (cents) — seeds the mark-paid popover. */
+		satzByYear?: Record<number, number>;
 		onToggleSelect?: (id: string, checked: boolean) => void;
 		onEdit: (m: MemberView) => void;
 		/** Optional CTA — when provided the empty state renders an "anlegen" button. */
@@ -81,7 +87,7 @@
 	>
 		{#each members as member (member.id)}
 			<div role="listitem">
-				<MemberCardMobile {member} {years} />
+				<MemberCardMobile {member} {years} {satzByYear} />
 			</div>
 		{/each}
 	</div>
@@ -101,6 +107,8 @@
 					{onEdit}
 					{selectable}
 					selected={selectedIds?.has(member.id) ?? false}
+					{bulkYear}
+					{satzByYear}
 					{onToggleSelect}
 				/>
 			</div>

@@ -29,6 +29,7 @@
 import { fail, redirect } from "@sveltejs/kit";
 import { z } from "zod";
 import { isoCalendarDate } from "$lib/domain/date.js";
+import { errorsFromIssues } from "$lib/domain/zod-errors.js";
 import type { Actions, PageServerLoad } from "./$types.js";
 import {
   createExpense,
@@ -302,18 +303,6 @@ function valuesFromForm(data: FormData): AusgabeFormValues {
     keinBeleg: str("keinBeleg") === "true",
     begruendung: str("begruendung"),
   };
-}
-
-/** Map Zod issues → per-field error messages (first message wins per field). */
-function errorsFromIssues(
-  issues: readonly { path: readonly PropertyKey[]; message: string }[],
-): Record<string, string[]> {
-  const errors: Record<string, string[]> = {};
-  for (const issue of issues) {
-    const key = String(issue.path[0] ?? "_");
-    if (!errors[key]) errors[key] = [issue.message];
-  }
-  return errors;
 }
 
 // ---------------------------------------------------------------------------

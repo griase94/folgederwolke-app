@@ -21,9 +21,12 @@
 	let {
 		member,
 		years,
+		satzByYear = {},
 	}: {
 		member: MemberView;
 		years: number[];
+		/** Per-year configured Beitragssatz (cents) — seeds the mark-paid popover. */
+		satzByYear?: Record<number, number>;
 	} = $props();
 
 	function nameHash(s: string): number {
@@ -87,9 +90,12 @@
 			!member.beitragExempt &&
 			!member.austrittsDatum,
 	);
-	// Seed betrag for the popover: the row's recorded amount if present,
-	// otherwise 0 (the server reads the configured Satz on submit).
-	const currentBetragCents = $derived(currentBeitrag?.betragCents ?? 0);
+	// Seed betrag for the popover: the row's recorded amount if present, else the
+	// configured Beitragssatz for the year so the confirm heading matches what the
+	// server books (never a misleading "0,00 €" when no row exists yet).
+	const currentBetragCents = $derived(
+		currentBeitrag?.betragCents ?? (currentYear !== null ? (satzByYear[currentYear] ?? 0) : 0),
+	);
 </script>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -->
@@ -150,6 +156,7 @@
 			year={currentYear}
 			memberName="{member.vorname} {member.nachname}"
 			betragCents={currentBetragCents}
+			allowExempt={false}
 		>
 			{#snippet trigger({ props })}
 				<button
