@@ -124,6 +124,12 @@
 	// (parent-driven) changes vs. our own internal updates. Sentinel
 	// value ensures the first $effect run always syncs on mount.
 	let lastSyncedProp = $state<string | null>(null);
+	// Ref to the visible text input so we can drive native constraint validation
+	// from the SUBMITTED value. `required` lives on this visible field, but an
+	// invalid-yet-non-empty text (e.g. "31.02.2026") keeps it non-empty while the
+	// hidden ISO is "" — which would otherwise let the form submit an empty
+	// required date. setCustomValidity closes that gap.
+	let inputEl: HTMLInputElement | undefined = $state();
 
 	function commit(nextIso: string): void {
 		if (nextIso !== isoValue) {
@@ -132,11 +138,29 @@
 		}
 	}
 
+	// Keep native validity in sync with the typed text on every change: a
+	// non-empty-but-invalid date blocks submission (with a message) instead of
+	// silently posting an empty hidden value. Empty text is left to `required`.
+	function revalidate(): void {
+		const trimmed = displayValue.trim();
+		if (trimmed === "") {
+			inputEl?.setCustomValidity("");
+			return;
+		}
+		const iso = displayToIso(trimmed);
+		inputEl?.setCustomValidity(
+			iso && isWithinBounds(iso)
+				? ""
+				: "Bitte ein gültiges Datum im Format TT.MM.JJJJ eingeben.",
+		);
+	}
+
 	function onBlur(): void {
 		const trimmed = displayValue.trim();
 		if (trimmed === "") {
 			commit("");
 			invalid = required;
+			revalidate();
 			return;
 		}
 		const iso = displayToIso(trimmed);
@@ -148,6 +172,7 @@
 			invalid = true;
 			commit("");
 		}
+		revalidate();
 	}
 
 	// External value changes (parent resets the form, controlled binding)
@@ -159,6 +184,7 @@
 			isoValue = normalisedProp;
 			displayValue = isoToDisplay(normalisedProp);
 			invalid = false;
+			inputEl?.setCustomValidity("");
 		}
 	});
 
@@ -172,7 +198,9 @@
 		autocomplete="off"
 		placeholder="TT.MM.JJJJ"
 		pattern={inputPattern}
+		bind:this={inputEl}
 		bind:value={displayValue}
+		oninput={revalidate}
 		onblur={onBlur}
 		{disabled}
 		{required}
