@@ -379,6 +379,7 @@ export async function approveSubmission(
           externIban: submission.externIban,
           externEmail: submission.externEmail,
           bezahltVonDisplay: submission.bezahltVonDisplay,
+          belegFileId: submission.belegFileId,
           belegDriveFileId: submission.belegDriveFileId,
           belegOriginalName: submission.belegOriginalName,
           status: "geprueft",

@@ -227,6 +227,9 @@
 							} else if (result.type === 'failure') {
 								const d = result.data as { error?: string } | null;
 								toast.error(d?.error ?? 'Genehmigung fehlgeschlagen');
+							} else {
+								// result.type === 'error' (e.g. a 500): surface it, don't swallow.
+								toast.error('Genehmigung fehlgeschlagen');
 							}
 						};
 					}}

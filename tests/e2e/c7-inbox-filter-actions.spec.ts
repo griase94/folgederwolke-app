@@ -76,6 +76,36 @@ async function seedPendingSubmission(prefix: string): Promise<SeedRow> {
   const businessId = `AUS-2026-${unique}`;
   const bezeichnung = `C7-INBOX ${prefix} ${unique}`;
 
+  // Insert a realistic `files` row first so the submission carries a beleg.
+  // The reset-lane seed leaves `files` empty, so every approval previously
+  // exercised the no-beleg path — masking the beleg_file_id-copy bug. A real
+  // beleg makes the expenses CHECK (beleg_or_grund) bite if the FK is dropped.
+  const fileRows = await client<{ id: string }[]>`
+    INSERT INTO files (
+      storage_key,
+      storage_backend,
+      mime_type,
+      byte_size,
+      sha256,
+      original_filename,
+      kind,
+      source_kind,
+      uploaded_by_submitter_email
+    ) VALUES (
+      ${`belege/${unique}.pdf`},
+      ${"local-fs"},
+      ${"application/pdf"},
+      ${1024},
+      ${createHash("sha256").update(unique).digest("hex")},
+      ${"beleg.pdf"},
+      ${"beleg"},
+      ${"form"},
+      ${"seed@example.org"}
+    )
+    RETURNING id
+  `;
+  const belegFileId = fileRows[0]?.id ?? "";
+
   const rows = await client<{ id: string }[]>`
     INSERT INTO auslagen_submissions (
       business_id,
@@ -83,14 +113,18 @@ async function seedPendingSubmission(prefix: string): Promise<SeedRow> {
       betrag_cents,
       bezahlt_von_kind,
       bezahlt_von_display,
-      consent_text_version
+      consent_text_version,
+      beleg_file_id,
+      beleg_original_name
     ) VALUES (
       ${businessId},
       ${bezeichnung},
       ${4250},
       ${"verein"},
       ${"Verein"},
-      ${"v1"}
+      ${"v1"},
+      ${belegFileId},
+      ${"beleg.pdf"}
     )
     RETURNING id
   `;
@@ -317,6 +351,13 @@ test.describe("@phase-9 C7-INBOX full — filter chips + inline actions", () => 
     await expect(approve).toBeEnabled();
     await approve.click();
 
-    await expect(page.getByText("Freigegeben")).toBeVisible();
+    // Real success signal: the decided-state handoff to the linked expense only
+    // renders on a genuinely approved submission with a linked expense row.
+    // (Rendered as a Button via onclick goto, so it may be role=button.)
+    await expect(
+      page
+        .getByRole("link", { name: /Zur Ausgabe/ })
+        .or(page.getByRole("button", { name: /Zur Ausgabe/ })),
+    ).toBeVisible();
   });
 });

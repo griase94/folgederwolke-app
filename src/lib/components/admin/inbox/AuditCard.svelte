@@ -191,12 +191,16 @@
 					approveError = null;
 					return async ({ result, update }) => {
 						approving = false;
-						if (result.type === 'failure') {
+						if (result.type === 'success') {
+							toast.success('Freigegeben');
+							await update();
+						} else if (result.type === 'failure') {
 							const data = result.data as { error?: string } | null;
 							approveError = data?.error ?? 'Freigabe fehlgeschlagen.';
 						} else {
-							toast.success('Freigegeben');
-							await update();
+							// result.type === 'error' (e.g. a 500): never a success toast.
+							approveError = 'Freigabe fehlgeschlagen.';
+							toast.error('Freigabe fehlgeschlagen.');
 						}
 					};
 				}}
