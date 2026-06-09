@@ -194,11 +194,17 @@ All git worktrees live in **one dedicated sibling folder**, never sprawled as
   the migrator silently skip the dipped entry (and anything that needed it) on the real
   incremental prod path → schema drift → prod 500s, green CI. Three guards enforce this:
   `tests/unit/migration-journal-integrity.test.ts` (PR-time, DB-free),
-  `scripts/assert-migrations-applied.ts` in `migrate.yml` (applied == declared count),
-  and the `/healthz` `migrations` canary checked by `post-deploy-smoke.yml`.
+  `scripts/assert-migrations-applied.ts` in `migrate.yml` (every declared migration
+  present by content hash), and the `/healthz` `migrations` canary checked by
+  `post-deploy-smoke.yml`.
 - **One-time journal repair** (only if a corruption already shipped): a `when` you set
   by hand MUST be a real epoch-ms, strictly monotonic by idx, AND greater than the live
   prod `MAX(created_at)` — otherwise the entry either re-applies or stays skipped.
+- **Idempotent migrations** — the migrator runs the WHOLE pending batch in ONE
+  transaction, so any statement that throws against pre-existing state rolls back every
+  migration in that batch. Write `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`,
+  and guard `ADD CONSTRAINT` with a `pg_constraint` `DO $$ … $$` check, so a partial or
+  hand-patched DB (and a re-applied batch) can't wedge the whole transaction.
 - **Destructive migrations**: split into two phases — additive migration ships first, code change second, DROP last. Don't ship code that requires a not-yet-applied schema change.
 - **Manual hotfix to Neon**: avoid. If you must, follow `docs/RUNBOOK.md §6.4` to keep `__drizzle_migrations` in sync, or the next auto-migrate will try to re-apply and likely fail.
 - **GitHub secrets**: documented in `README.md` "Deploying to production" → "GitHub Actions secrets" table. Use `gh secret list` to inspect, `gh secret set <NAME> --body '<value>'` to add or rotate.

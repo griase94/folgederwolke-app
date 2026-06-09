@@ -7,7 +7,10 @@
 -- ADR-0003: money stays bigint cents.
 -- ADR-0006: beitragssatz rows are immutable once the year is festgeschrieben.
 
-CREATE TABLE beitragssatz_by_year (
+-- Idempotent: this whole batch (0026-0029) applies in ONE transaction, so any
+-- statement that throws against pre-existing state rolls back the entire batch
+-- (incl. the 0029 grant). IF NOT EXISTS keeps a partial/hand-patched DB safe.
+CREATE TABLE IF NOT EXISTS beitragssatz_by_year (
   year                  integer       PRIMARY KEY,
   cents                 bigint        NOT NULL CHECK (cents >= 0),
   faelligkeit_at        date,           -- nullable; null → caller defaults to ${year}-03-31

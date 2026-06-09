@@ -463,7 +463,8 @@ To activate scheduled backups:
 ### 6.6 Repairing a corrupted journal (non-monotonic `when`)
 
 Symptom: `scripts/assert-migrations-applied.ts` fails in the `migrate` workflow
-(applied < declared), or `/healthz` reports `migrations.ok=false`, or
+(a declared migration is missing by content hash), or `/healthz` reports
+`migrations.applied < expected`, or
 `tests/unit/migration-journal-integrity.test.ts` fails — i.e. one or more
 `drizzle/meta/_journal.json` entries have a `when` that is **not** strictly
 greater than the previous idx. The migrator applies an entry only when its
@@ -473,13 +474,14 @@ dipped entry is silently skipped on the incremental prod path while a fresh
 
 Repair:
 
-1. Find the live high-water mark:
+1. Find the live high-water mark (note: the migrator stores `created_at` = the
+   applied entry's `when`/folderMillis, so the HWM is itself a `when` value):
    `psql "$NEON_DIRECT_URL" -tAc "select max(created_at) from drizzle.__drizzle_migrations;"`
 2. In `_journal.json`, rewrite the offending `when` values so the whole array is
-   **strictly increasing by idx**. Entries already applied in prod must keep a
-   `when` **≤** the high-water mark (so they are NOT re-applied); the
-   not-yet-applied entries you want to land must be **>** the high-water mark.
-   Use real epoch-ms values, never round placeholders.
+   **strictly increasing by idx**. Because the apply test is strict `>`: entries
+   already applied in prod must keep a `when` **≤** the high-water mark (so they
+   are NOT re-applied), and each not-yet-applied entry you want to land must be
+   **>** the high-water mark. Use real epoch-ms values, never round placeholders.
 3. `pnpm test --run tests/unit/migration-journal-integrity.test.ts` must pass.
 4. `pnpm dev:reset` to confirm a from-scratch apply still succeeds end-to-end.
 5. Commit, open a PR, merge. On merge the `migrate` workflow applies the
