@@ -14,7 +14,7 @@
  *   zweckbetrieb) must exist).
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   createExpense,
   createIncome,
@@ -71,6 +71,30 @@ describe.skipIf(!dbConfigured)(
         .returning({ id: files.id });
       if (!f) throw new Error("failed to seed beleg file");
       BELEG_FILE_ID = f.id;
+    });
+
+    afterAll(async () => {
+      // Clean up all rows created by this test so the active sha256="a"*64 file
+      // doesn't collide with eur-preflight-beleg-count or bundle-zip-deep tests
+      // (both also seed files with sha256="a"*64 via idx_files_sha256_active).
+      if (!ACTOR) return;
+      const db = getDb();
+      // 1. Delete expenses referencing our file (beleg_file_id FK ON DELETE RESTRICT).
+      await db.delete(expenses).where(eq(expenses.createdByUserId, ACTOR));
+      // 2. Null out income.beleg_file_id FK so the file can be deleted.
+      //    income rows created by this actor may reference BELEG_FILE_ID.
+      await db
+        .update(income)
+        .set({ belegFileId: null })
+        .where(eq(income.createdByUserId, ACTOR));
+      // 3. Delete income rows.
+      await db.delete(income).where(eq(income.createdByUserId, ACTOR));
+      // 4. Delete the file (no FK refs remaining).
+      if (BELEG_FILE_ID) {
+        await db.delete(files).where(eq(files.id, BELEG_FILE_ID));
+      }
+      // 5. Delete the actor user.
+      await db.delete(users).where(eq(users.id, ACTOR));
     });
 
     it("expense from 'Bankgebühren' → kategorieId non-null, sphere 'ideeller'", async () => {
