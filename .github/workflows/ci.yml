@@ -139,11 +139,13 @@ jobs:
           PGPASSWORD: postgres
         run: psql -h localhost -p 15432 -U postgres -c "CREATE DATABASE folgederwolke_dev;"
 
-      - name: E2E tests (cumulative phase-0|phase-1|phase-2|phase-3|phase-9)
+      - name: E2E tests (cumulative phase-0|phase-1|phase-2|phase-3|phase-9 + smoke)
         # Cumulative grep: each phase adds its tag — @phase-0|@phase-1|...|@phase-N
         # Phase 3 added after triage (chore/triage-phase3-e2e): stale selectors
         # and wrong request fixture fixed; all 3 dormant @phase-3 tests now green.
-        run: pnpm test:e2e --grep '@phase-0|@phase-1|@phase-2|@phase-3|@phase-9'
+        # @smoke = cross-cutting always-on checks (smoke-authed-routes.spec.ts:
+        # every primary /app section renders < 500 for an admin).
+        run: pnpm test:e2e --grep '@phase-0|@phase-1|@phase-2|@phase-3|@phase-9|@smoke'
 
   backup-restore-smoke:
     name: backup-restore-smoke

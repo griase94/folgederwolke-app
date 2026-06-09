@@ -65,8 +65,11 @@ describe("CI e2e grep coverage (F3)", () => {
   // The set of "release-critical" specs that MUST be covered by every CI run.
   // PWA is on this list because the share_target POST is the primary
   // untrusted-origin entry point into the public Auslage form (CSRF-bypass
-  // surface). Add others here as new critical-path entry points ship.
-  const criticalSpecs = ["pwa.spec.ts"];
+  // surface). smoke-authed-routes is here because it is the only always-on
+  // check that every authenticated /app section renders without a 5xx — the
+  // net for the route-crash class. Add others here as new critical-path
+  // entry points ship.
+  const criticalSpecs = ["pwa.spec.ts", "smoke-authed-routes.spec.ts"];
 
   it("every release-critical spec has at least one tag in the CI grep", () => {
     const failures: string[] = [];

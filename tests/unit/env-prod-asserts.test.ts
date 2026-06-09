@@ -30,6 +30,9 @@ function setProdBaseline() {
   // fail — otherwise these new checks would short-circuit the others.
   process.env.VEREIN_NAME = "Verein X e.V.";
   process.env.MAIL_FROM = "noreply@verein-x.de";
+  // ADMIN_EMAILS is required in prod (sole admin allowlist). Set in the
+  // baseline so the EARLIER assertions are the first to fail in their tests.
+  process.env.ADMIN_EMAILS = "admin@verein-x.de";
 }
 
 describe("assertProductionEnvSafe Phase 9 additions", () => {
@@ -112,6 +115,18 @@ describe("assertProductionEnvSafe white-label required vars", () => {
     process.env.MAIL_FROM = "";
     const { assertProductionEnvSafe } = await import("$lib/server/env");
     expect(() => assertProductionEnvSafe()).toThrow(/MAIL_FROM/);
+  });
+
+  it("empty ADMIN_EMAILS in production throws, naming the var", async () => {
+    process.env.ADMIN_EMAILS = "";
+    const { assertProductionEnvSafe } = await import("$lib/server/env");
+    expect(() => assertProductionEnvSafe()).toThrow(/ADMIN_EMAILS/);
+  });
+
+  it("whitespace-only ADMIN_EMAILS in production throws, naming the var", async () => {
+    process.env.ADMIN_EMAILS = "   ";
+    const { assertProductionEnvSafe } = await import("$lib/server/env");
+    expect(() => assertProductionEnvSafe()).toThrow(/ADMIN_EMAILS/);
   });
 
   it("a complete prod baseline does not throw", async () => {
