@@ -100,6 +100,12 @@ async function seedExpenseWithBeleg(args: {
 
 describe("bundle.zip — deep 09_Belege/ assertions", () => {
   afterAll(async () => {
+    // Ensure our test-only expense rows (beleg_file_id only, no
+    // beleg_verzicht_grund) are gone after this file finishes so subsequent
+    // test files' cleanupFilesViaAdmin calls don't encounter orphaned rows.
+    await getDb().execute(sql`
+      DELETE FROM expenses WHERE business_id LIKE 'AUS-2024-9%'
+    `);
     await closeAdminConnection();
   });
 

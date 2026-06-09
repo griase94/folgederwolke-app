@@ -194,10 +194,27 @@ export async function updateFileViaAdmin(
  *
  * Pass no prefix to wipe ALL files (use with care — only appropriate for
  * test files that own the database state during their run).
+ *
+ * Expenses special-case (migration 0032 `expenses_beleg_or_grund_ck`):
+ *   Every expense row must satisfy `beleg_file_id IS NOT NULL OR
+ *   beleg_verzicht_grund IS NOT NULL`. Setting `beleg_file_id = NULL` on a
+ *   row that has no `beleg_verzicht_grund` would violate the constraint.
+ *   Test-only expense rows (seeded with only a `beleg_file_id`, no
+ *   `beleg_verzicht_grund`) must therefore be DELETEd rather than updated.
+ *   Corpus expense rows (which always carry `beleg_verzicht_grund`) are safe
+ *   to update; their constraint remains satisfied after the NULL-out.
  */
 export async function cleanupFilesViaAdmin(prefix?: string): Promise<void> {
   const a = admin();
   const idPattern = prefix !== undefined ? `${prefix}%` : "%";
+  // DELETE test-only expense rows that carry ONLY beleg_file_id (no
+  // beleg_verzicht_grund).  Nulling beleg_file_id on these would violate
+  // expenses_beleg_or_grund_ck.
+  await a`DELETE FROM expenses
+            WHERE beleg_file_id::text LIKE ${idPattern}
+              AND beleg_verzicht_grund IS NULL`;
+  // For the remaining expense rows (which have beleg_verzicht_grund set),
+  // it is safe to null out beleg_file_id — the CHECK is still satisfied.
   await a`UPDATE expenses              SET beleg_file_id = NULL WHERE beleg_file_id::text LIKE ${idPattern}`;
   await a`UPDATE income                SET beleg_file_id = NULL WHERE beleg_file_id::text LIKE ${idPattern}`;
   await a`UPDATE donations             SET beleg_file_id = NULL, bescheinigung_file_id = NULL
