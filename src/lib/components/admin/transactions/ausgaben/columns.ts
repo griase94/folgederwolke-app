@@ -51,7 +51,8 @@ export function ausgabenColumns(
   return [
     // Sphäre LEFT color-rule (§13) — leads the row as a thin tone bar, not a
     // filled badge. Not sortable (a visual rule, not a data axis).
-    { key: "sphaere", label: "", render: cells.sphaere },
+    // srLabel satisfies the empty-table-header a11y rule.
+    { key: "sphaere", label: "", srLabel: "Sphäre", render: cells.sphaere },
     { key: "gebuchtAm", label: "Datum", sortable: true, render: cells.datum },
     { key: "businessId", label: "ID", sortable: true, render: cells.id },
     {
@@ -70,6 +71,12 @@ export function ausgabenColumns(
       render: cells.betrag,
     },
     { key: "status", label: "Status", sortable: true, render: cells.status },
-    { key: "chevron", label: "", align: "right", render: cells.chevron },
+    {
+      key: "chevron",
+      label: "",
+      srLabel: "Detail öffnen",
+      align: "right",
+      render: cells.chevron,
+    },
   ];
 }

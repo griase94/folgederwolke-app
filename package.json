@@ -30,6 +30,7 @@
     "files:reconcile": "tsx scripts/files-reconcile.ts"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
     "@eslint/js": "^10.0.1",
     "@fontsource-variable/inter": "^5.2.8",
     "@internationalized/date": "^3.12.1",

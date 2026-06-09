@@ -179,7 +179,7 @@ describe("buildTransactionsCsv — header", () => {
     const withoutBom = csv.startsWith(BOM) ? csv.slice(BOM.length) : csv;
     const lines = withoutBom.split("\r\n").filter((l) => l.length > 0);
     expect(lines[0]).toBe(EXPECTED_HEADER_11);
-    expect(lines[0].split(";")).toHaveLength(11);
+    expect(lines[0]!.split(";")).toHaveLength(11);
   });
 
   it("Einnahmen: header is the standard 11-column header", () => {
@@ -194,7 +194,7 @@ describe("buildTransactionsCsv — header", () => {
     const withoutBom = csv.startsWith(BOM) ? csv.slice(BOM.length) : csv;
     const lines = withoutBom.split("\r\n").filter((l) => l.length > 0);
     expect(lines[0]).toBe(EXPECTED_HEADER_11 + ";Bescheinigung");
-    expect(lines[0].split(";")).toHaveLength(12);
+    expect(lines[0]!.split(";")).toHaveLength(12);
   });
 });
 
@@ -219,7 +219,7 @@ describe("buildTransactionsCsv — delimiter and line terminator", () => {
     const csv = buildTransactionsCsv([], "ausgaben");
     // Header line has exactly 10 semicolons (11 columns)
     const withoutBom = csv.slice(BOM.length);
-    const headerLine = withoutBom.split("\r\n")[0];
+    const headerLine = withoutBom.split("\r\n")[0]!;
     expect(headerLine.split(";")).toHaveLength(11);
   });
 
@@ -267,7 +267,7 @@ describe("buildTransactionsCsv — Ausgaben row (characterization)", () => {
     const lines = withoutBom.split("\r\n").filter((l) => l.length > 0);
     // lines[0] = header, lines[1] = data row
     expect(lines).toHaveLength(2);
-    const cells = lines[1].split(";");
+    const cells = lines[1]!.split(";");
     expect(cells).toHaveLength(11);
     // Datum — raw gebuchtAm
     expect(cells[0]).toBe("2024-03-15T10:00:00.000Z");
@@ -318,7 +318,7 @@ describe("buildTransactionsCsv — Einnahmen row", () => {
     const csv = buildTransactionsCsv([baseEinnahmenRow], "einnahmen");
     const withoutBom = csv.slice(BOM.length);
     const lines = withoutBom.split("\r\n").filter((l) => l.length > 0);
-    const cells = lines[1].split(";");
+    const cells = lines[1]!.split(";");
     expect(cells[3]).toBe("Einnahme");
     expect(cells[7]).toBe("120,00");
     expect(cells[8]).toBe("12000");
@@ -354,7 +354,7 @@ describe("buildTransactionsCsv — Spenden row", () => {
     const csv = buildTransactionsCsv([baseSpendenRow], "spenden");
     const withoutBom = csv.slice(BOM.length);
     const lines = withoutBom.split("\r\n").filter((l) => l.length > 0);
-    const cells = lines[1].split(";");
+    const cells = lines[1]!.split(";");
     expect(cells).toHaveLength(12);
     expect(cells[3]).toBe("Spende");
     expect(cells[11]).toBe("BESCH-2024-007");
@@ -368,7 +368,7 @@ describe("buildTransactionsCsv — Spenden row", () => {
     const csv = buildTransactionsCsv([rowNoReceipt], "spenden");
     const withoutBom = csv.slice(BOM.length);
     const lines = withoutBom.split("\r\n").filter((l) => l.length > 0);
-    const cells = lines[1].split(";");
+    const cells = lines[1]!.split(";");
     expect(cells[11]).toBe("ausstehend");
   });
 });
@@ -381,7 +381,7 @@ describe("buildTransactionsCsv — Betrag columns are unsigned", () => {
   it("expense betragCents is unsigned (direction is in Art column)", () => {
     const csv = buildTransactionsCsv([baseAusgabenRow], "ausgaben");
     const withoutBom = csv.slice(BOM.length);
-    const dataLine = withoutBom.split("\r\n")[1];
+    const dataLine = withoutBom.split("\r\n")[1]!;
     const cells = dataLine.split(";");
     // Neither EUR nor Cent column should be negative
     expect(cells[7]).not.toMatch(/^-/);
@@ -465,7 +465,7 @@ describe("buildTransactionsCsv — CSV-injection hardening (intentional)", () =>
     };
     const csv = buildTransactionsCsv([malicious], "ausgaben");
     const withoutBom = csv.slice(BOM.length);
-    const dataLine = withoutBom.split("\r\n")[1];
+    const dataLine = withoutBom.split("\r\n")[1]!;
     const cells = dataLine.split(";");
     // `=SUM(A1)` has no quote-trigger chars, so the only mutation is the
     // prepended apostrophe — no surrounding double-quotes.

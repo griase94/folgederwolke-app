@@ -185,6 +185,7 @@
 <!-- ── Column cells (typed on AusgabenRow — no casts) ──────────────────────── -->
 {#snippet sphaereCell(row: AusgabenRow)}
 	<span
+		role="img"
 		data-testid="sphaere-rule"
 		data-sphere={row.sphereSnapshot}
 		aria-label={sphereLabel(row.sphereSnapshot)}

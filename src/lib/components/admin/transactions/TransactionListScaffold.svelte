@@ -25,6 +25,14 @@
 	export interface ColumnDef<Row extends BaseTxRow = TransactionRow> {
 		key: string;
 		label: string;
+		/**
+		 * Screen-reader label for columns whose visible `label` is empty (e.g.
+		 * the sphäre color-rule column and the chevron/navigation column). Used
+		 * as `aria-label` on the `<th>` to satisfy the `empty-table-header`
+		 * a11y rule. When omitted for a visually-labeled column, the `<th>`
+		 * gets no redundant `aria-label`.
+		 */
+		srLabel?: string;
 		sortable?: boolean;
 		align?: 'left' | 'right' | 'center';
 		render: Snippet<[Row]>;
@@ -195,7 +203,6 @@
 	// so the server renders the same filtered+sorted set across ALL pages.
 	const exportHref = $derived(
 		(() => {
-			// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local URL builder, not a reactive store
 			const qs = $page.url.searchParams.toString();
 			return `/app/${tab}/export${qs ? `?${qs}` : ''}`;
 		})()
@@ -373,13 +380,14 @@
 	{:else}
 		<!-- ── Desktop table (md+) ──────────────────────────────────────────── -->
 		<div class="hidden overflow-x-auto md:block">
-			<table class="w-full border-collapse text-sm">
+			<table data-testid="transactions-table" class="w-full border-collapse text-sm">
 				<thead>
 					<tr class="border-b border-border text-left text-xs text-muted-foreground">
 						{#each columns as col (col.key)}
 							<th
 								scope="col"
 								aria-sort={col.sortable ? ariaSortFor(col.key) : undefined}
+								aria-label={col.srLabel ?? undefined}
 								class={[
 									'px-3 py-2 font-medium',
 									col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left',
@@ -399,6 +407,11 @@
 											<span aria-hidden="true">{currentDir === 'desc' ? '▾' : '▴'}</span>
 										{/if}
 									</button>
+								{:else if col.srLabel && !col.label}
+									<!-- Visual-only column (e.g. sphäre color-rule, chevron): provide
+									     screen-reader text via visually-hidden span so axe's
+									     empty-table-header rule is satisfied. -->
+									<span class="sr-only">{col.srLabel}</span>
 								{:else}
 									{col.label}
 								{/if}
@@ -426,7 +439,7 @@
 		</div>
 
 		<!-- ── Mobile cards (<md) ────────────────────────────────────────────── -->
-		<div class="flex flex-col gap-2 md:hidden">
+		<div data-testid="transactions-card-list" class="flex flex-col gap-2 md:hidden">
 			{#each rows as row (row.id)}
 				<!-- The card row is typed `BaseTxRow & {optional per-tab fields}`, so the
 				     generic `Row` (a BaseTxRow subtype) passes directly — no cast — and

@@ -23,7 +23,7 @@ import SpendeDetailFields from "./spenden/SpendeDetailFields.svelte";
 // Capture every submit callback registered via `use:enhance={fn}` across the
 // rendered tree. The form action calls enhance(node, fn) — we keep `fn`.
 const enhanceCallbacks: Array<(...a: unknown[]) => unknown> = [];
-const applyActionMock = vi.fn(async () => {});
+const applyActionMock = vi.fn(async (_r: unknown) => {});
 
 vi.mock("$app/forms", () => ({
   enhance: (_node: HTMLFormElement, fn: (...a: unknown[]) => unknown) => {
