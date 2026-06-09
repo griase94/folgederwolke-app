@@ -43,12 +43,12 @@ jobs:
     env:
       DIRECT_DATABASE_URL: ${{ secrets.NEON_MIGRATE_DATABASE_URL }}
     steps:
-      - name: Skip if NEON_MIGRATE_DATABASE_URL is not set
+      - name: Fail if NEON_MIGRATE_DATABASE_URL is not set
         if: env.DIRECT_DATABASE_URL == ''
         run: |
-          echo "::warning::NEON_MIGRATE_DATABASE_URL is not set — skipping migrations."
+          echo "::error::NEON_MIGRATE_DATABASE_URL is not set — migrations CANNOT run. This workflow only fires when drizzle/** changes, so a missing secret means schema changes would reach prod with NO DDL applied. Failing loudly instead of skipping silently (a silent skip is how schema drift reaches prod undetected)."
           echo "Set it via: gh secret set NEON_MIGRATE_DATABASE_URL --body '<your Neon DIRECT URL>'"
-          exit 0
+          exit 1
 
       - uses: actions/checkout@v4
         if: env.DIRECT_DATABASE_URL != ''
@@ -70,9 +70,11 @@ jobs:
         if: env.DIRECT_DATABASE_URL != ''
         run: pnpm tsx scripts/migrate.ts
 
-      - name: Smoke-check (re-run migrate; expect no-op)
+      - name: Assert every declared migration is applied
         if: env.DIRECT_DATABASE_URL != ''
         run: |
-          echo "Re-running migrate to confirm idempotency..."
-          pnpm tsx scripts/migrate.ts
-          echo "Migrations idempotent — done."
+          # A wrongly-ordered journal entry is silently skipped by the migrator,
+          # and re-running migrate skips it AGAIN (a green no-op that proves
+          # nothing). Count applied-vs-declared instead — fails loudly when a
+          # migration was skipped. See scripts/assert-migrations-applied.ts.
+          pnpm tsx scripts/assert-migrations-applied.ts

@@ -58,17 +58,20 @@ jobs:
         run: |
           set -euo pipefail
           deadline=$(( $(date +%s) + 180 ))
-          actual=""
-          db_status=""
-          blob_status=""
+          actual=""; db_status=""; blob_status=""
+          mig_ok=""; mig_applied=""; mig_expected=""
           while [ "$(date +%s)" -lt "$deadline" ]; do
             payload=$(curl -fsS --max-time 10 "${BASE_URL}/healthz" || true)
             if [ -n "$payload" ]; then
-              actual=$(printf '%s' "$payload"      | jq -r '.sha  // ""' 2>/dev/null || true)
-              db_status=$(printf '%s' "$payload"   | jq -r '.db   // ""' 2>/dev/null || true)
-              blob_status=$(printf '%s' "$payload" | jq -r '.blob // ""' 2>/dev/null || true)
+              actual=$(printf '%s' "$payload"       | jq -r '.sha                 // ""' 2>/dev/null || true)
+              db_status=$(printf '%s' "$payload"    | jq -r '.db                  // ""' 2>/dev/null || true)
+              blob_status=$(printf '%s' "$payload"  | jq -r '.blob                // ""' 2>/dev/null || true)
+              mig_ok=$(printf '%s' "$payload"       | jq -r '.migrations.ok       // ""' 2>/dev/null || true)
+              mig_applied=$(printf '%s' "$payload"  | jq -r '.migrations.applied  // ""' 2>/dev/null || true)
+              mig_expected=$(printf '%s' "$payload" | jq -r '.migrations.expected // ""' 2>/dev/null || true)
               if [ "$actual" = "${EXPECTED:0:7}" ] || [ "$actual" = "$EXPECTED" ]; then
-                echo "match: alias serving ${EXPECTED:0:7} (db=$db_status blob=$blob_status)"
+                echo "match: alias serving ${EXPECTED:0:7} (db=$db_status blob=$blob_status migrations=$mig_applied/$mig_expected ok=$mig_ok)"
+                # db / blob are not subject to a deploy race — fail hard.
                 if [ "$db_status" != "ok" ]; then
                   echo "::error::/healthz reports db=$db_status (expected ok)"
                   exit 1
@@ -77,15 +80,30 @@ jobs:
                   echo "::error::/healthz reports blob=$blob_status (expected ok)"
                   exit 1
                 fi
-                exit 0
+                # Schema canary. The `migrate` workflow runs independently of the
+                # Vercel deploy, so a brief "behind" right after the alias flips is
+                # just migrate catching up — keep polling within the deadline. A
+                # persistent behind (migration skipped/failed) never flips ok=true
+                # and fails at the deadline below. A build that predates the canary
+                # (e.g. a rollback) reports no migrations object — don't gate on it.
+                if [ -z "$mig_expected" ]; then
+                  echo "ok: db/blob green; deployed build has no schema canary (nothing to gate)"
+                  exit 0
+                fi
+                if [ "$mig_ok" = "true" ]; then
+                  echo "ok: schema canary green (migrations $mig_applied/$mig_expected)"
+                  exit 0
+                fi
+                echo "wait: schema canary not green yet (applied=$mig_applied expected=$mig_expected ok=$mig_ok) — migrate catching up"
+              else
+                echo "wait: alias serves '$actual', want '${EXPECTED:0:7}' (db=$db_status blob=$blob_status migrations=$mig_applied/$mig_expected ok=$mig_ok)"
               fi
-              echo "wait: alias serves '$actual', want '${EXPECTED:0:7}' (db=$db_status blob=$blob_status)"
             else
               echo "wait: /healthz did not respond"
             fi
             sleep 5
           done
-          echo "::error::production alias did not flip to ${EXPECTED:0:7} within 180s (last seen sha=$actual, db=$db_status, blob=$blob_status)"
+          echo "::error::within 180s the production alias did not flip to ${EXPECTED:0:7} with a green schema canary (last seen sha=$actual db=$db_status blob=$blob_status migrations=$mig_applied/$mig_expected ok=$mig_ok). If sha matched but ok stayed false, a migration was SKIPPED — check the 'migrate' workflow run and drizzle/meta/_journal.json ordering."
           exit 1
 
       - name: Probe a representative public route
