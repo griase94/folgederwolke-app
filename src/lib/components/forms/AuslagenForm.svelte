@@ -134,8 +134,39 @@
 	/** Set when the user tries to submit while offline — cleared on next submit attempt. */
 	let offlineError = $state(false);
 
-	// Idempotency key: generated once per page load
-	const submissionNonce = crypto.randomUUID();
+	// Idempotency key (C8 + Deliverable A): a STABLE nonce that survives
+	// retries — a full page reload after a flaky network, a double-tap, or a
+	// PWA re-POST must re-send the SAME value so the server resolves the retry
+	// to the original submission instead of creating a duplicate (+ a second
+	// Beleg Blob, + a burned AUS-id). We persist it in sessionStorage under a
+	// fixed key, seeded ONCE; it is rotated only after a confirmed success (the
+	// success page clears the key, so the next fresh submission gets a new
+	// nonce). SSR renders a throwaway UUID into the hidden input; onMount swaps
+	// in the session-stable value before the user can submit.
+	const NONCE_STORAGE_KEY = 'fdw-auslage-submission-nonce';
+
+	function loadStableNonce(): string {
+		if (!browser) return crypto.randomUUID();
+		try {
+			const existing = sessionStorage.getItem(NONCE_STORAGE_KEY);
+			if (existing) return existing;
+			const fresh = crypto.randomUUID();
+			sessionStorage.setItem(NONCE_STORAGE_KEY, fresh);
+			return fresh;
+		} catch {
+			// sessionStorage blocked (private mode / quota) → fall back to a
+			// per-load UUID. Idempotency degrades to "no dedup across reloads",
+			// which matches legacy behaviour — never worse than before.
+			return crypto.randomUUID();
+		}
+	}
+
+	let submissionNonce = $state(loadStableNonce());
+
+	onMount(() => {
+		// Re-seed from sessionStorage on the client (SSR produced a throwaway).
+		submissionNonce = loadStableNonce();
+	});
 
 	// ---------------------------------------------------------------------------
 	// Draft persistence

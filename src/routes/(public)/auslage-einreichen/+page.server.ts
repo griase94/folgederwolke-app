@@ -14,6 +14,7 @@
  */
 
 import { error, fail, redirect } from "@sveltejs/kit";
+import { eq } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
@@ -111,6 +112,31 @@ export const load: PageServerLoad = async ({ url }) => {
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * True if `err` is a Postgres unique-violation (SQLSTATE 23505) raised by the
+ * named constraint/index. postgres-js exposes the violated constraint as
+ * `err.constraint_name`; drizzle may wrap the driver error, so we walk the
+ * `cause` chain defensively (same shape as audit-inbox-actions.isUniqueViolation).
+ * Matching by constraint NAME — not just code — keeps the nonce idempotency
+ * path from swallowing an unrelated unique-violation (e.g. business_id).
+ */
+function isUniqueViolationOf(err: unknown, constraintName: string): boolean {
+  let cur: unknown = err;
+  for (let i = 0; i < 5 && cur != null; i++) {
+    if (typeof cur === "object" && cur !== null) {
+      const o = cur as { code?: unknown; constraint_name?: unknown };
+      if (o.code === "23505" && o.constraint_name === constraintName) {
+        return true;
+      }
+    }
+    cur =
+      typeof cur === "object" && cur !== null && "cause" in cur
+        ? (cur as { cause?: unknown }).cause
+        : null;
+  }
+  return false;
+}
 
 function hashString(s: string): string {
   let h = 5381;
@@ -307,6 +333,34 @@ export const actions: Actions = {
       });
     }
 
+    // ── 2b-idem. Early idempotency dedup (submission_nonce) ───────────────────
+    // The public form sends a STABLE `submissionNonce` (UUID) that survives
+    // retries (network error, double-tap, PWA re-POST). If we've already
+    // recorded a submission for this nonce, resolve to it and 303-redirect to
+    // the same success target — WITHOUT buffering the Beleg, allocating a
+    // second AUS-id, or re-uploading the Blob. This is the panel's "early
+    // dedup before allocateBusinessId + before runUploadPipeline" rule.
+    //
+    // The INSERT below also persists the nonce, and a partial UNIQUE index
+    // (WHERE submission_nonce IS NOT NULL, migration 0033) is the concurrency
+    // backstop for two near-simultaneous first-time POSTs that both miss here.
+    const submissionNonce = input.submissionNonce ?? null;
+    if (submissionNonce) {
+      const dedupDb = getDb();
+      const existing = await dedupDb
+        .select({ businessId: auslagenSubmissions.businessId })
+        .from(auslagenSubmissions)
+        .where(eq(auslagenSubmissions.submissionNonce, submissionNonce))
+        .limit(1);
+      const hit = existing[0];
+      if (hit) {
+        throw redirect(
+          303,
+          `/auslage-eingereicht?id=${encodeURIComponent(hit.businessId)}`,
+        );
+      }
+    }
+
     // ── 2c. Beleg magic-byte sniff ────────────────────────────────────────────
     // Two-phase: (1) sniff only a small prefix to reject hostile files cheaply,
     // (2) buffer the full body only after the prefix passes validation.
@@ -413,6 +467,7 @@ export const actions: Actions = {
         .insert(auslagenSubmissions)
         .values({
           businessId: ausId,
+          submissionNonce,
           bezeichnung: input.bezeichnung,
           kommentar: input.kommentar ?? null,
           rechnungsdatum: input.rechnungsdatum ?? null,
@@ -437,6 +492,32 @@ export const actions: Actions = {
       if (!insertedRow) throw new Error("INSERT returned no row");
       submissionId = insertedRow.id;
     } catch (dbErr) {
+      // ── Concurrency backstop: nonce unique-violation → idempotent redirect ──
+      // Two near-simultaneous first-time POSTs with the SAME nonce can both
+      // miss the early-dedup SELECT and reach this INSERT; the loser trips the
+      // partial UNIQUE index `auslagen_submissions_submission_nonce_uq`
+      // (migration 0033). Disambiguate by CONSTRAINT NAME: only the nonce
+      // index resolves to the existing row's success redirect. A business_id
+      // 23505 (or any other failure) stays a real 500 — the AUS-id collision
+      // is a genuine allocator bug, never a user-visible "success".
+      if (
+        submissionNonce &&
+        isUniqueViolationOf(dbErr, "auslagen_submissions_submission_nonce_uq")
+      ) {
+        const dedupDb = getDb();
+        const existing = await dedupDb
+          .select({ businessId: auslagenSubmissions.businessId })
+          .from(auslagenSubmissions)
+          .where(eq(auslagenSubmissions.submissionNonce, submissionNonce))
+          .limit(1);
+        const hit = existing[0];
+        if (hit) {
+          throw redirect(
+            303,
+            `/auslage-eingereicht?id=${encodeURIComponent(hit.businessId)}`,
+          );
+        }
+      }
       console.error(
         `[auslage-einreichen] DB insert failed for ${ausId}:`,
         dbErr,

@@ -53,6 +53,14 @@ export interface ManualImportInput {
   belegOriginalName?: string | null;
   /** UUID of the admin user performing the import (for audit log). */
   actorUserId: string;
+  /**
+   * Optional client idempotency nonce (UUID). Admin manual imports normally
+   * carry NONE (null) — the admin is the human dedup. Persisted when present
+   * so the partial UNIQUE index (migration 0033) still guards against a
+   * double-submit if a future caller does supply one. NULL never collides
+   * (partial index is `WHERE submission_nonce IS NOT NULL`).
+   */
+  submissionNonce?: string | null;
 }
 
 export interface ManualImportResult {
@@ -85,6 +93,7 @@ export async function manualImportSubmission(
     .insert(auslagenSubmissions)
     .values({
       businessId: ausId,
+      submissionNonce: input.submissionNonce ?? null,
       bezeichnung: input.bezeichnung,
       kommentar: input.kommentar ?? null,
       rechnungsdatum: input.rechnungsdatum ?? null,

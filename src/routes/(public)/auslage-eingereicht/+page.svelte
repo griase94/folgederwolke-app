@@ -16,6 +16,17 @@
     // Dynamic import because clearDraft uses IndexedDB (browser-only).
     const { clearDraft } = await import('$lib/client/drafts.js');
     await clearDraft();
+
+    // Rotate the idempotency nonce: this submission succeeded, so a NEW
+    // Auslage started from "Neue Auslage einreichen" must get a fresh nonce
+    // (otherwise it would dedup to this one). Clearing the sessionStorage key
+    // makes AuslagenForm seed a new UUID on its next mount. Must match the
+    // key in AuslagenForm.svelte (fdw-auslage-submission-nonce).
+    try {
+      sessionStorage.removeItem('fdw-auslage-submission-nonce');
+    } catch {
+      // sessionStorage unavailable (private mode) — nothing to rotate.
+    }
   });
 </script>
 

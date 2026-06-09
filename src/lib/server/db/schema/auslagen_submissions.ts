@@ -25,6 +25,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { bezahltVonKindEnum } from "./enums.js";
 import { expenses } from "./expenses.js";
 import { files } from "./files.js";
@@ -42,6 +43,18 @@ export const auslagenSubmissions = pgTable(
     submittedAt: timestamp("submitted_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+
+    /**
+     * Client-supplied idempotency key (UUID). The public form seeds it once
+     * per submission attempt and re-sends the SAME value on every retry
+     * (network error, double-tap, PWA re-POST) so a retried POST resolves to
+     * the original submission instead of creating a duplicate (+ second Blob,
+     * + burned business_id). NULL for legacy clients / admin manual imports
+     * that don't carry a nonce — the partial UNIQUE index below only enforces
+     * uniqueness when the value is non-NULL, so NULLs never collide. Migration
+     * 0033.
+     */
+    submissionNonce: uuid("submission_nonce"),
 
     bezeichnung: text("bezeichnung").notNull(),
     kommentar: text("kommentar"),
@@ -124,6 +137,11 @@ export const auslagenSubmissions = pgTable(
     businessIdUq: uniqueIndex("auslagen_submissions_business_id_uq").on(
       t.businessId,
     ),
+    // Partial UNIQUE: idempotency dedup is enforced only for non-NULL nonces.
+    // Legacy/admin rows carry NULL and must NOT collide with each other.
+    submissionNonceUq: uniqueIndex("auslagen_submissions_submission_nonce_uq")
+      .on(t.submissionNonce)
+      .where(sql`submission_nonce IS NOT NULL`),
     decidedAtIdx: index("auslagen_submissions_decided_at_idx").on(t.decidedAt),
     submittedAtIdx: index("auslagen_submissions_submitted_at_idx").on(
       t.submittedAt,
