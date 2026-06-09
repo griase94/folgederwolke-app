@@ -26,23 +26,35 @@ function escXml(s: string | null | undefined): string {
     .replace(/'/g, "&apos;");
 }
 
-function isoDate(d: Date | string | null | undefined): string {
+const berlinYmdFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Berlin",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/** Berlin-local calendar date (YYYY-MM-DD) of a timestamp — matches year_for_booking. */
+function berlinYmd(d: Date | string | null | undefined): string {
   if (!d) return "";
   const date = typeof d === "string" ? new Date(d) : d;
   if (Number.isNaN(date.getTime())) return "";
-  return date.toISOString().slice(0, 10);
+  return berlinYmdFmt.format(date);
 }
 
 /**
  * The booking <Datum> for an income/expense EurRow: the cash-relevant date
- * (= relevanz_datum) when present, else gebucht_am. Migration 0034 selects
- * rows into a fiscal year by year_of_buchung = COALESCE(<cash>, gebucht_am),
- * so the emitted date MUST be that same COALESCE — otherwise a record lands
- * outside the declared [year-01-01, year-12-31] GoBD window. relevanzDatum is
- * already an ISO YYYY-MM-DD string (a SQL `date`), so it needs no TZ handling.
+ * (= relevanz_datum) when present, else the Berlin-local date of gebucht_am.
+ * Migration 0034 selects rows into a fiscal year by year_of_buchung =
+ * COALESCE(<cash>, year_for_booking(gebucht_am)) — Europe/Berlin. The exporting
+ * loaders (load.ts / listTransactions) already thread relevanzDatum as
+ * COALESCE(<cash>, (gebucht_am AT TIME ZONE 'Europe/Berlin')::date), so this is
+ * normally a non-null bare YYYY-MM-DD and the fallback below is a defensive
+ * belt. It MUST stay Berlin-local (NOT toISOString/UTC): a year-boundary
+ * null-cash row in UTC would emit a <Datum> in Y±1, outside the declared
+ * [year-01-01, year-12-31] GoBD window.
  */
 function relevanzDatum(row: EurRow): string {
-  return row.relevanzDatum ?? isoDate(row.gebuchtAm);
+  return row.relevanzDatum ?? berlinYmd(row.gebuchtAm);
 }
 
 function eurAmount(cents: bigint | number): string {
@@ -116,7 +128,7 @@ export function generateGobdZ3Xml(input: GobdExportInput): string {
     journalRows.push(`    <Record>
       <Seq>${seq++}</Seq>
       <BelegNr>${escXml(row.businessId)}</BelegNr>
-      <Datum>${isoDate(row.zugewendetAm)}</Datum>
+      <Datum>${row.relevanzDatum}</Datum>
       <Bezeichnung>Spende: ${escXml(row.spenderName ?? row.memberName ?? "Anonym")}</Bezeichnung>
       <Art>Spende</Art>
       <Sphare>${escXml(row.sphereSnapshot)}</Sphare>

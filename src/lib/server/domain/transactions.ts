@@ -241,8 +241,13 @@ export async function listTransactions(
     }
     if (year) conditions.push(eq(expenses.yearOfBuchung, year));
     if (month) {
+      // Cash-month filter (migration 0034): the `year` filter is the cash year
+      // (year_of_buchung), so the month must bucket by the CASH date too —
+      // month(abfluss_datum) when present, else month(gebucht_am, Berlin TZ).
+      // Aligning to gebucht_am alone would exclude a row whose cash month differs
+      // from its booking month (e.g. abfluss 2025-03 / gebucht 2025-04).
       conditions.push(
-        sql`EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin') = ${month}`,
+        sql`COALESCE(EXTRACT(MONTH FROM ${expenses.abflussDatum})::int, EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int) = ${month}`,
       );
     }
 
@@ -254,7 +259,12 @@ export async function listTransactions(
         betragCents: expenses.betragCents,
         currency: expenses.currency,
         gebuchtAm: expenses.gebuchtAm,
-        relevanzDatum: expenses.abflussDatum,
+        // Canonical relevanz date: the cash date when present, else the
+        // Berlin-local calendar date of gebucht_am (migration 0034). Threaded
+        // from SQL as a bare YYYY-MM-DD so the GoBD/CSV <Datum> is ALWAYS a
+        // date-only string inside the cash-year window — never a JS UTC
+        // toISOString() fallback (which lands a year-boundary row in Y±1).
+        relevanzDatum: sql<string>`COALESCE(${expenses.abflussDatum}::text, (${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::date::text)`,
         rechnungsdatum: expenses.rechnungsdatum,
         sphereSnapshot: expenses.sphereSnapshot,
         sphereOverride: expenses.sphereOverride,
@@ -300,8 +310,10 @@ export async function listTransactions(
     }
     if (year) conditions.push(eq(income.yearOfBuchung, year));
     if (month) {
+      // Cash-month filter (migration 0034) — month(geld_eingang_datum) when
+      // present, else month(gebucht_am, Berlin TZ). See expense branch above.
       conditions.push(
-        sql`EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin') = ${month}`,
+        sql`COALESCE(EXTRACT(MONTH FROM ${income.geldEingangDatum})::int, EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int) = ${month}`,
       );
     }
 
@@ -313,7 +325,9 @@ export async function listTransactions(
         betragCents: income.betragCents,
         currency: income.currency,
         gebuchtAm: income.gebuchtAm,
-        relevanzDatum: income.geldEingangDatum,
+        // Canonical relevanz date: cash date else Berlin-local gebucht_am date
+        // (see expense branch). Bare YYYY-MM-DD, no JS UTC fallback.
+        relevanzDatum: sql<string>`COALESCE(${income.geldEingangDatum}::text, (${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::date::text)`,
         rechnungsdatum: income.rechnungsdatum,
         sphereSnapshot: income.sphereSnapshot,
         kategorieNameSnapshot: income.kategorieNameSnapshot,
@@ -360,8 +374,10 @@ export async function listTransactions(
     }
     if (year) conditions.push(eq(donations.yearOfBuchung, year));
     if (month) {
+      // Cash-month filter (migration 0034) — month(zugewendet_am) when present,
+      // else month(gebucht_am, Berlin TZ). See expense branch above.
       conditions.push(
-        sql`EXTRACT(MONTH FROM ${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin') = ${month}`,
+        sql`COALESCE(EXTRACT(MONTH FROM ${donations.zugewendetAm})::int, EXTRACT(MONTH FROM ${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int) = ${month}`,
       );
     }
 
@@ -372,7 +388,9 @@ export async function listTransactions(
         betragCents: donations.betragCents,
         currency: donations.currency,
         gebuchtAm: donations.gebuchtAm,
-        relevanzDatum: donations.zugewendetAm,
+        // Canonical relevanz date: cash date else Berlin-local gebucht_am date
+        // (see expense branch). Bare YYYY-MM-DD, no JS UTC fallback.
+        relevanzDatum: sql<string>`COALESCE(${donations.zugewendetAm}::text, (${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::date::text)`,
         sphereSnapshot: donations.sphereSnapshot,
         kategorieNameSnapshot: donations.kategorieNameSnapshot,
         festgeschriebenAt: donations.festgeschriebenAt,

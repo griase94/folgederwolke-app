@@ -233,6 +233,48 @@ describe.skipIf(!dbConfigured)(
       expect(res.ok).toBe(true);
     });
 
+    // Symmetric to markExpenseAsPaid's existing-abfluss case. An expense that
+    // ALREADY carries an abfluss_datum in a LOCKED year keeps it (the UPDATE
+    // COALESCEs abfluss), so reimbursing it with a chosenDate in an OPEN year
+    // must STILL be blocked — the effective abfluss stays in the locked year
+    // and the DB trigger guards LEAST(OLD.year_of_buchung, …). The gate must
+    // return a clean {ok:false,status:409} (NOT an unhandled 23514 throw) so
+    // the `?/bulk-mark-erstattet` batch degrades to a per-row 'festgeschrieben'
+    // instead of 500-ing the whole batch. RED before the COALESCE/gate fix
+    // (the old code gated on year(chosenDate)=open and wrote chosenDate
+    // unconditionally → either silent rebucket or a raw trigger 23514).
+    it("markExpenseErstattet: rejects when existing abfluss_datum is in a festgeschriebenes year", async () => {
+      const id = await seedApprovedExpense({
+        bizSuffix: "00008",
+        abflussDatum: CASH_IN_LOCKED,
+      });
+      await lockYear(LOCKED);
+
+      const res = await markExpenseErstattet({
+        expenseId: id,
+        chosenDate: CASH_IN_OPEN, // open year — old gate would pass this
+        zahlungsartId: ZAHLART_ID,
+        actorUserId: ACTOR,
+      });
+
+      // Must be a structured refusal, NOT a throw / unhandled 23514.
+      expect(res.ok).toBe(false);
+      if (!res.ok) {
+        expect(res.status).toBe(409);
+        expect(res.error).toMatch(/festgeschrieben/i);
+      }
+      // The row must be untouched: existing abfluss preserved, not erstattet.
+      const [row] = await getDb()
+        .select({
+          erstattetAm: expenses.erstattetAm,
+          abflussDatum: expenses.abflussDatum,
+        })
+        .from(expenses)
+        .where(eq(expenses.id, id));
+      expect(row?.erstattetAm).toBeNull();
+      expect(row?.abflussDatum).toBe(CASH_IN_LOCKED);
+    });
+
     // ── markExpenseAsPaid ─────────────────────────────────────────────────
     // Gate on year(COALESCE(existing abfluss_datum, datum)). When the row has
     // an existing abfluss in a locked year, marking paid must be rejected even

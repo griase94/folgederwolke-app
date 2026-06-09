@@ -2,10 +2,18 @@
  * /auslage-einreichen — public Auslage submission form.
  *
  * load()   → returns initial empty form state (PUBLIC_FORM_ENABLED gate).
- * actions  → validates, rate-limits, validates Beleg (size + MIME + magic
- *            bytes), allocates AUS-ID, uploads to Drive, inserts DB row
- *            (Drive→DB ordering with best-effort cleanup on DB failure),
- *            sends EingangsMail, writes audit log, redirects.
+ * actions  → parses FormData, dedups on submission_nonce (BEFORE the rate
+ *            limiter, so an idempotent retry isn't charged to the abuse
+ *            budget), rate-limits new requests, validates Beleg (size + MIME +
+ *            magic bytes), allocates AUS-ID, uploads the Beleg, inserts the DB
+ *            row (storage→DB ordering), sends EingangsMail, writes audit log,
+ *            redirects.
+ *
+ * Idempotency scope: the submission_nonce makes SEQUENTIAL retries idempotent
+ * (the early-dedup SELECT 303s to the committed row, burning no id/Blob). A
+ * truly-CONCURRENT first-POST race is caught at INSERT by the partial UNIQUE
+ * index — correct, but the loser has by then burned an AUS-id and uploaded an
+ * orphan Blob (rare edge, accepted pre-launch; no advisory-locking).
  *
  * PUBLIC_FORM_ENABLED=false → 404 on both load and action.
  *
@@ -229,6 +237,9 @@ export const actions: Actions = {
     const ipPrefixVal = ipPrefix(ip);
 
     // ── Outer body-size guard (cheap, before formData parse) ──────────────────
+    // This bounds the in-memory cost of the formData parse below, which now
+    // runs BEFORE the rate-limiter so an idempotent retry (known nonce) can be
+    // deduped without being charged against the abuse budget.
     const contentLength = parseInt(
       request.headers.get("content-length") ?? "0",
       10,
@@ -237,19 +248,6 @@ export const actions: Actions = {
       return fail(413, {
         error: `Anfrage zu groß (max ${MAX_REQUEST_BYTES / 1024 / 1024} MiB).`,
       });
-    }
-
-    // ── Rate limit (per-IP + global cap) ──────────────────────────────────────
-    try {
-      await checkAndRecord(`auslage:submit:${ipPrefixVal}`, 5, 5 * 60 * 1000);
-      await checkAndRecord("auslage:submit:global", 100, 5 * 60 * 1000);
-    } catch (err) {
-      if (err instanceof RateLimitError) {
-        return fail(429, {
-          error: "Zu viele Anfragen — bitte einen Moment warten.",
-        });
-      }
-      throw err;
     }
 
     // ── 1. Parse FormData ─────────────────────────────────────────────────────
@@ -262,6 +260,52 @@ export const actions: Actions = {
 
     const jsonRaw = formData.get("data");
     const belegFile = formData.get("beleg");
+
+    // ── 1b. Early idempotency dedup BEFORE rate-limit ─────────────────────────
+    // The form sends a STABLE `submissionNonce` (UUID) as a top-level field that
+    // survives retries (network error, double-tap, PWA re-POST). A retry that
+    // carries an already-recorded nonce is the SAME submission, not a new
+    // request — so it must NOT be charged against the per-IP rate-limit budget
+    // (a flaky-network user hammering retry would otherwise hit 429 instead of
+    // the idempotent 303). Run the cheap nonce-presence SELECT here, ahead of
+    // the limiter; on a hit, 303 to the existing row. (The JSON payload may also
+    // carry the nonce; the top-level field is the robust source the form always
+    // sends. The full early-dedup + INSERT-time backstop below still apply to
+    // requests that reach them.)
+    const nonceField = formData.get("submissionNonce");
+    const earlyNonce =
+      typeof nonceField === "string" && nonceField ? nonceField : null;
+    if (earlyNonce) {
+      const dedupDb = getDb();
+      const existing = await dedupDb
+        .select({ businessId: auslagenSubmissions.businessId })
+        .from(auslagenSubmissions)
+        .where(eq(auslagenSubmissions.submissionNonce, earlyNonce))
+        .limit(1);
+      const hit = existing[0];
+      if (hit) {
+        throw redirect(
+          303,
+          `/auslage-eingereicht?id=${encodeURIComponent(hit.businessId)}`,
+        );
+      }
+    }
+
+    // ── Rate limit (per-IP + global cap) ──────────────────────────────────────
+    // Reached only for requests that did NOT resolve to an existing nonce above,
+    // so genuine retries bypass the abuse budget while first-time/new requests
+    // are still limited.
+    try {
+      await checkAndRecord(`auslage:submit:${ipPrefixVal}`, 5, 5 * 60 * 1000);
+      await checkAndRecord("auslage:submit:global", 100, 5 * 60 * 1000);
+    } catch (err) {
+      if (err instanceof RateLimitError) {
+        return fail(429, {
+          error: "Zu viele Anfragen — bitte einen Moment warten.",
+        });
+      }
+      throw err;
+    }
 
     if (typeof jsonRaw !== "string") {
       return fail(400, { error: "Ungültige Anfrage: fehlendes Datenfeld." });
@@ -333,18 +377,25 @@ export const actions: Actions = {
       });
     }
 
-    // ── 2b-idem. Early idempotency dedup (submission_nonce) ───────────────────
-    // The public form sends a STABLE `submissionNonce` (UUID) that survives
-    // retries (network error, double-tap, PWA re-POST). If we've already
-    // recorded a submission for this nonce, resolve to it and 303-redirect to
-    // the same success target — WITHOUT buffering the Beleg, allocating a
-    // second AUS-id, or re-uploading the Blob. This is the panel's "early
-    // dedup before allocateBusinessId + before runUploadPipeline" rule.
+    // ── 2b-idem. Secondary nonce dedup (JSON-payload nonce) ───────────────────
+    // Step 1b already deduped on the top-level `submissionNonce` form field
+    // BEFORE the rate-limiter (the path the form reliably uses). This second
+    // check covers the case where the nonce arrived ONLY inside the JSON `data`
+    // payload (e.g. a future/programmatic client). On a hit, resolve to the
+    // existing row and 303 — still BEFORE allocateBusinessId + runUploadPipeline,
+    // so a SEQUENTIAL retry burns no AUS-id and uploads no Blob.
     //
-    // The INSERT below also persists the nonce, and a partial UNIQUE index
-    // (WHERE submission_nonce IS NOT NULL, migration 0033) is the concurrency
-    // backstop for two near-simultaneous first-time POSTs that both miss here.
-    const submissionNonce = input.submissionNonce ?? null;
+    // IDEMPOTENCY SCOPE (honest): this early dedup only fires once the FIRST
+    // submission for the nonce has COMMITTED — i.e. it covers SEQUENTIAL retries
+    // (network error, double-tap, PWA re-POST). For two TRULY-concurrent
+    // first-time POSTs that both miss this SELECT, the INSERT-time partial
+    // UNIQUE index (WHERE submission_nonce IS NOT NULL, migration 0033) is the
+    // backstop: the loser is caught at step 5 and redirected to the winner — but
+    // by then it has ALREADY allocated an AUS-id and uploaded a Blob/files row,
+    // which are orphaned (a burned gapless id + a Blob the manual files-reconcile
+    // sweep collects). That concurrent race is a rare edge accepted pre-launch
+    // (small-Verein calibration); we do NOT add nonce advisory-locking.
+    const submissionNonce = input.submissionNonce ?? earlyNonce;
     if (submissionNonce) {
       const dedupDb = getDb();
       const existing = await dedupDb
@@ -522,9 +573,11 @@ export const actions: Actions = {
         `[auslage-einreichen] DB insert failed for ${ausId}:`,
         dbErr,
       );
-      // Blob + files row are already written. Orphan reconciliation lives in
-      // Phase 9 Task 21's nightly job: the `files` row exists, no FK from
-      // any owner table references it yet → swept on the next run.
+      // Blob + files row are already written but no owner FK references them.
+      // Reconciliation is the run-by-hand `scripts/files-reconcile.ts` sweep
+      // (no nightly cron exists yet) — pre-launch this orphan is litter, not
+      // corruption. The user's retry dedups on the nonce (or business_id) and
+      // won't duplicate the submission.
       return fail(500, {
         error: "Fehler beim Speichern der Einreichung. Bitte erneut versuchen.",
       });

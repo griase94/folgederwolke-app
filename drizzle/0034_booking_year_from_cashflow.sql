@@ -87,7 +87,13 @@ ALTER TABLE "donations" ADD COLUMN "year_of_buchung" integer
 CREATE INDEX "donations_year_of_buchung_idx" ON "donations" ("year_of_buchung");--> statement-breakpoint
 
 -- ---------------------------------------------------------------------------
--- 4. Recreate the two views (verbatim from 0007 / 0008) + re-run BOTH grants.
+-- 4. Recreate the two views (SELECT bodies identical to 0007 / 0008 — only the
+--    derived year_of_buchung column changes semantics via §3 above) + re-run
+--    the grants. DROP VIEW dropped only the views' OWN grants (the underlying
+--    `kategorien` table grant from 0007 is unaffected on a forward chain), but
+--    we re-run `GRANT SELECT ON kategorien TO app_export` too (idempotent) so
+--    0034 is a faithful, self-contained recreation of 0007's grant surface —
+--    a replay onto a DB lacking that grant still leaves app_export correct.
 --    v_eur_year keeps the same relevanz_datum/year_of_buchung shape; with the
 --    new column it now sorts/filters by the cash year. app_export grant from
 --    0007; app_runtime grant from 0017 (without it the gobd-export route 500s).
@@ -135,6 +141,11 @@ LEFT JOIN kategorien k ON k.id = e.kategorie_id;--> statement-breakpoint
 
 GRANT SELECT ON v_eur_year TO app_export;--> statement-breakpoint
 GRANT SELECT ON v_eur_year TO app_runtime;--> statement-breakpoint
+-- Re-run the underlying kategorien grant from 0007 (idempotent) so 0034 fully
+-- reproduces 0007's grant surface. DROP VIEW above did NOT remove this grant
+-- on a normal forward chain, but replaying 0034 onto a DB without it must still
+-- leave app_export able to SELECT kategorien (the v_eur_year JOIN reads it).
+GRANT SELECT ON kategorien TO app_export;--> statement-breakpoint
 
 CREATE OR REPLACE VIEW v_wgb_freigrenze_status AS
 SELECT

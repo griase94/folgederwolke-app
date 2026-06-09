@@ -25,6 +25,7 @@
  * @phase-2
  */
 import { describe, it, expect, beforeEach, beforeAll, afterAll } from "vitest";
+import postgres from "postgres";
 import { sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { registerHandlers } from "$lib/server/events/index.js";
@@ -40,6 +41,8 @@ import {
   closeAdminConnection,
   cleanupFilesViaAdmin,
 } from "./_helpers/festschreibung-reset.js";
+
+const DIRECT_DATABASE_URL = process.env["DIRECT_DATABASE_URL"] ?? "";
 
 // Real bus handlers (audit-log write on `auslagen.submitted` is critical).
 registerHandlers();
@@ -72,6 +75,45 @@ class CountingFileStorage implements FileStorage {
   }
 }
 
+// ── Race-injecting FileStorage stub ──────────────────────────────────────────
+// runUploadPipeline runs at step 4, AFTER the early-dedup SELECTs (which miss
+// — no committed row yet) and BEFORE the step-5 INSERT. By inserting a
+// conflicting `auslagen_submissions` row (same nonce, or same business_id)
+// inside upload(), we DETERMINISTICALLY drive the action into the INSERT-time
+// 23505 backstop — the path two truly-concurrent first-time POSTs would hit,
+// which the sequential tests (a/b/c) never reach. The admin connection bypasses
+// the app_runtime triggers for the seed.
+class RaceInjectingFileStorage implements FileStorage {
+  uploadCount = 0;
+  private readonly inner = new InMemoryMockFileStorage();
+  /** Called once, just before the first real upload, to seed the conflicting row. */
+  constructor(private readonly injectOnFirstUpload: () => Promise<void>) {}
+  private injected = false;
+
+  async upload(args: Parameters<FileStorage["upload"]>[0]) {
+    this.uploadCount++;
+    if (!this.injected) {
+      this.injected = true;
+      await this.injectOnFirstUpload();
+    }
+    return this.inner.upload(args);
+  }
+  download(p: string) {
+    return this.inner.download(p);
+  }
+  downloadStream(p: string) {
+    return this.inner.downloadStream(p);
+  }
+  archive(p: string, y: number) {
+    return this.inner.archive(p, y);
+  }
+  _internalDelByPath(p: string) {
+    return (
+      this.inner as unknown as { _internalDelByPath(x: string): Promise<void> }
+    )._internalDelByPath(p);
+  }
+}
+
 // Smallest valid PDF: the `file-type` sniffer keys on "%PDF-" (0x25 50 44 46 2d)
 // at offset 0 — a bare "%PDF" (no trailing dash) is rejected as 415.
 function belegFile(name = "beleg.pdf"): File {
@@ -93,7 +135,7 @@ interface SubmitOpts {
  * dedup) or the `fail()` ActionFailure object.
  */
 async function submit(
-  storage: CountingFileStorage,
+  storage: FileStorage & { uploadCount: number },
   opts: SubmitOpts = {},
 ): Promise<{ redirectLocation?: string; status?: number; data?: unknown }> {
   const fd = new FormData();
@@ -167,13 +209,28 @@ function bizIdFromLocation(loc: string | undefined): string | null {
   return u.searchParams.get("id");
 }
 
+/** Berlin-local year — mirrors the route's allocateBusinessId("AUS", berlinYear()). */
+function berlinYearForTest(now: Date = new Date()): number {
+  return parseInt(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: "Europe/Berlin",
+      year: "numeric",
+    }).format(now),
+    10,
+  );
+}
+
 describe("Auslagen submission idempotency (submission_nonce)", () => {
+  let admin: ReturnType<typeof postgres>;
+
   beforeAll(() => {
     registerHandlers();
+    admin = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
   });
 
   afterAll(async () => {
     _setFileStorageOverride(undefined);
+    await admin.end();
     await closeAdminConnection();
   });
 
@@ -244,5 +301,70 @@ describe("Auslagen submission idempotency (submission_nonce)", () => {
     );
     expect(await submissionCount()).toBe(2);
     expect(storage.uploadCount).toBe(2);
+  });
+
+  // ── (d) INSERT-time 23505 nonce backstop (concurrency) ─────────────────────
+  // The early-dedup SELECT only hits once the first POST has COMMITTED. Two
+  // truly-concurrent first-time POSTs both miss it and collide at the step-5
+  // INSERT on the partial UNIQUE index `auslagen_submissions_submission_nonce_uq`.
+  // The loser must resolve to the winner's row via an idempotent 303 — NOT a
+  // 500. We drive this deterministically by seeding the conflicting row inside
+  // the upload() hook (runs between the early SELECT and the INSERT). This is
+  // the only path that exercises isUniqueViolationOf() against the real
+  // PG+drizzle constraint-name string.
+  it("(d) concurrent nonce collision at INSERT → 303 to existing row, no 500", async () => {
+    const nonce = crypto.randomUUID();
+    const year = berlinYearForTest();
+    // The row the action will collide with: same nonce, a DIFFERENT (already
+    // committed) business_id so the redirect target is unambiguous.
+    const winnerBiz = `AUS-${year}-900`;
+    const storage = new RaceInjectingFileStorage(async () => {
+      await admin`
+        INSERT INTO auslagen_submissions
+          (business_id, submission_nonce, bezeichnung, betrag_cents,
+           bezahlt_von_kind, bezahlt_von_display, consent_text_version)
+        VALUES (${winnerBiz}, ${nonce}::uuid, 'race winner', 1250,
+                'verein', 'Verein', ${DATENSCHUTZ_VERSION})`;
+    });
+
+    const res = await submit(storage, { nonce, ip: "203.0.113.40" });
+
+    // The loser is redirected to the winner — NOT a 500.
+    expect(res.status).toBe(303);
+    expect(res.data).toBeUndefined();
+    expect(bizIdFromLocation(res.redirectLocation)).toBe(winnerBiz);
+    // The action uploaded once (it lost at INSERT, after the upload) but only
+    // the seeded winner row exists.
+    expect(storage.uploadCount).toBe(1);
+    expect(await submissionCount()).toBe(1);
+  });
+
+  // ── (e) a business_id 23505 is NOT swallowed as success ────────────────────
+  // The backstop discriminates by CONSTRAINT NAME: only the nonce index 303s.
+  // A business_id collision (genuine allocator bug) must surface as a real 500,
+  // never a phantom success redirect.
+  it("(e) business_id collision at INSERT → real 500, NOT an idempotent 303", async () => {
+    const nonce = crypto.randomUUID();
+    const year = berlinYearForTest();
+    // The allocator hands out AUS-<year>-001 first (counter starts at 1, just
+    // reset in beforeEach). Pre-seed a row with THAT business_id but a DIFFERENT
+    // nonce — so the action's INSERT trips business_id, not the nonce index.
+    const collidingBiz = `AUS-${year}-001`;
+    const storage = new RaceInjectingFileStorage(async () => {
+      await admin`
+        INSERT INTO auslagen_submissions
+          (business_id, submission_nonce, bezeichnung, betrag_cents,
+           bezahlt_von_kind, bezahlt_von_display, consent_text_version)
+        VALUES (${collidingBiz}, ${crypto.randomUUID()}::uuid, 'biz collision', 1250,
+                'verein', 'Verein', ${DATENSCHUTZ_VERSION})`;
+    });
+
+    const res = await submit(storage, { nonce, ip: "203.0.113.50" });
+
+    // A business_id 23505 is NOT a nonce hit → must be a real 500, not a 303.
+    expect(res.status).toBe(500);
+    expect(res.redirectLocation).toBeUndefined();
+    // Only the pre-seeded colliding row exists; the loser inserted nothing.
+    expect(await submissionCount()).toBe(1);
   });
 });

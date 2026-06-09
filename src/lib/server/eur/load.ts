@@ -285,9 +285,15 @@ export async function loadEurAggregatesForPdf(
   // Income + expense rows with the kategorien JOIN (PDF doesn't need
   // eur_zeile / anlage_gem_zeile itself, but bundle.zip does — pulling
   // them here lets the bundle reuse this query instead of running its own).
+  // relevanz_datum is the canonical booking <Datum>: the cash date when
+  // present, else the Berlin-LOCAL calendar date of gebucht_am. Threaded from
+  // SQL (no JS UTC toISOString fallback) so a year-boundary null-cash row emits
+  // a date inside [year-01-01, year-12-31] — matching year_for_booking's Berlin
+  // tz (migration 0034). Always a bare YYYY-MM-DD.
   const rawEurRows = (await db.execute(sql`
     SELECT 'income' AS art, i.business_id, i.gebucht_am,
-           i.geld_eingang_datum::text AS relevanz_datum,
+           COALESCE(i.geld_eingang_datum::text,
+                    (i.gebucht_am AT TIME ZONE 'Europe/Berlin')::date::text) AS relevanz_datum,
            i.betrag_cents, i.bezeichnung,
            i.sphere_snapshot, i.kategorie_id, i.kategorie_name_snapshot,
            k.eur_zeile, k.anlage_gem_zeile, i.beleg_drive_file_id, i.beleg_original_name
@@ -296,7 +302,8 @@ export async function loadEurAggregatesForPdf(
      WHERE i.year_of_buchung = ${year}
     UNION ALL
     SELECT 'expense' AS art, e.business_id, e.gebucht_am,
-           e.abfluss_datum::text AS relevanz_datum,
+           COALESCE(e.abfluss_datum::text,
+                    (e.gebucht_am AT TIME ZONE 'Europe/Berlin')::date::text) AS relevanz_datum,
            e.betrag_cents, e.bezeichnung,
            COALESCE(e.sphere_override, e.sphere_snapshot),
            e.kategorie_id, e.kategorie_name_snapshot,
