@@ -49,6 +49,13 @@ describe("CI e2e grep coverage (F3)", () => {
     expect(grepTags).toContain("@phase-0");
     expect(grepTags).toContain("@phase-1");
     expect(grepTags).toContain("@phase-2");
+    // Three-tab phases added in FIX-1:
+    expect(grepTags).toContain("@phase-3-routing");
+    expect(grepTags).toContain("@phase-4-ausgaben");
+    expect(grepTags).toContain("@phase-5-einnahmen");
+    expect(grepTags).toContain("@phase-6-spenden");
+    expect(grepTags).toContain("@phase-8");
+    expect(grepTags).toContain("@phase-9");
   });
 
   it("PWA share_target spec is covered by the CI grep (F3)", () => {
@@ -65,8 +72,16 @@ describe("CI e2e grep coverage (F3)", () => {
   // The set of "release-critical" specs that MUST be covered by every CI run.
   // PWA is on this list because the share_target POST is the primary
   // untrusted-origin entry point into the public Auslage form (CSRF-bypass
-  // surface). Add others here as new critical-path entry points ship.
-  const criticalSpecs = ["pwa.spec.ts"];
+  // surface). Three-tab specs added in FIX-1 so a future grep drop is caught.
+  const criticalSpecs = [
+    "pwa.spec.ts",
+    "phase-3-routing.spec.ts",
+    "phase-4-ausgaben.spec.ts",
+    "phase-5-einnahmen.spec.ts",
+    "phase-6-spenden.spec.ts",
+    "phase-8-export-download.spec.ts",
+    "phase-8-axe-a11y.spec.ts",
+  ];
 
   it("every release-critical spec has at least one tag in the CI grep", () => {
     const failures: string[] = [];

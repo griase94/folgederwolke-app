@@ -132,11 +132,10 @@ jobs:
           PGPASSWORD: postgres
         run: psql -h localhost -p 15432 -U postgres -c "CREATE DATABASE folgederwolke_dev;"
 
-      - name: E2E tests (cumulative phase-0|phase-1|phase-2|phase-9)
+      - name: E2E tests (cumulative phase-0…phase-9)
         # Cumulative grep: each phase adds its tag — @phase-0|@phase-1|...|@phase-N
-        # Phase 9 added (skipping phases 3-8 until their suites are green —
-        # the grep widens as those phases are triaged).
-        run: pnpm test:e2e --grep '@phase-0|@phase-1|@phase-2|@phase-9'
+        # Phases 3-6 and 8 added: three-tab routing/ausgaben/einnahmen/spenden + export+a11y suites.
+        run: pnpm test:e2e --grep '@phase-0|@phase-1|@phase-2|@phase-3-routing|@phase-4-ausgaben|@phase-5-einnahmen|@phase-6-spenden|@phase-8|@phase-9'
 
   backup-restore-smoke:
     name: backup-restore-smoke
