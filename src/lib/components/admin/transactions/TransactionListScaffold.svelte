@@ -110,6 +110,12 @@
 		};
 		/** Optional per-tab override for the no-rows-no-filters empty state. */
 		emptyState?: Snippet;
+		/**
+		 * Optional per-row trailing snippet. When provided, rendered as a sibling
+		 * `<tr>` immediately after each data row — used by tabs that need inline
+		 * sub-rows (e.g. the Ausgaben "Bezahlt markieren" dialog row, C3-DISC).
+		 */
+		rowAfter?: Snippet<[Row]>;
 	}
 
 	let {
@@ -130,6 +136,7 @@
 		detailHrefBase,
 		bulk,
 		emptyState,
+		rowAfter,
 	}: Props = $props();
 
 	// ── Filter activity (UX-04) ──────────────────────────────────────────────
@@ -421,7 +428,7 @@
 				</thead>
 				<tbody>
 					{#each rows as row (row.id)}
-						<tr class="border-b border-border last:border-0 hover:bg-muted/40" data-testid="scaffold-row">
+						<tr class="border-b border-border last:border-0 hover:bg-muted/40" data-testid="scaffold-row" data-row-id={row.id}>
 							{#each columns as col (col.key)}
 								<td
 									class={[
@@ -433,6 +440,7 @@
 								</td>
 							{/each}
 						</tr>
+						{#if rowAfter}{@render rowAfter(row)}{/if}
 					{/each}
 				</tbody>
 			</table>

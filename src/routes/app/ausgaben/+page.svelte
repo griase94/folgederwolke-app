@@ -21,13 +21,20 @@
   import { SPHERE_LABELS } from "$lib/domain/sphere.js";
   import { statusPresentation } from "$lib/domain/transaction-status.js";
   import type { AusgabenRow } from "$lib/server/domain/transactions.js";
-  import { deserialize } from "$app/forms";
+  import { deserialize, enhance } from "$app/forms";
   import { invalidateAll } from "$app/navigation";
   import { toast } from "svelte-sonner";
   import type { ActionResult } from "@sveltejs/kit";
   import type { PageData } from "./$types.js";
 
   let { data }: { data: PageData } = $props();
+
+  // ── C3-DISC: single-row "Bezahlt markieren" kebab state ──────────────────
+  // `markPaidRowId` tracks which row (if any) has the inline mark-paid dialog
+  // open. Only one row can have it open at a time. Set to null to close.
+  let markPaidRowId = $state<string | null>(null);
+  const today = new Date().toISOString().slice(0, 10);
+  let markPaidDatum = $state(today);
 
   // ── Bulk select + Als-bezahlt (Task 3) ────────────────────────────────────
   // The bulk pool is `approvedPending` (member/extern rows awaiting Erstattung;
@@ -178,6 +185,7 @@
     sphaere: sphaereCell,
     betrag: betragCell,
     status: statusCell,
+    kebab: kebabCell,
     chevron: chevronCell,
   });
 </script>
@@ -254,6 +262,7 @@
 
 {#snippet statusCell(row: AusgabenRow)}
   <span
+    data-testid="txn-row-status"
     class={[
       "inline-flex w-fit items-center rounded-full px-2 py-0.5 text-xs font-medium",
       statusPresentation(row.status).tone,
@@ -261,6 +270,95 @@
   >
     {statusPresentation(row.status).label}
   </span>
+{/snippet}
+
+<!-- C3-DISC: row-level kebab — "Bezahlt markieren" (geprueft/not-yet-erstattet). -->
+{#snippet kebabCell(row: AusgabenRow)}
+  {#if !row.festgeschriebenAt && row.status === 'geprueft'}
+    <div class="relative flex justify-end">
+      <button
+        type="button"
+        aria-label="Aktionen für Auslage"
+        data-testid="txn-row-kebab"
+        onclick={() => {
+          markPaidRowId = markPaidRowId === row.id ? null : row.id;
+          markPaidDatum = today;
+        }}
+        class="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="5" r="1.5" />
+          <circle cx="12" cy="12" r="1.5" />
+          <circle cx="12" cy="19" r="1.5" />
+        </svg>
+      </button>
+      {#if markPaidRowId === row.id}
+        <div
+          class="absolute right-0 top-8 z-10 w-44 rounded-md border border-border bg-background shadow-md"
+        >
+          <button
+            type="button"
+            data-testid="txn-row-mark-paid"
+            onclick={() => { /* dialog already opens via markPaidRowId */ }}
+            class="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+          >
+            Bezahlt markieren
+          </button>
+        </div>
+      {/if}
+    </div>
+  {/if}
+{/snippet}
+
+<!-- C3-DISC: inline mark-paid dialog row (rendered via rowAfter). -->
+{#snippet rowAfterSnippet(row: AusgabenRow)}
+  {#if markPaidRowId === row.id}
+    <tr data-testid="mark-paid-dialog" data-row-id={row.id}>
+      <td colspan="10" class="border-b border-border bg-muted/30 px-4 py-3">
+        <form
+          method="POST"
+          action="?/mark-paid"
+          use:enhance={() => {
+            return async ({ result }) => {
+              if (result.type === 'success') {
+                toast.success('Als bezahlt markiert');
+                markPaidRowId = null;
+                await invalidateAll();
+              } else if (result.type === 'failure') {
+                const err = (result.data as { error?: string } | undefined)?.error;
+                toast.error(err ?? 'Als bezahlt markieren fehlgeschlagen');
+              }
+            };
+          }}
+          class="flex flex-wrap items-center gap-2"
+        >
+          <input type="hidden" name="expenseId" value={row.id} />
+          <input
+            type="date"
+            name="datum"
+            lang="de"
+            bind:value={markPaidDatum}
+            required
+            class="h-9 rounded-md border border-border bg-background px-2 text-sm"
+          />
+          <button
+            type="submit"
+            data-testid="mark-paid-submit"
+            class="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Speichern
+          </button>
+          <button
+            type="button"
+            onclick={() => (markPaidRowId = null)}
+            class="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm hover:bg-muted"
+          >
+            Abbrechen
+          </button>
+        </form>
+      </td>
+    </tr>
+  {/if}
 {/snippet}
 
 {#snippet chevronCell(row: AusgabenRow)}
@@ -304,6 +402,7 @@
     detailHrefBase="/app/ausgaben"
     newLabel="Neue Ausgabe"
     newHref="/app/ausgaben/neu"
+    rowAfter={rowAfterSnippet}
   />
 </div>
 

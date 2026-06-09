@@ -37,6 +37,8 @@ export interface AusgabenCellSnippets {
   sphaere: Snippet<[AusgabenRow]>;
   betrag: Snippet<[AusgabenRow]>;
   status: Snippet<[AusgabenRow]>;
+  /** C3-DISC: row-level kebab (Bezahlt markieren). Optional — skipped if absent. */
+  kebab?: Snippet<[AusgabenRow]>;
   chevron: Snippet<[AusgabenRow]>;
 }
 
@@ -71,6 +73,18 @@ export function ausgabenColumns(
       render: cells.betrag,
     },
     { key: "status", label: "Status", sortable: true, render: cells.status },
+    // C3-DISC: kebab column (optional — only rendered when the snippet is supplied).
+    ...(cells.kebab
+      ? [
+          {
+            key: "kebab",
+            label: "",
+            srLabel: "Aktionen",
+            align: "right" as const,
+            render: cells.kebab,
+          },
+        ]
+      : []),
     {
       key: "chevron",
       label: "",

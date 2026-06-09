@@ -65,14 +65,20 @@ async function seedEligibleExpense(): Promise<{
   // 9-prefixed counter avoids fixture collisions and lets us clean reliably.
   const counter = `9${String(Math.floor(Math.random() * 1e6)).padStart(6, "0")}`;
   const businessId = `AUS-${year}-${counter}`;
+  // Pull any expense kategorie to satisfy the 0031 NOT NULL + 0032 FK.
+  const [kat] = await client<{ id: string }[]>`
+    SELECT id FROM kategorien WHERE kind = 'expense' LIMIT 1
+  `;
+  if (!kat) throw new Error("c3-disc seed: no expense kategorie found");
   const rows = await client<{ id: string }[]>`
     INSERT INTO expenses (
       business_id, bezeichnung, betrag_cents, currency, sphere_snapshot,
-      kategorie_name_snapshot, status, approved_at, bezahlt_von_kind,
-      bezahlt_von_display
+      kategorie_id, kategorie_name_snapshot, status, approved_at,
+      bezahlt_von_kind, bezahlt_von_display, beleg_verzicht_grund
     ) VALUES (
       ${businessId}, ${`C3-DISC-${counter}`}, 1234, 'EUR', 'ideeller',
-      'Test-Kategorie', 'geprueft', NOW(), 'verein', 'Verein'
+      ${kat.id}, 'Test-Kategorie', 'geprueft', NOW(), 'verein', 'Verein',
+      'c3-disc seed — kein Beleg erforderlich'
     )
     RETURNING id
   `;
