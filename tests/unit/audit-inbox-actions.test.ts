@@ -504,7 +504,6 @@ beforeEach(() => {
   // kategorien branch filters by kind only (the `and(...)` mock drops the
   // name eq), so keep EXACTLY ONE expense kategorie in the store so
   // resolveKategorieByName is unambiguous.
-  kategorienStore.clear();
   kategorienStore.set("kat-buero", {
     id: "kat-buero",
     kind: "expense",

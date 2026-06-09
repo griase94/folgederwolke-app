@@ -333,12 +333,18 @@ export async function approveSubmission(
   let kat: Awaited<ReturnType<typeof resolveKategorieByName>>;
   try {
     kat = await resolveKategorieByName("expense", chosenKategorieName);
-  } catch {
-    return {
-      ok: false,
-      status: 400,
-      error: "Kategorie nicht gefunden — bitte neu wählen",
-    };
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      err.message.startsWith("Kategorie not found:")
+    ) {
+      return {
+        ok: false,
+        status: 400,
+        error: "Kategorie nicht gefunden — bitte neu wählen",
+      };
+    }
+    throw err;
   }
 
   type ApproveTxResult =
