@@ -69,7 +69,7 @@
       "name": "Neue Spende",
       "short_name": "Spende",
       "description": "Neue Spende erfassen",
-      "url": "/app/transactions/spenden?source=shortcut",
+      "url": "/app/spenden/neu?source=shortcut",
       "icons": [
         {
           "src": "/icons/icon-192.png",
