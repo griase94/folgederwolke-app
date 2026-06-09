@@ -20,17 +20,25 @@
 	import FilePreview from '$lib/components/files/FilePreview.svelte';
 	import RejectDialog from './RejectDialog.svelte';
 	import AufwandsspendeStubModal from './AufwandsspendeStubModal.svelte';
+	import KategoriePicker from '$lib/components/admin/transactions/fields/KategoriePicker.svelte';
+	import type { KategorieOption } from '$lib/components/admin/transactions/fields/KategoriePicker.svelte';
 	import type { InboxSubmissionDetailView } from '$lib/domain/inbox.js';
 
 	let {
 		submission,
-		decided = false
-	}: { submission: InboxSubmissionDetailView; decided?: boolean } = $props();
+		decided = false,
+		kategorieOptions
+	}: {
+		submission: InboxSubmissionDetailView;
+		decided?: boolean;
+		kategorieOptions: KategorieOption[];
+	} = $props();
 
 	let rejectOpen = $state(false);
 	let aufwandsspendeOpen = $state(false);
 	let approving = $state(false);
 	let approveError = $state<string | null>(null);
+	let kategorieName = $state("");
 
 	function formatCents(cents: number): string {
 		return (cents / 100).toLocaleString('de-DE', {
@@ -195,7 +203,17 @@
 				class="sm:flex-1"
 			>
 				<input type="hidden" name="submissionId" value={submission.id} />
-				<Button type="submit" class="h-11 w-full" disabled={approving}>
+				<div class="mb-2">
+					<KategoriePicker
+						id="approve-kategorie"
+						options={kategorieOptions}
+						value={kategorieName}
+						onChange={(n) => (kategorieName = n)}
+						onSphere={() => {}}
+						required
+					/>
+				</div>
+				<Button type="submit" class="h-11 w-full" disabled={approving || !kategorieName}>
 					{#if approving}
 						<svg class="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
 							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
@@ -243,7 +261,7 @@
 		{/if}
 
 		<p class="text-xs text-muted-foreground">
-			Erstattet markieren passiert nach der Freigabe auf der Transaktionsseite.
+			Erstattet markieren passiert nach der Freigabe auf der Ausgabenseite.
 		</p>
 		{/if}
 	</div>
