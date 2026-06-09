@@ -410,4 +410,57 @@ describe.skipIf(!dbConfigured)("transactions export (Phase 8 T2)", () => {
     expect(col5).toContain(effectiveLabel);
     expect(col4).not.toBe(col5);
   });
+
+  // ── FIX-3: Real handler tests for einnahmen + spenden export ─────────────
+  // Mirrors the ausgaben handler test above — proves actual Content-Type,
+  // Content-Disposition, UTF-8 BOM wiring and that seeded rows appear in body.
+
+  it("einnahmen export handler returns text/csv attachment with UTF-8 BOM body", async () => {
+    const mod =
+      await import("../../src/routes/app/einnahmen/export/+server.ts");
+    const handler = mod.GET;
+    expect(typeof handler).toBe("function");
+
+    const event = {
+      url: new URL(`https://x.test/app/einnahmen/export?year=${EIN_YEAR}`),
+    } as unknown as Parameters<typeof handler>[0];
+    const res = await handler(event);
+
+    expect(res.headers.get("content-type")).toBe("text/csv; charset=utf-8");
+    const disposition = res.headers.get("content-disposition") ?? "";
+    expect(disposition.startsWith("attachment; filename=")).toBe(true);
+    expect(disposition).toMatch(
+      /attachment; filename="einnahmen-\d{4}-\d{4}-\d{2}-\d{2}\.csv"/,
+    );
+
+    const buf = new Uint8Array(await res.arrayBuffer());
+    expect(Array.from(buf.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
+    const text = new TextDecoder("utf-8").decode(buf);
+    // Our seeded rows use the E-EIN_YEAR-9 business-id prefix.
+    expect(text).toContain(`E-${EIN_YEAR}-9`);
+  });
+
+  it("spenden export handler returns text/csv attachment with UTF-8 BOM body", async () => {
+    const mod = await import("../../src/routes/app/spenden/export/+server.ts");
+    const handler = mod.GET;
+    expect(typeof handler).toBe("function");
+
+    const event = {
+      url: new URL(`https://x.test/app/spenden/export?year=${SPE_YEAR}`),
+    } as unknown as Parameters<typeof handler>[0];
+    const res = await handler(event);
+
+    expect(res.headers.get("content-type")).toBe("text/csv; charset=utf-8");
+    const disposition = res.headers.get("content-disposition") ?? "";
+    expect(disposition.startsWith("attachment; filename=")).toBe(true);
+    expect(disposition).toMatch(
+      /attachment; filename="spenden-\d{4}-\d{4}-\d{2}-\d{2}\.csv"/,
+    );
+
+    const buf = new Uint8Array(await res.arrayBuffer());
+    expect(Array.from(buf.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
+    const text = new TextDecoder("utf-8").decode(buf);
+    // Our seeded rows use the S-SPE_YEAR-9 business-id prefix.
+    expect(text).toContain(`S-${SPE_YEAR}-9`);
+  });
 });
