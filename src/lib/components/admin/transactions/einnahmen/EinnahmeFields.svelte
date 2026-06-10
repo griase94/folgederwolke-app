@@ -77,10 +77,20 @@
 	// ── Field state. Seeded from `values` so a 422 re-hydrate restores input;
 	// projectId also honors the ?projectId= prefill on a FRESH visit (the
 	// re-hydrated values.projectId wins when present). ──
+	// NOTE: every editable field MUST be local $state + bind:value (NOT a
+	// one-way `value={values.x}`): a controlled one-way bind to the constant
+	// `values` prop re-asserts the seed over the user's keystrokes on the next
+	// re-render, silently wiping `bezeichnung`/`kommentar` (a required field →
+	// the form fails checkValidity() and never submits). Bind seeds once, then
+	// the local state owns the value.
+	// svelte-ignore state_referenced_locally
+	let bezeichnung = $state(values.bezeichnung);
 	// svelte-ignore state_referenced_locally
 	let betragEur = $state(values.betragEur);
 	// svelte-ignore state_referenced_locally
 	let geldEingangDatum = $state(values.geldEingangDatum);
+	// svelte-ignore state_referenced_locally
+	let kommentar = $state(values.kommentar);
 	// svelte-ignore state_referenced_locally
 	let projectId = $state(values.projectId || initialProjectId);
 	// svelte-ignore state_referenced_locally
@@ -119,7 +129,7 @@
 			type="text"
 			required
 			maxlength="500"
-			value={values.bezeichnung}
+			bind:value={bezeichnung}
 			aria-invalid={err('bezeichnung') ? true : undefined}
 			oninput={markDirty}
 			class="h-11 min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -231,7 +241,7 @@
 			name="kommentar"
 			rows="3"
 			maxlength="2000"
-			value={values.kommentar}
+			bind:value={kommentar}
 			oninput={markDirty}
 			class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
 		></textarea>
