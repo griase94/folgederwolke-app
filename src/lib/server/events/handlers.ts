@@ -17,7 +17,7 @@ import { sendMail } from "$lib/server/mail/index.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { logAudit } from "$lib/server/audit-log/index.js";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 
 let registered = false;
 
@@ -56,9 +56,28 @@ export function registerHandlers(): void {
   );
 
   // Handler 2: write audit log row (critical — re-throw on failure).
+  //
+  // IDEMPOTENT by design. The public submit route (auslage-einreichen) now
+  // writes this create-anchor INSIDE its submission-INSERT transaction (atomic,
+  // ADR-0004 — a failed audit rolls the submission back, so a committed
+  // submission ALWAYS carries its audit and the nonce dedup can never 303 a
+  // retry to an unaudited row). For that path the anchor already exists when
+  // this fires, so we skip to avoid a duplicate. The inbox-originated emit
+  // (audit-inbox-actions, admin "Auslage direkt erfassen") does NOT pre-write
+  // it, so this handler remains the writer there. Discriminating on presence
+  // keeps exactly one create-anchor per submission regardless of emitter.
   bus.on<EventPayload<"auslagen.submitted">>(
     "auslagen.submitted",
     async (payload) => {
+      const db = getDb();
+      const existing = (await db.execute(sql`
+        SELECT 1 FROM audit_log
+         WHERE entity_kind = 'auslagen_submission'
+           AND entity_id = ${payload.submissionId}::uuid
+           AND action = 'create'
+         LIMIT 1
+      `)) as unknown as unknown[];
+      if (existing.length > 0) return;
       await logAudit({
         action: "create",
         entityKind: "auslagen_submission",

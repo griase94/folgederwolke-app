@@ -193,6 +193,7 @@
   <!-- Kategorie (+ derived Sphäre) -->
   <div class="flex flex-col gap-1.5">
     <KategoriePicker
+      name="kategorieNameSnapshot"
       options={kategorien}
       value={kategorieName}
       required

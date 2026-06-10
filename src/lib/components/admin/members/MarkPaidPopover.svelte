@@ -189,11 +189,18 @@
 
 		<div class="flex items-center {allowExempt ? 'justify-between' : 'justify-end'} gap-2">
 			{#if allowExempt}
-				<Button variant="ghost" onclick={toBefreien} disabled={submitting || isLocked}>
+				<Button
+					variant="ghost"
+					class="min-h-[44px]"
+					onclick={toBefreien}
+					disabled={submitting || isLocked}
+				>
 					Befreien
 				</Button>
 			{/if}
-			<Button onclick={submitPaid} disabled={submitting || isLocked}>Bezahlt ↵</Button>
+			<Button class="min-h-[44px]" onclick={submitPaid} disabled={submitting || isLocked}
+				>Bezahlt ↵</Button
+			>
 		</div>
 	{:else}
 		<h2 id={titleId} class="text-sm font-semibold text-foreground">
@@ -230,8 +237,14 @@
 		</div>
 
 		<div class="flex items-center justify-between gap-2">
-			<Button variant="ghost" onclick={toMarkPaid} disabled={submitting}>← Zurück</Button>
-			<Button onclick={submitExempt} disabled={!reasonValid || submitting}>Befreien ↵</Button>
+			<Button variant="ghost" class="min-h-[44px]" onclick={toMarkPaid} disabled={submitting}
+				>← Zurück</Button
+			>
+			<Button
+				class="min-h-[44px]"
+				onclick={submitExempt}
+				disabled={!reasonValid || submitting}>Befreien ↵</Button
+			>
 		</div>
 	{/if}
 </div>

@@ -113,5 +113,10 @@
 		</div>
 	</div>
 
-	<InvoiceList invoices={filtered} today={data.today} />
+	<InvoiceList
+		invoices={filtered}
+		today={data.today}
+		query={searchQuery}
+		onClearSearch={() => (searchQuery = '')}
+	/>
 </div>

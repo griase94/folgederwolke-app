@@ -341,7 +341,9 @@ export async function loadEurAggregatesForPdf(
   // kategorie name. Mitgliedsbeiträge: paid_cents (gezahlt_am IS NOT NULL),
   // always 'ideeller' by gemeinnützigkeitsrechtlicher Definition.
   const donationRows = (await db.execute(sql`
-    SELECT business_id, gebucht_am, zugewendet_am::text AS relevanz_datum,
+    SELECT business_id, gebucht_am,
+           COALESCE(zugewendet_am::text,
+                    (gebucht_am AT TIME ZONE 'Europe/Berlin')::date::text) AS relevanz_datum,
            betrag_cents,
            COALESCE(spender_name, kategorie_name_snapshot, 'Spende') AS bezeichnung,
            sphere_snapshot, kategorie_id, kategorie_name_snapshot
@@ -523,7 +525,8 @@ export async function loadEurWorkspaceData(
   // kategorie name for display.
   const donationRows = (await db.execute(sql`
     SELECT business_id, gebucht_am, year_of_buchung,
-           zugewendet_am::text AS relevanz_datum,
+           COALESCE(zugewendet_am::text,
+                    (gebucht_am AT TIME ZONE 'Europe/Berlin')::date::text) AS relevanz_datum,
            betrag_cents,
            COALESCE(spender_name, kategorie_name_snapshot, 'Spende') AS bezeichnung,
            sphere_snapshot, kategorie_id, kategorie_name_snapshot

@@ -86,6 +86,8 @@
 	<ProjectList
 		projects={filteredProjects}
 		financialsMap={data.financialsMap}
+		query={searchQuery}
+		onClearSearch={() => (searchQuery = '')}
 		onEdit={openEdit}
 		onAdd={() => (addOpen = true)}
 	/>

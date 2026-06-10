@@ -42,6 +42,11 @@
 --                                       year is the ISSUE year, not the EÜR
 --                                       cash year; decoupling them.
 -- (The *_business_id_format_ck constraints are KEPT — id shape is unchanged.)
+-- NB: the expenses year-CHECK dropped here is the 0013 REDEFINITION
+-- (substring(business_id from '^(?:A|AUS)-(\d{4})-'), covering both the A- and
+-- AUS- prefixes), not the original 0000 substring(... from 3 for 4) form. The
+-- DROP CONSTRAINT IF EXISTS below removes it by name, so the runtime shape
+-- doesn't matter for correctness — this note just keeps a future reader honest.
 
 -- ---------------------------------------------------------------------------
 -- 1. Drop the two views that depend on year_of_buchung.

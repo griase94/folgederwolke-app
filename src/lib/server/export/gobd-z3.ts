@@ -128,7 +128,7 @@ export function generateGobdZ3Xml(input: GobdExportInput): string {
     journalRows.push(`    <Record>
       <Seq>${seq++}</Seq>
       <BelegNr>${escXml(row.businessId)}</BelegNr>
-      <Datum>${row.relevanzDatum}</Datum>
+      <Datum>${escXml(row.relevanzDatum)}</Datum>
       <Bezeichnung>Spende: ${escXml(row.spenderName ?? row.memberName ?? "Anonym")}</Bezeichnung>
       <Art>Spende</Art>
       <Sphare>${escXml(row.sphereSnapshot)}</Sphare>

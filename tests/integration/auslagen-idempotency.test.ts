@@ -367,4 +367,27 @@ describe("Auslagen submission idempotency (submission_nonce)", () => {
     // Only the pre-seeded colliding row exists; the loser inserted nothing.
     expect(await submissionCount()).toBe(1);
   });
+
+  // ── (f) malformed nonce must not 500 BEFORE the rate-limiter ────────────────
+  // `submission_nonce` is a uuid column. A hostile/garbled client POSTing a
+  // non-UUID `submissionNonce` to this PUBLIC endpoint must NOT flow into the
+  // early-dedup SELECT raw — `WHERE submission_nonce = 'not-a-uuid'` raises PG
+  // 22P02, i.e. an UNAUTHENTICATED 500 ahead of the abuse budget. The route now
+  // UUID-validates first (treating a non-UUID as "no nonce"), so the value is
+  // instead rejected cleanly by the input schema (422) — never a raw 500/crash.
+  // RED before the fix: `submit()` re-throws the un-redirect 22P02 error.
+  it("(f) malformed (non-UUID) nonce → clean 422, never an unauthenticated 500", async () => {
+    const storage = new CountingFileStorage();
+    const res = await submit(storage, {
+      nonce: "not-a-uuid",
+      ip: "203.0.113.60",
+    });
+    // A handled validation failure, NOT a raw 22P02 → 500 (and not a throw,
+    // which `submit()` would propagate for a non-redirect error).
+    expect(res.status).toBe(422);
+    expect(res.redirectLocation).toBeUndefined();
+    // No row created, no blob burned (we never reached INSERT/upload).
+    expect(await submissionCount()).toBe(0);
+    expect(storage.uploadCount).toBe(0);
+  });
 });

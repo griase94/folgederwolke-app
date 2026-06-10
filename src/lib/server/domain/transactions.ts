@@ -426,10 +426,21 @@ export async function listTransactions(
     }
   }
 
-  // Sort merged list descending by gebuchtAm
-  allRows.sort(
-    (a, b) => new Date(b.gebuchtAm).getTime() - new Date(a.gebuchtAm).getTime(),
-  );
+  // Sort merged list descending by the CASH-relevant date (relevanzDatum),
+  // falling back to gebuchtAm, with gebuchtAm as the stable tiebreak. This is
+  // the date the Buchungsliste DISPLAYS ("Datum" column = relevanzDatum ??
+  // gebuchtAm) and the date the GoBD/CSV export stamps as <Datum>, so the rows
+  // must order by it too — ordering by gebuchtAm alone made a row with abfluss
+  // 2025-03 / gebucht 2025-04 display 01.03. yet sort among the April rows.
+  const sortKey = (r: TransactionRow): number =>
+    new Date(r.relevanzDatum ?? r.gebuchtAm).getTime();
+  allRows.sort((a, b) => {
+    const cmp = sortKey(b) - sortKey(a);
+    if (cmp !== 0) return cmp;
+    // Tiebreak on the finer-grained booking timestamp (relevanzDatum is
+    // date-only, so same-day rows would otherwise order non-deterministically).
+    return new Date(b.gebuchtAm).getTime() - new Date(a.gebuchtAm).getTime();
+  });
 
   const total = allRows.length;
   return { rows: allRows.slice(offset, offset + limit), total };
@@ -1498,6 +1509,26 @@ export type MarkExpenseAsPaidResult =
   | { ok: true }
   | { ok: false; error: string };
 
+/**
+ * True if `err` is a Postgres check-violation (SQLSTATE 23514). The
+ * festschreibung trigger (`assert_not_festgeschrieben_fn`, migrations 0014/0034)
+ * raises `check_violation` with NO constraint name, so we discriminate on the
+ * SQLSTATE alone, walking the postgres-js → drizzle `cause` chain.
+ */
+export function isCheckViolation(err: unknown): boolean {
+  let cur: unknown = err;
+  for (let i = 0; i < 5 && cur != null; i++) {
+    if (typeof cur === "object" && cur !== null && "code" in cur) {
+      if ((cur as { code?: unknown }).code === "23514") return true;
+    }
+    cur =
+      typeof cur === "object" && cur !== null && "cause" in cur
+        ? (cur as { cause?: unknown }).cause
+        : null;
+  }
+  return false;
+}
+
 export async function markExpenseAsPaid(
   expenseId: string,
   params: MarkExpenseAsPaidParams,
@@ -1535,10 +1566,16 @@ export async function markExpenseAsPaid(
   // Settings-based Festschreibung gate (ADR-0006), aligned to the cash-derived
   // year. The UPDATE below preserves an existing abfluss_datum (COALESCE) and
   // otherwise writes `datum`; year_of_buchung recomputes from that effective
-  // abfluss (migration 0034). Gate on year(COALESCE(existing abfluss, datum))
-  // so the app rejection matches the DB festschreibung trigger — without this
-  // the trigger would throw an opaque 23514 instead of a clean refusal, and a
-  // row whose existing abfluss sits in a closed year could slip past the app.
+  // abfluss (migration 0034). Gate on year(COALESCE(existing abfluss, datum)):
+  // this matches the DB trigger for the common case (abfluss present → it is
+  // preserved, so old and new year both equal year(abfluss); or abfluss NULL →
+  // it takes `datum`). It does NOT replicate the trigger's UPDATE-time
+  // LEAST(year_for_booking(gebucht_am), year(datum)) for the corner case of a
+  // NULL-abfluss row whose gebucht_am sits in a CLOSED year while `datum` is in
+  // an open one — every route caller pre-gates on year_of_buchung (which equals
+  // year_for_booking(gebucht_am) for such a row) and blocks it first, but the
+  // 23514 catch on the UPDATE below is the backstop if this is ever called
+  // without that pre-gate.
   const effectiveAbfluss = row.abfluss_datum ?? params.datum;
   const gate = await checkFestschreibungGate(
     bookingYearFromCashDate(effectiveAbfluss),
@@ -1556,17 +1593,31 @@ export async function markExpenseAsPaid(
   // `abfluss_datum` is preserved with COALESCE: a member/extern row already
   // carries its own cash-out date and must keep it; only a row that never had
   // one (Verein-direct, where the reimbursement IS the cash-out) takes `datum`.
-  const updated = (await db.execute(sql`
-    UPDATE expenses
-       SET erstattet_am   = ${params.datum}::date,
-           status         = 'erstattet',
-           zahlungsart_id = ${params.zahlartId}::uuid,
-           abfluss_datum  = COALESCE(abfluss_datum, ${params.datum}::date),
-           updated_at     = NOW()
-     WHERE id = ${expenseId}::uuid
-       AND erstattet_am IS NULL
-    RETURNING id
-  `)) as unknown as { id: string }[];
+  let updated: { id: string }[];
+  try {
+    updated = (await db.execute(sql`
+      UPDATE expenses
+         SET erstattet_am   = ${params.datum}::date,
+             status         = 'erstattet',
+             zahlungsart_id = ${params.zahlartId}::uuid,
+             abfluss_datum  = COALESCE(abfluss_datum, ${params.datum}::date),
+             updated_at     = NOW()
+       WHERE id = ${expenseId}::uuid
+         AND erstattet_am IS NULL
+      RETURNING id
+    `)) as unknown as { id: string }[];
+  } catch (err) {
+    // Backstop for the corner case the gate above can't see (NULL-abfluss row
+    // whose gebucht_am is in a closed year): the trigger raises 23514. Degrade
+    // it to a clean refusal instead of an opaque 500 (mirrors markExpenseErstattet).
+    if (isCheckViolation(err)) {
+      return {
+        ok: false,
+        error: "Auslage ist festgeschrieben — Bezahlt-Markierung verweigert",
+      };
+    }
+    throw err;
+  }
 
   if (updated.length === 0) {
     // Row already erstattet — refuse, and emit NO audit event.

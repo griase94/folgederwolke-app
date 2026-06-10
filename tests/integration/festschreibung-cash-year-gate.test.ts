@@ -25,7 +25,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import postgres from "postgres";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { users } from "$lib/server/db/schema/users.js";
@@ -34,7 +34,10 @@ import {
   markExpenseErstattet,
   approveSubmission,
 } from "$lib/server/domain/audit-inbox-actions.js";
-import { markExpenseAsPaid } from "$lib/server/domain/transactions.js";
+import {
+  markExpenseAsPaid,
+  isCheckViolation,
+} from "$lib/server/domain/transactions.js";
 import {
   resetFestgeschreibungBis,
   closeAdminConnection,
@@ -333,6 +336,65 @@ describe.skipIf(!dbConfigured)(
       });
 
       expect(res.ok).toBe(true);
+    });
+
+    // ── Trigger-level rebucket (UPDATE) ───────────────────────────────────
+    // The 0034 festschreibung trigger's UPDATE branch guards
+    // LEAST(COALESCE(v_old_year,∞), COALESCE(v_new_year,∞)) ≤ fest_bis, so a row
+    // can be moved NEITHER into NOR out of a closed year by changing its cash
+    // date. The app gates above keep callers from reaching it, but this is the
+    // subtlest part of the migration and no other test exercises the raw
+    // UPDATE path — assert the trigger directly as app_runtime (the identity
+    // the domain layer uses). RED if the trigger guarded only v_new_year.
+
+    it("trigger: app_runtime UPDATE moving abfluss_datum INTO a closed year raises 23514", async () => {
+      const id = await seedApprovedExpense({
+        bizSuffix: "00009",
+        abflussDatum: CASH_IN_OPEN, // starts in an open year
+      });
+      await lockYear(LOCKED);
+
+      let caught: unknown;
+      try {
+        await getDb().execute(
+          sql`UPDATE expenses SET abfluss_datum = ${CASH_IN_LOCKED}::date WHERE id = ${id}::uuid`,
+        );
+      } catch (e) {
+        caught = e;
+      }
+      expect(isCheckViolation(caught)).toBe(true);
+
+      // The row must be untouched — the trigger refused the move.
+      const [row] = await getDb()
+        .select({ abflussDatum: expenses.abflussDatum })
+        .from(expenses)
+        .where(eq(expenses.id, id));
+      expect(row?.abflussDatum).toBe(CASH_IN_OPEN);
+    });
+
+    it("trigger: app_runtime UPDATE moving abfluss_datum OUT OF a closed year raises 23514", async () => {
+      // Seed with abfluss already in the locked year (admin bypasses the trigger).
+      const id = await seedApprovedExpense({
+        bizSuffix: "00010",
+        abflussDatum: CASH_IN_LOCKED,
+      });
+      await lockYear(LOCKED);
+
+      let caught: unknown;
+      try {
+        await getDb().execute(
+          sql`UPDATE expenses SET abfluss_datum = ${CASH_IN_OPEN}::date WHERE id = ${id}::uuid`,
+        );
+      } catch (e) {
+        caught = e;
+      }
+      expect(isCheckViolation(caught)).toBe(true);
+
+      const [row] = await getDb()
+        .select({ abflussDatum: expenses.abflussDatum })
+        .from(expenses)
+        .where(eq(expenses.id, id));
+      expect(row?.abflussDatum).toBe(CASH_IN_LOCKED);
     });
 
     // ── approveSubmission ─────────────────────────────────────────────────

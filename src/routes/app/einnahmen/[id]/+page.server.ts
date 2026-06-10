@@ -28,7 +28,9 @@ import {
   getTransactionDetail,
   checkFestschreibungGate,
   resolveKategorieByName,
+  isCheckViolation,
 } from "$lib/server/domain/transactions.js";
+import { bookingYearFromCashDate } from "$lib/domain/year.js";
 import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
 import { getDb } from "$lib/server/db/index.js";
 import { income } from "$lib/server/db/schema/income.js";
@@ -114,9 +116,19 @@ export const actions = {
     if (detail.festgeschriebenAt) {
       return fail(409, { error: "Jahr ist festgeschrieben" });
     }
-    const gate = await checkFestschreibungGate(
-      detail.yearOfBuchung ?? new Date().getFullYear(),
-    );
+    // The edit can MOVE the row's cash year: year_of_buchung derives from
+    // geld_eingang_datum (migration 0034), so submitting a new Geldeingang
+    // rebuckets the row. The DB trigger guards LEAST(old_year, new_year), so we
+    // gate on the min of the current year and the submitted cash year — this
+    // rejects a move BOTH out of and into a closed year (gating only the old
+    // year would let a rebucket into a closed past year slip past the app and
+    // surface as an opaque 23514/500 from the trigger).
+    const oldYear = detail.yearOfBuchung ?? new Date().getFullYear();
+    const newYear =
+      parsed.data.geldEingangDatum != null
+        ? bookingYearFromCashDate(parsed.data.geldEingangDatum)
+        : oldYear;
+    const gate = await checkFestschreibungGate(Math.min(oldYear, newYear));
     if (!gate.ok) return fail(gate.status, { error: gate.error });
 
     const db = getDb();
@@ -140,22 +152,31 @@ export const actions = {
       parsed.data.kategorieNameSnapshot ?? detail.kategorieNameSnapshot,
     );
 
-    await db
-      .update(income)
-      .set({
-        bezeichnung: parsed.data.bezeichnung,
-        betragCents: BigInt(parsed.data.betragCents),
-        ...geldUpdate,
-        kategorieId: kat.id,
-        kategorieNameSnapshot: kat.name,
-        sphereSnapshot: kat.sphere,
-        projectId: parsed.data.projectId ?? null,
-        kommentar: parsed.data.kommentar ?? null,
-        updatedAt: new Date(),
-      })
-      // Atomic festschreibung guard (TOCTOU): only write if still not
-      // festgeschrieben — mirrors the Ausgaben save + unmark-erstattet.
-      .where(and(eq(income.id, params.id), isNull(income.festgeschriebenAt)));
+    try {
+      await db
+        .update(income)
+        .set({
+          bezeichnung: parsed.data.bezeichnung,
+          betragCents: BigInt(parsed.data.betragCents),
+          ...geldUpdate,
+          kategorieId: kat.id,
+          kategorieNameSnapshot: kat.name,
+          sphereSnapshot: kat.sphere,
+          projectId: parsed.data.projectId ?? null,
+          kommentar: parsed.data.kommentar ?? null,
+          updatedAt: new Date(),
+        })
+        // Atomic festschreibung guard (TOCTOU): only write if still not
+        // festgeschrieben — mirrors the Ausgaben save + unmark-erstattet.
+        .where(and(eq(income.id, params.id), isNull(income.festgeschriebenAt)));
+    } catch (err) {
+      // Backstop: a concurrent close or a rebucket the gate above didn't catch
+      // trips the trigger's 23514 — degrade to a clean 409, not an opaque 500.
+      if (isCheckViolation(err)) {
+        return fail(409, { error: "Jahr ist festgeschrieben" });
+      }
+      throw err;
+    }
 
     await bus.emit("income.updated", {
       id: params.id,

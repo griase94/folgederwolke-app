@@ -37,6 +37,7 @@ import { runUploadPipeline } from "$lib/server/files/upload-pipeline.js";
 import { StorageError } from "$lib/server/files/errors.js";
 import { germanFileError } from "$lib/components/files/file-error-messages.js";
 import { bus } from "$lib/server/events/index.js";
+import { logAudit } from "$lib/server/audit-log/index.js";
 import { checkAndRecord, RateLimitError } from "$lib/server/auth/rate-limit.js";
 import {
   MAX_BELEG_BYTES,
@@ -144,6 +145,22 @@ function isUniqueViolationOf(err: unknown, constraintName: string): boolean {
         : null;
   }
   return false;
+}
+
+/**
+ * True iff `s` is a syntactically valid UUID. `submission_nonce` is a `uuid`
+ * column, so an unvalidated client value flowing into `WHERE submission_nonce =
+ * $1` (or the INSERT) raises Postgres 22P02 (invalid_text_representation) on a
+ * malformed string. The early-dedup SELECT runs BEFORE the rate-limiter on an
+ * unauthenticated public endpoint, so a hostile/garbled `submissionNonce` would
+ * otherwise yield a 500 ahead of the abuse budget. The real form always sends
+ * `crypto.randomUUID()`; we treat anything else as "no nonce" (null).
+ */
+function isUuid(s: unknown): s is string {
+  return (
+    typeof s === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
+  );
 }
 
 function hashString(s: string): string {
@@ -272,9 +289,11 @@ export const actions: Actions = {
     // carry the nonce; the top-level field is the robust source the form always
     // sends. The full early-dedup + INSERT-time backstop below still apply to
     // requests that reach them.)
+    // UUID-validate BEFORE the SELECT: `submission_nonce` is a uuid column, so a
+    // malformed value would raise 22P02 (→ 500) here on the public endpoint,
+    // ahead of the rate-limiter. A non-UUID is treated as "no nonce".
     const nonceField = formData.get("submissionNonce");
-    const earlyNonce =
-      typeof nonceField === "string" && nonceField ? nonceField : null;
+    const earlyNonce = isUuid(nonceField) ? nonceField : null;
     if (earlyNonce) {
       const dedupDb = getDb();
       const existing = await dedupDb
@@ -395,7 +414,12 @@ export const actions: Actions = {
     // which are orphaned (a burned gapless id + a Blob the manual files-reconcile
     // sweep collects). That concurrent race is a rare edge accepted pre-launch
     // (small-Verein calibration); we do NOT add nonce advisory-locking.
-    const submissionNonce = input.submissionNonce ?? earlyNonce;
+    // UUID-validate the JSON-payload nonce too (it flows into the SELECT below
+    // AND the INSERT's uuid column); fall back to the already-validated
+    // earlyNonce. A non-UUID from either source collapses to null ("no nonce").
+    const submissionNonce =
+      (isUuid(input.submissionNonce) ? input.submissionNonce : null) ??
+      earlyNonce;
     if (submissionNonce) {
       const dedupDb = getDb();
       const existing = await dedupDb
@@ -514,34 +538,68 @@ export const actions: Actions = {
     const db = getDb();
     let submissionId: string;
     try {
-      const [insertedRow] = await db
-        .insert(auslagenSubmissions)
-        .values({
-          businessId: ausId,
-          submissionNonce,
-          bezeichnung: input.bezeichnung,
-          kommentar: input.kommentar ?? null,
-          rechnungsdatum: input.rechnungsdatum ?? null,
-          betragCents: BigInt(input.betragCents),
-          currency: input.currency,
-          wofuer: input.wofuer ?? null,
-          bezahltVonKind: bv.kind,
-          bezahltVonMemberId: bv.kind === "member" ? bv.member_id : null,
-          externName: bv.kind === "extern" ? bv.name : null,
-          externIban: bv.kind === "extern" ? bv.iban : null,
-          externEmail: bv.kind === "extern" ? bv.email : null,
-          bezahltVonDisplay: composeBezahltVonDisplay(bv),
-          belegDriveFileId: null,
-          belegFileId,
-          belegOriginalName: belegFile instanceof File ? belegFile.name : null,
-          submitterIpPrefix: ipPrefixVal,
-          submitterUaHash: hashString(ua),
-          consentTextVersion: input.consent_text_version,
-        })
-        .returning({ id: auslagenSubmissions.id });
+      submissionId = await db.transaction(async (tx) => {
+        const [insertedRow] = await tx
+          .insert(auslagenSubmissions)
+          .values({
+            businessId: ausId,
+            submissionNonce,
+            bezeichnung: input.bezeichnung,
+            kommentar: input.kommentar ?? null,
+            rechnungsdatum: input.rechnungsdatum ?? null,
+            betragCents: BigInt(input.betragCents),
+            currency: input.currency,
+            wofuer: input.wofuer ?? null,
+            bezahltVonKind: bv.kind,
+            bezahltVonMemberId: bv.kind === "member" ? bv.member_id : null,
+            externName: bv.kind === "extern" ? bv.name : null,
+            externIban: bv.kind === "extern" ? bv.iban : null,
+            externEmail: bv.kind === "extern" ? bv.email : null,
+            bezahltVonDisplay: composeBezahltVonDisplay(bv),
+            belegDriveFileId: null,
+            belegFileId,
+            belegOriginalName:
+              belegFile instanceof File ? belegFile.name : null,
+            submitterIpPrefix: ipPrefixVal,
+            submitterUaHash: hashString(ua),
+            consentTextVersion: input.consent_text_version,
+          })
+          .returning({ id: auslagenSubmissions.id });
 
-      if (!insertedRow) throw new Error("INSERT returned no row");
-      submissionId = insertedRow.id;
+        if (!insertedRow) throw new Error("INSERT returned no row");
+
+        // ── Legal create-anchor (ADR-0004), written IN-TX ─────────────────────
+        // The audit row is written on the SAME transaction as the submission
+        // INSERT (logAudit's tx-writer seam). If logAudit throws, the WHOLE tx
+        // (INSERT + audit) rolls back, so the submission_nonce is never
+        // committed — the user's retry re-inserts and re-audits cleanly. Before
+        // this, the audit ran post-commit on the bus, so a transient audit
+        // failure left a committed-but-unaudited row that the nonce early-dedup
+        // would then 303 straight to "success" on retry — a silent ADR-0004 gap.
+        // Mirrors the invoice.pdf_generated direct-anchor precedent; the bus
+        // audit handler (handlers.ts) is idempotent and no-ops on the post-
+        // commit emit below.
+        await logAudit(
+          {
+            action: "create",
+            entityKind: "auslagen_submission",
+            entityId: insertedRow.id,
+            entityBusinessId: ausId,
+            actorKind: "system",
+            actorIpPrefix: ipPrefixVal,
+            actorUaHash: hashString(ua),
+            payload: {
+              bezeichnung: input.bezeichnung,
+              betragCents: input.betragCents,
+              bezahltVonKind: bv.kind,
+              consentTextVersion: input.consent_text_version,
+            },
+          },
+          tx,
+        );
+
+        return insertedRow.id;
+      });
     } catch (dbErr) {
       // ── Concurrency backstop: nonce unique-violation → idempotent redirect ──
       // Two near-simultaneous first-time POSTs with the SAME nonce can both
@@ -583,10 +641,13 @@ export const actions: Actions = {
       });
     }
 
-    // ── 6. Emit domain event (mail + audit log handled by bus) ────────────────
-    // §4.1.1 #2: route actions must not call sendMail()/auditLog() directly.
-    // Registered handlers (src/lib/server/events/handlers.ts) run the
-    // EingangsMail dispatch (best-effort) and the audit log insert (critical).
+    // ── 6. Emit domain event (best-effort EingangsMail) ──────────────────────
+    // §4.1.1 #2: route actions must not call sendMail() directly — emit and let
+    // the registered mail handler dispatch the EingangsMail (best-effort). The
+    // CRITICAL audit anchor is NO LONGER carried by this emit: it was written
+    // atomically inside the step-5 transaction (ADR-0004), and the bus audit
+    // handler is idempotent (no-ops because the row already exists). This emit
+    // therefore only drives the best-effort mail.
     const recipientEmail =
       bv.kind === "extern"
         ? bv.email
@@ -618,19 +679,15 @@ export const actions: Actions = {
         bezahltVonKind: bv.kind,
       });
     } catch (busErr) {
-      // The mail handler swallows its own errors, so any error reaching here
-      // came from the audit-log handler — which is the exact tamper window
-      // ADR-0004 closes. Surface it to the caller; their idempotent retry
-      // (business_id uniqueness) will not duplicate the row. The 2026-05-19
-      // security review (HIGH-1) flagged the previous swallow-and-continue.
+      // The submission AND its audit anchor are already committed (step 5). The
+      // mail handler swallows its own errors, so anything reaching here is a
+      // non-critical post-commit hiccup — it must NOT turn a fully-recorded
+      // submission into a user-visible 500 (which would prompt a needless retry
+      // that just dedups on the nonce). Log and proceed to the success redirect.
       console.error(
-        `[auslage-einreichen] audit handler failure for ${ausId}:`,
+        `[auslage-einreichen] post-commit emit failure for ${ausId}:`,
         busErr,
       );
-      return fail(500, {
-        error:
-          "Deine Einreichung wurde zwischengespeichert, aber die Buchhaltung konnte sie nicht endgültig protokollieren. Bitte versuche es in einer Minute noch einmal — Doppeleinreichungen werden automatisch erkannt.",
-      });
     }
 
     // ── 7. Redirect ───────────────────────────────────────────────────────────
