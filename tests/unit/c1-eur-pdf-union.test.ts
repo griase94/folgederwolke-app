@@ -33,19 +33,30 @@ describe.skipIf(!dbConfigured)(
     beforeAll(async () => {
       sql = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
 
+      // P1-T10: donations.kategorie_id is now NOT NULL. A Geldspende's
+      // Kategorie is the seeded income kategorie "Geldspende zweckfrei".
+      const [kd] = await sql<
+        { id: string; name: string }[]
+      >`SELECT id, name FROM kategorien
+        WHERE kind='income' AND name='Geldspende zweckfrei' LIMIT 1`;
+      if (!kd) {
+        throw new Error("c1-cycle3: missing 'Geldspende zweckfrei' kategorie");
+      }
+
       // NO income row this year — only a donation + a paid Mitgliedsbeitrag.
       // The PDF must still report these on the Einnahmen side.
       await sql`
         INSERT INTO donations (
           business_id, gebucht_am, betrag_cents, spender_name,
-          kategorie_name_snapshot, sphere_snapshot,
+          kategorie_id, kategorie_name_snapshot, sphere_snapshot,
           spende_kind, zweckbindung_kind
         ) VALUES (
           ${DON_BID},
           ${`${YEAR}-04-10 10:00:00+01`},
           50000,
           'c1-cycle3 spender',
-          'Geldspende',
+          ${kd.id},
+          ${kd.name},
           'ideeller',
           'geldspende',
           'zweckfrei'

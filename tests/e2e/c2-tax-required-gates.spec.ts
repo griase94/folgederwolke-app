@@ -3,9 +3,9 @@
  *
  * Verifies that the tax-correctness gates fire in the rendered UI:
  *   - AuslagenForm: submit disabled until Beleg + Rechnungsdatum filled
- *   - /transactions/neu kind=ausgabe: Beleg, Rechnungsdatum, Abfluss-Datum
+ *   - /app/ausgaben/neu: Beleg, Rechnungsdatum, Abfluss-Datum
  *     are required at the HTML level (the `required` attribute blocks submit)
- *   - /transactions/neu kind=ausgabe: bezahlt_von defaults to 'verein'
+ *   - /app/ausgaben/neu: bezahlt_von defaults to 'verein'
  *
  * The Spende kategorieNameSnapshot derivation is verified by a unit test
  * indirectly (action drives the snapshot from the kategorie list); a full e2e
@@ -74,7 +74,7 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     page,
   }) => {
     await signIn(page);
-    await page.goto("/app/transactions/neu?kind=ausgabe");
+    await page.goto("/app/ausgaben/neu"); // Phase 8 T6: per-tab neu
     await page.waitForLoadState("networkidle");
     if (page.url().includes("/sign-in")) test.skip();
 
@@ -104,7 +104,7 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     page,
   }) => {
     await signIn(page);
-    await page.goto("/app/transactions/neu?kind=ausgabe");
+    await page.goto("/app/ausgaben/neu"); // Phase 8 T6: per-tab neu
     await page.waitForLoadState("networkidle");
     if (page.url().includes("/sign-in")) test.skip();
 
@@ -120,7 +120,7 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     page,
   }) => {
     await signIn(page);
-    await page.goto("/app/transactions/neu?kind=ausgabe");
+    await page.goto("/app/ausgaben/neu"); // Phase 8 T6: per-tab neu
     await page.waitForLoadState("networkidle");
     if (page.url().includes("/sign-in")) test.skip();
 
@@ -135,7 +135,7 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     page,
   }) => {
     await signIn(page);
-    await page.goto("/app/transactions/neu?kind=ausgabe");
+    await page.goto("/app/ausgaben/neu"); // Phase 8 T6: per-tab neu
     await page.waitForLoadState("networkidle");
     if (page.url().includes("/sign-in")) test.skip();
 

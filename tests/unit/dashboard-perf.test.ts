@@ -28,7 +28,11 @@ describe.skipIf(!dbConfigured)(
   "loadDashboardKpis perf on 1k-row fixture",
   () => {
     let sql: ReturnType<typeof postgres>;
-    const PERF_YEAR = 2024;
+    // Must NOT overlap with corpus years (2024/2025/2026 with 9xx-prefixed
+    // business-ids). Use a far-future year so the afterAll cleanup pattern
+    // `LIKE 'X-YYYY-9%'` never deletes corpus rows (E-2024-901/902,
+    // A-2024-901/902 etc.) that other tests depend on.
+    const PERF_YEAR = 2041;
 
     beforeAll(async () => {
       // Seed 1000 income + 1000 expense rows in the test DB. Use the direct
@@ -82,11 +86,15 @@ describe.skipIf(!dbConfigured)(
           sphere_snapshot: ke.sphere,
           bezahlt_von_kind: "verein" as const,
           bezahlt_von_display: "Vereinskasse (perf)",
+          // P1-T10: expenses_beleg_or_grund_ck requires either a Beleg or a
+          // Belegverzicht-Begründung. These synthetic perf rows carry no file,
+          // so give them a Verzicht-Grund to satisfy the CHECK.
+          beleg_verzicht_grund: "perf fixture — kein Beleg",
         };
       });
 
       await sql`INSERT INTO income ${sql(incomeRows, "business_id", "gebucht_am", "betrag_cents", "bezeichnung", "kategorie_id", "kategorie_name_snapshot", "sphere_snapshot")}`;
-      await sql`INSERT INTO expenses ${sql(expenseRows, "business_id", "gebucht_am", "betrag_cents", "bezeichnung", "kategorie_id", "kategorie_name_snapshot", "sphere_snapshot", "bezahlt_von_kind", "bezahlt_von_display")}`;
+      await sql`INSERT INTO expenses ${sql(expenseRows, "business_id", "gebucht_am", "betrag_cents", "bezeichnung", "kategorie_id", "kategorie_name_snapshot", "sphere_snapshot", "bezahlt_von_kind", "bezahlt_von_display", "beleg_verzicht_grund")}`;
     }, 30_000);
 
     afterAll(async () => {

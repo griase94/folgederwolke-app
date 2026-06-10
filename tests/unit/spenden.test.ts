@@ -120,12 +120,15 @@ describe("betragInWorten — German number-to-words", () => {
 // ---------------------------------------------------------------------------
 
 describe("validateSpendeInput — BMF Pflichtfeld validation", () => {
+  // Phase 6 (Tier C3) reconciliation: the schema DROPPED the UI kategorie_id
+  // (Kategorie is derived server-side now) and replaced the legacy sache_* enum
+  // with the §4.3 Wertermittlung fields (wertermittlung_methode /
+  // zustand_beschreibung). No kategorie_id here.
   const validMember = {
     spende_kind: "geldspende",
     zugewendet_am: "2026-04-15",
     betragCents: 30000,
     member_id: "550e8400-e29b-41d4-a716-446655440000",
-    kategorie_id: "550e8400-e29b-41d4-a716-446655440001",
     zweckbindung_kind: "zweckfrei",
   };
 
@@ -188,7 +191,7 @@ describe("validateSpendeInput — BMF Pflichtfeld validation", () => {
     expect(r.success).toBe(true);
   });
 
-  it("Sachspende requires beschreibung + wertermittlung", () => {
+  it("Sachspende requires zustand_beschreibung + wertermittlung_methode (§4.3)", () => {
     const r = validateSpendeInput({
       ...validMember,
       spende_kind: "sachspende",
@@ -196,17 +199,20 @@ describe("validateSpendeInput — BMF Pflichtfeld validation", () => {
     expect(r.success).toBe(false);
     if (!r.success) {
       expect(Object.keys(r.errors)).toEqual(
-        expect.arrayContaining(["sache_beschreibung", "sache_wertermittlung"]),
+        expect.arrayContaining([
+          "zustand_beschreibung",
+          "wertermittlung_methode",
+        ]),
       );
     }
   });
 
-  it("Sachspende accepts beschreibung + wertermittlung", () => {
+  it("Sachspende accepts zustand_beschreibung + wertermittlung_methode (§4.3)", () => {
     const r = validateSpendeInput({
       ...validMember,
       spende_kind: "sachspende",
-      sache_beschreibung: "Laptop Dell XPS 13, Bj. 2022",
-      sache_wertermittlung: "verkehrswert",
+      zustand_beschreibung: "Laptop Dell XPS 13, Bj. 2022 — gut erhalten",
+      wertermittlung_methode: "marktpreis",
     });
     expect(r.success).toBe(true);
   });
@@ -317,6 +323,21 @@ describe("isBescheinigungEnabled — Freistellungsbescheid VZ Pflicht", () => {
       VEREIN_BESCHEID_DATUM: "2024-03-15",
       VEREIN_FREISTELLUNGSBESCHEID_VZ: "2024",
       VEREIN_STEUERBEGUENSTIGTE_ZWECKE: "   ",
+    });
+    expect(enabled).toBe(false);
+  });
+
+  // FIX-4 (board): the issuing Finanzamt name is interpolated verbatim into the
+  // BMF Pflichttext ("des Finanzamts …" / "wurde vom Finanzamt …"). The env
+  // default is "" — an unconfigured deployer must NOT be able to issue a
+  // legally-deficient receipt, so issuance is gated off (UI hides it too).
+  it("returns false when VEREIN_FINANZAMT is empty (otherwise valid)", async () => {
+    const enabled = await loadWithEnv({
+      VEREIN_BESCHEID_TYP: "freistellungsbescheid",
+      VEREIN_BESCHEID_DATUM: "2024-03-15",
+      VEREIN_FREISTELLUNGSBESCHEID_VZ: "2024",
+      VEREIN_STEUERBEGUENSTIGTE_ZWECKE: "der Förderung des Sports",
+      VEREIN_FINANZAMT: "   ",
     });
     expect(enabled).toBe(false);
   });

@@ -286,19 +286,8 @@ export type Events = {
     actorUserId: string | null;
   };
 
-  /**
-   * A new Spende was created via the admin UI. Audit-log handler writes a
-   * `donation` row with action='create'. No mail is sent here — the
-   * Bescheinigungs-Mail is fired on `spende.bescheinigung_generated`.
-   */
-  "spende.created": {
-    donationId: string;
-    businessId: string;
-    actorUserId: string | null;
-    betragCents: number;
-    spendeKind: "geldspende" | "sachspende" | "aufwandsspende";
-    memberId: string | null;
-  };
+  // Phase 8 T6: "spende.created" event type removed. No emitter exists
+  // (createDonation emits "donation.created" handled by txAuditMap).
 
   /** Spende master data was edited (pre-Bescheinigung). Audit only. */
   "spende.edited": {

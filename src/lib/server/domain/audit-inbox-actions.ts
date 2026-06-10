@@ -28,6 +28,7 @@ import { members } from "$lib/server/db/schema/members.js";
 import { sentMails } from "$lib/server/db/schema/mails.js";
 import { bus } from "$lib/server/events/index.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
+import { resolveKategorieByName } from "$lib/server/domain/transactions.js";
 import {
   composeBezahltVonDisplay,
   type BezahltVon,
@@ -196,6 +197,8 @@ function buchungsjahrForSubmission(rechnungsdatum: string | null): number {
 export interface ApproveSubmissionInput {
   submissionId: string;
   actorUserId: string;
+  /** Spec §4.6: the treasurer-chosen expense Kategorie NAME-snapshot (required). */
+  kategorieName: string;
 }
 
 export type ApproveSubmissionResult =
@@ -241,9 +244,13 @@ export type ApproveSubmissionResult =
 export async function approveSubmission(
   input: ApproveSubmissionInput,
 ): Promise<ApproveSubmissionResult> {
-  const { submissionId, actorUserId } = input;
+  const { submissionId, actorUserId, kategorieName } = input;
   if (!submissionId) {
     return { ok: false, status: 400, error: "Fehlende Submission-ID" };
+  }
+  const chosenKategorieName = kategorieName?.trim();
+  if (!chosenKategorieName) {
+    return { ok: false, status: 400, error: "Bitte eine Kategorie wählen" };
   }
 
   const db = getDb();
@@ -318,6 +325,28 @@ export async function approveSubmission(
   const expenseBusinessId = submission.businessId;
   const bezahltVonKind = submission.bezahltVonKind;
 
+  // Spec §4.6/§4.5: resolve the chosen Kategorie by NAME (authoritative) and
+  // derive sphere strictly from it — never a project default, never hardcoded.
+  // resolveKategorieByName THROWS on a miss; catch it so a renamed/stale
+  // Kategorie yields a clean 400 (surfaced as a toast), never a 500. Resolved
+  // outside the tx — the picked name is validated up-front, not per-row.
+  let kat: Awaited<ReturnType<typeof resolveKategorieByName>>;
+  try {
+    kat = await resolveKategorieByName("expense", chosenKategorieName);
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      err.message.startsWith("Kategorie not found:")
+    ) {
+      return {
+        ok: false,
+        status: 400,
+        error: "Kategorie nicht gefunden — bitte neu wählen",
+      };
+    }
+    throw err;
+  }
+
   type ApproveTxResult =
     | { kind: "created"; id: string; businessId: string }
     | { kind: "existed"; id: string; businessId: string };
@@ -337,10 +366,12 @@ export async function approveSubmission(
           currency: submission.currency,
           bezeichnung: submission.bezeichnung,
           kommentar: submission.kommentar ?? null,
-          // ADR-0002 snapshots — placeholders until the admin assigns
-          // kategorie + sphere on the transaction detail page (Phase 5).
-          kategorieNameSnapshot: "(Unkategorisiert)",
-          sphereSnapshot: "ideeller",
+          // Spec §4.6/§4.5: stamp the treasurer-chosen Kategorie + derive
+          // sphere strictly from it (gate is live — no more Import sentinel,
+          // no more hardcoded "ideeller").
+          kategorieId: kat.id,
+          kategorieNameSnapshot: kat.name,
+          sphereSnapshot: kat.sphere,
           // ADR-0007: copy discriminator + extern fields verbatim.
           bezahltVonKind: bezahltVonKind,
           bezahltVonMemberId: submission.bezahltVonMemberId,
@@ -348,6 +379,7 @@ export async function approveSubmission(
           externIban: submission.externIban,
           externEmail: submission.externEmail,
           bezahltVonDisplay: submission.bezahltVonDisplay,
+          belegFileId: submission.belegFileId,
           belegDriveFileId: submission.belegDriveFileId,
           belegOriginalName: submission.belegOriginalName,
           status: "geprueft",
@@ -490,10 +522,9 @@ export async function approveSubmission(
       vorname: submitterVorname,
       bezeichnung: submission.bezeichnung,
       betragCents: Number(submission.betragCents),
-      // The kategorie is snapshotted as "(Unkategorisiert)" at approval time
-      // (same placeholder used in the expense INSERT above). The admin can
-      // re-categorise later on the transaction detail page.
-      kategorie: "(Unkategorisiert)",
+      // Spec §4.6: the ApprovalMail carries the treasurer-chosen Kategorie
+      // (same value stamped on the expense INSERT above, kept CONSISTENT).
+      kategorie: kat.name,
       decidedAt: new Date().toISOString(),
       decidedByUserId: actorUserId,
       send_attempt: sendAttempt,

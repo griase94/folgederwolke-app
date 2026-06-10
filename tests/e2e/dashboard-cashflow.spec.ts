@@ -105,7 +105,7 @@ test.describe("Dashboard cashflow overview @phase-c3", () => {
     await expect(page.getByText(/Einnahmen 2024/).first()).toBeVisible();
     await expect(page.getByText(/Ausgaben 2024/).first()).toBeVisible();
 
-    // The 2 headline cards link to /app/transactions with year=2024 query.
+    // The 2 headline cards link to /app/ausgaben with year=2024 query (Phase 8 T6).
     const heroLinks = page.getByTestId("large-kpi-card-link");
     const linkCount = await heroLinks.count();
     expect(linkCount).toBeGreaterThanOrEqual(2);

@@ -12,6 +12,16 @@ set +a
 
 : "${DIRECT_DATABASE_URL:?DIRECT_DATABASE_URL missing from .env.test}"
 
+# Template/override target: vitest builds an isolated template DB
+# (folgederwolke_test_tmpl) once, then clones it per worker. When RESET_DB_NAME
+# is set, retarget the URLs to that DB so migrate + seed land there. Unset →
+# the .env.test default (folgederwolke_test), e.g. for the playwright suite.
+if [[ -n "${RESET_DB_NAME:-}" ]]; then
+  DIRECT_DATABASE_URL="${DIRECT_DATABASE_URL%/*}/${RESET_DB_NAME}"
+  DATABASE_URL="${DATABASE_URL%/*}/${RESET_DB_NAME}"
+  export DIRECT_DATABASE_URL DATABASE_URL
+fi
+
 # Safety: refuse if not localhost
 case "$DIRECT_DATABASE_URL" in
   *localhost*|*127.0.0.1*) ;;

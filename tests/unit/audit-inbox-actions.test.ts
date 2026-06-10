@@ -67,6 +67,18 @@ interface ExpenseRow {
   externName: string | null;
   externIban: string | null;
   externEmail: string | null;
+  kategorieId: string | null;
+  kategorieNameSnapshot: string | null;
+  sphereSnapshot: string | null;
+}
+
+// The seeded expense kategorie that approveSubmission resolves by name to
+// stamp kategorie_id / kategorie_name_snapshot / sphere_snapshot.
+interface KategorieRow {
+  id: string;
+  kind: "expense" | "income";
+  name: string;
+  sphere: string;
 }
 
 interface MemberRow {
@@ -78,6 +90,9 @@ interface MemberRow {
 const submissionsStore = new Map<string, SubmissionRow>();
 const expensesStore = new Map<string, ExpenseRow>();
 const membersStore = new Map<string, MemberRow>();
+// kategorien store, seeded each test with one expense kategorie so
+// approveSubmission's name-authoritative resolution finds a row.
+const kategorienStore = new Map<string, KategorieRow>();
 // festBis = null → no festschreibung.
 let festBisOverride: number | null = null;
 
@@ -136,6 +151,9 @@ function makeExpense(overrides: Partial<ExpenseRow> = {}): ExpenseRow {
     externName: null,
     externIban: null,
     externEmail: null,
+    kategorieId: null,
+    kategorieNameSnapshot: null,
+    sphereSnapshot: null,
     ...overrides,
   };
   expensesStore.set(id, row);
@@ -147,8 +165,12 @@ function makeExpense(overrides: Partial<ExpenseRow> = {}): ExpenseRow {
 // ---------------------------------------------------------------------------
 
 interface PendingSelect {
-  table: "submissions" | "expenses" | "members";
-  whereField?: keyof SubmissionRow | keyof ExpenseRow | keyof MemberRow;
+  table: "submissions" | "expenses" | "members" | "kategorien";
+  whereField?:
+    | keyof SubmissionRow
+    | keyof ExpenseRow
+    | keyof MemberRow
+    | keyof KategorieRow;
   whereValue?: unknown;
 }
 
@@ -158,8 +180,11 @@ function makeDbFake() {
     const chain = {
       from(table: { _kind?: string } & Record<string, unknown>) {
         ctx.table =
-          (table._kind as "submissions" | "expenses" | "members") ??
-          "submissions";
+          (table._kind as
+            | "submissions"
+            | "expenses"
+            | "members"
+            | "kategorien") ?? "submissions";
         return chain;
       },
       where(cond: { field: string; value: unknown }) {
@@ -185,6 +210,16 @@ function makeDbFake() {
           rows = [...expensesStore.values()].filter((r) =>
             ctx.whereField
               ? r[ctx.whereField as keyof ExpenseRow] === ctx.whereValue
+              : true,
+          );
+        } else if (ctx.table === "kategorien") {
+          // resolveKategorieByName does where(and(eq(kind,…), eq(name,…))).
+          // The `and(...)` mock collapses to its first arg (the kind eq), so
+          // we filter by kind only — the store holds a single expense
+          // kategorie, so this is unambiguous.
+          rows = [...kategorienStore.values()].filter((r) =>
+            ctx.whereField
+              ? r[ctx.whereField as keyof KategorieRow] === ctx.whereValue
               : true,
           );
         } else {
@@ -247,6 +282,14 @@ function makeDbFake() {
               (ctx.values.bezahltVonMemberId as string | null) ?? null,
             externEmail: (ctx.values.externEmail as string | null) ?? null,
             externName: (ctx.values.externName as string | null) ?? null,
+            // Thread the kategorie + sphere fields the INSERT sets so the
+            // tests can assert the chosen Kategorie + derived sphere on the
+            // stored expense.
+            kategorieId: (ctx.values.kategorieId as string | null) ?? null,
+            kategorieNameSnapshot:
+              (ctx.values.kategorieNameSnapshot as string | null) ?? null,
+            sphereSnapshot:
+              (ctx.values.sphereSnapshot as string | null) ?? null,
           });
           return Promise.resolve([{ id: row.id, businessId: row.businessId }]);
         }
@@ -398,6 +441,19 @@ vi.mock("$lib/server/db/schema/zahlungsarten.js", () => ({
   zahlungsarten: { _kind: "zahlungsarten" },
 }));
 
+// approveSubmission resolves the chosen Kategorie via
+// select().from(kategorien).where(and(eq(kind), eq(name))). Mock the schema
+// shape so the fake's `from` tags the table correctly.
+vi.mock("$lib/server/db/schema/kategorien.js", () => ({
+  kategorien: {
+    _kind: "kategorien",
+    id: "id",
+    kind: "kind",
+    name: "name",
+    sphere: "sphere",
+  },
+}));
+
 // Make drizzle's `eq(col, val)` and `and(...)` return shapes our update/select
 // `where` helpers can read.
 vi.mock("drizzle-orm", async () => {
@@ -438,10 +494,22 @@ beforeEach(() => {
   submissionsStore.clear();
   expensesStore.clear();
   membersStore.clear();
+  kategorienStore.clear();
   emitMock.mockClear();
   festBisOverride = null;
   nextExpenseId = 1;
   uniqueViolationOnNextInsert = false;
+
+  // The gate resolves the CHOSEN Kategorie by name. The drizzle fake's
+  // kategorien branch filters by kind only (the `and(...)` mock drops the
+  // name eq), so keep EXACTLY ONE expense kategorie in the store so
+  // resolveKategorieByName is unambiguous.
+  kategorienStore.set("kat-buero", {
+    id: "kat-buero",
+    kind: "expense",
+    name: "Bürobedarf",
+    sphere: "wirtschaftlich",
+  });
 });
 
 afterEach(() => {
@@ -459,6 +527,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
 
     expect(result.ok).toBe(true);
@@ -484,12 +553,14 @@ describe("approveSubmission — idempotency", () => {
     const first = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
     if (!first.ok) throw new Error("first call failed");
 
     const second = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
 
     expect(second.ok).toBe(true);
@@ -516,6 +587,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
 
     expect(result.ok).toBe(false);
@@ -527,6 +599,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: "does-not-exist",
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -540,6 +613,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
 
     expect(result.ok).toBe(false);
@@ -561,6 +635,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -569,6 +644,61 @@ describe("approveSubmission — idempotency", () => {
     expect(exp.bezahltVonKind).toBe("extern");
     expect(exp.externName).toBe("Lea Mustermann");
     expect(exp.externEmail).toBe("lea@example.com");
+  });
+
+  it("stamps the chosen Kategorie + derives sphere from it (spec §4.6/§4.5)", async () => {
+    const sub = makeSubmission({ businessId: "AUS-2026-101" });
+
+    const result = await approveSubmission({
+      submissionId: sub.id,
+      actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const exp = expensesStore.get(result.expenseId)!;
+    expect(exp.kategorieNameSnapshot).toBe("Bürobedarf");
+    expect(exp.sphereSnapshot).toBe("wirtschaftlich"); // NOT the old hardcoded "ideeller"
+
+    // ApprovalMail carries the chosen kategorie, not the sentinel.
+    const mailEmit = emitMock.mock.calls.find(
+      (c) => c[0] === "auslage.approved",
+    );
+    expect(mailEmit?.[1]).toMatchObject({ kategorie: "Bürobedarf" });
+  });
+
+  it("rejects approval with no Kategorie (400, no expense created)", async () => {
+    const sub = makeSubmission({ businessId: "AUS-2026-102" });
+
+    const result = await approveSubmission({
+      submissionId: sub.id,
+      actorUserId: "admin-1",
+      kategorieName: "  ",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.status).toBe(400);
+    expect(expensesStore.size).toBe(0);
+  });
+
+  it("returns a graceful 400 (not a 500) when the chosen Kategorie no longer exists", async () => {
+    // Simulate a stale/renamed Kategorie: empty the store so the name resolves
+    // to nothing. resolveKategorieByName THROWS; the gate must catch → 400.
+    kategorienStore.clear();
+    const sub = makeSubmission({ businessId: "AUS-2026-103" });
+
+    const result = await approveSubmission({
+      submissionId: sub.id,
+      actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.status).toBe(400);
+    expect(expensesStore.size).toBe(0);
   });
 });
 
@@ -754,8 +884,16 @@ describe("approveSubmission — concurrent race (A1)", () => {
     // throws SQLSTATE 23505 on the second insert (same businessId), and the
     // domain helper catches it, re-reads, and returns the winner's expense.
     const [a, b] = await Promise.all([
-      approveSubmission({ submissionId: sub.id, actorUserId: "admin-1" }),
-      approveSubmission({ submissionId: sub.id, actorUserId: "admin-2" }),
+      approveSubmission({
+        submissionId: sub.id,
+        actorUserId: "admin-1",
+        kategorieName: "Bürobedarf",
+      }),
+      approveSubmission({
+        submissionId: sub.id,
+        actorUserId: "admin-2",
+        kategorieName: "Bürobedarf",
+      }),
     ]);
 
     expect(a.ok).toBe(true);

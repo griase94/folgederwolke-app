@@ -65,7 +65,7 @@ describe.skipIf(!dbConfigured)(
         INSERT INTO expenses (
           business_id, gebucht_am, betrag_cents, bezeichnung,
           kategorie_id, kategorie_name_snapshot, sphere_snapshot,
-          bezahlt_von_kind, bezahlt_von_display
+          bezahlt_von_kind, bezahlt_von_display, beleg_verzicht_grund
         ) VALUES (
           ${EXP_BID},
           ${`${PERF_YEAR}-04-06 10:00:00+01`},
@@ -75,7 +75,8 @@ describe.skipIf(!dbConfigured)(
           ${ke.name},
           'ideeller',
           'verein',
-          'Vereinskasse'
+          'Vereinskasse',
+          'roundtrip fixture — kein Beleg'
         )
       `;
       // prior year: 1 income (20.000) — to exercise YoY math

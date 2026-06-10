@@ -1,16 +1,18 @@
 /**
  * Transaction kind URL-param mapping (C7-1 / C3 shared helper).
  *
- * The FabBottomSheet and various UI entry points link to
- *   /app/transactions/neu?kind=ausgabe|einnahme|spende
- * using German slugs because the URL surfaces in screenshots, browser
- * history, share links, etc. — `?kind=expense` would feel out of place in
- * an otherwise German admin UI. Internally the domain uses the English
- * enum TransactionKind = "expense" | "income" | "donation".
+ * Entry points link to per-tab neu routes:
+ *   /app/ausgaben/neu   (expense)
+ *   /app/einnahmen/neu  (income)
+ *   /app/spenden/neu    (donation)
  *
- * This helper bridges the two so callers never have to mix locales.
- * Accepts EITHER spelling so old links / typos don't 404 / silently fall
- * back to "expense".
+ * The `?kind=` query param was used by the retired /app/transactions/neu
+ * route. The per-tab routes don't need it (kind is implicit in the path),
+ * but `parseKindFromUrl` is still used by page.server.ts loaders that
+ * accept both German and English spellings from URL params.
+ *
+ * Internally the domain uses the English enum
+ * TransactionKind = "expense" | "income" | "donation".
  *
  * Co-owned by the C3 (dashboard quick-actions) and C7 (mobile FAB) clusters.
  */
@@ -55,12 +57,19 @@ export function parseKindFromUrl(
   return KIND_DE_TO_EN[normalized] ?? null;
 }
 
+/** Domain TransactionKind → per-tab base path (Phase 8 T6). */
+const KIND_EN_TO_TAB: Record<TransactionKind, string> = {
+  expense: "ausgaben",
+  income: "einnahmen",
+  donation: "spenden",
+};
+
 /**
- * Build a `/app/transactions/neu?kind=<slug>` URL for a domain kind.
+ * Build the per-tab `/app/{tab}/neu` URL for a domain kind.
  *
- * Use this in components (FabBottomSheet, dashboard quick-actions) so the
- * outgoing slug stays in sync with the incoming parser.
+ * Phase 8 T6: /app/transactions/neu retired. Entry points now link
+ * directly to the per-kind neu route (kind is implicit in the path).
  */
 export function buildNeuUrlForKind(kind: TransactionKind): string {
-  return `/app/transactions/neu?kind=${KIND_EN_TO_DE[kind]}`;
+  return `/app/${KIND_EN_TO_TAB[kind]}/neu`;
 }

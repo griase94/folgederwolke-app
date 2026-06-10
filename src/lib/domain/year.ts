@@ -123,3 +123,34 @@ export function clampYearToAvailable(
   }
   return candidate;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 2 — "Alle Jahre" year scope + stale-year banner (spec §6)
+// ---------------------------------------------------------------------------
+
+/** Sentinel for the list-only "Alle Jahre" scope; serializes to `?year=all`. */
+export const ALL_YEARS = "all" as const;
+export type YearScope = number | typeof ALL_YEARS;
+
+/** Lists only: accepts ?year=all. Concrete years go through the existing bounds check. */
+export function selectYearOrAllFromUrl(
+  params: URLSearchParams,
+  fallback: number,
+): YearScope {
+  if (params.get("year") === ALL_YEARS) return ALL_YEARS;
+  return selectYearFromUrl(params, fallback);
+}
+
+/** Banner trigger: concrete year that isn't the current one. Never for ALL_YEARS. */
+export function isStaleYear(scope: YearScope, currentYear: number): boolean {
+  return scope !== ALL_YEARS && scope !== currentYear;
+}
+
+/**
+ * The display label for a year scope: a concrete year as-is, the ALL_YEARS
+ * sentinel as "Alle Jahre". SHARED so the three tab KPIs + the list empty-state
+ * never drift (Einnahmen previously rendered the sentinel as bare "Alle").
+ */
+export function yearScopeLabel(scope: YearScope): string {
+  return scope === ALL_YEARS ? "Alle Jahre" : String(scope);
+}

@@ -24,7 +24,7 @@
  * dry-run flags it red so the admin sees it upfront.
  */
 
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { donations } from "$lib/server/db/schema/donations.js";
@@ -41,6 +41,12 @@ import {
   type TransformContext,
   type TransformResult,
 } from "./transform.js";
+
+/**
+ * Name of the per-kind "Unkategorisiert (Import)" sentinel kategorie seeded by
+ * `scripts/seed.ts` (Task 5). Must stay byte-identical to the seeded `name`.
+ */
+const IMPORT_SENTINEL_NAME = "Unkategorisiert (Import)";
 
 // ---------------------------------------------------------------------------
 // Public input/output
@@ -137,6 +143,14 @@ export async function planImport(
     input.idempotencyKey ?? `sheet_import_${todayBerlinIso()}`;
   const sourceTag = `${idempotencyKey}@${input.sheet.sourceHash.slice(0, 8)}`;
 
+  // Resolve the per-kind "Unkategorisiert (Import)" sentinel ids ONCE (Task 5
+  // seeds one per kind). Unmatched legacy rows fall back to these so the
+  // importer never persists a null kategorie_id (spec §4.6, Task 8).
+  const sentinelExpenseKategorieId =
+    await fetchImportSentinelKategorieId("expense");
+  const sentinelIncomeKategorieId =
+    await fetchImportSentinelKategorieId("income");
+
   const ctx: TransformContext = {
     members: memberRows,
     kategorien: kategorieRows.map((k) => ({
@@ -147,6 +161,8 @@ export async function planImport(
     })),
     projects: projectRows,
     sourceTag,
+    sentinelExpenseKategorieId,
+    sentinelIncomeKategorieId,
   };
 
   // 2. Transform.
@@ -427,6 +443,34 @@ async function fetchFestgeschriebenBis(): Promise<number | null> {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+/**
+ * Resolve the id of the per-kind "Unkategorisiert (Import)" sentinel kategorie
+ * (seeded by Task 5, one row per kind). This is the importer's permanent
+ * fallback for legacy rows whose kategorie can't be matched (spec §4.6).
+ * Throws if the sentinel is missing — the importer cannot guarantee a non-null
+ * kategorie_id without it, so failing loudly beats silently importing nulls.
+ */
+async function fetchImportSentinelKategorieId(
+  kind: "expense" | "income",
+): Promise<string> {
+  const db = getDb();
+  const rows = await db
+    .select({ id: kategorien.id })
+    .from(kategorien)
+    .where(
+      and(eq(kategorien.kind, kind), eq(kategorien.name, IMPORT_SENTINEL_NAME)),
+    )
+    .limit(1);
+  const id = rows[0]?.id;
+  if (!id) {
+    throw new Error(
+      `Import-Sentinel "${IMPORT_SENTINEL_NAME}" (kind=${kind}) fehlt in kategorien.` +
+        ` Seed (Task 5) muss vor dem Import laufen.`,
+    );
+  }
+  return id;
 }
 
 function parseYear(businessId: string): number {

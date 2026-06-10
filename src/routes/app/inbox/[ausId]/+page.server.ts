@@ -29,6 +29,10 @@ import {
   approveSubmission,
   rejectSubmission,
 } from "$lib/server/domain/audit-inbox-actions.js";
+import {
+  listKategorieOptions,
+  IMPORT_SENTINEL_NAME,
+} from "$lib/server/domain/transaction-pickers.js";
 import { bus, registerHandlers } from "$lib/server/events/index.js";
 import { maskIban, type InboxSubmissionDetailView } from "$lib/domain/inbox.js";
 
@@ -106,6 +110,13 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     .from(zahlungsarten)
     .where(eq(zahlungsarten.deactivated, false))
     .orderBy(zahlungsarten.label);
+
+  // ── Fetch Kategorie options for the approve form (sentinel excluded) ────────
+  // "Unkategorisiert (Import)" is a sentinel for importer rows; the gate
+  // requires a real Kategorie choice, so we strip it from the picker.
+  const kategorieOptions = (await listKategorieOptions("expense"))
+    .filter((o) => o.name !== IMPORT_SENTINEL_NAME)
+    .map((o) => ({ name: o.name, sphere: o.sphere }));
 
   // ── Emit auslage.reviewed when an admin opens an undecided card. The
   //    handler in handlers.ts is the authoritative guard: it issues an
@@ -216,6 +227,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
         }
       : null,
     zahlungsarten: zahlungsartRows,
+    kategorieOptions,
   };
 };
 
@@ -265,9 +277,19 @@ export const actions: Actions = {
       submissionId = rows[0].id;
     }
 
+    const kategorieName =
+      formData.get("kategorieName")?.toString().trim() ?? "";
+    if (!kategorieName) {
+      return fail(400, {
+        action: "approve",
+        error: "Bitte eine Kategorie wählen",
+      });
+    }
+
     const result = await approveSubmission({
       submissionId,
       actorUserId: userId,
+      kategorieName,
     });
 
     if (!result.ok) {

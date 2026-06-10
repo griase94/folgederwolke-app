@@ -104,4 +104,50 @@ describe("C2 YearSwitcher (VB-002 / JB-001 / UX-010 / UI-009 / UI-043)", () => {
     const group = screen.getByRole("radiogroup", { name: "Buchungsjahr" });
     expect(group).toBeTruthy();
   });
+
+  // ── Task 3: "Alle Jahre" lists-only scope ─────────────────────────────────
+
+  it("appends an 'Alle Jahre' option only when allowAllYears is set", () => {
+    render(YearSwitcher, {
+      props: { years, selected: 2026, onChange: () => {}, allowAllYears: true },
+    });
+    // 3 years + the Alle Jahre segment = 4 radios.
+    expect(screen.getAllByRole("radio").length).toBe(4);
+    expect(screen.getByRole("radio", { name: /Alle Jahre/ })).toBeTruthy();
+  });
+
+  it("does NOT render 'Alle Jahre' by default (allowAllYears omitted)", () => {
+    render(YearSwitcher, {
+      props: { years, selected: 2026, onChange: () => {} },
+    });
+    expect(screen.queryByRole("radio", { name: /Alle Jahre/ })).toBeNull();
+  });
+
+  it("highlights 'Alle Jahre' as active when selected is the 'all' sentinel", () => {
+    render(YearSwitcher, {
+      props: {
+        years,
+        selected: "all",
+        onChange: () => {},
+        allowAllYears: true,
+      },
+    });
+    const allOption = screen.getByRole("radio", { name: /Alle Jahre/ });
+    expect(allOption.getAttribute("aria-checked")).toBe("true");
+    // The concrete years are not checked when the scope is "all".
+    expect(
+      screen
+        .getByRole("radio", { name: /^2026$/ })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
+  });
+
+  it("passes the 'all' sentinel through onChange verbatim (no NaN coercion)", async () => {
+    const onChange = vi.fn();
+    render(YearSwitcher, {
+      props: { years, selected: 2026, onChange, allowAllYears: true },
+    });
+    await fireEvent.click(screen.getByRole("radio", { name: /Alle Jahre/ }));
+    expect(onChange).toHaveBeenCalledWith("all");
+  });
 });

@@ -96,17 +96,17 @@
 					size="sm"
 					onclick={() => {
 						// eslint-disable-next-line svelte/no-navigation-without-resolve
-						goto(`/app/transactions/${data.linkedExpense!.id}`);
+						goto(`/app/ausgaben/${data.linkedExpense!.id}`);
 					}}
 				>
-					Zur Transaktion →
+					Zur Ausgabe →
 				</Button>
 			{/if}
 		</div>
 	{/if}
 
 	<!-- ── Full-screen review card ─────────────────────────────────────────── -->
-	<AuditCard submission={data.submission} decided={isDecided} />
+	<AuditCard submission={data.submission} decided={isDecided} kategorieOptions={data.kategorieOptions} />
 
 	{#if isDecided && data.decision.decisionReason}
 		<div class="mt-6 rounded-xl border border-border bg-card px-4 py-3 text-sm">

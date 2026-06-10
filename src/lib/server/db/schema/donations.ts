@@ -17,6 +17,7 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
+  boolean,
   char,
   date,
   index,
@@ -34,6 +35,7 @@ import {
   sourceKindEnum,
   spendeKindEnum,
   sphereEnum,
+  wertermittlungMethodeEnum,
   zweckbindungKindEnum,
 } from "./enums.js";
 import { expenses } from "./expenses.js";
@@ -88,9 +90,11 @@ export const donations = pgTable(
     zweckbindungText: text("zweckbindung_text"),
 
     // --- Kategorie + sphere snapshots (ADR-0002) ---
-    kategorieId: uuid("kategorie_id").references(() => kategorien.id, {
-      onDelete: "restrict",
-    }),
+    kategorieId: uuid("kategorie_id")
+      .notNull()
+      .references(() => kategorien.id, {
+        onDelete: "restrict",
+      }),
     kategorieNameSnapshot: text("kategorie_name_snapshot").notNull(),
     sphereSnapshot: sphereEnum("sphere_snapshot").notNull().default("ideeller"),
 
@@ -130,6 +134,19 @@ export const donations = pgTable(
     aufwandsspendeVerzichtTextSnapshot: text(
       "aufwandsspende_verzicht_text_snapshot",
     ),
+
+    // --- SPEC-02 Sachspende Wertermittlung (additive, migration 0029) ---
+    wertermittlungMethode: wertermittlungMethodeEnum("wertermittlung_methode"),
+    zustandBeschreibung: text("zustand_beschreibung"),
+    herkunftsbelegFileId: uuid("herkunftsbeleg_file_id").references(
+      () => files.id,
+      { onDelete: "restrict" },
+    ),
+    /**
+     * false = Privatvermögen (default), true = aus Betriebsvermögen — flag for
+     * the Zuwendungsbestätigung legal-text branch (SPEC-02). Flag only.
+     */
+    betriebsvermoegen: boolean("betriebsvermoegen").notNull().default(false),
 
     // --- ADR-0006 Festschreibung ---
     festgeschriebenAt: timestamp("festgeschrieben_at", { withTimezone: true }),

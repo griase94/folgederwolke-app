@@ -110,9 +110,7 @@
 		>
 			{#snippet cta()}
 				{#if !closed}
-					<Button href={`/app/transactions/spenden?year=${year}`}>
-						Spende erfassen
-					</Button>
+					<Button href="/app/spenden/neu">Spende erfassen</Button>
 				{/if}
 			{/snippet}
 		</EmptyState>
@@ -168,7 +166,7 @@
 									{#if r.status === 'pending'}
 										{#if bescheinigungEnabled}
 											<Button
-												href={`/app/transactions/${r.id}`}
+												href={`/app/spenden/${r.id}`}
 												variant="outline"
 												size="sm"
 												data-testid="bescheinigung-create-cta"
@@ -185,7 +183,7 @@
 										{/if}
 									{:else if r.status === 'issued'}
 										<Button
-											href={`/app/transactions/${r.id}`}
+											href={`/app/spenden/${r.id}`}
 											variant="ghost"
 											size="sm"
 										>

@@ -17,6 +17,12 @@ yarn.lock
 # don't reformat them on every CI run.
 docs/reviews/
 
+# Implementation plans + specs are agent-authored working docs with carefully
+# hand-formatted code blocks / tables that the executing agents read verbatim;
+# prettier reflow would churn them. Same rationale as docs/reviews/ above.
+docs/plans/
+docs/specs/
+
 # Local Claude Code worktrees / scratch — not part of the repo.
 .claude/
 

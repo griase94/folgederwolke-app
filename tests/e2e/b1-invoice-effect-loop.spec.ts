@@ -11,7 +11,7 @@
  *   2. No `effect_update_depth_exceeded` console errors during the fill
  *      flow (regression guard for the $state(timer) bug that prompted this
  *      test).
- *   3. A dirty form on /app/rechnungen/new AND /app/transactions/neu prompts
+ *   3. A dirty form on /app/rechnungen/new AND /app/ausgaben/neu prompts
  *      with window.confirm on sidebar navigation.
  *
  * Auth helper mirrors tests/e2e/rechnungen.spec.ts (magic-link insertion).
@@ -171,11 +171,11 @@ test.describe("@phase-9 B-1 InvoiceForm effect loop fix", () => {
     await expect(page).toHaveURL(/\/app\/rechnungen\/new/);
   });
 
-  test("dirty /transactions/neu form prompts on sidebar navigate-away", async ({
+  test("dirty /ausgaben/neu form prompts on navigate-away (backdrop close)", async ({
     page,
   }) => {
     await signIn(page);
-    await page.goto("/app/transactions/neu?kind=ausgabe");
+    await page.goto("/app/ausgaben/neu"); // Phase 8 T6: per-tab neu
 
     await expect(page.locator('input[name="bezeichnung"]')).toBeVisible();
     await page.fill('input[name="bezeichnung"]', "Dirty Ausgabe");
@@ -187,14 +187,21 @@ test.describe("@phase-9 B-1 InvoiceForm effect loop fix", () => {
       await d.dismiss();
     });
 
-    await page
-      .getByRole("link", { name: /übersicht/i })
-      .first()
-      .click();
+    // /app/ausgaben/neu renders an EntryFormShell with a full-viewport backdrop
+    // (fixed inset-0 z-40) and a dialog shell on top (z-50). The dialog element
+    // captures keyboard events; pressing Escape fires onClose() → goto('/app/ausgaben')
+    // → beforeNavigate intercepts and shows window.confirm (UX-02). This exercises
+    // the same dirty-guard codepath as a user pressing Escape to dismiss the sheet.
+    // Focus the dialog first so the keydown handler is reached.
+    await page.locator('[data-slot="entry-form-shell"]').focus();
+    await page.keyboard.press("Escape");
 
+    // Wait for the dialog to fire and be dismissed (beforeNavigate guard is
+    // synchronous but Playwright dialog handling is async).
     await page.waitForTimeout(300);
 
     expect(dialogFired).toBe(true);
-    await expect(page).toHaveURL(/\/app\/transactions\/neu/);
+    // Dismissed → still on /app/ausgaben/neu (guard cancelled the navigation)
+    await expect(page).toHaveURL(/\/app\/ausgaben\/neu/);
   });
 });

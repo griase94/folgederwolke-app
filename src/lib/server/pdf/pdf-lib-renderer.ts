@@ -50,7 +50,7 @@ export class PdfLibInvoiceRenderer implements InvoicePdfRenderer {
       bezeichnung: input.bezeichnung,
       leistungsBeschreibung: input.leistungsBeschreibung ?? null,
       nettoCents: input.nettoCents,
-      kassenwaertName: input.kassenwaertName ?? "Julia Schwarz",
+      kassenwaertName: input.kassenwaertName ?? "",
     });
     return {
       bytes,

@@ -17,7 +17,11 @@
 		bescheinigungNr: string | null;
 		bescheinigungAusgestelltAm: string | null;
 		bescheidTyp: 'geldspende' | 'sachspende' | 'aufwandsspende' | 'sammelbestaetigung' | null;
-		kategorieId: string | null;
+		// P1-T10/T12: donations.kategorie_id is now NOT NULL, so the load infers a
+		// non-null string. The OLD /app/transactions/spenden route (retired in
+		// Phase 6) carried a stale nullable type — narrow it so the onEdit
+		// callback stays assignable. Minimal change; route is otherwise untouched.
+		kategorieId: string;
 		kategorieNameSnapshot: string;
 		sphereSnapshot: 'ideeller' | 'vermoegen' | 'zweckbetrieb' | 'wirtschaftlich';
 		festgeschriebenAt: string | null;

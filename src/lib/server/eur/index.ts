@@ -190,7 +190,7 @@ export interface PreFlightItem {
   detail: string;
   /**
    * Optional href that turns the item into an actionable link to the place
-   * the user can resolve it (e.g. `/app/transactions?kategorie=missing`).
+   * the user can resolve it (e.g. `/app/ausgaben?year=X&belegFehlt=true`).
    * `undefined` for items the user can't directly act on (e.g. "year not
    * in future").
    */
@@ -266,7 +266,12 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
       detail: `${input.uncategorizedCount} Buchung${
         input.uncategorizedCount === 1 ? "" : "en"
       } ohne Kategorie. Bitte zuordnen, bevor das Jahr festgeschrieben wird.`,
-      fixHref: `/app/transactions?year=${input.year}&kategorie=missing`,
+      // Phase 8 T6: /app/transactions retired. The old `?kategorie=missing`
+      // sentinel filter does not exist on /app/ausgaben — and post-§4.6
+      // kategorie_id is NOT NULL, so a "Unkategorisiert" filter would be
+      // permanently empty anyway. Drop fixHref: users resolve via the
+      // Buchungsliste tab in Jahresabschluss which shows all entries.
+      fixHref: undefined,
     });
   } else {
     items.push({
@@ -286,7 +291,10 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
       detail: `${input.missingBelegCount} Buchung${
         input.missingBelegCount === 1 ? "" : "en"
       } ohne Beleg-Datei. Festschreibung weiterhin möglich, aber Belege später nachreichen.`,
-      fixHref: `/app/transactions?year=${input.year}&beleg=missing`,
+      // Phase 8 T6: /app/transactions retired → /app/ausgaben with belegFehlt=true.
+      // The EÜR count and belegFehlt filter now use the same predicate:
+      //   beleg_file_id IS NULL AND beleg_verzicht_grund IS NULL.
+      fixHref: `/app/ausgaben?year=${input.year}&belegFehlt=true`,
     });
   } else {
     items.push({
@@ -372,7 +380,7 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
       detail: `${missingBescheinigungenCount} Spende${
         missingBescheinigungenCount === 1 ? "" : "n"
       } ≥ 300 € ohne Bescheinigungs-Nummer. Nach Festschreibung ist eine Neuvergabe der Nummern aufwendig — wir empfehlen, sie jetzt auszustellen.`,
-      fixHref: `/app/transactions/spenden?year=${input.year}&bescheinigung=missing`,
+      fixHref: `/app/spenden?year=${input.year}&bescheinigung=ausstehend`,
     });
   } else {
     items.push({
@@ -397,7 +405,7 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
       label: "Mindestens eine Buchung im Jahr",
       status: "block",
       detail: `Buchungsjahr ${input.year} enthält keine Buchungen. Festschreibung ist nur sinnvoll, wenn mindestens eine Einnahme, Ausgabe, Spende oder ein Mitgliedsbeitrag erfasst wurde.`,
-      fixHref: "/app/transactions/neu",
+      fixHref: "/app/ausgaben/neu",
     });
   } else {
     items.push({

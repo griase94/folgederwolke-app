@@ -1,5 +1,6 @@
 /**
- * Picker helpers for /app/transactions/neu (cluster C4).
+ * Picker helpers for the transaction-neu routes (cluster C4).
+ * Phase 8 T6: /app/transactions/neu retired; used by per-tab neu routes.
  *
  * Fixes findings VB-004 + JB-014: the form used to hardcode
  * sphereSnapshot="ideeller" + kategorieNameSnapshot="(Unkategorisiert)",
@@ -23,6 +24,10 @@ import { getDb } from "$lib/server/db/index.js";
 import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
+import { members } from "$lib/server/db/schema/members.js";
+
+// The per-kind importer placeholder kategorie; excluded from interactive pickers.
+export const IMPORT_SENTINEL_NAME = "Unkategorisiert (Import)";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -126,7 +131,7 @@ export function pickDefaultKategorieName(args: {
 
 /**
  * Loads all non-deactivated kategorien of a given kind, ordered by sortOrder.
- * Drives the picker dropdown in /app/transactions/neu.
+ * Drives the picker dropdowns in the per-tab neu routes.
  */
 export async function listKategorieOptions(
   kind: TransactionKind,
@@ -210,6 +215,35 @@ export async function loadRecentKategorieUsage(
     });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// listMemberOptions — DB helper
+// ---------------------------------------------------------------------------
+
+export interface MemberOption {
+  id: string;
+  label: string;
+}
+
+/**
+ * Loads all members as picker options for the member-picker filter fields
+ * (spender / bezahlt-von). Returns full names, sorted by nachname then vorname.
+ */
+export async function listMemberOptions(): Promise<MemberOption[]> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: members.id,
+      vorname: members.vorname,
+      nachname: members.nachname,
+    })
+    .from(members)
+    .orderBy(members.nachname, members.vorname);
+  return rows.map((m) => ({
+    id: m.id,
+    label: `${m.vorname} ${m.nachname}`.trim(),
+  }));
 }
 
 // (avoid unused-import lint when ts checks isNull above for future filters)

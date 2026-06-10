@@ -62,6 +62,25 @@ async function seedMatrixTotals(): Promise<void> {
   const sql = postgres(url, { prepare: false, max: 1 });
   try {
     await sql`DELETE FROM member_beitrags`;
+    // Repoint any corpus member-paid rows to 'verein' before deleting members,
+    // otherwise ON DELETE SET NULL would violate the bezahlt_von union CHECK
+    // (expenses_bezahlt_von_union_ck / auslagen_submissions_bezahlt_von_union_ck).
+    // Mirrors beitraege-dashboard/bericht so this spec is order-independent (it
+    // only exercises the Beitragsmatrix; the corpus rows' payer is irrelevant).
+    await sql`
+      UPDATE expenses
+         SET bezahlt_von_kind = 'verein',
+             bezahlt_von_member_id = NULL,
+             extern_name = NULL, extern_iban = NULL, extern_email = NULL
+       WHERE bezahlt_von_member_id IS NOT NULL
+    `;
+    await sql`
+      UPDATE auslagen_submissions
+         SET bezahlt_von_kind = 'verein',
+             bezahlt_von_member_id = NULL,
+             extern_name = NULL, extern_iban = NULL, extern_email = NULL
+       WHERE bezahlt_von_member_id IS NOT NULL
+    `;
     await sql`DELETE FROM members`;
     await sql`
       INSERT INTO members (id, vorname, nachname, email, role, eintritts_datum, is_fixture)

@@ -93,22 +93,30 @@ async function seedUnpaidInvoice(opts: {
 async function wipeSynthetic(): Promise<void> {
   const db = getDb();
   const a = admin();
-  // audit_log: app_runtime cannot DELETE (ADR-0004). Wipe FDW-2098-% (invoice
-  // breadcrumbs) and E-{year}-% (income breadcrumbs created by markInvoiceAsPaid).
-  const year = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Berlin",
-    year: "numeric",
-  }).format(new Date());
-  await a`DELETE FROM audit_log WHERE entity_business_id LIKE 'FDW-2098-%'`;
-  await a`DELETE FROM audit_log WHERE entity_business_id LIKE 'E-2098-%'`;
-  await a`DELETE FROM audit_log WHERE entity_business_id LIKE ${`E-${year}-%`}`;
+  // Identify income rows owned by our test invoices (FDW-2098-%) so the
+  // cleanup is scoped to what this test file created.  A year-based
+  // `LIKE 'E-2026-%'` would also delete corpus income rows that happen to
+  // share the current calendar year — corpus contamination that breaks
+  // seed-corpus.test.ts and downstream tests.
   await db.execute(sql`
     UPDATE invoices SET paid_by_income_id = NULL, bezahlt_am = NULL
     WHERE business_id LIKE 'FDW-2098-%'
+    AND paid_by_income_id IS NOT NULL
   `);
-  await db.execute(
-    sql`DELETE FROM income WHERE business_id LIKE ${`E-${year}-%`} OR business_id LIKE 'E-2098-%'`,
-  );
+  // Now safe to delete the unlinked income rows (no more FK pointing at them).
+  // The business_id for income created by markInvoiceAsPaid derives from the
+  // invoice's bezahlt_am year, not from a fixed far-future year.  Rather than
+  // guessing the year, delete by the bezeichnung that markInvoiceAsPaid injects
+  // — it always contains the invoice's business_id ('FDW-2098-…').
+  await db.execute(sql`
+    DELETE FROM income WHERE bezeichnung LIKE '%FDW-2098-%'
+  `);
+  // audit_log: app_runtime cannot DELETE (ADR-0004); use superuser connection.
+  await a`DELETE FROM audit_log WHERE entity_business_id LIKE 'FDW-2098-%'`;
+  await a`DELETE FROM audit_log WHERE entity_business_id LIKE 'E-2098-%'`;
+  await a`DELETE FROM audit_log
+            WHERE entity_kind = 'income'
+              AND payload->>'invoiceBusinessId' LIKE 'FDW-2098-%'`;
   await db.execute(
     sql`DELETE FROM invoices WHERE business_id LIKE 'FDW-2098-%'`,
   );

@@ -1,11 +1,15 @@
 /**
- * E2E Spenden tests — @phase-5
+ * E2E Spenden navigation — @phase-6-spenden
  *
- * Strategy: signs in via magic-link shortcut, opens /app/transactions/spenden,
- * creates a Geldspende >= 300 EUR (Phase-5 exit criterion), then issues a
- * Bescheinigung if the env-gated feature flag is set and downloads the PDF.
+ * Phase 6 (Tier C3) retired the old `/app/transactions/spenden` route +
+ * Add/EditSpendeDialog and migrated the tab to the flat `/app/spenden` route
+ * (listSpendenPage + the shared Phase-3 scaffold). This spec asserts the new
+ * route renders and the old nested route is no longer the legacy dialog page.
  *
- * Tags: @phase-5
+ * The deep create / Sachspende-Wertermittlung / Bescheinigung flows live in
+ * `tests/e2e/spenden-flow.spec.ts` (also @phase-6-spenden).
+ *
+ * Tags: @phase-6-spenden
  */
 
 import { expect, test } from "@playwright/test";
@@ -50,95 +54,43 @@ test.beforeEach(async () => {
   }
 });
 
-test.describe("@phase-5 Spenden — navigation", () => {
-  test("unauthenticated /app/transactions/spenden redirects to sign-in", async ({
+test.describe("@phase-6-spenden Spenden — navigation", () => {
+  test("unauthenticated /app/spenden redirects to sign-in", async ({
     page,
   }) => {
-    await page.goto("/app/transactions/spenden");
+    await page.goto("/app/spenden");
     await expect(page).toHaveURL(/\/sign-in/);
   });
 
-  test("authenticated user sees Spenden page", async ({ page }) => {
-    await signIn(page);
-    await page.goto("/app/transactions/spenden");
-    await expect(page.locator("h1")).toContainText("Spenden");
-    // Aufwandsspende note is always present (D9 deferred)
-    await expect(
-      page.locator('[data-testid="aufwandsspende-note"]'),
-    ).toBeVisible();
-  });
-});
-
-test.describe("@phase-5 Spenden — create + Bescheinigung", () => {
-  test("can create Geldspende >= 300 EUR (Phase-5 exit)", async ({ page }) => {
-    await signIn(page);
-    await page.goto("/app/transactions/spenden");
-
-    await page.click('[data-testid="add-spende-btn"]');
-    await expect(page.locator('[role="dialog"]')).toBeVisible();
-
-    // Choose extern Spender so the test doesn't depend on a member existing
-    await page.click('input[name="spender_mode"][value="extern"]');
-    const unique = randomBytes(3).toString("hex");
-    await page.fill(
-      '[data-testid="spender-name-input"]',
-      `Max Mustermann ${unique}`,
-    );
-    await page.fill(
-      '[data-testid="spender-adresse-input"]',
-      "Hauptstr. 1, 80331 München",
-    );
-    // C6-FORM (Night-2 E4): Zuwendungsdatum is now a DateField primitive
-    // (TT.MM.JJJJ display, hidden ISO sibling). Fill TT.MM.JJJJ from today's
-    // ISO date and blur to commit the hidden mirror.
-    const iso = new Date().toISOString().slice(0, 10);
-    const [yyyy, mm, dd] = iso.split("-");
-    const ddmmyyyy = `${dd}.${mm}.${yyyy}`;
-    const zugewendet = page.locator("input#add-spende-datum");
-    await zugewendet.fill(ddmmyyyy);
-    await zugewendet.blur();
-    await page.fill('[data-testid="betrag-eur-input"]', "327.09");
-
-    // Kategorie is required — pick the first one in the dropdown that's not the placeholder
-    const kategorieSelect = page.locator('[data-testid="kategorie-select"]');
-    const firstOptionValue = await kategorieSelect
-      .locator("option:not([value=''])")
-      .first()
-      .getAttribute("value");
-    if (firstOptionValue) {
-      await kategorieSelect.selectOption(firstOptionValue);
-    }
-
-    await page.click('[data-testid="submit-spende"]');
-
-    // Dialog closes, list shows new row
-    await expect(page.locator('[role="dialog"]')).not.toBeVisible({
-      timeout: 5_000,
-    });
-    await expect(page.locator('[data-testid="spende-row"]')).toContainText(
-      `Max Mustermann ${unique}`,
-    );
-    await expect(
-      page.locator('[data-testid="spende-row"]').first(),
-    ).toContainText("327,09");
-  });
-
-  test("Bescheinigung gating: shows disabled banner when Freistellungsbescheid env missing", async ({
+  test("authenticated user sees the new /app/spenden list page", async ({
     page,
   }) => {
-    // This test is robust to either env state — it asserts the disabled
-    // banner appears only when not configured. We don't try to mutate
-    // env at runtime; CI runs with empty Bescheid env, so the banner shows.
     await signIn(page);
-    await page.goto("/app/transactions/spenden");
-
-    const banner = page.locator(
-      '[data-testid="bescheinigung-disabled-banner"]',
+    await page.goto("/app/spenden");
+    await expect(page.locator("h1")).toContainText("Spenden");
+    // The new flat route uses the shared scaffold + the primary "Neue Spende"
+    // CTA, NOT the retired AddSpendeDialog.
+    await expect(page.locator('[data-slot="new-cta"]')).toContainText(
+      "Neue Spende",
     );
-    const enabled = await banner.count().then((c) => c === 0);
+  });
 
-    if (!enabled) {
-      await expect(banner).toContainText(/Freistellungsbescheid/);
-    }
+  // Phase 8 T6: /app/transactions/spenden retired → 404 (route group deleted).
+  // The assertion (not 200) still holds.
+  test("old /app/transactions/spenden returns non-200 (retired)", async ({
+    page,
+  }) => {
+    await signIn(page);
+    const resp = await page.goto("/app/transactions/spenden");
+    // It must NOT serve the retired legacy page: no Add-Spende dialog trigger
+    // and no Aufwandsspende note (both were unique to the deleted route).
+    await expect(page.locator('[data-testid="add-spende-btn"]')).toHaveCount(0);
+    await expect(
+      page.locator('[data-testid="aufwandsspende-note"]'),
+    ).toHaveCount(0);
+    // The route no longer resolves to a 200 legacy page (it 404s / errors now
+    // that the static route is gone — the dynamic [id] segment can't satisfy
+    // it with a real donation detail).
+    expect(resp?.status()).not.toBe(200);
   });
 });

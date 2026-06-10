@@ -147,7 +147,7 @@
 			</div>
 		</div>
 	{:else}
-		<InboxList submissions={data.submissions} />
+		<InboxList submissions={data.submissions} kategorieOptions={data.kategorieOptions} />
 	{/if}
 </div>
 

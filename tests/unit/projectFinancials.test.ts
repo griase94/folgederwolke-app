@@ -76,11 +76,13 @@ describe.skipIf(!dbConfigured)(
       await sql`INSERT INTO expenses (
       business_id, gebucht_am, betrag_cents, bezeichnung,
       kategorie_id, kategorie_name_snapshot, sphere_snapshot,
-      bezahlt_von_kind, bezahlt_von_display, status, project_id
+      bezahlt_von_kind, bezahlt_von_display, status, project_id,
+      beleg_verzicht_grund
     ) VALUES (
       ${`A-${FY}-${N1}`}, ${FY_TS}, 250, 'pfin exp 1',
       ${kE.id}, ${kE.name}, ${kE.sphere}::sphere,
-      'verein', 'Verein', 'zu_pruefen', ${p1}::uuid
+      'verein', 'Verein', 'zu_pruefen', ${p1}::uuid,
+      'pfin fixture — kein Beleg'
     )`;
 
       // p1 → 1 offene Rechnung (bezahlt_am IS NULL)

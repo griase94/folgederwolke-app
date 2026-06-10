@@ -11,10 +11,12 @@ let _db: ReturnType<typeof drizzle<typeof schema>> | undefined;
 
 export function getClient(): ReturnType<typeof postgres> {
   if (!_client) {
-    // Read directly from process.env to bypass any module-bundle duplication
-    // where the env.ts singleton sees a stale (empty) value. process.env is
-    // always the current node runtime env.
-    const url = env.DATABASE_URL || process.env["DATABASE_URL"] || "";
+    // Prefer the live process.env (it is "always the current node runtime env")
+    // over the $env/dynamic singleton, which can carry a stale/duplicated value
+    // from module-bundle duplication. This also lets the test harness inject a
+    // per-worker DATABASE_URL (tests/setup/per-worker-db.ts) deterministically.
+    // In production both resolve to the same Vercel-provided value.
+    const url = process.env["DATABASE_URL"] || env.DATABASE_URL || "";
     if (!url) {
       throw new Error(
         "DATABASE_URL is not set; cannot connect to Postgres at runtime",

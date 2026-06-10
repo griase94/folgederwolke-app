@@ -8,8 +8,12 @@
 <script lang="ts">
 	import InboxCard from './InboxCard.svelte';
 	import type { InboxSubmissionView } from '$lib/domain/inbox.js';
+	import type { KategorieOption } from '$lib/components/admin/transactions/fields/KategoriePicker.svelte';
 
-	let { submissions }: { submissions: InboxSubmissionView[] } = $props();
+	let {
+		submissions,
+		kategorieOptions
+	}: { submissions: InboxSubmissionView[]; kategorieOptions: KategorieOption[] } = $props();
 
 	let rootEl = $state<HTMLDivElement | null>(null);
 
@@ -59,7 +63,7 @@
 >
 	{#each submissions as submission, i (submission.id)}
 		<div role="listitem">
-			<InboxCard {submission} index={i} />
+			<InboxCard {submission} index={i} {kategorieOptions} />
 		</div>
 	{/each}
 </div>

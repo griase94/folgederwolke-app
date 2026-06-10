@@ -14,18 +14,23 @@
 	 *   - No dependency added — works without the shadcn-svelte Select primitive.
 	 *   - Locks rendered inline as a U+1F512 prefix on closed-year option text.
 	 *
+	 * allowAllYears (Task 3): list pages may pass this prop to append an
+	 * "Alle Jahre" option that navigates to ?year=all (ALL_YEARS sentinel).
+	 *
 	 * Resolves: C2-4 (julia P1 + UX-1 blocker).
 	 */
 
 	import type { YearSwitcherOption } from './YearSwitcher.svelte';
+	import { ALL_YEARS, type YearScope } from '$lib/domain/year.js';
 
 	interface Props {
 		years: YearSwitcherOption[];
-		selected: number;
-		onChange: (year: number) => void;
+		selected: YearScope;
+		onChange: (year: YearScope) => void;
+		allowAllYears?: boolean;
 	}
 
-	let { years, selected, onChange }: Props = $props();
+	let { years, selected, onChange, allowAllYears = false }: Props = $props();
 
 	function optionLabel(y: YearSwitcherOption): string {
 		// Lock icon inline (Unicode U+1F512) so each closed year is visibly
@@ -37,7 +42,14 @@
 
 	function handleSelectChange(event: Event) {
 		const target = event.currentTarget as HTMLSelectElement;
-		const n = Number.parseInt(target.value, 10);
+		const value = target.value;
+		// Pass the "all" sentinel through verbatim — do NOT parseInt it (that
+		// would coerce "all" to NaN, silently dropping the navigation).
+		if (value === ALL_YEARS) {
+			onChange(ALL_YEARS);
+			return;
+		}
+		const n = Number.parseInt(value, 10);
 		if (Number.isFinite(n)) onChange(n);
 	}
 </script>
@@ -57,6 +69,9 @@
 		{#each years as y (y.year)}
 			<option value={String(y.year)}>{optionLabel(y)}</option>
 		{/each}
+		{#if allowAllYears}
+			<option value={ALL_YEARS}>Alle Jahre</option>
+		{/if}
 	</select>
 	<!-- Chevron icon — aria-hidden, pointer-events none so the click hits the
 	     native <select> behind it. -->

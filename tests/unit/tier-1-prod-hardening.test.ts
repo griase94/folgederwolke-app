@@ -37,10 +37,19 @@ describe.skipIf(!dbConfigured)(
     let app: ReturnType<typeof postgres>; // app_runtime — trigger fires here
     const LOCKED_YEAR = 2098;
     const SAFE_YEAR = LOCKED_YEAR + 1;
+    // P1-T10: expenses.kategorie_id is NOT NULL — resolve a real seeded
+    // expense Kategorie so the fixture row is valid except for the year-lock
+    // trigger / CHECK these tests actually exercise.
+    let EXP_KAT_ID = "";
 
     beforeAll(async () => {
       admin = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
       app = postgres(DATABASE_URL, { prepare: false, max: 1 });
+      const [ke] = await admin<
+        { id: string }[]
+      >`SELECT id FROM kategorien WHERE kind = 'expense' LIMIT 1`;
+      if (!ke) throw new Error("tier-1: missing seeded expense kategorie");
+      EXP_KAT_ID = ke.id;
     });
 
     afterEach(async () => {
@@ -74,14 +83,14 @@ describe.skipIf(!dbConfigured)(
       return conn`
         INSERT INTO expenses (
           business_id, source, gebucht_am, betrag_cents, currency, bezeichnung,
-          kategorie_name_snapshot, sphere_snapshot, bezahlt_von_kind,
-          bezahlt_von_display, status
+          kategorie_id, kategorie_name_snapshot, sphere_snapshot,
+          bezahlt_von_kind, bezahlt_von_display, status, beleg_verzicht_grund
         ) VALUES (
           ${`A-${year}-${seq}`}, 'app',
           ${`${year}-06-15 10:00:00+02`},
           1000, 'EUR', 'tier-1 trigger test',
-          '(Unkategorisiert)', 'ideeller', 'verein',
-          'Verein', 'geprueft'
+          ${EXP_KAT_ID}::uuid, '(Unkategorisiert)', 'ideeller',
+          'verein', 'Verein', 'geprueft', 'tier-1 fixture — kein Beleg'
         )
       `;
     }
@@ -224,9 +233,18 @@ describe.skipIf(!dbConfigured)(
     // CHECK constraints don't have a session_user bypass — they always
     // enforce. Tests use admin connection for both setup and assertion.
     let sql: ReturnType<typeof postgres>;
+    // P1-T10: donations.kategorie_id is NOT NULL — a Geldspende zweckfrei's
+    // Kategorie is the seeded income kategorie "Geldspende zweckfrei".
+    let DON_KAT_ID = "";
 
     beforeAll(async () => {
       sql = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
+      const [kd] = await sql<{ id: string }[]>`SELECT id FROM kategorien
+        WHERE kind = 'income' AND name = 'Geldspende zweckfrei' LIMIT 1`;
+      if (!kd) {
+        throw new Error("tier-1: missing 'Geldspende zweckfrei' kategorie");
+      }
+      DON_KAT_ID = kd.id;
     });
 
     afterEach(async () => {
@@ -245,11 +263,12 @@ describe.skipIf(!dbConfigured)(
       return sql`
         INSERT INTO donations (
           business_id, gebucht_am, betrag_cents, spender_name,
-          kategorie_name_snapshot, sphere_snapshot,
+          kategorie_id, kategorie_name_snapshot, sphere_snapshot,
           spende_kind, zweckbindung_kind, bescheinigung_nr
         ) VALUES (
           ${bid}, ${ts}, 10000, 'Tier 1 Test',
-          'Geldspende', 'ideeller', 'geldspende', 'zweckfrei',
+          ${DON_KAT_ID}::uuid, 'Geldspende zweckfrei', 'ideeller',
+          'geldspende', 'zweckfrei',
           ${bescheinigungNr}
         )
       `;

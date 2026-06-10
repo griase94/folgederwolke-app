@@ -103,9 +103,11 @@ export const expenses = pgTable(
     kommentar: text("kommentar"),
 
     // --- ADR-0002 — sphere + kategorie snapshots + live FK ---
-    kategorieId: uuid("kategorie_id").references(() => kategorien.id, {
-      onDelete: "restrict",
-    }),
+    kategorieId: uuid("kategorie_id")
+      .notNull()
+      .references(() => kategorien.id, {
+        onDelete: "restrict",
+      }),
     kategorieNameSnapshot: text("kategorie_name_snapshot").notNull(),
     sphereSnapshot: sphereEnum("sphere_snapshot").notNull(),
 
@@ -147,6 +149,11 @@ export const expenses = pgTable(
     belegFileId: uuid("beleg_file_id").references(() => files.id, {
       onDelete: "restrict",
     }),
+    /**
+     * Free-text reason a Beleg is absent (Eigenbeleg / Belegverzicht), additive
+     * via migration 0029. NULL when a Beleg is present.
+     */
+    belegVerzichtGrund: text("beleg_verzicht_grund"),
 
     // --- Workflow status (Inbox → Geprüft → Erstattet) ---
     status: statusEnum("status").notNull().default("zu_pruefen"),

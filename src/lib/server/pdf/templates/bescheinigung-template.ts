@@ -145,6 +145,15 @@ function drawGap(ctx: DrawCtx, pts: number): void {
  * "Mustervordrucke Zuwendungsbestaetigungen".
  */
 export function bescheidPflichttext(p: BmfPflichtfelder): string[] {
+  // BMF compliance: the issuing Finanzamt name is interpolated verbatim into
+  // BOTH branches below ("des Finanzamts …" / "wurde vom Finanzamt …").
+  // Asserted non-empty upstream (isBescheinigungEnabled / allocateBescheinigung);
+  // throw here rather than render a legally-deficient "des , StNr. …".
+  if (!p.vereinFinanzamt?.trim()) {
+    throw new Error(
+      "vereinFinanzamt missing — Bescheinigung renderer requires Finanzamt name",
+    );
+  }
   const lines: string[] = [];
   if (p.bescheidTyp === "freistellungsbescheid") {
     // BMF compliance: Veranlagungszeitraum is asserted non-empty upstream

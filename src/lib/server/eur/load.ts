@@ -638,7 +638,8 @@ export async function loadEurWorkspaceData(
       db.execute<{ cnt: string }>(sql`
         SELECT count(*)::text AS cnt FROM expenses
          WHERE year_of_buchung = ${year}
-           AND beleg_drive_file_id IS NULL
+           AND beleg_file_id IS NULL
+           AND beleg_verzicht_grund IS NULL
       `),
       db.execute<{ cnt: string }>(sql`
         SELECT count(*)::text AS cnt FROM invoices

@@ -8,9 +8,14 @@
  * Adding a new admin route: add one entry here, nothing else to edit.
  *
  * ── IA shift (Zone-A, 2026-05-21) ───────────────────────────────────────────
- * The sidebar's "main" group lists 6 first-class destinations:
- *   Übersicht, Belegprüfung, Projekte, Transaktionen, Mitglieder,
- *   Jahresabschluss.
+ * The sidebar's "main" group lists first-class destinations:
+ *   Übersicht, Belegprüfung, Projekte, Ausgaben, Einnahmen, Spenden,
+ *   Mitglieder, Jahresabschluss.
+ *
+ * (Phase 3) "Transaktionen" split into three flat desktop entries —
+ * Ausgaben / Einnahmen / Spenden. The mobile bottom tab bar still shows a
+ * single "Transaktionen" cell: the Ausgaben entry carries mobileLabel
+ * "Transaktionen" and its active-state spans all three routes.
  *
  * - "Belegprüfung" replaces the legacy "Audit Inbox" label (the underlying
  *   route is still /app/inbox).
@@ -32,8 +37,16 @@
  */
 
 export interface NavItem {
-  /** Display label shown in sidebar / tab bar */
+  /** Display label shown in the desktop sidebar / tab bar */
   label: string;
+  /**
+   * Optional override for the mobile bottom tab bar cell label.
+   * When set, the mobile tab renders this instead of `label`.
+   * Used so the Ausgaben sidebar entry collapses to a single
+   * "Transaktionen" cell on mobile while the desktop sidebar keeps
+   * the three distinct labels (Ausgaben / Einnahmen / Spenden).
+   */
+  mobileLabel?: string;
   /** Route href */
   href: string;
   /** Lucide icon name (string key) — components import by name */
@@ -76,11 +89,30 @@ export const navItems: NavItem[] = [
     mobileTab: 2,
     group: "main",
   },
+  // ── Transactions: three flat desktop tabs (Phase 3) ─────────────────────
+  // Ausgaben carries the single mobile "Transaktionen" entry (mobileTab: 3);
+  // its active state on the mobile bar spans all three routes via
+  // mobileTransaktionenActive(). Einnahmen + Spenden have no mobileTab.
   {
-    label: "Transaktionen",
-    href: "/app/transactions",
-    icon: "CreditCard",
+    // Desktop sidebar shows "Ausgaben"; the single mobile tab cell collapses
+    // the three transaction routes under "Transaktionen" via mobileLabel.
+    label: "Ausgaben",
+    mobileLabel: "Transaktionen",
+    href: "/app/ausgaben",
+    icon: "MinusCircle",
     mobileTab: 3,
+    group: "main",
+  },
+  {
+    label: "Einnahmen",
+    href: "/app/einnahmen",
+    icon: "PlusCircle",
+    group: "main",
+  },
+  {
+    label: "Spenden",
+    href: "/app/spenden",
+    icon: "Gift",
     group: "main",
   },
   {
@@ -139,3 +171,16 @@ export const mainNavItems = navItems.filter((item) => item.group === "main");
 
 /** Items for the collapsible "Mehr" sidebar section. */
 export const moreNavItems = navItems.filter((item) => item.group === "more");
+
+/**
+ * Mobile "Transaktionen" tab active-predicate.
+ *
+ * The single mobile entry (`/app/ausgaben`) stands in for all three flat
+ * transaction routes, so the bottom-bar cell must light up on any of them
+ * (and their detail routes) — not just `startsWith(item.href)`.
+ */
+export function mobileTransaktionenActive(path: string): boolean {
+  return ["/app/ausgaben", "/app/einnahmen", "/app/spenden"].some(
+    (h) => path === h || path.startsWith(h + "/"),
+  );
+}

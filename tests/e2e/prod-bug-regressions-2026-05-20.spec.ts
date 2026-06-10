@@ -49,7 +49,7 @@ test.describe("@phase-2 prod-bug-regressions — renamed default actions", () =>
     { route: "/app/rechnungen/new", namedAction: "create" },
     { route: "/app/kunden", namedAction: "add" },
     { route: "/app/projekte", namedAction: "add" },
-    { route: "/app/transactions/spenden", namedAction: "add" },
+    // Phase 8 T6: /app/transactions/spenden retired (404s) — removed from this regression check.
   ];
 
   for (const { route, namedAction } of renamed) {
@@ -87,7 +87,7 @@ test.describe("@phase-2 prod-bug-regressions — old ?/default returns 4xx", () 
     "/app/rechnungen/new",
     "/app/kunden",
     "/app/projekte",
-    "/app/transactions/spenden",
+    // Phase 8 T6: /app/transactions/spenden retired (404s) — removed from this regression check.
   ];
 
   for (const route of oldShape) {
@@ -107,20 +107,11 @@ test.describe("@phase-2 prod-bug-regressions — old ?/default returns 4xx", () 
 });
 
 // ---------------------------------------------------------------------------
-// Bug B — directly POSTing to /app/transactions/neu?/create returns NOT 500.
-// (Authenticated round-trip is exercised in @phase-3 transactions tests; we
-// only need the smoke check here so CI catches the constraint regression.)
+// Bug B — /app/transactions/neu retired (Phase 8 T6); this e2e smoke check is
+// removed. NOTE: the per-tab create actions (ausgaben/neu, einnahmen/neu,
+// spenden/neu) have "no 500" coverage only via FULLY-MOCKED unit tests
+// (e.g. einnahmen-create.server.test.ts) — those do NOT hit the DB, so the
+// real `expenses_business_id_format_ck` constraint path is NOT exercised by
+// any current automated test. If that constraint regresses, it would surface
+// in manual/integration testing, not here.
 // ---------------------------------------------------------------------------
-
-test.describe("@phase-2 prod-bug-regressions — transactions/neu allocator", () => {
-  test("POST /app/transactions/neu?/create does not 500", async ({ page }) => {
-    const response = await page.request.post("/app/transactions/neu?/create", {
-      form: { type: "expense" },
-      maxRedirects: 0,
-    });
-    // Without a session this redirects to /sign-in (303) or returns 401.
-    // The point: it must NOT be 500 — that was the constraint-violation
-    // surface in production.
-    expect(response.status()).not.toBe(500);
-  });
-});

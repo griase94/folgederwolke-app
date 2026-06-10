@@ -11,15 +11,37 @@
  * No schema changes — read-only queries only (§5.4 spec).
  */
 
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  or,
+  sql,
+  type AnyColumn,
+  type SQL,
+} from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
 import { donations } from "$lib/server/db/schema/donations.js";
+import { files } from "$lib/server/db/schema/files.js";
+import { invoices } from "$lib/server/db/schema/invoices.js";
+import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
+import { deriveDonationKategorieName } from "$lib/domain/spenden-kategorie.js";
+import type { Sphere } from "$lib/domain/sphere.js";
 import { zahlungsarten } from "$lib/server/db/schema/zahlungsarten.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { bus } from "$lib/server/events/index.js";
+import type { YearScope } from "$lib/domain/year.js";
+import type { FilterState } from "$lib/domain/transaction-filters.js";
+import {
+  buildAusgabenWhere,
+  buildEinnahmenWhere,
+  buildSpendenWhere,
+} from "$lib/server/domain/transaction-filter-sql.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -67,13 +89,62 @@ export interface TransactionDetail extends TransactionRow {
   externName: string | null;
   bezahltVonMemberId: string | null;
   belegDriveFileId: string | null;
+  /**
+   * Beleg metadata (all kinds). `belegFileId` is the FK into the normalized
+   * `files` table; `belegMimeType`/`belegOriginalName` are LEFT-JOINed off
+   * that row (`files.mime_type` / `files.original_filename`) — NOT the legacy
+   * `beleg_drive_file_id` / `beleg_original_name` text columns. All three are
+   * null when no Beleg is attached. The §11 BelegViewer (Phase 5) binds to
+   * `belegFileId`/`belegMimeType`/`belegOriginalName`.
+   */
+  belegFileId: string | null;
+  belegMimeType: string | null;
   belegOriginalName: string | null;
   approvedAt: string | null;
+  /**
+   * income only — the aus-Rechnung link: the linked Ausgangsrechnung's
+   * `business_id` via the correlated subquery `invoices.paid_by_income_id =
+   * income.id` (same source as the Phase-2 Einnahmen list projection). null
+   * for non-invoice-linked income. Phase 5's read-only "aus Rechnung FDW-…"
+   * detail context reads this off `detail` so it never imports `invoices`.
+   */
+  rechnungBusinessId: string | null;
+  /**
+   * income only — the linked Ausgangsrechnung's ROUTE id (invoices.id), the
+   * same correlated source as `rechnungBusinessId`. Lets the detail "aus
+   * Rechnung" line link straight to `/app/rechnungen/{rechnungId}` (which keys
+   * on invoices.id). null for unlinked income (the detail then degrades the
+   * link to the Rechnungen overview).
+   */
+  rechnungId: string | null;
+  /**
+   * income only — the Geldeingang date (income.geld_eingang_datum), ISO
+   * YYYY-MM-DD or null. The Einnahmen detail form pre-fills its DateField from
+   * this; without it the field rendered blank and the save action only wrote a
+   * non-blank value, so the stopgap was a "bleibt erhalten, wenn leer" hint.
+   */
+  geldEingangDatum: string | null;
   /** donation only */
   spenderName: string | null;
   spenderEmail: string | null;
+  spenderAdresse: string | null;
   bescheinigungNr: string | null;
   spendeKind: string | null;
+  zweckbindungKind: "zweckfrei" | "zweckgebunden" | null;
+  zweckbindungText: string | null;
+  wertermittlungMethode: string | null;
+  zustandBeschreibung: string | null;
+  herkunftsbelegFileId: string | null;
+  /**
+   * donation only — Herkunftsbeleg (Sachspende provenance) mime/name, LEFT-
+   * JOINed off `files` on `donations.herkunftsbeleg_file_id` (a SECOND files
+   * join, distinct from the main Beleg one). Both null when no Herkunftsbeleg
+   * is attached. The Spenden detail BelegViewer binds to these instead of the
+   * old hardcoded `application/octet-stream` / "Herkunftsbeleg" placeholders.
+   */
+  herkunftsbelegMimeType: string | null;
+  herkunftsbelegOriginalName: string | null;
+  betriebsvermoegen: boolean | null;
   timeline: AuditTimelineEntry[];
 }
 
@@ -129,6 +200,14 @@ export interface ListTransactionsOptions {
   offset?: number;
 }
 
+/**
+ * @deprecated Phase 2: the merged view paginates in-memory (`.slice()`) after
+ * fetching every matching row from all three tables — it does NOT scale.
+ * Prefer the per-tab paginated queries `listAusgabenPage` /
+ * `listEinnahmenPage` / `listSpendenPage` (real SQL LIMIT/OFFSET + COUNT),
+ * defined below. Kept only until the Phase-3 three-tab route replaces the
+ * merged route that still calls this.
+ */
 export async function listTransactions(
   opts: ListTransactionsOptions = {},
 ): Promise<{ rows: TransactionRow[]; total: number }> {
@@ -323,6 +402,378 @@ export async function listTransactions(
 }
 
 // ---------------------------------------------------------------------------
+// Per-tab paginated queries (Phase 2, Task 5) — real SQL LIMIT/OFFSET + COUNT.
+//
+// These REPLACE the merged-view `.slice()`-in-memory pagination above: each
+// function pushes the page window AND the total COUNT into Postgres, so the
+// query cost no longer scales with the full table size.
+//
+// Composition contract (Task-4 review): the `buildXWhere` builders return an
+// `SQL[]` that can be EMPTY (e.g. ALL_YEARS + no active filters). We therefore
+// compose `conds.length ? and(...conds) : undefined` and pass that straight to
+// `.where(...)` — Drizzle treats `.where(undefined)` as "no filter" (all rows).
+// NEVER `and(...conds)!` on a possibly-empty array (it would throw at runtime).
+// The COUNT query reuses the SAME `where` so `total` matches the filtered set.
+//
+// Per-tab row projections carry each tab's display-specific fields so the
+// Phase-3 Tier-C tab tracks render without ever editing this file.
+// ---------------------------------------------------------------------------
+
+export interface PageOptions {
+  state: FilterState;
+  year: YearScope;
+  /**
+   * Row limit for the page query. Pass `"all"` to skip `.limit()` and
+   * `.offset()` entirely (full filtered+sorted set — used by CSV export).
+   */
+  limit: number | "all";
+  offset: number;
+  /**
+   * Optional sort key (the scaffold's `?sort=` column key). Each `listXPage`
+   * applies a per-tab ORDER-BY whitelist; an unknown/absent key falls back to
+   * the default `gebuchtAm desc`. `dir` is `'asc' | 'desc'` (default `'desc'`).
+   */
+  sort?: string;
+  dir?: "asc" | "desc";
+}
+
+/**
+ * Resolve a sort key against a per-tab whitelist → a Drizzle ORDER-BY clause.
+ * The whitelist maps the scaffold's column `key` (what `?sort=` carries) to the
+ * concrete column. Unknown/absent keys (or an empty `sort`) fall back to
+ * `gebuchtAm desc` so a tampered `?sort=` can never order by an unindexed /
+ * non-existent column. `dir` defaults to `desc`.
+ */
+function resolveOrderBy(
+  sort: string | undefined,
+  dir: "asc" | "desc" | undefined,
+  whitelist: Record<string, AnyColumn>,
+  defaultColumn: AnyColumn,
+): SQL {
+  const column = sort ? whitelist[sort] : undefined;
+  // Unknown/absent key → the default column, newest-first (gebuchtAm DESC),
+  // ignoring `dir` so a tampered `?sort=` can't order by an unlisted column.
+  if (!column) return desc(defaultColumn);
+  return (dir === "asc" ? asc : desc)(column);
+}
+
+/** Shared base columns every per-tab row projection includes. */
+export interface BaseTxRow {
+  id: string;
+  /**
+   * Per-row discriminant. The shared `TransactionCardMobile` (the <md card the
+   * scaffold renders for every tab) reads it to negate expense amounts (outflow
+   * minus sign) and label the kind pill — without it expenses render as
+   * positive/green with a blank pill. Stamped as a per-table constant by each
+   * `listXPage` map (no DB column; the table identity IS the kind).
+   */
+  kind: TransactionKind;
+  businessId: string;
+  bezeichnung: string;
+  betragCents: number;
+  currency: string;
+  /** ISO timestamp string. */
+  gebuchtAm: string;
+  sphereSnapshot: string;
+  kategorieNameSnapshot: string;
+  yearOfBuchung: number | null;
+  festgeschriebenAt: string | null;
+}
+
+// ── Ausgaben ────────────────────────────────────────────────────────────────
+
+/** Ausgaben tab row: base + the Status / Bezahlt-von / Erstattung / Beleg fields. */
+export interface AusgabenRow extends BaseTxRow {
+  status: string;
+  bezahltVonKind: string;
+  bezahltVonDisplay: string;
+  erstattetAm: string | null;
+  /** Presence is what the Beleg column needs (the FK uuid, or null). */
+  belegFileId: string | null;
+  approvedAt: string | null;
+  /**
+   * Raw override value (null when no admin correction has been applied).
+   * Exposed so callers can detect whether an override is present.
+   */
+  sphereOverride: string | null;
+  /**
+   * Effective sphere = sphereOverride ?? sphereSnapshot.
+   * Mirrors the detail-helper derivation (transactions.ts ~272) so the CSV
+   * export can emit the correct "Sphäre (Effektiv)" column for Ausgaben.
+   */
+  sphereEffective: string;
+}
+
+export async function listAusgabenPage(
+  opts: PageOptions,
+): Promise<{ rows: AusgabenRow[]; total: number }> {
+  const db = getDb();
+  const conds = buildAusgabenWhere(opts.state, opts.year);
+  const where = conds.length ? and(...conds) : undefined;
+  // ORDER-BY whitelist (spec §13 sortable headers): the scaffold's column keys.
+  const orderBy = resolveOrderBy(
+    opts.sort,
+    opts.dir,
+    {
+      gebuchtAm: expenses.gebuchtAm,
+      businessId: expenses.businessId,
+      bezeichnung: expenses.bezeichnung,
+      betrag: expenses.betragCents,
+      status: expenses.status,
+    },
+    expenses.gebuchtAm,
+  );
+  const baseQuery = db
+    .select({
+      id: expenses.id,
+      businessId: expenses.businessId,
+      bezeichnung: expenses.bezeichnung,
+      betragCents: expenses.betragCents,
+      currency: expenses.currency,
+      gebuchtAm: expenses.gebuchtAm,
+      sphereSnapshot: expenses.sphereSnapshot,
+      sphereOverride: expenses.sphereOverride,
+      kategorieNameSnapshot: expenses.kategorieNameSnapshot,
+      yearOfBuchung: expenses.yearOfBuchung,
+      festgeschriebenAt: expenses.festgeschriebenAt,
+      status: expenses.status,
+      bezahltVonKind: expenses.bezahltVonKind,
+      bezahltVonDisplay: expenses.bezahltVonDisplay,
+      erstattetAm: expenses.erstattetAm,
+      belegFileId: expenses.belegFileId,
+      approvedAt: expenses.approvedAt,
+    })
+    .from(expenses)
+    .where(where)
+    .orderBy(orderBy)
+    .$dynamic();
+
+  const rowQuery =
+    opts.limit === "all"
+      ? baseQuery
+      : baseQuery.limit(opts.limit).offset(opts.offset);
+
+  const [rows, countRows] = await Promise.all([
+    rowQuery,
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(expenses)
+      .where(where),
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  return {
+    rows: rows.map((r) => ({
+      id: r.id,
+      kind: "expense" as const,
+      businessId: r.businessId,
+      bezeichnung: r.bezeichnung,
+      betragCents: Number(r.betragCents),
+      currency: r.currency,
+      gebuchtAm: formatTs(r.gebuchtAm)!,
+      sphereSnapshot: r.sphereSnapshot,
+      sphereOverride: r.sphereOverride ?? null,
+      sphereEffective: r.sphereOverride ?? r.sphereSnapshot,
+      kategorieNameSnapshot: r.kategorieNameSnapshot,
+      yearOfBuchung: r.yearOfBuchung ?? null,
+      festgeschriebenAt: formatTs(r.festgeschriebenAt),
+      status: r.status,
+      bezahltVonKind: r.bezahltVonKind,
+      bezahltVonDisplay: r.bezahltVonDisplay,
+      erstattetAm: r.erstattetAm ?? null,
+      belegFileId: r.belegFileId ?? null,
+      approvedAt: formatTs(r.approvedAt),
+    })),
+    total,
+  };
+}
+
+// ── Einnahmen ─────────────────────────────────────────────────────────────
+
+/**
+ * Einnahmen tab row: base + `rechnungBusinessId` — the 🔗 badge source. Income
+ * has no invoice column, so it's projected via a LEFT JOIN LATERAL (P2-06): a
+ * `… LIMIT 1` correlated subquery over `invoices.paid_by_income_id`, ordered by
+ * a stable key (`invoices.created_at`). The LATERAL + LIMIT 1 makes no-invoice
+ * rows yield NULL and multi-invoice rows deterministically take the first one,
+ * with NO row fan-out (a plain LEFT JOIN would duplicate multi-invoice income
+ * and break the LIMIT/OFFSET window + COUNT).
+ */
+export interface EinnahmenRow extends BaseTxRow {
+  rechnungBusinessId: string | null;
+}
+
+export async function listEinnahmenPage(
+  opts: PageOptions,
+): Promise<{ rows: EinnahmenRow[]; total: number }> {
+  const db = getDb();
+  const conds = buildEinnahmenWhere(opts.state, opts.year);
+  const where = conds.length ? and(...conds) : undefined;
+  const orderBy = resolveOrderBy(
+    opts.sort,
+    opts.dir,
+    {
+      gebuchtAm: income.gebuchtAm,
+      businessId: income.businessId,
+      bezeichnung: income.bezeichnung,
+      betrag: income.betragCents,
+    },
+    income.gebuchtAm,
+  );
+
+  // P2-06: correlated LATERAL subquery — references the outer `income.id`, so
+  // it's LATERAL; `.orderBy(createdAt, id).limit(1)` picks one deterministically.
+  // The PK is the secondary key so two invoices sharing a `created_at` still
+  // resolve to a stable "first" (Postgres gives no tiebreak otherwise).
+  const invLateral = db
+    .select({ rechnungBusinessId: invoices.businessId })
+    .from(invoices)
+    .where(eq(invoices.paidByIncomeId, income.id))
+    .orderBy(invoices.createdAt, invoices.id)
+    .limit(1)
+    .as("inv");
+
+  const baseEinnahmenQuery = db
+    .select({
+      id: income.id,
+      businessId: income.businessId,
+      bezeichnung: income.bezeichnung,
+      betragCents: income.betragCents,
+      currency: income.currency,
+      gebuchtAm: income.gebuchtAm,
+      sphereSnapshot: income.sphereSnapshot,
+      kategorieNameSnapshot: income.kategorieNameSnapshot,
+      yearOfBuchung: income.yearOfBuchung,
+      festgeschriebenAt: income.festgeschriebenAt,
+      rechnungBusinessId: invLateral.rechnungBusinessId,
+    })
+    .from(income)
+    .leftJoinLateral(invLateral, sql`true`)
+    .where(where)
+    .orderBy(orderBy)
+    .$dynamic();
+
+  const rowEinnahmenQuery =
+    opts.limit === "all"
+      ? baseEinnahmenQuery
+      : baseEinnahmenQuery.limit(opts.limit).offset(opts.offset);
+
+  const [rows, countRows] = await Promise.all([
+    rowEinnahmenQuery,
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(income)
+      .where(where),
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  return {
+    rows: rows.map((r) => ({
+      id: r.id,
+      kind: "income" as const,
+      businessId: r.businessId,
+      bezeichnung: r.bezeichnung,
+      betragCents: Number(r.betragCents),
+      currency: r.currency,
+      gebuchtAm: formatTs(r.gebuchtAm)!,
+      sphereSnapshot: r.sphereSnapshot,
+      kategorieNameSnapshot: r.kategorieNameSnapshot,
+      yearOfBuchung: r.yearOfBuchung ?? null,
+      festgeschriebenAt: formatTs(r.festgeschriebenAt),
+      rechnungBusinessId: r.rechnungBusinessId ?? null,
+    })),
+    total,
+  };
+}
+
+// ── Spenden ─────────────────────────────────────────────────────────────────
+
+/** Spenden tab row: base + Spender / Art / Zweckbindung / Bescheinigung fields. */
+export interface SpendenRow extends BaseTxRow {
+  spenderName: string | null;
+  spendeKind: string;
+  zweckbindungKind: string;
+  bescheinigungNr: string | null;
+}
+
+export async function listSpendenPage(
+  opts: PageOptions,
+): Promise<{ rows: SpendenRow[]; total: number }> {
+  const db = getDb();
+  const conds = buildSpendenWhere(opts.state, opts.year);
+  const where = conds.length ? and(...conds) : undefined;
+  // Donations have no `bezeichnung` column (the list label is derived from
+  // spenderName), so the sortable axes are Datum / ID / Spender / Betrag.
+  const orderBy = resolveOrderBy(
+    opts.sort,
+    opts.dir,
+    {
+      gebuchtAm: donations.gebuchtAm,
+      businessId: donations.businessId,
+      betrag: donations.betragCents,
+      spenderName: donations.spenderName,
+    },
+    donations.gebuchtAm,
+  );
+  const baseSpendenQuery = db
+    .select({
+      id: donations.id,
+      businessId: donations.businessId,
+      betragCents: donations.betragCents,
+      currency: donations.currency,
+      gebuchtAm: donations.gebuchtAm,
+      sphereSnapshot: donations.sphereSnapshot,
+      kategorieNameSnapshot: donations.kategorieNameSnapshot,
+      yearOfBuchung: donations.yearOfBuchung,
+      festgeschriebenAt: donations.festgeschriebenAt,
+      spenderName: donations.spenderName,
+      spendeKind: donations.spendeKind,
+      zweckbindungKind: donations.zweckbindungKind,
+      bescheinigungNr: donations.bescheinigungNr,
+    })
+    .from(donations)
+    .where(where)
+    .orderBy(orderBy)
+    .$dynamic();
+
+  const rowSpendenQuery =
+    opts.limit === "all"
+      ? baseSpendenQuery
+      : baseSpendenQuery.limit(opts.limit).offset(opts.offset);
+
+  const [rows, countRows] = await Promise.all([
+    rowSpendenQuery,
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(donations)
+      .where(where),
+  ]);
+  const total = countRows[0]?.count ?? 0;
+  return {
+    rows: rows.map((r) => ({
+      id: r.id,
+      kind: "donation" as const,
+      businessId: r.businessId,
+      // Spenden have no `bezeichnung` column — surface a human label like the
+      // merged view does, falling back to the kategorie snapshot.
+      bezeichnung: r.spenderName
+        ? `Spende von ${r.spenderName}`
+        : r.kategorieNameSnapshot,
+      betragCents: Number(r.betragCents),
+      currency: r.currency,
+      gebuchtAm: formatTs(r.gebuchtAm)!,
+      sphereSnapshot: r.sphereSnapshot,
+      kategorieNameSnapshot: r.kategorieNameSnapshot,
+      yearOfBuchung: r.yearOfBuchung ?? null,
+      festgeschriebenAt: formatTs(r.festgeschriebenAt),
+      spenderName: r.spenderName ?? null,
+      spendeKind: r.spendeKind,
+      zweckbindungKind: r.zweckbindungKind,
+      bescheinigungNr: r.bescheinigungNr ?? null,
+    })),
+    total,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // getTransactionDetail
 // ---------------------------------------------------------------------------
 
@@ -367,12 +818,28 @@ export async function getTransactionDetail(
       externName: r.externName ?? null,
       bezahltVonMemberId: r.bezahltVonMemberId ?? null,
       belegDriveFileId: r.belegDriveFileId ?? null,
-      belegOriginalName: r.belegOriginalName ?? null,
+      belegFileId: r.belegFileId ?? null,
+      // belegMimeType/belegOriginalName are filled from the shared `files`
+      // lookup below (sourced from files.mime_type / files.original_filename).
+      belegMimeType: null,
+      belegOriginalName: null,
       approvedAt: r.approvedAt?.toISOString() ?? null,
+      rechnungBusinessId: null,
+      rechnungId: null,
+      geldEingangDatum: null,
       spenderName: null,
       spenderEmail: null,
+      spenderAdresse: null,
       bescheinigungNr: null,
       spendeKind: null,
+      zweckbindungKind: null,
+      zweckbindungText: null,
+      wertermittlungMethode: null,
+      zustandBeschreibung: null,
+      herkunftsbelegFileId: null,
+      herkunftsbelegMimeType: null,
+      herkunftsbelegOriginalName: null,
+      betriebsvermoegen: null,
       timeline: [],
     };
   } else if (kind === "income") {
@@ -383,6 +850,19 @@ export async function getTransactionDetail(
       .limit(1);
     const r = rows[0];
     if (!r) return null;
+    // aus-Rechnung link: the linked Ausgangsrechnung's business_id via the same
+    // correlated source as the Phase-2 Einnahmen list (invoices.paid_by_income_id
+    // = income.id). `.orderBy(createdAt, id).limit(1)` resolves deterministically
+    // if multiple invoices ever point at one income row. NULL when unlinked.
+    const invRows = await db
+      .select({
+        rechnungId: invoices.id,
+        rechnungBusinessId: invoices.businessId,
+      })
+      .from(invoices)
+      .where(eq(invoices.paidByIncomeId, r.id))
+      .orderBy(invoices.createdAt, invoices.id)
+      .limit(1);
     base = {
       id: r.id,
       kind: "income",
@@ -408,12 +888,26 @@ export async function getTransactionDetail(
       externName: null,
       bezahltVonMemberId: null,
       belegDriveFileId: r.belegDriveFileId ?? null,
-      belegOriginalName: r.belegOriginalName ?? null,
+      belegFileId: r.belegFileId ?? null,
+      belegMimeType: null,
+      belegOriginalName: null,
       approvedAt: null,
+      rechnungBusinessId: invRows[0]?.rechnungBusinessId ?? null,
+      rechnungId: invRows[0]?.rechnungId ?? null,
+      geldEingangDatum: r.geldEingangDatum ?? null,
       spenderName: null,
       spenderEmail: null,
+      spenderAdresse: null,
       bescheinigungNr: null,
       spendeKind: null,
+      zweckbindungKind: null,
+      zweckbindungText: null,
+      wertermittlungMethode: null,
+      zustandBeschreibung: null,
+      herkunftsbelegFileId: null,
+      herkunftsbelegMimeType: null,
+      herkunftsbelegOriginalName: null,
+      betriebsvermoegen: null,
       timeline: [],
     };
   } else {
@@ -450,18 +944,75 @@ export async function getTransactionDetail(
       externEmail: r.spenderEmail ?? null,
       externName: r.spenderName ?? null,
       bezahltVonMemberId: r.memberId ?? null,
+      // donations have no legacy Drive Beleg column (newer Spenden model).
       belegDriveFileId: null,
+      belegFileId: r.belegFileId ?? null,
+      belegMimeType: null,
       belegOriginalName: null,
       approvedAt: null,
+      rechnungBusinessId: null,
+      rechnungId: null,
+      geldEingangDatum: null,
       spenderName: r.spenderName ?? null,
       spenderEmail: r.spenderEmail ?? null,
+      spenderAdresse: r.spenderAdresse ?? null,
       bescheinigungNr: r.bescheinigungNr ?? null,
       spendeKind: r.spendeKind,
+      zweckbindungKind: r.zweckbindungKind,
+      zweckbindungText: r.zweckbindungText ?? null,
+      wertermittlungMethode: r.wertermittlungMethode ?? null,
+      zustandBeschreibung: r.zustandBeschreibung ?? null,
+      herkunftsbelegFileId: r.herkunftsbelegFileId ?? null,
+      // Filled from the SECOND files lookup below (Herkunftsbeleg provenance).
+      herkunftsbelegMimeType: null,
+      herkunftsbelegOriginalName: null,
+      betriebsvermoegen: r.betriebsvermoegen ?? null,
       timeline: [],
     };
   }
 
   if (!base) return null;
+
+  // Beleg metadata (all kinds): resolve mime_type / original_filename off the
+  // normalized `files` row when a Beleg FK is present. NOT the legacy
+  // beleg_drive_file_id / beleg_original_name text columns — the §11 viewer +
+  // Phases 5/6 read belegFileId/belegMimeType/belegOriginalName off `detail`.
+  if (base.belegFileId) {
+    const fileRows = await db
+      .select({
+        mimeType: files.mimeType,
+        originalFilename: files.originalFilename,
+      })
+      .from(files)
+      .where(eq(files.id, base.belegFileId))
+      .limit(1);
+    const f = fileRows[0];
+    if (f) {
+      base.belegMimeType = f.mimeType;
+      base.belegOriginalName = f.originalFilename;
+    }
+  }
+
+  // Herkunftsbeleg metadata (donations only): a SECOND `files` lookup off
+  // `donations.herkunftsbeleg_file_id` (the Sachspende provenance receipt),
+  // distinct from the main Beleg join above. Resolves mime_type /
+  // original_filename so the Spenden detail BelegViewer renders the real type
+  // + name instead of the hardcoded application/octet-stream placeholder.
+  if (base.herkunftsbelegFileId) {
+    const herkunftRows = await db
+      .select({
+        mimeType: files.mimeType,
+        originalFilename: files.originalFilename,
+      })
+      .from(files)
+      .where(eq(files.id, base.herkunftsbelegFileId))
+      .limit(1);
+    const hf = herkunftRows[0];
+    if (hf) {
+      base.herkunftsbelegMimeType = hf.mimeType;
+      base.herkunftsbelegOriginalName = hf.originalFilename;
+    }
+  }
 
   // Load audit_log timeline (reverse chrono)
   const entityKind =
@@ -585,7 +1136,9 @@ export interface CreateExpenseInput {
   kommentar?: string | null;
   kategorieId?: string | null;
   kategorieNameSnapshot: string;
-  sphereSnapshot: "ideeller" | "vermoegen" | "zweckbetrieb" | "wirtschaftlich";
+  // P1-T7 (spec §4.5): sphere is now DERIVED from the resolved kategorie —
+  // STRICT (no project override). Accepted-but-ignored for caller parity.
+  sphereSnapshot?: "ideeller" | "vermoegen" | "zweckbetrieb" | "wirtschaftlich";
   bezahltVonKind: "verein" | "member" | "extern";
   bezahltVonMemberId?: string | null;
   bezahltVonDisplay: string;
@@ -595,6 +1148,10 @@ export interface CreateExpenseInput {
   projectId?: string | null;
   /** C2-TAX: FK into the normalized `files` table for the attached Beleg. */
   belegFileId?: string | null;
+  // P1 (spec §4.1): "Kein Beleg vorhanden → Begründung". An expense satisfies
+  // expenses_beleg_or_grund_ck by EITHER a belegFileId OR a Verzicht-Begründung.
+  // Persist this so Phase 4's Ausgaben form can save the no-Beleg case.
+  belegVerzichtGrund?: string | null;
   actorUserId: string;
   businessId: string;
 }
@@ -608,8 +1165,14 @@ export interface CreateIncomeInput {
   kommentar?: string | null;
   kategorieId?: string | null;
   kategorieNameSnapshot: string;
-  sphereSnapshot: "ideeller" | "vermoegen" | "zweckbetrieb" | "wirtschaftlich";
+  // P1-T7 (spec §4.5): sphere is now DERIVED from the resolved kategorie —
+  // STRICT (no project override). Accepted-but-ignored for caller parity.
+  sphereSnapshot?: "ideeller" | "vermoegen" | "zweckbetrieb" | "wirtschaftlich";
   projectId?: string | null;
+  // P1-T7 (spec §4.6): the `income.beleg_file_id` column already existed but
+  // createIncome dropped it — persist it so "Beleg optional" on the Einnahmen
+  // form (Phase 5) can actually save the attached Beleg.
+  belegFileId?: string | null;
   actorUserId: string;
   businessId: string;
 }
@@ -618,8 +1181,11 @@ export interface CreateDonationInput {
   betragCents: number;
   currency?: string;
   zugewendetAm?: string | null;
+  // NOTE: kategorieId/kategorieNameSnapshot/sphereSnapshot are now DERIVED
+  // server-side from (spendeKind, zweckbindungKind) — these legacy fields are
+  // accepted-but-ignored so existing callers don't break (spec §4.3-4.5).
   kategorieId?: string | null;
-  kategorieNameSnapshot: string;
+  kategorieNameSnapshot?: string;
   sphereSnapshot?: "ideeller" | "vermoegen" | "zweckbetrieb" | "wirtschaftlich";
   memberId?: string | null;
   spenderName?: string | null;
@@ -628,6 +1194,17 @@ export interface CreateDonationInput {
   spendeKind?: "geldspende" | "sachspende" | "aufwandsspende";
   zweckbindungKind?: "zweckfrei" | "zweckgebunden";
   zweckbindungText?: string | null;
+  // SPEC-02 Sachspende Wertermittlung (all optional, persisted as-passed).
+  wertermittlungMethode?:
+    | "marktpreis"
+    | "kaufbeleg"
+    | "schaetzung"
+    | "buchwert"
+    | null;
+  zustandBeschreibung?: string | null;
+  herkunftsbelegFileId?: string | null;
+  belegFileId?: string | null;
+  betriebsvermoegen?: boolean;
   projectId?: string | null;
   actorUserId: string;
   businessId: string;
@@ -637,6 +1214,15 @@ export async function createExpense(
   input: CreateExpenseInput,
 ): Promise<{ id: string; businessId: string }> {
   const db = getDb();
+  // P1-T7 (spec §4.5): resolve a non-null kategorie by NAME and derive sphere
+  // STRICTLY from it (no project override). Closes the null-kategorie_id path
+  // before the NOT NULL constraint lands in a later task. NOTE: `input.kategorieId`
+  // is intentionally NOT honored — resolution is name-authoritative, so a future
+  // caller can't assume by-id wins.
+  const kat = await resolveKategorieByName(
+    "expense",
+    input.kategorieNameSnapshot,
+  );
   const [row] = await db
     .insert(expenses)
     .values({
@@ -649,9 +1235,9 @@ export async function createExpense(
       // C2-TAX: persist the cash-out date per EÜR §11 EStG.
       abflussDatum: input.abflussDatum ?? null,
       kommentar: input.kommentar ?? null,
-      kategorieId: input.kategorieId ?? null,
-      kategorieNameSnapshot: input.kategorieNameSnapshot,
-      sphereSnapshot: input.sphereSnapshot,
+      kategorieId: kat.id,
+      kategorieNameSnapshot: kat.name,
+      sphereSnapshot: kat.sphere,
       bezahltVonKind: input.bezahltVonKind,
       bezahltVonMemberId: input.bezahltVonMemberId ?? null,
       bezahltVonDisplay: input.bezahltVonDisplay,
@@ -661,6 +1247,9 @@ export async function createExpense(
       projectId: input.projectId ?? null,
       // C2-TAX: FK into the normalized `files` table for the attached Beleg.
       belegFileId: input.belegFileId ?? null,
+      // P1 (spec §4.1): persist the Verzicht-Begründung so the kein-Beleg case
+      // satisfies expenses_beleg_or_grund_ck without an attached file.
+      belegVerzichtGrund: input.belegVerzichtGrund ?? null,
       status: "geprueft",
       approvedAt: new Date(),
       approvedByUserId: input.actorUserId,
@@ -685,6 +1274,15 @@ export async function createIncome(
   input: CreateIncomeInput,
 ): Promise<{ id: string; businessId: string }> {
   const db = getDb();
+  // P1-T7 (spec §4.5): resolve a non-null kategorie by NAME and derive sphere
+  // STRICTLY from it (no project override). Closes the null-kategorie_id path
+  // before the NOT NULL constraint lands in a later task. NOTE: `input.kategorieId`
+  // is intentionally NOT honored — resolution is name-authoritative, so a future
+  // caller can't assume by-id wins.
+  const kat = await resolveKategorieByName(
+    "income",
+    input.kategorieNameSnapshot,
+  );
   const [row] = await db
     .insert(income)
     .values({
@@ -696,10 +1294,13 @@ export async function createIncome(
       geldEingangDatum: input.geldEingangDatum ?? null,
       rechnungsdatum: input.rechnungsdatum ?? null,
       kommentar: input.kommentar ?? null,
-      kategorieId: input.kategorieId ?? null,
-      kategorieNameSnapshot: input.kategorieNameSnapshot,
-      sphereSnapshot: input.sphereSnapshot,
+      kategorieId: kat.id,
+      kategorieNameSnapshot: kat.name,
+      sphereSnapshot: kat.sphere,
       projectId: input.projectId ?? null,
+      // P1-T7 (spec §4.6): persist the Beleg FK — the column existed but the
+      // fn previously dropped it (Phase 5 "Beleg optional" depends on this).
+      belegFileId: input.belegFileId ?? null,
       createdByUserId: input.actorUserId,
     })
     .returning({ id: income.id, businessId: income.businessId });
@@ -717,10 +1318,40 @@ export async function createIncome(
   return row;
 }
 
+/**
+ * Resolve a seeded Kategorie by (kind, name) → { id, sphere, name }.
+ * Throws if not found — donation derivation relies on the seed having
+ * installed the income kategorien (spec §4.3/§4.4).
+ */
+export async function resolveKategorieByName(
+  kind: "expense" | "income",
+  name: string,
+): Promise<{ id: string; sphere: Sphere; name: string }> {
+  const db = getDb();
+  const [row] = await db
+    .select({
+      id: kategorien.id,
+      sphere: kategorien.sphere,
+      name: kategorien.name,
+    })
+    .from(kategorien)
+    .where(and(eq(kategorien.kind, kind), eq(kategorien.name, name)))
+    .limit(1);
+  if (!row) throw new Error(`Kategorie not found: ${kind}/${name}`);
+  return row;
+}
+
 export async function createDonation(
   input: CreateDonationInput,
 ): Promise<{ id: string; businessId: string }> {
   const db = getDb();
+  // §4.3-4.5: kategorie + sphere are DERIVED server-side from the donation
+  // shape — never trusted from the caller. Sphere is always "ideeller".
+  const kategorieName = deriveDonationKategorieName(
+    input.spendeKind ?? "geldspende",
+    input.zweckbindungKind ?? "zweckfrei",
+  );
+  const kat = await resolveKategorieByName("income", kategorieName);
   const [row] = await db
     .insert(donations)
     .values({
@@ -729,9 +1360,9 @@ export async function createDonation(
       betragCents: BigInt(input.betragCents),
       currency: input.currency ?? "EUR",
       zugewendetAm: input.zugewendetAm ?? null,
-      kategorieId: input.kategorieId ?? null,
-      kategorieNameSnapshot: input.kategorieNameSnapshot,
-      sphereSnapshot: input.sphereSnapshot ?? "ideeller",
+      kategorieId: kat.id,
+      kategorieNameSnapshot: kat.name,
+      sphereSnapshot: "ideeller",
       memberId: input.memberId ?? null,
       spenderName: input.spenderName ?? null,
       spenderEmail: input.spenderEmail ?? null,
@@ -739,6 +1370,13 @@ export async function createDonation(
       spendeKind: input.spendeKind ?? "geldspende",
       zweckbindungKind: input.zweckbindungKind ?? "zweckfrei",
       zweckbindungText: input.zweckbindungText ?? null,
+      // SPEC-02 Sachspende Wertermittlung — persist as passed so the
+      // Task-10 donations_sachspende_wertermittlung_ck CHECK will be satisfied.
+      wertermittlungMethode: input.wertermittlungMethode ?? null,
+      zustandBeschreibung: input.zustandBeschreibung ?? null,
+      herkunftsbelegFileId: input.herkunftsbelegFileId ?? null,
+      belegFileId: input.belegFileId ?? null,
+      betriebsvermoegen: input.betriebsvermoegen ?? false,
       projectId: input.projectId ?? null,
       createdByUserId: input.actorUserId,
     })
@@ -842,16 +1480,31 @@ export async function markExpenseAsPaid(
     };
   }
 
-  await db.execute(sql`
+  // Guard the write with `erstattet_am IS NULL` and RETURNING so an
+  // already-erstattet row updates 0 rows (we lost no money — the row was
+  // already paid). We use the returned row count as the authoritative "I
+  // actually marked it" signal: a 0-row UPDATE must NOT report success and
+  // must NOT emit a no-op `expense.updated` audit event (double-pay fix).
+  //
+  // `abfluss_datum` is preserved with COALESCE: a member/extern row already
+  // carries its own cash-out date and must keep it; only a row that never had
+  // one (Verein-direct, where the reimbursement IS the cash-out) takes `datum`.
+  const updated = (await db.execute(sql`
     UPDATE expenses
        SET erstattet_am   = ${params.datum}::date,
            status         = 'erstattet',
            zahlungsart_id = ${params.zahlartId}::uuid,
-           abfluss_datum  = ${params.datum}::date,
+           abfluss_datum  = COALESCE(abfluss_datum, ${params.datum}::date),
            updated_at     = NOW()
      WHERE id = ${expenseId}::uuid
        AND erstattet_am IS NULL
-  `);
+    RETURNING id
+  `)) as unknown as { id: string }[];
+
+  if (updated.length === 0) {
+    // Row already erstattet — refuse, and emit NO audit event.
+    return { ok: false, error: "bereits bezahlt" };
+  }
 
   // Audit-only emit (CLAUDE.md §2 — never write audit_log directly).
   await bus.emit("expense.updated", {

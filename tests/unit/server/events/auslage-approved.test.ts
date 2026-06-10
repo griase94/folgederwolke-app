@@ -75,6 +75,11 @@ interface SentMailRow {
 
 const submissionsStore = new Map<string, SubmissionRow>();
 const expensesStore = new Map<string, ExpenseRow>();
+// approveSubmission resolves the chosen Kategorie by name (gate, spec §4.6).
+const kategorienStore = new Map<
+  string,
+  { id: string; kind: string; name: string; sphere: string }
+>();
 let nextExpenseId = 1;
 
 // Tracks sent_mails rows for idempotency count (P2-B6)
@@ -202,6 +207,16 @@ function makeDbFake() {
                 .length,
             },
           ];
+        } else if (ctx.table === "kategorien") {
+          // resolveKategorieByName does where(and(eq(kind,…), eq(name,…)));
+          // the `and:(a)=>a` mock collapses to the kind eq, so filter by the
+          // single where field → the one seeded expense kategorie.
+          rows = [...kategorienStore.values()].filter((r) =>
+            ctx.whereField
+              ? (r as Record<string, unknown>)[ctx.whereField!] ===
+                ctx.whereValue
+              : true,
+          );
         }
         return Promise.resolve(rows).then(resolve);
       },
@@ -352,6 +367,16 @@ vi.mock("$lib/server/db/schema/mails.js", () => ({
   },
 }));
 
+vi.mock("$lib/server/db/schema/kategorien.js", () => ({
+  kategorien: {
+    _kind: "kategorien",
+    id: "id",
+    kind: "kind",
+    name: "name",
+    sphere: "sphere",
+  },
+}));
+
 vi.mock("drizzle-orm", async () => ({
   eq: (col: string, val: unknown) => ({ field: col, value: val }),
   and: (a: unknown) => a,
@@ -390,6 +415,13 @@ const { approveSubmission } =
 beforeEach(() => {
   submissionsStore.clear();
   expensesStore.clear();
+  kategorienStore.clear();
+  kategorienStore.set("kat-buero", {
+    id: "kat-buero",
+    kind: "expense",
+    name: "Bürobedarf",
+    sphere: "wirtschaftlich",
+  });
   sentMailsStore.length = 0;
   emitMock.mockClear();
   festBisOverride = null;
@@ -411,6 +443,7 @@ describe("approveSubmission → auslage.approved event", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
     });
 
     expect(result.ok).toBe(true);
@@ -431,7 +464,11 @@ describe("approveSubmission → auslage.approved event", () => {
   it("is idempotent — second call short-circuits before emitting auslage.approved", async () => {
     const sub = makeSubmission({ businessId: "AUS-2026-008" });
 
-    await approveSubmission({ submissionId: sub.id, actorUserId: "admin-1" });
+    await approveSubmission({
+      submissionId: sub.id,
+      actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
+    });
     const firstCount = emitMock.mock.calls.filter(
       (c) => c[0] === "auslage.approved",
     ).length;
@@ -440,7 +477,11 @@ describe("approveSubmission → auslage.approved event", () => {
     emitMock.mockClear();
 
     // Second call — submission now has approvedExpenseId set → short-circuit
-    await approveSubmission({ submissionId: sub.id, actorUserId: "admin-1" });
+    await approveSubmission({
+      submissionId: sub.id,
+      actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
+    });
 
     const secondCount = emitMock.mock.calls.filter(
       (c) => c[0] === "auslage.approved",
@@ -452,7 +493,11 @@ describe("approveSubmission → auslage.approved event", () => {
     const sub = makeSubmission({ businessId: "AUS-2026-009" });
 
     // First approval → auslage.approved with send_attempt=0
-    await approveSubmission({ submissionId: sub.id, actorUserId: "admin-1" });
+    await approveSubmission({
+      submissionId: sub.id,
+      actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
+    });
     const firstPayload = emitMock.mock.calls.find(
       (c) => c[0] === "auslage.approved",
     )![1] as Record<string, unknown>;
@@ -480,7 +525,11 @@ describe("approveSubmission → auslage.approved event", () => {
     emitMock.mockClear();
 
     // Second approval (after manual reset, simulating re-approve-after-reject)
-    await approveSubmission({ submissionId: sub.id, actorUserId: "admin-1" });
+    await approveSubmission({
+      submissionId: sub.id,
+      actorUserId: "admin-1",
+      kategorieName: "Bürobedarf",
+    });
     const secondPayload = emitMock.mock.calls.find(
       (c) => c[0] === "auslage.approved",
     )![1] as Record<string, unknown>;

@@ -29,11 +29,18 @@ import type {
 // Fixture helpers
 // ---------------------------------------------------------------------------
 
+// Per-kind "Unkategorisiert (Import)" sentinel ids — unmatched rows resolve to
+// these (never null) per spec §4.6 / Task 8.
+const SENTINEL_EXPENSE = "11111111-1111-1111-1111-111111111111";
+const SENTINEL_INCOME = "22222222-2222-2222-2222-222222222222";
+
 const EMPTY_CTX: TransformContext = {
   members: [],
   kategorien: [],
   projects: [],
   sourceTag: "test_import_2026",
+  sentinelExpenseKategorieId: SENTINEL_EXPENSE,
+  sentinelIncomeKategorieId: SENTINEL_INCOME,
 };
 
 function makeCtx(overrides: Partial<TransformContext> = {}): TransformContext {
@@ -497,7 +504,9 @@ describe("kategorie resolver — sphere fallback", () => {
       ],
     ]);
     const result = transformLegacySheet(sheet, makeCtx({ kategorien }));
-    expect(result.expenses[0]!.kategorieId).toBeNull();
+    // Unmatched kategorie now resolves to the Import sentinel (never null) per
+    // spec §4.6 / Task 8; the sphere is still parsed from the sheet cell.
+    expect(result.expenses[0]!.kategorieId).toBe(SENTINEL_EXPENSE);
     expect(result.expenses[0]!.sphereSnapshot).toBe("zweckbetrieb");
   });
 

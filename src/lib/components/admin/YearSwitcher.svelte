@@ -25,23 +25,28 @@
 	 * pass an `icon` snippet to the SegmentedControl primitive so the lock
 	 * sits INSIDE each closed segment.
 	 *
+	 * allowAllYears (Task 3): list pages may pass this prop to append an
+	 * "Alle Jahre" option that navigates to ?year=all (ALL_YEARS sentinel).
+	 *
 	 * Resolves: VB-002, JB-001, JB-003, JB-006, UX-010, UI-009, UI-043, C2-5.
 	 */
 
 	import SegmentedControl, {
 		type SegmentedOption
 	} from '$lib/components/ui/segmented-control/segmented-control.svelte';
+	import { ALL_YEARS, type YearScope } from '$lib/domain/year.js';
 
 	interface Props {
 		years: YearSwitcherOption[];
-		selected: number;
-		onChange: (year: number) => void;
+		selected: YearScope;
+		onChange: (year: YearScope) => void;
+		allowAllYears?: boolean;
 	}
 
-	let { years, selected, onChange }: Props = $props();
+	let { years, selected, onChange, allowAllYears = false }: Props = $props();
 
-	const options = $derived(
-		years.map<SegmentedOption>((y) => ({
+	const options = $derived<SegmentedOption[]>([
+		...years.map<SegmentedOption>((y) => ({
 			value: String(y.year),
 			// The label is read by screen-readers via aria-label on each radio.
 			// Closed years carry the "festgeschrieben" suffix so SR-users hear
@@ -50,10 +55,18 @@
 			// Closed years get a lock icon snippet — rendered INSIDE the
 			// segment by the primitive (C2-5).
 			icon: y.closed ? lockIcon : undefined
-		}))
-	);
+		})),
+		// Lists only: append the "Alle Jahre" scope (ALL_YEARS sentinel).
+		...(allowAllYears ? [{ value: ALL_YEARS, label: 'Alle Jahre' }] : [])
+	]);
 
 	function handleChange(value: string) {
+		// Pass the "all" sentinel through verbatim — do NOT parseInt it (that
+		// would coerce "all" to NaN, silently dropping the navigation).
+		if (value === ALL_YEARS) {
+			onChange(ALL_YEARS);
+			return;
+		}
 		const n = Number.parseInt(value, 10);
 		if (Number.isFinite(n)) onChange(n);
 	}

@@ -5,7 +5,7 @@
  * (`src/lib/server/files/upload-pipeline.ts`). Provides a single entry point
  * used by:
  *   - public `/auslage-einreichen` form    → sourceKind: "form" + submitterEmail
- *   - admin `/app/transactions/neu`        → sourceKind: "app"  + actorUserId
+ *   - admin `/app/{ausgaben|einnahmen|spenden}/neu` → sourceKind: "app" + actorUserId
  *
  * The wrapper:
  *   1. Validates the params (Zod) — exactly one of submitterEmail / actorUserId

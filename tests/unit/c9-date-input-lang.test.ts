@@ -19,21 +19,24 @@ const FILES = [
   "src/lib/components/admin/inbox/ManualImportSheet.svelte",
   "src/lib/components/admin/projects/AddProjectDialog.svelte",
   "src/lib/components/admin/projects/EditProjectDialog.svelte",
-  "src/lib/components/admin/transactions/PostSepaMarkErstattetModal.svelte",
+  // Phase 4 (Tier C1) moved the bulk/SEPA components into `…/transactions/ausgaben/`.
+  "src/lib/components/admin/transactions/ausgaben/PostSepaMarkErstattetModal.svelte",
   "src/lib/components/admin/transactions/TransactionEditForm.svelte",
-  "src/lib/components/admin/transactions/BulkActionsBar.svelte",
+  "src/lib/components/admin/transactions/ausgaben/BulkActionsBar.svelte",
   "src/lib/components/admin/members/AddMemberDialog.svelte",
-  "src/routes/app/transactions/neu/+page.svelte",
+  // Phase 8 T6: src/routes/app/transactions/neu/+page.svelte deleted.
+  // The per-tab routes (ausgaben/neu, einnahmen/neu, spenden/neu) have their
+  // own date inputs and should be audited separately if they use native date inputs.
 ];
 
 // Files migrated to DateField under E4 — sanity-checked separately by
 // tests/unit/c6-form-consumers.test.ts. These should NOT have any native
 // `type="date"` inputs left.
+// Phase 6 (Tier C3) retired AddSpendeDialog/EditSpendeDialog with the old
+// /app/transactions/spenden route, so they are no longer in this guard.
 const MIGRATED_FILES = [
   "src/lib/components/forms/AuslagenForm.svelte",
   "src/lib/components/admin/invoices/InvoiceForm.svelte",
-  "src/lib/components/admin/spenden/AddSpendeDialog.svelte",
-  "src/lib/components/admin/spenden/EditSpendeDialog.svelte",
   "src/lib/components/admin/members/EditMemberDialog.svelte",
 ];
 

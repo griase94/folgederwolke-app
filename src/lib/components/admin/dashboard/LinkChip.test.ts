@@ -47,7 +47,7 @@ describe("LinkChip", () => {
       props: {
         label: "Saldo",
         value: "1.234,00 €",
-        href: "/app/transactions",
+        href: "/app/ausgaben", // Phase 8 T6: /app/transactions retired
         ariaLabel: "Saldo dieses Jahr: 1.234,00 €",
       },
     });

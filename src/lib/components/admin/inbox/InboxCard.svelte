@@ -20,12 +20,19 @@
 	import { Badge } from '$lib/components/ui/badge/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import RejectDialog from '$lib/components/admin/inbox/RejectDialog.svelte';
+	import KategoriePicker from '$lib/components/admin/transactions/fields/KategoriePicker.svelte';
+	import type { KategorieOption } from '$lib/components/admin/transactions/fields/KategoriePicker.svelte';
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import type { InboxSubmissionView } from '$lib/domain/inbox.js';
 
-	let { submission, index }: { submission: InboxSubmissionView; index: number } = $props();
+	let {
+		submission,
+		index,
+		kategorieOptions
+	}: { submission: InboxSubmissionView; index: number; kategorieOptions: KategorieOption[] } =
+		$props();
 
 	function formatCents(cents: number): string {
 		return (cents / 100).toLocaleString('de-DE', {
@@ -66,6 +73,8 @@
 	let dropdownOpen = $state(false);
 	let rejectDialogOpen = $state(false);
 	let approveSubmitting = $state(false);
+	let approveRevealed = $state(false);
+	let kategorieName = $state('');
 
 	function openRejectDialog(): void {
 		dropdownOpen = false;
@@ -162,64 +171,95 @@
 		</div>
 	</a>
 
-	<!-- ── Inline action controls (C7-INBOX full, kebab + buttons) ──────── -->
+	<!-- ── Inline action controls (C7-INBOX full, progressive reveal) ───── -->
 	{#if isOpen}
 		<div
-			class="mt-2 flex items-center justify-end gap-2"
+			class="mt-2 flex flex-col items-stretch gap-2 sm:items-end"
 			data-testid="inbox-card-actions"
 			data-aus-id={submission.ausId}
 		>
-			<form
-				method="POST"
-				action="/app/inbox?/inline-approve"
-				use:enhance={() => {
-					approveSubmitting = true;
-					return async ({ result }) => {
-						approveSubmitting = false;
-						if (result.type === 'success') {
-							toast.success(`Auslage ${submission.ausId} genehmigt`);
-							await invalidateAll();
-						} else if (result.type === 'failure') {
-							const data = result.data as { error?: string } | null;
-							toast.error(data?.error ?? 'Genehmigung fehlgeschlagen');
-						}
-					};
-				}}
-			>
-				<input type="hidden" name="submissionId" value={submission.id} />
-				<button
-					type="submit"
-					disabled={approveSubmitting}
-					data-testid="inbox-card-approve"
-					class="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:opacity-60"
-					aria-label="Auslage {submission.ausId} genehmigen"
-				>
-					{approveSubmitting ? 'Genehmige…' : 'Genehmigen'}
-				</button>
-			</form>
+			{#if !approveRevealed}
+				<div class="flex items-center justify-end gap-2">
+					<button
+						type="button"
+						data-testid="inbox-card-approve-start"
+						onclick={() => (approveRevealed = true)}
+						class="min-h-11 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+						aria-label="Auslage {submission.ausId} genehmigen"
+					>Genehmigen</button>
 
-			<DropdownMenu.Root bind:open={dropdownOpen}>
-				<DropdownMenu.Trigger
-					class="rounded-md border border-border bg-background p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-					aria-label="Weitere Aktionen für {submission.ausId}"
-					data-testid="inbox-card-kebab"
+					<DropdownMenu.Root bind:open={dropdownOpen}>
+						<DropdownMenu.Trigger
+							class="rounded-md border border-border bg-background p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							aria-label="Weitere Aktionen für {submission.ausId}"
+							data-testid="inbox-card-kebab"
+						>
+							<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+								<circle cx="12" cy="5" r="1.5" />
+								<circle cx="12" cy="12" r="1.5" />
+								<circle cx="12" cy="19" r="1.5" />
+							</svg>
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content align="end" class="w-48">
+							<DropdownMenu.Item
+								onSelect={openRejectDialog}
+								data-testid="inbox-card-reject"
+								class="text-destructive focus:text-destructive"
+							>
+								Ablehnen…
+							</DropdownMenu.Item>
+						</DropdownMenu.Content>
+					</DropdownMenu.Root>
+				</div>
+			{:else}
+				<!-- Vertical reveal panel: picker on its own line, buttons beneath. -->
+				<form
+					method="POST"
+					action="/app/inbox?/inline-approve"
+					class="flex w-full flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3 sm:w-80"
+					use:enhance={() => {
+						approveSubmitting = true;
+						return async ({ result }) => {
+							approveSubmitting = false;
+							if (result.type === 'success') {
+								toast.success(`Auslage ${submission.ausId} genehmigt`);
+								await invalidateAll();
+							} else if (result.type === 'failure') {
+								const d = result.data as { error?: string } | null;
+								toast.error(d?.error ?? 'Genehmigung fehlgeschlagen');
+							} else {
+								// result.type === 'error' (e.g. a 500): surface it, don't swallow.
+								toast.error('Genehmigung fehlgeschlagen');
+							}
+						};
+					}}
 				>
-					<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-						<circle cx="12" cy="5" r="1.5" />
-						<circle cx="12" cy="12" r="1.5" />
-						<circle cx="12" cy="19" r="1.5" />
-					</svg>
-				</DropdownMenu.Trigger>
-				<DropdownMenu.Content align="end" class="w-48">
-					<DropdownMenu.Item
-						onSelect={openRejectDialog}
-						data-testid="inbox-card-reject"
-						class="text-destructive focus:text-destructive"
-					>
-						Ablehnen…
-					</DropdownMenu.Item>
-				</DropdownMenu.Content>
-			</DropdownMenu.Root>
+					<input type="hidden" name="submissionId" value={submission.id} />
+					<KategoriePicker
+						id={`approve-kat-${submission.ausId}`}
+						options={kategorieOptions}
+						value={kategorieName}
+						onChange={(n) => (kategorieName = n)}
+						onSphere={() => {}}
+						required
+					/>
+					<div class="flex items-center justify-end gap-2">
+						<button
+							type="button"
+							onclick={() => { approveRevealed = false; kategorieName = ''; }}
+							class="min-h-11 rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+						>Abbrechen</button>
+						<button
+							type="submit"
+							data-testid="inbox-card-approve"
+							disabled={approveSubmitting || !kategorieName}
+							class="min-h-11 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60"
+						>
+							{approveSubmitting ? 'Genehmige…' : '✓ Freigeben'}
+						</button>
+					</div>
+				</form>
+			{/if}
 		</div>
 	{/if}
 </div>

@@ -1,0 +1,25 @@
+-- Task-10 (Phase-1 Foundation): wipe disposable transaction data so the
+-- constraints in 0031 can be applied cleanly.
+--
+-- Pre-launch ALL data is disposable (spec §3/§15) — there is no real
+-- bookkeeping to preserve yet. This migration clears every transaction row
+-- so the NOT NULL + CHECK constraints in 0031 apply to a clean slate (any
+-- pre-existing dev/prod rows may pre-date the kategorie_id / beleg / Spende
+-- invariants).
+--
+-- In the test DB this is a harmless no-op: globalSetup migrates (0001→0031)
+-- on EMPTY tables, then seeds (the base seed inserts NO transaction rows).
+-- It matters for the real/dev DB.
+--
+-- CASCADE collateral: TRUNCATE … CASCADE also clears rows in tables whose
+-- FKs reference donations/expenses/income (e.g. member_beitrags,
+-- auslagen_submissions). This is intended — those rows reference disposable
+-- transaction data and are themselves disposable pre-launch.
+--
+-- invoices.paid_by_income_id is a bare UUID column with NO foreign key (it is an
+-- application-level soft-link to the income receipt, not a DB FK). TRUNCATE income
+-- CASCADE therefore does NOT touch invoices. This UPDATE is a semantic pre-wipe
+-- cleanup: zero out the now-stale payment link (+ bezahlt_am) before the income
+-- rows are removed, so no invoice is left pointing at a deleted income id.
+UPDATE "invoices" SET "paid_by_income_id" = NULL, "bezahlt_am" = NULL WHERE "paid_by_income_id" IS NOT NULL;--> statement-breakpoint
+TRUNCATE TABLE "donations", "expenses", "income" CASCADE;

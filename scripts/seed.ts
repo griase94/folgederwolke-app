@@ -85,6 +85,12 @@ const EINNAHMEN_KATEGORIEN: KatRow[] = [
   { name: "Bar-Umsatz", sphere: "wirtschaftlich" },
   { name: "Eintritt", sphere: "zweckbetrieb" },
   { name: "Garderobe", sphere: "zweckbetrieb" },
+  // Donation-derivation kategorien — names must exactly match
+  // `deriveDonationKategorieName` outputs (Task 4 / §4.7).
+  // eur_zeile / anlage_gem_zeile intentionally NULL (§4.7 / §17).
+  { name: "Geldspende zweckfrei", sphere: "ideeller" },
+  { name: "Geldspende zweckgebunden", sphere: "ideeller" },
+  { name: "Sachspende", sphere: "ideeller" },
   { name: "Honorar künstlerische Leistung", sphere: "zweckbetrieb" },
   { name: "Kuratierung & Künstlerische Leitung", sphere: "zweckbetrieb" },
   { name: "Merch-Verkauf", sphere: "wirtschaftlich" },
@@ -205,6 +211,23 @@ async function main() {
             sortOrder: i,
             updatedAt: new Date(),
           },
+        });
+    }
+    // "Unkategorisiert (Import)" sentinel — non-null kategorie_id fallback for
+    // the importer (Task 8) and interim approval path (Task 9). §4.7 / §17:
+    // eur_zeile / anlage_gem_zeile intentionally NULL.
+    for (const kind of ["expense", "income"] as const) {
+      await db
+        .insert(schema.kategorien)
+        .values({
+          kind,
+          name: "Unkategorisiert (Import)",
+          sphere: "ideeller",
+          sortOrder: 999,
+        })
+        .onConflictDoUpdate({
+          target: [schema.kategorien.kind, schema.kategorien.name],
+          set: { sphere: "ideeller", updatedAt: new Date() },
         });
     }
     console.log(

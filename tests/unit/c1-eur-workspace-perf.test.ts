@@ -64,6 +64,9 @@ describe.skipIf(!dbConfigured)(
           sphere_snapshot: ke.sphere,
           bezahlt_von_kind: "verein" as const,
           bezahlt_von_display: "Vereinskasse (c1 perf)",
+          // P1-T10: expenses_beleg_or_grund_ck requires a Beleg or a
+          // Belegverzicht-Begründung; synthetic perf rows carry no file.
+          beleg_verzicht_grund: "c1 perf fixture — kein Beleg",
         };
       });
 
@@ -88,6 +91,7 @@ describe.skipIf(!dbConfigured)(
         "sphere_snapshot",
         "bezahlt_von_kind",
         "bezahlt_von_display",
+        "beleg_verzicht_grund",
       )}`;
     }, 30_000);
 

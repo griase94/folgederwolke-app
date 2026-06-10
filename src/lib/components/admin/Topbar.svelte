@@ -6,6 +6,7 @@
 	import YearSwitcher, { type YearSwitcherOption } from './YearSwitcher.svelte';
 	import MobileYearPicker from './MobileYearPicker.svelte';
 	import type { SessionUser } from '$lib/server/auth/index.js';
+	import { ALL_YEARS, type YearScope } from '$lib/domain/year.js';
 	import InstallPrompt from '$lib/components/pwa/InstallPrompt.svelte';
 	import type { SearchResponse, SearchResult } from '../../../routes/api/search/+server.js';
 
@@ -30,9 +31,19 @@
 		const d = $page.data as Record<string, unknown>;
 		const availableYears = (d['availableYears'] ?? []) as YearSwitcherOption[];
 		const selectedYear = (d['selectedYear'] as number | undefined) ?? null;
+		// yearScope (Task 2) is the wider YearScope — `number | ALL_YEARS`. The
+		// switcher highlights "Alle Jahre" when this is the "all" sentinel; for
+		// concrete years it equals selectedYear.
+		const yearScope = (d['yearScope'] as YearScope | undefined) ?? null;
 		const currentYear = (d['currentYear'] as number | undefined) ?? null;
-		return { availableYears, selectedYear, currentYear };
+		return { availableYears, selectedYear, yearScope, currentYear };
 	});
+
+	// "Alle Jahre" is a lists-only scope (spec §6) — the option appears only on
+	// the three transaction list routes and is invisible everywhere else.
+	const allowAllYears = $derived(
+		/^\/app\/(ausgaben|einnahmen|spenden)(\/|$)/.test($page.url.pathname)
+	);
 
 	function persistYear(year: number) {
 		try {
@@ -42,7 +53,17 @@
 		}
 	}
 
-	function handleYearChange(year: number) {
+	function handleYearChange(year: YearScope) {
+		// "all" sentinel: navigate to ?year=all verbatim — do NOT persist to
+		// localStorage (it's a list-only view, not a year we want to restore on
+		// next visit). Numeric years keep the existing persist + navigate path.
+		if (year === ALL_YEARS) {
+			const u = new URL($page.url);
+			u.searchParams.set('year', ALL_YEARS);
+			// eslint-disable-next-line svelte/no-navigation-without-resolve
+			goto(u.pathname + u.search, { keepFocus: true, noScroll: true });
+			return;
+		}
 		persistYear(year);
 		// Mutate ?year= on the current path; preserve every other query param
 		// (search, filter, kind, …) so the user's view context survives.
@@ -95,6 +116,9 @@
 		app: 'Übersicht',
 		inbox: 'Audit Inbox',
 		transactions: 'Transaktionen',
+		ausgaben: 'Ausgaben',
+		einnahmen: 'Einnahmen',
+		spenden: 'Spenden',
 		mitglieder: 'Mitglieder',
 		rechnungen: 'Rechnungen',
 		projekte: 'Projekte',
@@ -493,8 +517,9 @@
 		<div class="fdw-year-switcher-wrap hidden sm:block" data-fdw="year-switcher-wrap">
 			<YearSwitcher
 				years={yearData().availableYears}
-				selected={yearData().selectedYear!}
+				selected={yearData().yearScope ?? yearData().selectedYear!}
 				onChange={handleYearChange}
+				{allowAllYears}
 			/>
 		</div>
 		<!--
@@ -506,8 +531,9 @@
 		<div class="sm:hidden">
 			<MobileYearPicker
 				years={yearData().availableYears}
-				selected={yearData().selectedYear!}
+				selected={yearData().yearScope ?? yearData().selectedYear!}
 				onChange={handleYearChange}
+				{allowAllYears}
 			/>
 		</div>
 	{/if}
