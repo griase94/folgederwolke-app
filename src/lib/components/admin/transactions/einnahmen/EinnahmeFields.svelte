@@ -112,6 +112,7 @@
 
 	<!-- Kategorie (+ derived Sphäre via the shared picker) -->
 	<KategoriePicker
+		name="kategorieNameSnapshot"
 		options={kategorien}
 		value={kategorieName}
 		required

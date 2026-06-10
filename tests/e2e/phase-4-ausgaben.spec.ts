@@ -203,16 +203,27 @@ test.describe("@phase-4-ausgaben Ausgaben tab", () => {
     await page.getByRole("button", { name: /Ausgabe anlegen/i }).click();
     await page.waitForURL(/\/app\/ausgaben\/[0-9a-f-]+$/);
 
-    await page.goto(`/app/jahresabschluss/${year}`);
-    // The new booking's amount appears somewhere in the EÜR sphere buckets.
-    await expect(page.getByText(/99,00/).first()).toBeVisible();
+    // The created Ausgabe flows into the year's Jahresabschluss: it shows as a
+    // line item in the Buchungsliste. (The Übersicht tab only renders aggregated
+    // per-Sphäre totals — a single 99,00 booking is summed into its bucket there,
+    // so it never appears as a standalone amount.)
+    await page.goto(`/app/jahresabschluss/${year}/buchungsliste`);
+    await expect(page.getByText("E2E EÜR Beitrag").first()).toBeVisible();
   });
 
   test("unsaved-changes guard fires on × and browser-back (P16-03)", async ({
     page,
   }) => {
     await signIn(page);
-    await page.goto("/app/ausgaben/neu");
+    await page.goto("/app/ausgaben");
+    // Reach the entry form via a CLIENT-SIDE navigation (the desktop "Neue
+    // Ausgabe" CTA), not page.goto. A full page.goto would load /neu outside
+    // SvelteKit's client history, so the previous entry isn't framework-managed
+    // and a browser-back becomes an uncancellable full-document navigation. The
+    // in-app unsaved-changes guard governs SPA navigations — which is exactly how
+    // a real user reaches and leaves this form.
+    await page.locator('[data-slot="new-cta"]').click();
+    await page.waitForURL(/\/app\/ausgaben\/neu/);
     await page.getByLabel(/Bezeichnung/i).fill("E2E dirty");
 
     // × close → the beforeNavigate guard prompts (window.confirm). Dismiss it.
@@ -221,7 +232,7 @@ test.describe("@phase-4-ausgaben Ausgaben tab", () => {
     // Cancelled navigation → still on the entry form.
     await expect(page).toHaveURL(/\/app\/ausgaben\/neu/);
 
-    // Browser-back → same guard.
+    // Browser-back → same guard fires (popstate within SvelteKit's history).
     page.once("dialog", (d) => d.dismiss());
     await page.goBack();
     await expect(page).toHaveURL(/\/app\/ausgaben\/neu/);

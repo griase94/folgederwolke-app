@@ -30,6 +30,12 @@
 		/** Per-kind editable fields (right column, above the Verlauf). */
 		fields: Snippet;
 		/**
+		 * Optional per-kind status indicator rendered in the sticky header beside
+		 * the businessId (Ausgaben: payment status badge). Omitted by kinds without
+		 * a status (Einnahmen).
+		 */
+		headerBadge?: Snippet;
+		/**
 		 * P3-02: a ZERO-param Snippet — the per-kind footer action (Als bezahlt /
 		 * Bescheinigung / Rechnung-link info). The tab closes over its OWN
 		 * `saving`/`dirty`; the shell just renders the snippet in the footer.
@@ -77,6 +83,7 @@
 		lockNotice = 'Korrektur nur über Storno (Phase 2)',
 		beleg,
 		fields,
+		headerBadge,
 		workflowAction,
 		saving,
 		dirty,
@@ -88,10 +95,15 @@
 	// there are unsaved changes. Skipped on form-submit + leave-app and on
 	// same-path query updates. `dirty` is owned by the tab and passed in — the
 	// shell enforces the guard uniformly so both exit paths behave identically.
-	beforeNavigate(({ cancel, to, type }) => {
+	beforeNavigate(({ cancel, from, to, type }) => {
 		if (saving) return;
 		if (type === 'form' || type === 'leave') return;
-		if (to?.url.pathname === window.location.pathname) return;
+		// Skip same-path (query-only) updates — but compare `from`→`to`, NOT
+		// window.location. On a popstate (browser back/forward) the browser has
+		// ALREADY moved window.location to the target before this fires, so
+		// comparing against it wrongly matches and skips the guard for the very
+		// back-navigation we must intercept (P16-03).
+		if (from?.url.pathname === to?.url.pathname) return;
 		if (!dirty) return;
 
 		const confirmed = window.confirm('Änderungen gehen verloren. Trotzdem die Seite verlassen?');
@@ -159,7 +171,10 @@
 			<h2 id="detail-modal-title" class="truncate text-lg font-semibold text-foreground">
 				{detail.bezeichnung}
 			</h2>
-			<p class="mt-0.5 truncate font-mono text-sm text-muted-foreground">{detail.businessId}</p>
+			<div class="mt-0.5 flex flex-wrap items-center gap-2">
+				<p class="truncate font-mono text-sm text-muted-foreground">{detail.businessId}</p>
+				{@render headerBadge?.()}
+			</div>
 		</div>
 		<button
 			type="button"

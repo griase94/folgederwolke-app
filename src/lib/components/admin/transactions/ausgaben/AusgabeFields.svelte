@@ -160,12 +160,24 @@
 	// svelte-ignore state_referenced_locally
 	let begruendung = $state(values.begruendung);
 
-	// Betrag is entered as euros in a display input; the canonical integer-cents
-	// value is mirrored into a hidden field the server Zod schema parses. Seed
-	// the hidden cents from a re-hydrated euros value so a 422 keeps the amount.
+	// Descriptive text fields are bound to LOCAL state (seeded from `values`),
+	// NOT rendered as controlled `value={values.x}`. A bare `value={…}` re-asserts
+	// the (empty) prop on the next reactive re-render — e.g. when toggling Kein-
+	// Beleg or bezahlt-von — silently WIPING what the user typed, which then trips
+	// the `required` HTML5 gate and blocks the native submit. bind:value keeps the
+	// typed text as the source of truth (parity with the date/kategorie fields).
 	// svelte-ignore state_referenced_locally
-	let betragCents = $state(
-		values.betrag ? String(Math.round(parseFloat(values.betrag) * 100)) : '',
+	let bezeichnung = $state(values.bezeichnung);
+	// svelte-ignore state_referenced_locally
+	let kommentar = $state(values.kommentar);
+	// Betrag is entered as euros in a display input; the canonical integer-cents
+	// value is mirrored into a hidden field the server Zod schema parses. The
+	// euros live in local state so a re-render can't wipe them; cents derive from
+	// it (a 422 re-hydrate seeds euros from the echoed values).
+	// svelte-ignore state_referenced_locally
+	let betragEur = $state(values.betrag);
+	const betragCents = $derived(
+		betragEur ? String(Math.round(parseFloat(betragEur) * 100)) : '',
 	);
 
 	$effect(() => {
@@ -191,7 +203,7 @@
 			type="text"
 			required
 			maxlength={500}
-			value={values.bezeichnung}
+			bind:value={bezeichnung}
 			placeholder="z.B. Druckerpatronen, Raummiete März"
 			aria-invalid={err('bezeichnung') ? true : undefined}
 			class="rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
@@ -214,13 +226,9 @@
 				step="0.01"
 				min="0.01"
 				required
-				value={values.betrag}
+				bind:value={betragEur}
 				placeholder="0,00"
 				aria-invalid={err('betragCents') ? true : undefined}
-				oninput={(e) => {
-					const v = parseFloat((e.currentTarget as HTMLInputElement).value) || 0;
-					betragCents = String(Math.round(v * 100));
-				}}
 				class="w-full rounded-md border border-border bg-background py-2 pr-3 pl-8 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 			/>
 			<input type="hidden" name="betragCents" value={betragCents} />
@@ -313,7 +321,7 @@
 			name="kommentar"
 			rows={2}
 			maxlength={2000}
-			value={values.kommentar}
+			bind:value={kommentar}
 			class="rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
 		></textarea>
 	</div>

@@ -71,10 +71,15 @@
 	// on same-path query updates. `dirty` is owned by the tab (it tracks its own
 	// fields) and passed in — the shell just enforces the guard uniformly so both
 	// exit paths behave identically (UX-02).
-	beforeNavigate(({ cancel, to, type }) => {
+	beforeNavigate(({ cancel, from, to, type }) => {
 		if (submitting) return;
 		if (type === 'form' || type === 'leave') return;
-		if (to?.url.pathname === window.location.pathname) return;
+		// Skip same-path (query-only) updates — but compare `from`→`to`, NOT
+		// window.location. On a popstate (browser back/forward) the browser has
+		// ALREADY moved window.location to the target before this fires, so
+		// comparing against it wrongly matches and skips the guard for the very
+		// back-navigation we must intercept (P16-03).
+		if (from?.url.pathname === to?.url.pathname) return;
 		if (!dirty) return;
 
 		const confirmed = window.confirm('Änderungen gehen verloren. Trotzdem die Seite verlassen?');

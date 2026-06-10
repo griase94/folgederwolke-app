@@ -15,11 +15,12 @@
    */
   import { applyAction, enhance } from "$app/forms";
   import { page } from "$app/stores";
-  import { goto } from "$app/navigation";
+  import { goto, invalidateAll } from "$app/navigation";
   import { toast } from "svelte-sonner";
   import DetailModalShell from "$lib/components/admin/transactions/DetailModalShell.svelte";
   import BelegViewer from "$lib/components/files/BelegViewer.svelte";
   import AusgabeDetailFields from "$lib/components/admin/transactions/ausgaben/AusgabeDetailFields.svelte";
+  import { statusPresentation } from "$lib/domain/transaction-status.js";
   import type { PageData } from "./$types.js";
 
   let { data }: { data: PageData } = $props();
@@ -60,6 +61,19 @@
 <svelte:head>
   <title>{data.detail.bezeichnung} – Ausgaben – {$page.data.vereinName}</title>
 </svelte:head>
+
+{#snippet headerBadge()}
+  {@const sp = statusPresentation(data.detail.status ?? "")}
+  <span
+    data-testid="detail-status-badge"
+    class={[
+      "inline-flex w-fit items-center rounded-full px-2 py-0.5 text-xs font-medium",
+      sp.tone,
+    ].join(" ")}
+  >
+    {sp.label}
+  </span>
+{/snippet}
 
 {#snippet fields()}
   <AusgabeDetailFields
@@ -138,6 +152,10 @@
               toast.error(err ?? "Als bezahlt markieren fehlgeschlagen");
             }
             await applyAction(result);
+            // Re-run the load so the now-erstattet status (badge + the
+            // disappearing mark-paid form) reflects the change. applyAction
+            // alone updates page.form but does NOT re-fetch the detail.
+            if (result.type === "success") await invalidateAll();
           };
         }}
         class="flex flex-wrap items-center gap-2"
@@ -176,6 +194,7 @@
   isFestgeschrieben={data.isFestgeschrieben}
   {beleg}
   {fields}
+  {headerBadge}
   {workflowAction}
   {saving}
   {dirty}

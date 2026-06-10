@@ -197,6 +197,25 @@
 		});
 	}
 
+	// ── Desktop row-click → open detail (parity with the mobile card, which is a
+	// real <a> link). Each tab already renders a focusable detail <a> in one cell
+	// (ausgaben/einnahmen Bezeichnung, spenden Spender), so KEYBOARD users navigate
+	// via that link; this onclick is a MOUSE convenience only. Clicks that land on
+	// an interactive cell element (the detail link, a bulk checkbox, the kebab
+	// menu, an inline form control) are left to that element — we don't hijack them.
+	function onRowClick(e: MouseEvent, id: string) {
+		const t = e.target as HTMLElement | null;
+		if (
+			t?.closest(
+				'a, button, input, select, textarea, label, [role="button"], [role="menu"], [role="menuitem"], [role="dialog"]',
+			)
+		) {
+			return;
+		}
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic same-origin detail route
+		goto(`${detailHrefBase}/${id}`);
+	}
+
 	// ── Mobile sort control ─────────────────────────────────────────────────────
 	const sortableColumns = $derived(columns.filter((c) => c.sortable));
 
@@ -428,7 +447,12 @@
 				</thead>
 				<tbody>
 					{#each rows as row (row.id)}
-						<tr class="border-b border-border last:border-0 hover:bg-muted/40" data-testid="scaffold-row" data-row-id={row.id}>
+						<tr
+							class="cursor-pointer border-b border-border last:border-0 hover:bg-muted/40"
+							data-testid="scaffold-row"
+							data-row-id={row.id}
+							onclick={(e) => onRowClick(e, row.id)}
+						>
 							{#each columns as col (col.key)}
 								<td
 									class={[
