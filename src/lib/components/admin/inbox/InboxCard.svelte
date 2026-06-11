@@ -237,6 +237,7 @@
 					<input type="hidden" name="submissionId" value={submission.id} />
 					<KategoriePicker
 						id={`approve-kat-${submission.ausId}`}
+						name="kategorieName"
 						options={kategorieOptions}
 						value={kategorieName}
 						onChange={(n) => (kategorieName = n)}

@@ -83,7 +83,13 @@
 	</div>
 
 	<!-- List -->
-	<CustomerList customers={filteredCustomers} onEdit={openEdit} onAdd={() => (addOpen = true)} />
+	<CustomerList
+		customers={filteredCustomers}
+		query={searchQuery}
+		onClearSearch={() => (searchQuery = '')}
+		onEdit={openEdit}
+		onAdd={() => (addOpen = true)}
+	/>
 </div>
 
 <AddCustomerDialog bind:open={addOpen} />

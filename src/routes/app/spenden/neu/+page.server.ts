@@ -24,7 +24,7 @@ import { createSpende } from "$lib/server/domain/spenden.js";
 import { checkFestschreibungGate } from "$lib/server/domain/transactions.js";
 import { deriveDonationKategorieName } from "$lib/domain/spenden-kategorie.js";
 import { handleAuslageUpload } from "$lib/server/files/handleAuslageUpload.js";
-import { berlinYear } from "$lib/domain/year.js";
+import { bookingYearFromCashDate } from "$lib/domain/year.js";
 
 // The distinct derived-Kategorie names a Spende can book into (Sachspende
 // collapses regardless of Zweckbindung). Used to resolve each one's
@@ -102,13 +102,26 @@ export const actions: Actions = {
   create: async ({ request, locals }) => {
     const userId = locals.session?.user.id ?? null;
 
-    // Festschreibung gate BEFORE any side-effect (upload / allocate / insert).
-    // Uses the current Berlin year (the Spende date is not yet parsed here;
-    // mirroring einnahmen/neu which gates on the same berlinYear()).
-    const gate = await checkFestschreibungGate(berlinYear(new Date()));
-    if (!gate.ok) return fail(gate.status, { error: gate.error });
-
     const data = await request.formData();
+
+    // Festschreibung gate BEFORE any side-effect (upload / allocate / insert).
+    // The donation's year_of_buchung derives from zugewendet_am (the Zufluss
+    // date, migration 0034), NOT the current calendar year — so gate on
+    // year(zugewendet_am). Gating on the current year would let a BACKDATED
+    // Spende into a closed prior year slip past the app and trip the DB trigger
+    // as an opaque 23514/500. bookingYearFromCashDate falls back to the current
+    // Berlin year when the field is absent/blank (matching the column's
+    // COALESCE → year_for_booking(gebucht_am=now())); a malformed date is
+    // re-rejected with a proper 422 by createSpende's validation downstream.
+    const zugewendetRaw = data.get("zugewendet_am");
+    const gate = await checkFestschreibungGate(
+      bookingYearFromCashDate(
+        typeof zugewendetRaw === "string" && zugewendetRaw
+          ? zugewendetRaw
+          : null,
+      ),
+    );
+    if (!gate.ok) return fail(gate.status, { error: gate.error });
 
     // Optional Beleg uploads → file ids (encouraged, not enforced, §4.3).
     let belegFileId: string | null;

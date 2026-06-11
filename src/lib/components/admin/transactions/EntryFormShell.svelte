@@ -24,7 +24,13 @@
 			| 'text/plain';
 		/** Footer Speichern label reflecting the mode, e.g. "Ausgabe anlegen". */
 		submitLabel: string;
-		/** True while the action is in flight — disables Speichern + skips the guard. */
+		/**
+		 * True while the action is in flight — disables Speichern + skips the guard.
+		 * `$bindable`: the shell flips this to `true` on the form's `submit` event
+		 * (in the same tick the native POST begins), so the page no longer needs a
+		 * fragile onMount `addEventListener` to set it. The page binds it (and may
+		 * also read it, e.g. for the beforeNavigate skip on the success redirect).
+		 */
 		submitting: boolean;
 		/** True once the form differs from its pristine state — gates Speichern + guard. */
 		dirty: boolean;
@@ -59,7 +65,7 @@
 		action,
 		enctype = 'multipart/form-data',
 		submitLabel,
-		submitting,
+		submitting = $bindable(false),
 		dirty,
 		fields,
 		onClose,
@@ -138,7 +144,24 @@
 	</header>
 
 	<!-- ── Scrollable body: per-tab fields ────────────────────────────────── -->
-	<form id="entry-form" method="POST" {action} {enctype} class="flex min-h-0 flex-1 flex-col">
+	<!--
+		Double-submit guard (robust, no onMount listener): flip `submitting` on the
+		native `submit` event so the Speichern button below disables in the SAME tick
+		the POST begins (`disabled={!dirty || submitting}`). A second Enter/click can't
+		re-fire the submit. We do NOT preventDefault — the native POST proceeds. The
+		page binds `submitting`, so its beforeNavigate dirty-guard also skips on the
+		successful create-redirect.
+	-->
+	<form
+		id="entry-form"
+		method="POST"
+		{action}
+		{enctype}
+		class="flex min-h-0 flex-1 flex-col"
+		onsubmit={() => {
+			submitting = true;
+		}}
+	>
 		<div data-slot="entry-body" class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
 			{@render fields()}
 		</div>

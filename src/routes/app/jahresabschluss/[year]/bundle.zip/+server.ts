@@ -36,6 +36,8 @@ export const config = { maxDuration: 60 };
 interface DonationRow {
   business_id: string;
   zugewendet_am: string | null;
+  /** Canonical GoBD <Datum>: COALESCE(zugewendet_am, Berlin gebucht_am), bare YYYY-MM-DD. */
+  relevanz_datum: string;
   betrag_cents: bigint;
   spende_kind: string;
   zweckbindung_kind: string;
@@ -84,6 +86,8 @@ export const GET: RequestHandler = async ({ params }) => {
     SELECT
       d.business_id,
       d.zugewendet_am::text,
+      COALESCE(d.zugewendet_am::text,
+               (d.gebucht_am AT TIME ZONE 'Europe/Berlin')::date::text) AS relevanz_datum,
       d.betrag_cents,
       d.spende_kind,
       d.zweckbindung_kind,
@@ -106,6 +110,7 @@ export const GET: RequestHandler = async ({ params }) => {
   const spenden: SpendenlisteRow[] = donationRows.map((r) => ({
     businessId: r.business_id,
     zugewendetAm: r.zugewendet_am ? new Date(r.zugewendet_am) : null,
+    relevanzDatum: r.relevanz_datum,
     betragCents: BigInt(r.betrag_cents),
     spendeKind: r.spende_kind,
     zweckbindungKind: r.zweckbindung_kind,

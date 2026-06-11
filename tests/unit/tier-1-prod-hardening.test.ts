@@ -294,19 +294,20 @@ describe.skipIf(!dbConfigured)(
       ).resolves.toBeDefined();
     });
 
-    it("rejects a mismatched year (donation 2097, Bescheinigung B-2024-001)", async () => {
-      let err: unknown = null;
-      try {
-        await insertDonationWithBescheinigung(
+    // Migration 0034 (booking-year-from-cashflow) DROPPED
+    // donations_bescheinigung_nr_year_ck: the Zuwendungsbestätigung number's
+    // year is the ISSUE year, which is legitimately independent of the EÜR
+    // cash/booking year (e.g. a Sammelbestätigung issued the following spring,
+    // or a 2024-numbered cert for a donation booked to 2097's cash year). The
+    // coupling was over-strict, so a "mismatched" year is now ACCEPTED.
+    it("accepts a differing bescheinigung_nr year (donation 2097, Bescheinigung B-2024-001) — coupling dropped in 0034", async () => {
+      await expect(
+        insertDonationWithBescheinigung(
           "S-2097-003",
           "2097-05-01 10:00:00+01",
           "B-2024-001",
-        );
-      } catch (e) {
-        err = e;
-      }
-      expect(err).not.toBeNull();
-      expect((err as { code?: string }).code).toBe("23514");
+        ),
+      ).resolves.toBeDefined();
     });
   },
 );

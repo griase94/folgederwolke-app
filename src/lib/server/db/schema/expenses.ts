@@ -70,11 +70,14 @@ export const expenses = pgTable(
     gebuchtAm: timestamp("gebucht_am", { withTimezone: true })
       .notNull()
       .defaultNow(),
-    // STORED generated column — the `year_for_booking()` IMMUTABLE function
-    // is defined in drizzle/sql/functions/year_for_booking.sql and the
-    // migration applies it before the column is created.
+    // STORED generated column — booking year derives from the CASH-flow date
+    // (Abfluss per § 11 EStG), falling back to year_for_booking(gebucht_am)
+    // when no cash date is recorded yet. `extract(year FROM date)` is IMMUTABLE
+    // (the `::timestamptz` form is only STABLE and a STORED generated column
+    // rejects it); `year_for_booking()` is the IMMUTABLE Berlin-tz helper in
+    // drizzle/sql/functions/year_for_booking.sql. Migration 0034 applies this.
     yearOfBuchung: integer("year_of_buchung").generatedAlwaysAs(
-      sql`year_for_booking(gebucht_am)`,
+      sql`COALESCE(extract(year FROM abfluss_datum)::int, year_for_booking(gebucht_am))`,
     ),
 
     // --- Domain dates ---

@@ -21,6 +21,8 @@
 
 import { error, fail } from "@sveltejs/kit";
 import { z } from "zod";
+import { isoCalendarDate } from "$lib/domain/date.js";
+import { errorsFromIssues } from "$lib/domain/zod-errors.js";
 import type { Actions, PageServerLoad } from "./$types.js";
 import {
   getTransactionDetail,
@@ -72,11 +74,7 @@ export const load: PageServerLoad = async ({ params }) => {
 const saveSchema = z.object({
   bezeichnung: z.string().min(1).max(500),
   betragCents: z.coerce.number().int().positive(),
-  rechnungsdatum: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable()
-    .optional(),
+  rechnungsdatum: isoCalendarDate.nullable().optional(),
   kommentar: z.string().max(2000).nullable().optional(),
   // Mandatory Kategorie (mirrors the create schema): the picker drives the
   // Sphäre STRICTLY (§4.5), so an empty / sentinel Kategorie is rejected here —
@@ -99,7 +97,7 @@ const saveSchema = z.object({
 });
 
 const markPaidSchema = z.object({
-  datum: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  datum: isoCalendarDate,
   zahlartId: z.string().uuid().nullable().optional(),
 });
 
@@ -123,6 +121,7 @@ export const actions = {
     if (!parsed.success) {
       return fail(422, {
         error: "Ungültige Eingabe",
+        errors: errorsFromIssues(parsed.error.issues),
         issues: parsed.error.issues,
       });
     }

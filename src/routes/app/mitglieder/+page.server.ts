@@ -17,6 +17,7 @@ import { and, inArray } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
+import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
 import {
   beitragYearsRange,
   memberBeitragsTotals,
@@ -28,6 +29,7 @@ import {
   softDeleteMember,
   restoreMember,
   markBeitragPaid,
+  markBeitragPaidBulk,
   markBeitragUnpaid,
   setBeitragExempt,
 } from "$lib/server/domain/members-actions.js";
@@ -78,6 +80,23 @@ export const load: PageServerLoad = async ({ url, depends }) => {
       );
   }
 
+  // Per-year Beitragssatz (configured fee) for the window. Used to seed the
+  // mark-paid popover's amount when a member has NO member_beitrags row yet for
+  // an open year — otherwise the confirm heading shows "0,00 €" while the server
+  // would actually book the configured Satz (markpaid-popover-zero-betrag).
+  let satzRows: { year: number; cents: bigint }[] = [];
+  if (years.length > 0) {
+    satzRows = await db
+      .select({
+        year: beitragssatzByYear.year,
+        cents: beitragssatzByYear.cents,
+      })
+      .from(beitragssatzByYear)
+      .where(inArray(beitragssatzByYear.year, years));
+  }
+  const satzByYear: Record<number, number> = {};
+  for (const s of satzRows) satzByYear[s.year] = Number(s.cents);
+
   // Build a lookup map: memberId → year → beitrag row
   const beitragMap: Record<string, Record<number, (typeof beitrags)[0]>> = {};
   for (const b of beitrags) {
@@ -106,6 +125,7 @@ export const load: PageServerLoad = async ({ url, depends }) => {
     filter,
     years,
     totalsByYear,
+    satzByYear,
     matrix,
     members: allMembers.map((m) => ({
       id: m.id,
@@ -260,6 +280,49 @@ export const actions: Actions = {
     }
 
     return { action: "mark-beitrag-paid", success: true };
+  },
+
+  // ── Bulk mark Beitrag paid (Mitglieder list multi-select) ───────────────────
+  "mark-beitrag-paid-bulk": async ({ request, locals }) => {
+    const userId = locals.session?.user.id ?? null;
+    const userRole = locals.session?.user.role ?? null;
+    const formData = await request.formData();
+    // memberIds posted as repeated "memberId" fields.
+    const memberIds = formData
+      .getAll("memberId")
+      .map((v) => v.toString())
+      .filter(Boolean);
+    const yearStr = formData.get("year")?.toString() ?? "";
+    const year = parseInt(yearStr, 10);
+    const gezahltAm = formData.get("gezahltAm")?.toString() || berlinYmd();
+
+    if (memberIds.length === 0 || !Number.isFinite(year)) {
+      return fail(400, {
+        action: "mark-beitrag-paid-bulk",
+        error: "Ungültige Parameter",
+      });
+    }
+
+    const result = await markBeitragPaidBulk({
+      memberIds,
+      year,
+      gezahltAm,
+      actorUserId: userId,
+      actorRole: userRole,
+    });
+    if (!result.ok) {
+      return fail(result.status, {
+        action: "mark-beitrag-paid-bulk",
+        error: result.error,
+      });
+    }
+
+    return {
+      action: "mark-beitrag-paid-bulk",
+      success: true,
+      paidCount: result.paidCount,
+      skippedCount: result.skipped.length,
+    };
   },
 
   // ── Task 2.8: Mark Beitrag unpaid (storno) ──────────────────────────────────

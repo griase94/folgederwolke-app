@@ -23,6 +23,7 @@ function makeRow(overrides: Partial<EurRow> = {}): EurRow {
   return {
     businessId: "E-2026-001",
     gebuchtAm: new Date("2026-03-15"),
+    relevanzDatum: null,
     betragCents: 10000n,
     sphereSnapshot: "ideeller",
     kategorieId: null,

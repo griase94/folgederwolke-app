@@ -34,7 +34,7 @@ import {
   type BezahltVon,
 } from "$lib/server/domain/auslagen.js";
 import { DATENSCHUTZ_VERSION } from "$lib/server/domain/datenschutz.js";
-import { berlinYear } from "$lib/domain/year.js";
+import { berlinYear, bookingYearFromCashDate } from "$lib/domain/year.js";
 
 // ---------------------------------------------------------------------------
 // manualImportSubmission
@@ -53,6 +53,14 @@ export interface ManualImportInput {
   belegOriginalName?: string | null;
   /** UUID of the admin user performing the import (for audit log). */
   actorUserId: string;
+  /**
+   * Optional client idempotency nonce (UUID). Admin manual imports normally
+   * carry NONE (null) — the admin is the human dedup. Persisted when present
+   * so the partial UNIQUE index (migration 0033) still guards against a
+   * double-submit if a future caller does supply one. NULL never collides
+   * (partial index is `WHERE submission_nonce IS NOT NULL`).
+   */
+  submissionNonce?: string | null;
 }
 
 export interface ManualImportResult {
@@ -85,6 +93,7 @@ export async function manualImportSubmission(
     .insert(auslagenSubmissions)
     .values({
       businessId: ausId,
+      submissionNonce: input.submissionNonce ?? null,
       bezeichnung: input.bezeichnung,
       kommentar: input.kommentar ?? null,
       rechnungsdatum: input.rechnungsdatum ?? null,
@@ -177,16 +186,22 @@ async function fetchFestgeschriebenBis(): Promise<number | null> {
 }
 
 /**
- * Compute the Buchungsjahr (Europe/Berlin) used for the Festschreibung gate
- * given a submission's `rechnungsdatum`. Falls back to the current Berlin
- * year when rechnungsdatum is null. ADR-0001 + ADR-0006.
+ * Compute the Buchungsjahr used for the Festschreibung gate at approval time.
+ *
+ * Migration 0034 derives an expense's `year_of_buchung` from the CASH date:
+ *   COALESCE(extract(year FROM abfluss_datum)::int, year_for_booking(gebucht_am)).
+ * At approval the new `expenses` row is inserted with `abfluss_datum = NULL`
+ * (reimbursement hasn't happened yet) and `gebucht_am DEFAULT now()`, so it
+ * lands in `year_for_booking(now())` — the CURRENT Berlin Buchungsjahr.
+ *
+ * Therefore the gate must guard the LANDING year (current Berlin year), NOT the
+ * submission's `rechnungsdatum`. The receipt date is irrelevant to where the
+ * EÜR cash booking lands; gating on it would (a) wrongly block approving a
+ * prior-year receipt in an open current year, and (b) disagree with the DB
+ * festschreibung trigger, which also computes from the (null) abfluss → now().
+ * ADR-0001 + ADR-0006 + migration 0034.
  */
-function buchungsjahrForSubmission(rechnungsdatum: string | null): number {
-  if (rechnungsdatum) {
-    // YYYY-MM-DD — slice the year. The receipt date is already TZ-agnostic.
-    const y = parseInt(rechnungsdatum.slice(0, 4), 10);
-    if (Number.isFinite(y)) return y;
-  }
+function buchungsjahrForSubmission(): number {
   return berlinYear();
 }
 
@@ -303,7 +318,10 @@ export async function approveSubmission(
   }
 
   // ── 2. Festschreibung gate (ADR-0006) ──────────────────────────────────
-  const buchungsjahr = buchungsjahrForSubmission(submission.rechnungsdatum);
+  // Gate on the year the approved expense will LAND in (cash-derived). With
+  // abfluss NULL at approve, that's the current Berlin year — not the
+  // submission's rechnungsdatum. See buchungsjahrForSubmission() above.
+  const buchungsjahr = buchungsjahrForSubmission();
   const festBis = await fetchFestgeschriebenBis();
   if (festBis !== null && buchungsjahr <= festBis) {
     return {
@@ -549,11 +567,30 @@ export async function approveSubmission(
  * pg → `err.code`, drizzle wraps with `cause`). Walk the chain defensively.
  */
 function isUniqueViolation(err: unknown): boolean {
+  return hasPgCode(err, "23505");
+}
+
+/**
+ * True if `err` is a Postgres check-violation (SQLSTATE 23514). The
+ * festschreibung trigger (`assert_not_festgeschrieben_fn`, migration 0014)
+ * raises with `USING ERRCODE = 'check_violation'` (= 23514) and NO constraint
+ * name — so we discriminate on the SQLSTATE alone, walking the driver/drizzle
+ * cause chain the same way as isUniqueViolation.
+ */
+function isCheckViolation(err: unknown): boolean {
+  return hasPgCode(err, "23514");
+}
+
+/**
+ * Walk the error cause-chain (postgres-js → `err.code`, drizzle wraps with
+ * `cause`) looking for the given SQLSTATE. Shared by the unique/check helpers.
+ */
+function hasPgCode(err: unknown, sqlstate: string): boolean {
   let cur: unknown = err;
   for (let i = 0; i < 5 && cur != null; i++) {
     if (typeof cur === "object" && cur !== null && "code" in cur) {
       const code = (cur as { code?: unknown }).code;
-      if (code === "23505") return true;
+      if (code === sqlstate) return true;
     }
     cur =
       typeof cur === "object" && cur !== null && "cause" in cur
@@ -754,8 +791,21 @@ export async function markExpenseErstattet(
     return { ok: true, alreadyErstattet: true };
   }
 
-  // Festschreibung gate — derive Buchungsjahr from gebucht_am (Berlin TZ).
-  const buchungsjahr = berlinYear(expense.gebuchtAm);
+  // Festschreibung gate (ADR-0006) — mirror markExpenseAsPaid (transactions.ts)
+  // exactly so both reimburse paths agree on Buchungsjahr AND on which year the
+  // gate guards. The UPDATE below preserves an existing abfluss_datum with
+  // COALESCE (it never rebuckets a row already carrying a cash-out date), so the
+  // EFFECTIVE abfluss after the write is `abflussDatum ?? chosenDate`. Gate on
+  // bookingYearFromCashDate(effectiveAbfluss, gebuchtAm) so the app rejection
+  // equals the LEAST(OLD.year_of_buchung, year_for_booking(gebucht_am)) the DB
+  // trigger guards on UPDATE — without this an expense whose existing abfluss
+  // sits in a closed year could slip past year(chosenDate)=open and then hit a
+  // raw 23514 from the trigger (migration 0014/0034).
+  const effectiveAbfluss = expense.abflussDatum ?? chosenDate;
+  const buchungsjahr = bookingYearFromCashDate(
+    effectiveAbfluss,
+    expense.gebuchtAm,
+  );
   const festBis = await fetchFestgeschriebenBis();
   if (festBis !== null && buchungsjahr <= festBis) {
     return {
@@ -771,17 +821,41 @@ export async function markExpenseErstattet(
   // `expense.erstattet` → duplicate audit_log rows (the sent_mails UNIQUE
   // catches the mail dup but not the audit row). Use RETURNING and the
   // returned row count as the authoritative "I won the race" signal.
-  const updatedRows = await db
-    .update(expenses)
-    .set({
-      erstattetAm: chosenDate,
-      zahlungsartId,
-      status: "erstattet",
-      abflussDatum: chosenDate,
-      updatedAt: new Date(),
-    })
-    .where(and(eq(expenses.id, expenseId), isNull(expenses.erstattetAm)))
-    .returning({ id: expenses.id });
+  //
+  // `abfluss_datum` is preserved with COALESCE (mirrors markExpenseAsPaid): a
+  // member/extern row already carries its own cash-out date and keeps it; only
+  // a row that never had one (Verein-direct, the reimbursement IS the cash-out)
+  // takes `chosenDate`. This is the single canonical reimburse semantics shared
+  // by both entry points (transactions.ts markExpenseAsPaid + this helper).
+  let updatedRows: { id: string }[];
+  try {
+    updatedRows = await db
+      .update(expenses)
+      .set({
+        erstattetAm: chosenDate,
+        zahlungsartId,
+        status: "erstattet",
+        abflussDatum: sql`COALESCE(abfluss_datum, ${chosenDate}::date)`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(expenses.id, expenseId), isNull(expenses.erstattetAm)))
+      .returning({ id: expenses.id });
+  } catch (err) {
+    // The DB festschreibung trigger raises SQLSTATE 23514 (check_violation) if
+    // the row's Buchungsjahr is festgeschrieben. The app gate above should
+    // already have blocked this, but a stray trigger rejection must degrade to
+    // a clean per-row {ok:false,status:409} so a single mismatched row does NOT
+    // 500 the whole `?/bulk-mark-erstattet` batch (the loop's 409→'festgeschrieben'
+    // mapping then runs instead of an unhandled throw).
+    if (isCheckViolation(err)) {
+      return {
+        ok: false,
+        status: 409,
+        error: `Buchung ist festgeschrieben — Erstattung verweigert`,
+      };
+    }
+    throw err;
+  }
 
   if (updatedRows.length === 0) {
     // Lost the race — another concurrent call already marked erstattet.

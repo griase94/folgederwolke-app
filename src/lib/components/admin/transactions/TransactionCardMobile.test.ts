@@ -34,6 +34,7 @@ function makeRow(overrides: Partial<TestRow> = {}): TestRow {
     betragCents: 1250,
     currency: "EUR",
     gebuchtAm: "2026-05-01T00:00:00.000Z",
+    relevanzDatum: null,
     rechnungsdatum: null,
     sphereSnapshot: "ideeller",
     sphereEffective: "ideeller",

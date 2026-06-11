@@ -39,6 +39,8 @@
     kategorien: KategorieOption[];
     /** Active projects for the optional Projekt field. */
     projects: { id: string; name: string }[];
+    /** Per-field errors from a failed ?/save (keyed by field name). */
+    errors?: Record<string, string[]>;
     /** Fired on the first edit so the tab can flip the shell's `dirty`. */
     onDirty?: () => void;
     /** Bubbled so the page can feed the shell's `saving` flag during a ?/save. */
@@ -56,10 +58,15 @@
     kommentar,
     kategorien,
     projects,
+    errors = {},
     onDirty,
     onSaving,
     onSaved,
   }: Props = $props();
+
+  function err(field: string): string | null {
+    return errors[field]?.[0] ?? null;
+  }
 
   const FORM_ID = "detail-form";
 
@@ -133,8 +140,12 @@
       maxlength="500"
       bind:value={bezeichnung}
       oninput={markDirty}
+      aria-invalid={err("bezeichnung") ? true : undefined}
       class="border-input bg-background focus-visible:ring-ring h-11 min-h-11 w-full rounded-md border px-3 text-sm outline-none focus-visible:ring-1"
     />
+    {#if err("bezeichnung")}
+      <p class="text-destructive text-xs">{err("bezeichnung")}</p>
+    {/if}
   </div>
 
   <!-- Betrag (€) -->
@@ -151,8 +162,12 @@
       required
       bind:value={betragEur}
       oninput={markDirty}
+      aria-invalid={err("betragCents") ? true : undefined}
       class="border-input bg-background focus-visible:ring-ring h-11 min-h-11 w-full rounded-md border px-3 text-sm tabular-nums outline-none focus-visible:ring-1"
     />
+    {#if err("betragCents")}
+      <p class="text-destructive text-xs">{err("betragCents")}</p>
+    {/if}
   </div>
 
   <!-- Geldeingang — pre-filled from the loaded detail's geldEingangDatum
@@ -170,19 +185,28 @@
         markDirty();
       }}
     />
+    {#if err("geldEingangDatum")}
+      <p class="text-destructive text-xs">{err("geldEingangDatum")}</p>
+    {/if}
   </div>
 
   <!-- Kategorie (+ derived Sphäre) -->
-  <KategoriePicker
-    options={kategorien}
-    value={kategorieName}
-    required
-    onChange={(name) => {
-      kategorieName = name;
-      markDirty();
-    }}
-    onSphere={(s) => (sphere = s)}
-  />
+  <div class="flex flex-col gap-1.5">
+    <KategoriePicker
+      name="kategorieNameSnapshot"
+      options={kategorien}
+      value={kategorieName}
+      required
+      onChange={(name) => {
+        kategorieName = name;
+        markDirty();
+      }}
+      onSphere={(s) => (sphere = s)}
+    />
+    {#if err("kategorieNameSnapshot")}
+      <p class="text-destructive text-xs">{err("kategorieNameSnapshot")}</p>
+    {/if}
+  </div>
 
   <!-- Projekt (optional) -->
   <div class="flex flex-col gap-1.5">

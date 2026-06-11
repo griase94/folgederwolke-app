@@ -36,6 +36,15 @@ function formatEurCents(cents: bigint | number): string {
 export interface SpendenlisteRow {
   businessId: string;
   zugewendetAm: Date | string | null;
+  /**
+   * Canonical booking date for the GoBD-Z3 <Datum>: the cash date
+   * (zugewendet_am) when present, else the Berlin-local calendar date of
+   * gebucht_am. Always a bare YYYY-MM-DD string (threaded from SQL, no JS UTC
+   * fallback) so a null-zugewendet donation still emits an in-window <Datum>
+   * instead of an empty/invalid one (migration 0034). The CSV "Zugewendet am"
+   * column keeps using `zugewendetAm`; only the GoBD journal uses this.
+   */
+  relevanzDatum: string;
   betragCents: bigint;
   spendeKind: string;
   zweckbindungKind: string;

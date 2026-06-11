@@ -61,7 +61,11 @@ export const GET: RequestHandler = async ({ params }) => {
   for (const r of rows) {
     lines.push(
       csvRow([
-        r.gebuchtAm,
+        // Datum = cash-relevant date (relevanz_datum) the row booked under
+        // (migration 0034). listTransactions threads it as COALESCE(<cash>,
+        // Berlin gebucht_am date) — always a bare YYYY-MM-DD inside
+        // [year-01-01, year-12-31]. `?? gebuchtAm` is a defensive belt only.
+        r.relevanzDatum ?? r.gebuchtAm,
         r.businessId,
         r.bezeichnung,
         KIND_LABEL[r.kind] ?? r.kind,

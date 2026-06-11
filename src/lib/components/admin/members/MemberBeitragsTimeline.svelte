@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
 	import { beitragStatusFor, type BeitragStatus } from '$lib/domain/members.js';
+	import MarkPaidControl from './MarkPaidControl.svelte';
 
 	type BeitragRow = {
 		id: string;
@@ -23,6 +23,7 @@
 	let {
 		beitrags,
 		memberId,
+		memberName = '',
 		beitragExempt = false,
 		beitragExemptReason = null,
 		eintrittsJahr = null,
@@ -30,6 +31,8 @@
 	}: {
 		beitrags: BeitragRow[];
 		memberId: string;
+		/** Full name for the mark-paid popover heading + toast. */
+		memberName?: string;
 		beitragExempt?: boolean;
 		beitragExemptReason?: string | null;
 		/** Hide rows before this join year (§17 C5b / spec §9). */
@@ -37,6 +40,10 @@
 		/** Hide rows after this leave year. */
 		austrittsJahr?: number | null;
 	} = $props();
+
+	// The detail page may not pass a name; degrade gracefully to a generic term
+	// so the popover heading / toast never reads with a dangling leading space.
+	const displayName = $derived(memberName.trim() || 'Mitglied');
 
 	// §9 / §17 C5b — only show years the member was actually in the Verein.
 	const visibleBeitrags = $derived(
@@ -102,8 +109,6 @@
 		if (base === 'paid') return 'paid';
 		return beitragExempt ? 'exempt' : base;
 	}
-
-	let markingYear = $state<number | null>(null);
 </script>
 
 <div class="space-y-4">
@@ -244,53 +249,39 @@
 						</div>
 
 						<!-- Mark paid action — hidden for exempt members; admins must
-						     clear the exempt flag before recording a payment. -->
+						     clear the exempt flag before recording a payment. Opens the
+						     shared MarkPaidControl (date + live EÜR line + undo toast) so
+						     the detail page matches the list + matrix flow exactly. -->
 						{#if status !== 'paid' && status !== 'waived' && status !== 'exempt'}
-							<form
-								method="POST"
-								action="?/mark-beitrag-paid"
-								class="mt-2 sm:mt-0 sm:ml-4"
-								use:enhance={() => {
-									markingYear = b.year;
-									return async ({ update }) => {
-										await update();
-										markingYear = null;
-									};
-								}}
+							<MarkPaidControl
+								{memberId}
+								year={b.year}
+								memberName={displayName}
+								betragCents={b.betragCents}
+								actionBase="/app/mitglieder"
+								allowExempt={false}
 							>
-								<input type="hidden" name="member_id" value={memberId} />
-								<input type="hidden" name="year" value={b.year} />
-								<button
-									type="submit"
-									disabled={markingYear === b.year}
-									class="flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 transition-colors hover:bg-green-100 disabled:opacity-50"
-								>
-									{#if markingYear === b.year}
-										<svg class="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
-											<circle
-												class="opacity-25"
-												cx="12"
-												cy="12"
-												r="10"
-												stroke="currentColor"
-												stroke-width="4"
-											/>
-											<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-										</svg>
-									{:else}
+								{#snippet trigger({ props })}
+									<button
+										{...props}
+										type="button"
+										data-testid="beitragsverlauf-mark-paid"
+										class="mt-2 flex min-h-11 items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 transition-colors hover:bg-green-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:ml-4 sm:mt-0 dark:border-green-800 dark:bg-green-950/40 dark:text-green-300"
+									>
 										<svg
 											class="h-3 w-3"
 											fill="none"
 											viewBox="0 0 24 24"
 											stroke="currentColor"
 											stroke-width="2.5"
+											aria-hidden="true"
 										>
 											<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
 										</svg>
-									{/if}
-									Als bezahlt markieren
-								</button>
-							</form>
+										Als bezahlt markieren
+									</button>
+								{/snippet}
+							</MarkPaidControl>
 						{/if}
 					</div>
 				</div>

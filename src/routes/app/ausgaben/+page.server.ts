@@ -42,6 +42,7 @@ import { listAusgabenKpi } from "$lib/server/domain/ausgaben-kpi.js";
 import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
 import { markExpenseErstattet } from "$lib/server/domain/audit-inbox-actions.js";
 import { parseFilterState } from "$lib/domain/transaction-filters.js";
+import { isoCalendarDate } from "$lib/domain/date.js";
 
 const PAGE_SIZE = 50;
 
@@ -129,7 +130,7 @@ const bulkMarkErstattetSchema = z.object({
       .map((x) => x.trim())
       .filter(Boolean),
   ),
-  chosenDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  chosenDate: isoCalendarDate,
   zahlungsartId: z.string().uuid(),
 });
 

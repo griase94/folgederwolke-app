@@ -69,6 +69,7 @@ function makeRow(id: string, bezeichnung: string): TransactionRow {
     betragCents: 1250,
     currency: "EUR",
     gebuchtAm: "2024-03-01",
+    relevanzDatum: null,
     rechnungsdatum: "2024-03-01",
     sphereSnapshot: "ideeller",
     sphereEffective: "ideeller",

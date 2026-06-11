@@ -61,7 +61,7 @@
 	<label class="sr-only" for="fdw-year-switcher-mobile-select">Buchungsjahr</label>
 	<select
 		id="fdw-year-switcher-mobile-select"
-		class="h-8 appearance-none rounded-lg border border-border bg-muted/40 py-1 pl-3 pr-7 text-xs font-medium text-foreground focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+		class="h-11 appearance-none rounded-lg border border-border bg-muted/40 py-1 pl-3 pr-7 text-xs font-medium text-foreground focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
 		aria-label="Buchungsjahr"
 		value={String(selected)}
 		onchange={handleSelectChange}

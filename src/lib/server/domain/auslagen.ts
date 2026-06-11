@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { validateIban, normalizeIban } from "./iban.js";
 import { ALLOWED_BELEG_MIMES } from "./file-validation.js";
+import { isoCalendarDate } from "$lib/domain/date.js";
 
 // ---------------------------------------------------------------------------
 // Zod schema — shared between load() fixture and action validation
@@ -76,14 +77,15 @@ export const auslageInputSchema = z
      * C2-TAX: required ISO YYYY-MM-DD. Tax-correctness gate — EÜR §11 EStG
      * requires the invoice date for every expense. Was `.optional().nullable()`
      * pre-C2-TAX which left a hole where Zod accepted a Beleg-less submission.
+     *
+     * Uses the shared `isoCalendarDate` helper (real calendar-date round-trip)
+     * rather than a bare `/^\d{4}-\d{2}-\d{2}$/` regex: a format-only regex
+     * accepts impossible dates like `2026-02-30`, which then crash the
+     * Postgres `::date` insert as an opaque 500 and orphan the already-uploaded
+     * Beleg Blob. The helper rejects such dates as a clean 422 field error
+     * before any Blob work or DB insert runs.
      */
-    rechnungsdatum: z
-      .string()
-      .regex(
-        /^\d{4}-\d{2}-\d{2}$/,
-        "Rechnungsdatum im ISO-Format YYYY-MM-DD erforderlich",
-      )
-      .max(32),
+    rechnungsdatum: isoCalendarDate,
     /** Amount in cents (integer). Positive only. */
     betragCents: z
       .number({ error: "Betrag muss eine Zahl sein" })

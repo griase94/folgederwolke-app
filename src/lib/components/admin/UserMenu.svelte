@@ -112,12 +112,22 @@
 			{/if}
 		</DropdownMenuTrigger>
 	{:else}
+		<!--
+			Hit target is 44px (h-11 w-11) for comfortable touch, but the visible
+			avatar circle stays 36px (h-9 w-9) so the chrome looks unchanged. The
+			trigger is transparent padding around the avatar.
+		-->
 		<DropdownMenuTrigger
-			class="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+			class="flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
 			aria-label={triggerAriaLabel}
 			data-testid={triggerTestId}
 		>
-			{abbr}
+			<span
+				class="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+				aria-hidden="true"
+			>
+				{abbr}
+			</span>
 		</DropdownMenuTrigger>
 	{/if}
 

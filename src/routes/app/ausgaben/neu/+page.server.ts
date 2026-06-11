@@ -28,6 +28,8 @@
 
 import { fail, redirect } from "@sveltejs/kit";
 import { z } from "zod";
+import { isoCalendarDate } from "$lib/domain/date.js";
+import { errorsFromIssues } from "$lib/domain/zod-errors.js";
 import type { Actions, PageServerLoad } from "./$types.js";
 import {
   createExpense,
@@ -47,6 +49,7 @@ import { members } from "$lib/server/db/schema/members.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { asc, isNull } from "drizzle-orm";
 import { handleAuslageUpload } from "$lib/server/files/handleAuslageUpload.js";
+import { bookingYearFromCashDate } from "$lib/domain/year.js";
 
 function berlinYear(): number {
   return parseInt(
@@ -245,12 +248,10 @@ const expenseSchema = z.object({
   kommentar: z.string().max(2000).nullable().optional(),
   projectId: z.string().uuid().nullable().optional(),
   // EÜR §11 EStG: invoice date + cash-out (Abfluss) date both required.
-  rechnungsdatum: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Rechnungsdatum erforderlich (YYYY-MM-DD)"),
-  abfluss_datum: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Abfluss-Datum erforderlich (YYYY-MM-DD)"),
+  // `isoCalendarDate` rejects impossible dates (2026-02-30) as a 422 field
+  // error instead of letting them reach a Postgres ::date cast → opaque 500.
+  rechnungsdatum: isoCalendarDate,
+  abfluss_datum: isoCalendarDate,
   // Admin direct path defaults to Verein-paid (members come via the public
   // Auslage form); the tab can switch to member/extern.
   bezahltVonKind: z.enum(["verein", "member", "extern"]).default("verein"),
@@ -266,11 +267,7 @@ const expenseSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "true"),
-  erstattetAm: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable()
-    .optional(),
+  erstattetAm: isoCalendarDate.nullable().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -307,18 +304,6 @@ function valuesFromForm(data: FormData): AusgabeFormValues {
     keinBeleg: str("keinBeleg") === "true",
     begruendung: str("begruendung"),
   };
-}
-
-/** Map Zod issues → per-field error messages (first message wins per field). */
-function errorsFromIssues(
-  issues: readonly { path: readonly PropertyKey[]; message: string }[],
-): Record<string, string[]> {
-  const errors: Record<string, string[]> = {};
-  for (const issue of issues) {
-    const key = String(issue.path[0] ?? "_");
-    if (!errors[key]) errors[key] = [issue.message];
-  }
-  return errors;
 }
 
 // ---------------------------------------------------------------------------
@@ -369,8 +354,16 @@ export const actions = {
       });
     }
 
+    // Festschreibung gate (ADR-0006): the new expense's year_of_buchung
+    // derives from abfluss_datum (the cash-out date) per migration 0034, so
+    // gate on year(abfluss_datum) — NOT the current calendar year. Otherwise a
+    // prior-year cash-out booked in a closed year would pass the app gate and
+    // be rejected only by the DB trigger (opaque 23514). abfluss_datum is
+    // required by the Zod schema; bookingYearFromCashDate falls back to the
+    // current Berlin year if it were ever absent.
     const year = berlinYear();
-    const gate = await checkFestschreibungGate(year);
+    const gateYear = bookingYearFromCashDate(parsed.data.abfluss_datum);
+    const gate = await checkFestschreibungGate(gateYear);
     if (!gate.ok) return fail(gate.status, { error: gate.error });
 
     try {

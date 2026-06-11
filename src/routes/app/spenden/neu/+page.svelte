@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import EntryFormShell from '$lib/components/admin/transactions/EntryFormShell.svelte';
@@ -9,27 +8,17 @@
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	let dirty = $state(false);
+	// EntryFormShell flips `submitting` on the form's submit event (same tick the
+	// POST begins) so its beforeNavigate guard skips on a SUCCESSFUL create redirect
+	// (no spurious "unsaved changes" prompt) AND the Speichern button disables to
+	// block a double-submit. The shell also defaults its `enctype` to
+	// multipart/form-data, so the optional Beleg / Sachspende Herkunftsbeleg (§4.3
+	// prüfungssicherer Nachweis) file inputs transmit their bytes.
 	let submitting = $state(false);
 
 	// Re-hydrate after a failed submit (fail() carries values + errors).
 	const values = $derived((form?.values as Record<string, unknown>) ?? {});
 	const errors = $derived((form?.errors as Record<string, string[]>) ?? {});
-
-	// EntryFormShell owns the `<form id="entry-form">` and now defaults its
-	// `enctype` to multipart/form-data, so the optional Beleg / Sachspende
-	// Herkunftsbeleg (§4.3 prüfungssicherer Nachweis) file inputs transmit their
-	// bytes. This page only flips `submitting` on submit so EntryFormShell's
-	// beforeNavigate guard skips on a SUCCESSFUL create redirect (no spurious
-	// "unsaved changes" prompt).
-	onMount(() => {
-		const formEl = document.getElementById('entry-form');
-		if (!(formEl instanceof HTMLFormElement)) return;
-		const onSubmit = () => {
-			submitting = true;
-		};
-		formEl.addEventListener('submit', onSubmit);
-		return () => formEl.removeEventListener('submit', onSubmit);
-	});
 
 	function close() {
 		// eslint-disable-next-line svelte/no-navigation-without-resolve -- static app route
@@ -59,7 +48,7 @@
 	title="Neue Spende"
 	action="?/create"
 	submitLabel="Speichern"
-	{submitting}
+	bind:submitting
 	{dirty}
 	{fields}
 	onClose={close}

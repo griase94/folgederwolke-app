@@ -43,6 +43,45 @@ export function berlinYear(now: Date = new Date()): number {
 }
 
 // ---------------------------------------------------------------------------
+// Booking-year from cash-flow date (Deliverable B, migration 0034)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pure TS mirror of the `year_of_buchung` STORED generated column for
+ * expenses(abfluss_datum) / income(geld_eingang_datum) / donations(zugewendet_am):
+ *
+ *   year_of_buchung := COALESCE(extract(year FROM <cash_date>)::int,
+ *                               year_for_booking(gebucht_am))
+ *
+ * The cash-date columns are SQL `date` (no time-of-day, no TZ), so the year
+ * is the literal `YYYY` prefix of the ISO string — `extract(year FROM date)`
+ * needs no timezone conversion. Only the `gebucht_am` fallback is a
+ * `timestamptz` and therefore goes through `yearForBooking` (Europe/Berlin).
+ *
+ * Used by the app-level Festschreibung gates so the app rejection and the DB
+ * trigger (`assert_not_festgeschrieben_fn`) derive the SAME guarded year — if
+ * they disagreed, the legal tamper-evidence control would protect the wrong
+ * Buchungsjahr (ADR-0006). Keep this function in lock-step with migration 0034
+ * and the trigger's inline `v_row_year` expression.
+ *
+ * @param cashDate ISO `YYYY-MM-DD` string (abfluss/geld_eingang/zugewendet),
+ *   or null when the row carries no cash date yet.
+ * @param gebuchtAm the Buchungsdatum timestamp; the COALESCE fallback. Defaults
+ *   to now() so a null cash date lands in the current Berlin Buchungsjahr —
+ *   matching the DB column when `gebucht_am DEFAULT now()` is in force.
+ */
+export function bookingYearFromCashDate(
+  cashDate: string | null | undefined,
+  gebuchtAm: Date = new Date(),
+): number {
+  if (cashDate) {
+    const y = parseInt(cashDate.slice(0, 4), 10);
+    if (Number.isFinite(y)) return y;
+  }
+  return yearForBooking(gebuchtAm);
+}
+
+// ---------------------------------------------------------------------------
 // B1 fix (ADR-0001) — Berlin-local date string
 // ---------------------------------------------------------------------------
 

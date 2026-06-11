@@ -43,6 +43,7 @@
   import * as Sheet from "$lib/components/ui/sheet/index.js";
   import { Combobox } from "$lib/components/ui/combobox/index.js";
   import { MultiselectChip } from "$lib/components/ui/multiselect-chip/index.js";
+  import { parseEuroToCents, formatCentsAsEuro } from "$lib/domain/money.js";
 
   type Option = { value: string; label: string };
   /** Canonical member-option shape (Phase-3 scaffold + Task-6 `listMemberOptions`). */
@@ -123,45 +124,142 @@
     });
   }
 
-  function setEnum(key: string, values: string[]) {
+  // ── Debounced enum toggles ──────────────────────────────────────────────────
+  // Toggling a checkbox used to navigate (goto) on EVERY click. Rapid successive
+  // toggles each fired a navigation AND each read a stale `filterState` (the
+  // previous nav's load may not have re-parsed yet), so two quick toggles could
+  // drop one. We keep a `pendingEnums` overlay that accumulates toggles locally
+  // and debounce the navigate, so a burst of toggles batches into ONE navigation
+  // with the correct combined selection. The popover/sheet stays open across the
+  // single keepFocus navigation (URL is still the source of truth).
+  let pendingEnums = $state<Record<string, string[]> | null>(null);
+  let enumNavTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // The effective enum selection for a key: the pending overlay (mid-burst) wins,
+  // else the URL-derived `filterState`. Drives the checkbox `checked` state so a
+  // toggle reflects instantly even before the debounced navigation lands.
+  function effectiveEnum(key: string): string[] {
+    return pendingEnums?.[key] ?? filterState.enums[key] ?? [];
+  }
+
+  function flushEnums() {
+    if (enumNavTimer) {
+      clearTimeout(enumNavTimer);
+      enumNavTimer = null;
+    }
+    if (!pendingEnums) return;
     const next = clone(filterState);
-    if (values.length) next.enums[key] = values;
-    else delete next.enums[key];
+    next.enums = { ...next.enums };
+    for (const [k, vals] of Object.entries(pendingEnums)) {
+      if (vals.length) next.enums[k] = vals;
+      else delete next.enums[k];
+    }
+    pendingEnums = null;
     navigate(next);
   }
 
+  // Clone `filterState` AND fold in any in-flight enum overlay, cancelling the
+  // pending debounce. The non-enum mutators (member / amount / boolean / search)
+  // navigate immediately; without this they would clone ONLY the URL-derived
+  // `filterState`, and the later debounced flush would re-clone a now-stale
+  // `filterState` — silently dropping a mid-burst enum toggle. By committing the
+  // overlay into the SAME `next` they navigate with, the enum change rides along
+  // in that single navigation instead of being lost.
+  function cloneWithPendingEnums(): FilterState {
+    const next = clone(filterState);
+    if (pendingEnums) {
+      if (enumNavTimer) {
+        clearTimeout(enumNavTimer);
+        enumNavTimer = null;
+      }
+      next.enums = { ...next.enums };
+      for (const [k, vals] of Object.entries(pendingEnums)) {
+        if (vals.length) next.enums[k] = vals;
+        else delete next.enums[k];
+      }
+      pendingEnums = null;
+    }
+    return next;
+  }
+
+  function setEnum(key: string, values: string[]) {
+    // Seed the overlay from the current effective state so concurrent keys keep
+    // their pending values, then stage this key's new selection.
+    const overlay: Record<string, string[]> = { ...(pendingEnums ?? {}) };
+    overlay[key] = values;
+    pendingEnums = overlay;
+    if (enumNavTimer) clearTimeout(enumNavTimer);
+    enumNavTimer = setTimeout(flushEnums, 250);
+  }
+
   function removeEnumValue(key: string, value: string) {
-    setEnum(
-      key,
-      (filterState.enums[key] ?? []).filter((v) => v !== value),
-    );
+    // Chip removal is a deliberate single action — flush immediately (no debounce
+    // wait) so the chip disappears at once.
+    const overlay: Record<string, string[]> = { ...(pendingEnums ?? {}) };
+    overlay[key] = effectiveEnum(key).filter((v) => v !== value);
+    pendingEnums = overlay;
+    flushEnums();
   }
 
   function setMember(key: string, id: string | undefined) {
-    const next = clone(filterState);
+    const next = cloneWithPendingEnums();
     if (id) next.members[key] = id;
     else delete next.members[key];
     navigate(next);
   }
 
   function setBoolean(key: string, on: boolean) {
-    const next = clone(filterState);
+    const next = cloneWithPendingEnums();
     if (on) next.booleans[key] = true;
     else delete next.booleans[key];
     navigate(next);
   }
 
+  // The amount filter's URL params (betragMin/betragMax) are integer CENTS — the
+  // server compares them directly against `betragCents` (transaction-filter-sql.ts).
+  // The inputs are EUROS, so we parse de-DE-tolerant (accept the German comma
+  // decimal) and convert to cents; the chip + input value convert cents → euros.
+
+  /**
+   * Parse a de-DE euros string → integer cents (or undefined for empty/invalid).
+   * Delegates to the shared `parseEuroToCents` (the ONE de-DE parser, aligned
+   * with the client `parseBetragCents`) so the filter bar can't drift from the
+   * separator rules used everywhere else. `parseEuroToCents` throws on
+   * empty/malformed and returns a bigint that may be negative; we map a throw →
+   * undefined and clamp negatives away (a negative amount filter is meaningless).
+   */
+  function eurosToCents(raw: string): number | undefined {
+    if (raw.trim() === "") return undefined;
+    try {
+      const cents = parseEuroToCents(raw);
+      if (cents < 0n) return undefined;
+      return Number(cents);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Format integer cents → a de-DE euros input value (e.g. 1250 → "12,5"). */
+  function centsToEurosInput(cents: number | undefined): string {
+    if (cents == null) return "";
+    return String(cents / 100).replace(".", ",");
+  }
+
+  /** Format integer cents → a de-DE currency chip label (e.g. 1250 → "12,50 €"). */
+  function centsToChipLabel(cents: number): string {
+    return formatCentsAsEuro(BigInt(cents));
+  }
+
   function setAmount(field: "betragMin" | "betragMax", raw: string) {
-    const next = clone(filterState);
-    const n = raw.trim() === "" ? undefined : Number(raw);
-    if (n != null && Number.isFinite(n) && n >= 0)
-      next.amount[field] = Math.trunc(n);
+    const next = cloneWithPendingEnums();
+    const cents = eurosToCents(raw);
+    if (cents != null) next.amount[field] = cents;
     else delete next.amount[field];
     navigate(next);
   }
 
   function setSearch(raw: string) {
-    const next = clone(filterState);
+    const next = cloneWithPendingEnums();
     const trimmed = raw.trim();
     if (trimmed) next.search = trimmed.slice(0, 200);
     else delete next.search;
@@ -223,14 +321,14 @@
           out.push({
             key: "betragMin",
             fieldLabel: `${f.label} min`,
-            valueLabel: String(filterState.amount.betragMin),
+            valueLabel: centsToChipLabel(filterState.amount.betragMin),
             onRemove: () => setAmount("betragMin", ""),
           });
         if (filterState.amount.betragMax != null)
           out.push({
             key: "betragMax",
             fieldLabel: `${f.label} max`,
-            valueLabel: String(filterState.amount.betragMax),
+            valueLabel: centsToChipLabel(filterState.amount.betragMax),
             onRemove: () => setAmount("betragMax", ""),
           });
       }
@@ -503,9 +601,9 @@
           <input
             type="checkbox"
             class="size-4"
-            checked={(filterState.enums[field.key] ?? []).includes(opt.value)}
+            checked={effectiveEnum(field.key).includes(opt.value)}
             onchange={(e) => {
-              const cur = filterState.enums[field.key] ?? [];
+              const cur = effectiveEnum(field.key);
               const next = (e.currentTarget as HTMLInputElement).checked
                 ? [...cur, opt.value]
                 : cur.filter((v) => v !== opt.value);
@@ -535,12 +633,15 @@
     <div class="flex items-center gap-2">
       <label class="flex flex-1 flex-col gap-0.5 text-xs">
         <span class="text-muted-foreground">Min (€)</span>
+        <!-- type=text + inputmode=decimal so the de-DE comma decimal is typable
+             (a type=number input rejects "12,50"); value shows euros, state holds
+             cents. -->
         <input
-          type="number"
-          inputmode="numeric"
-          min="0"
+          type="text"
+          inputmode="decimal"
           aria-label="{field.label} minimum"
-          value={filterState.amount.betragMin ?? ""}
+          placeholder="0,00"
+          value={centsToEurosInput(filterState.amount.betragMin)}
           class="border-input bg-background h-11 min-h-11 w-full rounded-md border px-2 text-sm outline-none"
           onchange={(e) =>
             setAmount("betragMin", (e.currentTarget as HTMLInputElement).value)}
@@ -549,11 +650,11 @@
       <label class="flex flex-1 flex-col gap-0.5 text-xs">
         <span class="text-muted-foreground">Max (€)</span>
         <input
-          type="number"
-          inputmode="numeric"
-          min="0"
+          type="text"
+          inputmode="decimal"
           aria-label="{field.label} maximum"
-          value={filterState.amount.betragMax ?? ""}
+          placeholder="0,00"
+          value={centsToEurosInput(filterState.amount.betragMax)}
           class="border-input bg-background h-11 min-h-11 w-full rounded-md border px-2 text-sm outline-none"
           onchange={(e) =>
             setAmount("betragMax", (e.currentTarget as HTMLInputElement).value)}

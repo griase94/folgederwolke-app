@@ -285,15 +285,26 @@ export async function loadEurAggregatesForPdf(
   // Income + expense rows with the kategorien JOIN (PDF doesn't need
   // eur_zeile / anlage_gem_zeile itself, but bundle.zip does — pulling
   // them here lets the bundle reuse this query instead of running its own).
+  // relevanz_datum is the canonical booking <Datum>: the cash date when
+  // present, else the Berlin-LOCAL calendar date of gebucht_am. Threaded from
+  // SQL (no JS UTC toISOString fallback) so a year-boundary null-cash row emits
+  // a date inside [year-01-01, year-12-31] — matching year_for_booking's Berlin
+  // tz (migration 0034). Always a bare YYYY-MM-DD.
   const rawEurRows = (await db.execute(sql`
-    SELECT 'income' AS art, i.business_id, i.gebucht_am, i.betrag_cents, i.bezeichnung,
+    SELECT 'income' AS art, i.business_id, i.gebucht_am,
+           COALESCE(i.geld_eingang_datum::text,
+                    (i.gebucht_am AT TIME ZONE 'Europe/Berlin')::date::text) AS relevanz_datum,
+           i.betrag_cents, i.bezeichnung,
            i.sphere_snapshot, i.kategorie_id, i.kategorie_name_snapshot,
            k.eur_zeile, k.anlage_gem_zeile, i.beleg_drive_file_id, i.beleg_original_name
       FROM income i
       LEFT JOIN kategorien k ON k.id = i.kategorie_id
      WHERE i.year_of_buchung = ${year}
     UNION ALL
-    SELECT 'expense' AS art, e.business_id, e.gebucht_am, e.betrag_cents, e.bezeichnung,
+    SELECT 'expense' AS art, e.business_id, e.gebucht_am,
+           COALESCE(e.abfluss_datum::text,
+                    (e.gebucht_am AT TIME ZONE 'Europe/Berlin')::date::text) AS relevanz_datum,
+           e.betrag_cents, e.bezeichnung,
            COALESCE(e.sphere_override, e.sphere_snapshot),
            e.kategorie_id, e.kategorie_name_snapshot,
            k.eur_zeile, k.anlage_gem_zeile, e.beleg_drive_file_id, e.beleg_original_name
@@ -306,6 +317,7 @@ export async function loadEurAggregatesForPdf(
   const mkRow = (r: VEurYearRow): EurRow => ({
     businessId: r.business_id,
     gebuchtAm: r.gebucht_am,
+    relevanzDatum: r.relevanz_datum,
     betragCents: BigInt(r.betrag_cents),
     sphereSnapshot: r.sphere_snapshot as Sphere,
     kategorieId: r.kategorie_id,
@@ -329,7 +341,10 @@ export async function loadEurAggregatesForPdf(
   // kategorie name. Mitgliedsbeiträge: paid_cents (gezahlt_am IS NOT NULL),
   // always 'ideeller' by gemeinnützigkeitsrechtlicher Definition.
   const donationRows = (await db.execute(sql`
-    SELECT business_id, gebucht_am, betrag_cents,
+    SELECT business_id, gebucht_am,
+           COALESCE(zugewendet_am::text,
+                    (gebucht_am AT TIME ZONE 'Europe/Berlin')::date::text) AS relevanz_datum,
+           betrag_cents,
            COALESCE(spender_name, kategorie_name_snapshot, 'Spende') AS bezeichnung,
            sphere_snapshot, kategorie_id, kategorie_name_snapshot
       FROM donations
@@ -338,6 +353,7 @@ export async function loadEurAggregatesForPdf(
   `)) as unknown as Array<{
     business_id: string;
     gebucht_am: Date;
+    relevanz_datum: string | null;
     betrag_cents: bigint;
     bezeichnung: string;
     sphere_snapshot: string;
@@ -348,6 +364,7 @@ export async function loadEurAggregatesForPdf(
   const donationEurRows: EurRow[] = donationRows.map((r) => ({
     businessId: r.business_id,
     gebuchtAm: r.gebucht_am,
+    relevanzDatum: r.relevanz_datum,
     betragCents: BigInt(r.betrag_cents),
     sphereSnapshot: r.sphere_snapshot as Sphere,
     kategorieId: r.kategorie_id,
@@ -377,6 +394,9 @@ export async function loadEurAggregatesForPdf(
   const beitragEurRows: EurRow[] = beitragRows.map((r) => ({
     businessId: r.business_id,
     gebuchtAm: new Date(r.gezahlt_am),
+    // Mitgliedsbeiträge book by gezahlt_am (realized cashflow) — that IS the
+    // cash-relevant date. Slice to YYYY-MM-DD for the export <Datum>.
+    relevanzDatum: r.gezahlt_am.slice(0, 10),
     betragCents: BigInt(r.betrag_cents),
     sphereSnapshot: "ideeller",
     kategorieId: null,
@@ -408,6 +428,8 @@ interface VEurYearRow {
   art: string;
   business_id: string;
   gebucht_am: Date;
+  /** ISO YYYY-MM-DD cash date (geld_eingang/abfluss), or null. */
+  relevanz_datum: string | null;
   betrag_cents: bigint;
   bezeichnung: string;
   sphere_snapshot: string;
@@ -440,12 +462,14 @@ export async function loadEurWorkspaceData(
   //    the bundle-export path which keeps its existing query).
   const rawRows = (await db.execute(sql`
     SELECT 'income' AS art, business_id, gebucht_am, year_of_buchung,
+           geld_eingang_datum::text AS relevanz_datum,
            betrag_cents, bezeichnung, sphere_snapshot, kategorie_id,
            kategorie_name_snapshot, beleg_drive_file_id, beleg_original_name
       FROM income
      WHERE year_of_buchung IN (${year}, ${priorYear})
     UNION ALL
     SELECT 'expense' AS art, business_id, gebucht_am, year_of_buchung,
+           abfluss_datum::text AS relevanz_datum,
            betrag_cents, bezeichnung,
            COALESCE(sphere_override, sphere_snapshot) AS sphere_snapshot,
            kategorie_id, kategorie_name_snapshot,
@@ -465,6 +489,7 @@ export async function loadEurWorkspaceData(
   const mkRow = (r: (typeof rawRows)[number]): EurRow => ({
     businessId: r.business_id,
     gebuchtAm: r.gebucht_am,
+    relevanzDatum: r.relevanz_datum,
     betragCents: BigInt(r.betrag_cents),
     sphereSnapshot: r.sphere_snapshot as Sphere,
     kategorieId: r.kategorie_id,
@@ -500,6 +525,8 @@ export async function loadEurWorkspaceData(
   // kategorie name for display.
   const donationRows = (await db.execute(sql`
     SELECT business_id, gebucht_am, year_of_buchung,
+           COALESCE(zugewendet_am::text,
+                    (gebucht_am AT TIME ZONE 'Europe/Berlin')::date::text) AS relevanz_datum,
            betrag_cents,
            COALESCE(spender_name, kategorie_name_snapshot, 'Spende') AS bezeichnung,
            sphere_snapshot, kategorie_id, kategorie_name_snapshot
@@ -510,6 +537,7 @@ export async function loadEurWorkspaceData(
     business_id: string;
     gebucht_am: Date;
     year_of_buchung: number;
+    relevanz_datum: string | null;
     betrag_cents: bigint;
     bezeichnung: string;
     sphere_snapshot: string;
@@ -520,6 +548,7 @@ export async function loadEurWorkspaceData(
   const mkDonationRow = (r: (typeof donationRows)[number]): EurRow => ({
     businessId: r.business_id,
     gebuchtAm: r.gebucht_am,
+    relevanzDatum: r.relevanz_datum,
     betragCents: BigInt(r.betrag_cents),
     sphereSnapshot: r.sphere_snapshot as Sphere,
     kategorieId: r.kategorie_id,
@@ -560,6 +589,7 @@ export async function loadEurWorkspaceData(
   const mkBeitragRow = (r: (typeof beitragRows)[number]): EurRow => ({
     businessId: r.business_id,
     gebuchtAm: new Date(r.gezahlt_am),
+    relevanzDatum: r.gezahlt_am.slice(0, 10),
     betragCents: BigInt(r.betrag_cents),
     sphereSnapshot: "ideeller",
     kategorieId: null,
@@ -582,16 +612,23 @@ export async function loadEurWorkspaceData(
   //    base-table query for the same role-grants reason. C1-H2 — extends
   //    the union to donations + paid member-beitrags so the monthly
   //    Überschuss-Trendlinie mirrors the EÜR totals.
+  // Bucket by the CASH-relevant month so it matches the cash-year filter
+  // (year_of_buchung) — migration 0034. Mirror the column's COALESCE:
+  // month(<cash date>) when present, else month(gebucht_am, Berlin TZ). The
+  // cash columns are SQL `date` (no TZ); only the gebucht_am fallback is TZ-
+  // converted. Donations bucket by zugewendet_am, beitrags by gezahlt_am.
   const monthlyRows = (await db.execute(sql`
     SELECT 'income' AS art,
-           EXTRACT(MONTH FROM gebucht_am AT TIME ZONE 'Europe/Berlin')::int AS month,
+           COALESCE(EXTRACT(MONTH FROM geld_eingang_datum)::int,
+                    EXTRACT(MONTH FROM gebucht_am AT TIME ZONE 'Europe/Berlin')::int) AS month,
            SUM(betrag_cents)::bigint AS sum_cents
       FROM income
      WHERE year_of_buchung = ${year}
      GROUP BY month
     UNION ALL
     SELECT 'income' AS art,
-           EXTRACT(MONTH FROM gebucht_am AT TIME ZONE 'Europe/Berlin')::int AS month,
+           COALESCE(EXTRACT(MONTH FROM zugewendet_am)::int,
+                    EXTRACT(MONTH FROM gebucht_am AT TIME ZONE 'Europe/Berlin')::int) AS month,
            SUM(betrag_cents)::bigint AS sum_cents
       FROM donations
      WHERE year_of_buchung = ${year} AND supersedes_id IS NULL
@@ -605,7 +642,8 @@ export async function loadEurWorkspaceData(
      GROUP BY month
     UNION ALL
     SELECT 'expense' AS art,
-           EXTRACT(MONTH FROM gebucht_am AT TIME ZONE 'Europe/Berlin')::int AS month,
+           COALESCE(EXTRACT(MONTH FROM abfluss_datum)::int,
+                    EXTRACT(MONTH FROM gebucht_am AT TIME ZONE 'Europe/Berlin')::int) AS month,
            SUM(betrag_cents)::bigint AS sum_cents
       FROM expenses
      WHERE year_of_buchung = ${year}

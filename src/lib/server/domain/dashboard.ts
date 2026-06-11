@@ -288,10 +288,14 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         ),
       ),
 
-    // 7. C3 — Einnahmen monthly (income table only) for selected year
+    // 7. C3 — Einnahmen monthly (income table only) for selected year.
+    //    Bucket by the cash-relevant month (COALESCE(geld_eingang_datum,
+    //    gebucht_am)) so the month matches the cash-year filter — migration
+    //    0034 (year_of_buchung derives from geld_eingang_datum). The cash
+    //    column is a SQL `date` (no TZ); the gebucht_am fallback is Berlin-TZ.
     db
       .select({
-        month: sql<number>`EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
+        month: sql<number>`COALESCE(EXTRACT(MONTH FROM ${income.geldEingangDatum})::int, EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int)`,
         sumCents: sum(income.betragCents),
       })
       .from(income)
@@ -299,7 +303,7 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         and(eq(income.yearOfBuchung, currentYear), isNull(income.supersedesId)),
       )
       .groupBy(
-        sql`EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
+        sql`COALESCE(EXTRACT(MONTH FROM ${income.geldEingangDatum})::int, EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int)`,
       ),
 
     // 8. C3-1 — Donations monthly for selected year (ideeller sphere; counts
@@ -307,7 +311,7 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
     //          separate table from `income`).
     db
       .select({
-        month: sql<number>`EXTRACT(MONTH FROM ${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
+        month: sql<number>`COALESCE(EXTRACT(MONTH FROM ${donations.zugewendetAm})::int, EXTRACT(MONTH FROM ${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int)`,
         sumCents: sum(donations.betragCents),
       })
       .from(donations)
@@ -318,7 +322,7 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         ),
       )
       .groupBy(
-        sql`EXTRACT(MONTH FROM ${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
+        sql`COALESCE(EXTRACT(MONTH FROM ${donations.zugewendetAm})::int, EXTRACT(MONTH FROM ${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int)`,
       ),
 
     // 9. C3-1 — Mitgliedsbeiträge monthly for selected year.
@@ -342,10 +346,12 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         sql`EXTRACT(MONTH FROM ${memberBeitrags.gezahltAm} AT TIME ZONE 'Europe/Berlin')`,
       ),
 
-    // 10. C3 — Ausgaben monthly for selected year
+    // 10. C3 — Ausgaben monthly for selected year. Bucket by the cash-relevant
+    //     month (COALESCE(abfluss_datum, gebucht_am)) so the month matches the
+    //     cash-year filter — migration 0034.
     db
       .select({
-        month: sql<number>`EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
+        month: sql<number>`COALESCE(EXTRACT(MONTH FROM ${expenses.abflussDatum})::int, EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int)`,
         sumCents: sum(expenses.betragCents),
       })
       .from(expenses)
@@ -356,10 +362,12 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         ),
       )
       .groupBy(
-        sql`EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')`,
+        sql`COALESCE(EXTRACT(MONTH FROM ${expenses.abflussDatum})::int, EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int)`,
       ),
 
-    // 11. C3 — Einnahmen LY same-period YTD: income table (Jan..ytdMonth of currentYear-1)
+    // 11. C3 — Einnahmen LY same-period YTD: income table (Jan..ytdMonth of currentYear-1).
+    //     Compare on the cash-relevant month (COALESCE(geld_eingang_datum,
+    //     gebucht_am)) so the YTD window aligns with the cash-month buckets above.
     db
       .select({ sumCents: sum(income.betragCents) })
       .from(income)
@@ -367,11 +375,11 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         and(
           eq(income.yearOfBuchung, currentYear - 1),
           isNull(income.supersedesId),
-          sql`EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin') <= ${ytdMonth}`,
+          sql`COALESCE(EXTRACT(MONTH FROM ${income.geldEingangDatum})::int, EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int) <= ${ytdMonth}`,
         ),
       ),
 
-    // 12. C3-1 — Donations LY same-period YTD
+    // 12. C3-1 — Donations LY same-period YTD (cash month = zugewendet_am)
     db
       .select({ sumCents: sum(donations.betragCents) })
       .from(donations)
@@ -379,7 +387,7 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         and(
           eq(donations.yearOfBuchung, currentYear - 1),
           isNull(donations.supersedesId),
-          sql`EXTRACT(MONTH FROM ${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin') <= ${ytdMonth}`,
+          sql`COALESCE(EXTRACT(MONTH FROM ${donations.zugewendetAm})::int, EXTRACT(MONTH FROM ${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int) <= ${ytdMonth}`,
         ),
       ),
 
@@ -395,7 +403,7 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         ),
       ),
 
-    // 14. C3 — Ausgaben LY same-period YTD
+    // 14. C3 — Ausgaben LY same-period YTD (cash month = abfluss_datum)
     db
       .select({ sumCents: sum(expenses.betragCents) })
       .from(expenses)
@@ -403,7 +411,7 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         and(
           eq(expenses.yearOfBuchung, currentYear - 1),
           isNull(expenses.supersedesId),
-          sql`EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin') <= ${ytdMonth}`,
+          sql`COALESCE(EXTRACT(MONTH FROM ${expenses.abflussDatum})::int, EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int) <= ${ytdMonth}`,
         ),
       ),
 

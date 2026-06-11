@@ -92,7 +92,13 @@ export function buildTransactionsCsv(
         : sphereSnapshot;
 
     const rowCells: Array<string | number | null | undefined> = [
-      r.gebuchtAm,
+      // GoBD/EÜR Datum = the cash-relevant date (= relevanz_datum) the row was
+      // booked under (migration 0034). listTransactions now threads relevanzDatum
+      // as COALESCE(<cash>, Berlin gebucht_am date) — always a bare YYYY-MM-DD,
+      // so the Datum column is uniformly date-only and stays inside the cash-year
+      // window. The `?? gebuchtAm` is a defensive belt for any caller that
+      // bypasses that loader (UI-only rows never reach the CSV builder).
+      r.relevanzDatum ?? r.gebuchtAm,
       r.businessId,
       r.bezeichnung,
       KIND_LABEL[r.kind] ?? r.kind,

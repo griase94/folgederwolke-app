@@ -44,15 +44,8 @@ export function formatBusinessId(
   return `${prefix}-${year}-${seq.toString().padStart(3, "0")}`;
 }
 
-/** Returns null if the id parses + its year matches year_of_buchung; otherwise an error string. */
-export function checkBusinessIdYearConsistency(
-  id: string,
-  yearOfBuchung: number,
-): string | null {
-  const parsed = parseBusinessId(id);
-  if (!parsed) return `business_id ${id} does not match required format`;
-  if (parsed.year !== yearOfBuchung) {
-    return `business_id year ${parsed.year} mismatches year_of_buchung ${yearOfBuchung}`;
-  }
-  return null;
-}
+// NOTE: `checkBusinessIdYearConsistency()` was removed with migration 0034.
+// It enforced business_id.year == year_of_buchung, a coupling the DB dropped
+// (`*_business_id_year_ck`) when year_of_buchung moved to the cash-flow date.
+// A 2026-issued AUS-2026 receipt can legitimately book into 2025 (prior-year
+// abfluss), so the id-year ↔ booking-year invariant no longer holds.

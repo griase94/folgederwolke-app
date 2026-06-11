@@ -29,6 +29,7 @@
 		betragCents,
 		isOverdue = false,
 		isLocked = false,
+		allowExempt = true,
 		initialMode = 'mark-paid',
 		submitting = false,
 		onPaid,
@@ -41,6 +42,14 @@
 		betragCents: number;
 		isOverdue?: boolean;
 		isLocked?: boolean;
+		/**
+		 * Show the "Befreien" (per-year Befreiung) affordance. Default true (the
+		 * matrix, which DOES reflect per-year exempt state). The list/card/timeline
+		 * surfaces do NOT render per-year `member_beitrags.isExempt`, so exempting
+		 * there would show no feedback and keep offering "Bezahlt" — they pass
+		 * `allowExempt={false}` to hide it (per-year Befreien stays matrix-only).
+		 */
+		allowExempt?: boolean;
 		initialMode?: Mode;
 		submitting?: boolean;
 		onPaid?: (detail: { memberId: string; year: number; gezahltAm: string }) => void;
@@ -178,11 +187,20 @@
 			</p>
 		{/if}
 
-		<div class="flex items-center justify-between gap-2">
-			<Button variant="ghost" onclick={toBefreien} disabled={submitting || isLocked}>
-				Befreien
-			</Button>
-			<Button onclick={submitPaid} disabled={submitting || isLocked}>Bezahlt ↵</Button>
+		<div class="flex items-center {allowExempt ? 'justify-between' : 'justify-end'} gap-2">
+			{#if allowExempt}
+				<Button
+					variant="ghost"
+					class="min-h-[44px]"
+					onclick={toBefreien}
+					disabled={submitting || isLocked}
+				>
+					Befreien
+				</Button>
+			{/if}
+			<Button class="min-h-[44px]" onclick={submitPaid} disabled={submitting || isLocked}
+				>Bezahlt ↵</Button
+			>
 		</div>
 	{:else}
 		<h2 id={titleId} class="text-sm font-semibold text-foreground">
@@ -219,8 +237,14 @@
 		</div>
 
 		<div class="flex items-center justify-between gap-2">
-			<Button variant="ghost" onclick={toMarkPaid} disabled={submitting}>← Zurück</Button>
-			<Button onclick={submitExempt} disabled={!reasonValid || submitting}>Befreien ↵</Button>
+			<Button variant="ghost" class="min-h-[44px]" onclick={toMarkPaid} disabled={submitting}
+				>← Zurück</Button
+			>
+			<Button
+				class="min-h-[44px]"
+				onclick={submitExempt}
+				disabled={!reasonValid || submitting}>Befreien ↵</Button
+			>
 		</div>
 	{/if}
 </div>

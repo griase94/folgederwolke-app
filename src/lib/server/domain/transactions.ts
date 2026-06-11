@@ -36,6 +36,7 @@ import { zahlungsarten } from "$lib/server/db/schema/zahlungsarten.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { bus } from "$lib/server/events/index.js";
 import type { YearScope } from "$lib/domain/year.js";
+import { bookingYearFromCashDate } from "$lib/domain/year.js";
 import type { FilterState } from "$lib/domain/transaction-filters.js";
 import {
   buildAusgabenWhere,
@@ -57,6 +58,15 @@ export interface TransactionRow {
   betragCents: number;
   currency: string;
   gebuchtAm: string;
+  /**
+   * The cash-relevant date (= relevanz_datum): abfluss_datum for expenses,
+   * geld_eingang_datum for income, zugewendet_am for donations. ISO
+   * `YYYY-MM-DD` or null. Migration 0034 derives year_of_buchung from
+   * COALESCE(<cash>, gebucht_am), so the flat transactions CSV + Buchungsliste
+   * sort/emit COALESCE(relevanzDatum, gebuchtAm) — keeping the emitted Datum
+   * inside the cash-year fiscal window the row was SELECTed into.
+   */
+  relevanzDatum: string | null;
   /** ISO date string YYYY-MM-DD or null */
   rechnungsdatum: string | null;
   sphereSnapshot: string;
@@ -231,8 +241,13 @@ export async function listTransactions(
     }
     if (year) conditions.push(eq(expenses.yearOfBuchung, year));
     if (month) {
+      // Cash-month filter (migration 0034): the `year` filter is the cash year
+      // (year_of_buchung), so the month must bucket by the CASH date too —
+      // month(abfluss_datum) when present, else month(gebucht_am, Berlin TZ).
+      // Aligning to gebucht_am alone would exclude a row whose cash month differs
+      // from its booking month (e.g. abfluss 2025-03 / gebucht 2025-04).
       conditions.push(
-        sql`EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin') = ${month}`,
+        sql`COALESCE(EXTRACT(MONTH FROM ${expenses.abflussDatum})::int, EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int) = ${month}`,
       );
     }
 
@@ -244,6 +259,12 @@ export async function listTransactions(
         betragCents: expenses.betragCents,
         currency: expenses.currency,
         gebuchtAm: expenses.gebuchtAm,
+        // Canonical relevanz date: the cash date when present, else the
+        // Berlin-local calendar date of gebucht_am (migration 0034). Threaded
+        // from SQL as a bare YYYY-MM-DD so the GoBD/CSV <Datum> is ALWAYS a
+        // date-only string inside the cash-year window — never a JS UTC
+        // toISOString() fallback (which lands a year-boundary row in Y±1).
+        relevanzDatum: sql<string>`COALESCE(${expenses.abflussDatum}::text, (${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::date::text)`,
         rechnungsdatum: expenses.rechnungsdatum,
         sphereSnapshot: expenses.sphereSnapshot,
         sphereOverride: expenses.sphereOverride,
@@ -267,6 +288,7 @@ export async function listTransactions(
         betragCents: Number(r.betragCents),
         currency: r.currency,
         gebuchtAm: formatTs(r.gebuchtAm)!,
+        relevanzDatum: r.relevanzDatum ?? null,
         rechnungsdatum: r.rechnungsdatum ?? null,
         sphereSnapshot: r.sphereSnapshot,
         sphereEffective: r.sphereOverride ?? r.sphereSnapshot,
@@ -288,8 +310,10 @@ export async function listTransactions(
     }
     if (year) conditions.push(eq(income.yearOfBuchung, year));
     if (month) {
+      // Cash-month filter (migration 0034) — month(geld_eingang_datum) when
+      // present, else month(gebucht_am, Berlin TZ). See expense branch above.
       conditions.push(
-        sql`EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin') = ${month}`,
+        sql`COALESCE(EXTRACT(MONTH FROM ${income.geldEingangDatum})::int, EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int) = ${month}`,
       );
     }
 
@@ -301,6 +325,9 @@ export async function listTransactions(
         betragCents: income.betragCents,
         currency: income.currency,
         gebuchtAm: income.gebuchtAm,
+        // Canonical relevanz date: cash date else Berlin-local gebucht_am date
+        // (see expense branch). Bare YYYY-MM-DD, no JS UTC fallback.
+        relevanzDatum: sql<string>`COALESCE(${income.geldEingangDatum}::text, (${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::date::text)`,
         rechnungsdatum: income.rechnungsdatum,
         sphereSnapshot: income.sphereSnapshot,
         kategorieNameSnapshot: income.kategorieNameSnapshot,
@@ -320,6 +347,7 @@ export async function listTransactions(
         betragCents: Number(r.betragCents),
         currency: r.currency,
         gebuchtAm: formatTs(r.gebuchtAm)!,
+        relevanzDatum: r.relevanzDatum ?? null,
         rechnungsdatum: r.rechnungsdatum ?? null,
         sphereSnapshot: r.sphereSnapshot,
         sphereEffective: r.sphereSnapshot,
@@ -346,8 +374,10 @@ export async function listTransactions(
     }
     if (year) conditions.push(eq(donations.yearOfBuchung, year));
     if (month) {
+      // Cash-month filter (migration 0034) — month(zugewendet_am) when present,
+      // else month(gebucht_am, Berlin TZ). See expense branch above.
       conditions.push(
-        sql`EXTRACT(MONTH FROM ${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin') = ${month}`,
+        sql`COALESCE(EXTRACT(MONTH FROM ${donations.zugewendetAm})::int, EXTRACT(MONTH FROM ${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int) = ${month}`,
       );
     }
 
@@ -358,6 +388,9 @@ export async function listTransactions(
         betragCents: donations.betragCents,
         currency: donations.currency,
         gebuchtAm: donations.gebuchtAm,
+        // Canonical relevanz date: cash date else Berlin-local gebucht_am date
+        // (see expense branch). Bare YYYY-MM-DD, no JS UTC fallback.
+        relevanzDatum: sql<string>`COALESCE(${donations.zugewendetAm}::text, (${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::date::text)`,
         sphereSnapshot: donations.sphereSnapshot,
         kategorieNameSnapshot: donations.kategorieNameSnapshot,
         festgeschriebenAt: donations.festgeschriebenAt,
@@ -379,6 +412,7 @@ export async function listTransactions(
         betragCents: Number(r.betragCents),
         currency: r.currency,
         gebuchtAm: formatTs(r.gebuchtAm)!,
+        relevanzDatum: r.relevanzDatum ?? null,
         rechnungsdatum: null,
         sphereSnapshot: r.sphereSnapshot,
         sphereEffective: r.sphereSnapshot,
@@ -392,10 +426,21 @@ export async function listTransactions(
     }
   }
 
-  // Sort merged list descending by gebuchtAm
-  allRows.sort(
-    (a, b) => new Date(b.gebuchtAm).getTime() - new Date(a.gebuchtAm).getTime(),
-  );
+  // Sort merged list descending by the CASH-relevant date (relevanzDatum),
+  // falling back to gebuchtAm, with gebuchtAm as the stable tiebreak. This is
+  // the date the Buchungsliste DISPLAYS ("Datum" column = relevanzDatum ??
+  // gebuchtAm) and the date the GoBD/CSV export stamps as <Datum>, so the rows
+  // must order by it too — ordering by gebuchtAm alone made a row with abfluss
+  // 2025-03 / gebucht 2025-04 display 01.03. yet sort among the April rows.
+  const sortKey = (r: TransactionRow): number =>
+    new Date(r.relevanzDatum ?? r.gebuchtAm).getTime();
+  allRows.sort((a, b) => {
+    const cmp = sortKey(b) - sortKey(a);
+    if (cmp !== 0) return cmp;
+    // Tiebreak on the finer-grained booking timestamp (relevanzDatum is
+    // date-only, so same-day rows would otherwise order non-deterministically).
+    return new Date(b.gebuchtAm).getTime() - new Date(a.gebuchtAm).getTime();
+  });
 
   const total = allRows.length;
   return { rows: allRows.slice(offset, offset + limit), total };
@@ -474,6 +519,13 @@ export interface BaseTxRow {
   currency: string;
   /** ISO timestamp string. */
   gebuchtAm: string;
+  /**
+   * The cash-relevant date (= relevanz_datum): abfluss_datum / geld_eingang_datum
+   * / zugewendet_am as ISO YYYY-MM-DD, or null. Per-tab CSV exports emit
+   * COALESCE(relevanzDatum, gebuchtAm) as the Datum so the booking date stays
+   * inside the cash-year window the row was filtered into (migration 0034).
+   */
+  relevanzDatum: string | null;
   sphereSnapshot: string;
   kategorieNameSnapshot: string;
   yearOfBuchung: number | null;
@@ -531,6 +583,7 @@ export async function listAusgabenPage(
       betragCents: expenses.betragCents,
       currency: expenses.currency,
       gebuchtAm: expenses.gebuchtAm,
+      relevanzDatum: expenses.abflussDatum,
       sphereSnapshot: expenses.sphereSnapshot,
       sphereOverride: expenses.sphereOverride,
       kategorieNameSnapshot: expenses.kategorieNameSnapshot,
@@ -570,6 +623,7 @@ export async function listAusgabenPage(
       betragCents: Number(r.betragCents),
       currency: r.currency,
       gebuchtAm: formatTs(r.gebuchtAm)!,
+      relevanzDatum: r.relevanzDatum ?? null,
       sphereSnapshot: r.sphereSnapshot,
       sphereOverride: r.sphereOverride ?? null,
       sphereEffective: r.sphereOverride ?? r.sphereSnapshot,
@@ -640,6 +694,7 @@ export async function listEinnahmenPage(
       betragCents: income.betragCents,
       currency: income.currency,
       gebuchtAm: income.gebuchtAm,
+      relevanzDatum: income.geldEingangDatum,
       sphereSnapshot: income.sphereSnapshot,
       kategorieNameSnapshot: income.kategorieNameSnapshot,
       yearOfBuchung: income.yearOfBuchung,
@@ -674,6 +729,7 @@ export async function listEinnahmenPage(
       betragCents: Number(r.betragCents),
       currency: r.currency,
       gebuchtAm: formatTs(r.gebuchtAm)!,
+      relevanzDatum: r.relevanzDatum ?? null,
       sphereSnapshot: r.sphereSnapshot,
       kategorieNameSnapshot: r.kategorieNameSnapshot,
       yearOfBuchung: r.yearOfBuchung ?? null,
@@ -720,6 +776,7 @@ export async function listSpendenPage(
       betragCents: donations.betragCents,
       currency: donations.currency,
       gebuchtAm: donations.gebuchtAm,
+      relevanzDatum: donations.zugewendetAm,
       sphereSnapshot: donations.sphereSnapshot,
       kategorieNameSnapshot: donations.kategorieNameSnapshot,
       yearOfBuchung: donations.yearOfBuchung,
@@ -760,6 +817,7 @@ export async function listSpendenPage(
       betragCents: Number(r.betragCents),
       currency: r.currency,
       gebuchtAm: formatTs(r.gebuchtAm)!,
+      relevanzDatum: r.relevanzDatum ?? null,
       sphereSnapshot: r.sphereSnapshot,
       kategorieNameSnapshot: r.kategorieNameSnapshot,
       yearOfBuchung: r.yearOfBuchung ?? null,
@@ -801,6 +859,7 @@ export async function getTransactionDetail(
       betragCents: Number(r.betragCents),
       currency: r.currency,
       gebuchtAm: r.gebuchtAm.toISOString(),
+      relevanzDatum: r.abflussDatum ?? null,
       rechnungsdatum: r.rechnungsdatum ?? null,
       sphereSnapshot: r.sphereSnapshot,
       sphereEffective: r.sphereOverride ?? r.sphereSnapshot,
@@ -871,6 +930,7 @@ export async function getTransactionDetail(
       betragCents: Number(r.betragCents),
       currency: r.currency,
       gebuchtAm: r.gebuchtAm.toISOString(),
+      relevanzDatum: r.geldEingangDatum ?? null,
       rechnungsdatum: r.rechnungsdatum ?? null,
       sphereSnapshot: r.sphereSnapshot,
       sphereEffective: r.sphereSnapshot,
@@ -928,6 +988,7 @@ export async function getTransactionDetail(
       betragCents: Number(r.betragCents),
       currency: r.currency,
       gebuchtAm: r.gebuchtAm.toISOString(),
+      relevanzDatum: r.zugewendetAm ?? null,
       rechnungsdatum: null,
       sphereSnapshot: r.sphereSnapshot,
       sphereEffective: r.sphereSnapshot,
@@ -1448,6 +1509,26 @@ export type MarkExpenseAsPaidResult =
   | { ok: true }
   | { ok: false; error: string };
 
+/**
+ * True if `err` is a Postgres check-violation (SQLSTATE 23514). The
+ * festschreibung trigger (`assert_not_festgeschrieben_fn`, migrations 0014/0034)
+ * raises `check_violation` with NO constraint name, so we discriminate on the
+ * SQLSTATE alone, walking the postgres-js → drizzle `cause` chain.
+ */
+export function isCheckViolation(err: unknown): boolean {
+  let cur: unknown = err;
+  for (let i = 0; i < 5 && cur != null; i++) {
+    if (typeof cur === "object" && cur !== null && "code" in cur) {
+      if ((cur as { code?: unknown }).code === "23514") return true;
+    }
+    cur =
+      typeof cur === "object" && cur !== null && "cause" in cur
+        ? (cur as { cause?: unknown }).cause
+        : null;
+  }
+  return false;
+}
+
 export async function markExpenseAsPaid(
   expenseId: string,
   params: MarkExpenseAsPaidParams,
@@ -1461,7 +1542,8 @@ export async function markExpenseAsPaid(
     SELECT festgeschrieben_at::text AS festgeschrieben_at,
            business_id,
            bezeichnung,
-           betrag_cents
+           betrag_cents,
+           abfluss_datum::text AS abfluss_datum
       FROM expenses
      WHERE id = ${expenseId}::uuid
      LIMIT 1
@@ -1470,6 +1552,7 @@ export async function markExpenseAsPaid(
     business_id: string;
     bezeichnung: string;
     betrag_cents: string | number | bigint;
+    abfluss_datum: string | null;
   }[];
   const row = rows[0];
   if (!row) return { ok: false, error: "Auslage nicht gefunden" };
@@ -1478,6 +1561,27 @@ export async function markExpenseAsPaid(
       ok: false,
       error: "Auslage ist festgeschrieben — Bezahlt-Markierung verweigert",
     };
+  }
+
+  // Settings-based Festschreibung gate (ADR-0006), aligned to the cash-derived
+  // year. The UPDATE below preserves an existing abfluss_datum (COALESCE) and
+  // otherwise writes `datum`; year_of_buchung recomputes from that effective
+  // abfluss (migration 0034). Gate on year(COALESCE(existing abfluss, datum)):
+  // this matches the DB trigger for the common case (abfluss present → it is
+  // preserved, so old and new year both equal year(abfluss); or abfluss NULL →
+  // it takes `datum`). It does NOT replicate the trigger's UPDATE-time
+  // LEAST(year_for_booking(gebucht_am), year(datum)) for the corner case of a
+  // NULL-abfluss row whose gebucht_am sits in a CLOSED year while `datum` is in
+  // an open one — every route caller pre-gates on year_of_buchung (which equals
+  // year_for_booking(gebucht_am) for such a row) and blocks it first, but the
+  // 23514 catch on the UPDATE below is the backstop if this is ever called
+  // without that pre-gate.
+  const effectiveAbfluss = row.abfluss_datum ?? params.datum;
+  const gate = await checkFestschreibungGate(
+    bookingYearFromCashDate(effectiveAbfluss),
+  );
+  if (!gate.ok) {
+    return { ok: false, error: gate.error };
   }
 
   // Guard the write with `erstattet_am IS NULL` and RETURNING so an
@@ -1489,17 +1593,31 @@ export async function markExpenseAsPaid(
   // `abfluss_datum` is preserved with COALESCE: a member/extern row already
   // carries its own cash-out date and must keep it; only a row that never had
   // one (Verein-direct, where the reimbursement IS the cash-out) takes `datum`.
-  const updated = (await db.execute(sql`
-    UPDATE expenses
-       SET erstattet_am   = ${params.datum}::date,
-           status         = 'erstattet',
-           zahlungsart_id = ${params.zahlartId}::uuid,
-           abfluss_datum  = COALESCE(abfluss_datum, ${params.datum}::date),
-           updated_at     = NOW()
-     WHERE id = ${expenseId}::uuid
-       AND erstattet_am IS NULL
-    RETURNING id
-  `)) as unknown as { id: string }[];
+  let updated: { id: string }[];
+  try {
+    updated = (await db.execute(sql`
+      UPDATE expenses
+         SET erstattet_am   = ${params.datum}::date,
+             status         = 'erstattet',
+             zahlungsart_id = ${params.zahlartId}::uuid,
+             abfluss_datum  = COALESCE(abfluss_datum, ${params.datum}::date),
+             updated_at     = NOW()
+       WHERE id = ${expenseId}::uuid
+         AND erstattet_am IS NULL
+      RETURNING id
+    `)) as unknown as { id: string }[];
+  } catch (err) {
+    // Backstop for the corner case the gate above can't see (NULL-abfluss row
+    // whose gebucht_am is in a closed year): the trigger raises 23514. Degrade
+    // it to a clean refusal instead of an opaque 500 (mirrors markExpenseErstattet).
+    if (isCheckViolation(err)) {
+      return {
+        ok: false,
+        error: "Auslage ist festgeschrieben — Bezahlt-Markierung verweigert",
+      };
+    }
+    throw err;
+  }
 
   if (updated.length === 0) {
     // Row already erstattet — refuse, and emit NO audit event.

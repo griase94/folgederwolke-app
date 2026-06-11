@@ -16,7 +16,7 @@
 	<title>Jahresabschluss {data.year} – {page.data.vereinName}</title>
 </svelte:head>
 
-<div class="mx-auto max-w-6xl px-4 py-6 safe-top lg:px-8 lg:py-8">
+<div class="mx-auto max-w-6xl px-4 py-6 lg:px-8 lg:py-8">
 	<!-- eslint-disable svelte/no-navigation-without-resolve -->
 	<!-- Breadcrumb back-link (kept simple — matches existing pattern) -->
 	<div class="mb-3">
@@ -64,7 +64,7 @@
 
 	<WorkspaceTabs tabs={data.tabs} activePath={page.url.pathname} />
 
-	<div class="safe-bottom">
+	<div>
 		{@render children()}
 	</div>
 </div>

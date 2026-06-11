@@ -1,34 +1,36 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import EntryFormShell from '$lib/components/admin/transactions/EntryFormShell.svelte';
 	import EinnahmeFields from '$lib/components/admin/transactions/einnahmen/EinnahmeFields.svelte';
-	import type { PageData } from './$types.js';
+	import type { EinnahmeFormValues } from './+page.server.js';
+	import type { PageData, ActionData } from './$types.js';
 
-	let { data }: { data: PageData } = $props();
+	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	// The EntryFormShell owns the <form id="entry-form"> + the Speichern submit;
 	// the tab tracks `dirty` (gates Speichern + the unsaved-changes guard) and
 	// passes the fields snippet.
 	let dirty = $state(false);
-	// `submitting` flips true on submit so the shell's beforeNavigate guard
-	// early-returns on the SUCCESSFUL create-redirect (no spurious
-	// "unsaved changes" prompt). A native POST ending in 303 navigates away.
+	// `submitting` flips true on submit (via EntryFormShell's onSubmit) so the
+	// shell's beforeNavigate guard early-returns on the SUCCESSFUL create-redirect
+	// (no spurious "unsaved changes" prompt) AND the Speichern button disables in
+	// the same tick to block a double-submit. A native POST ending in 303 navigates
+	// away.
 	let submitting = $state(false);
 
-	onMount(() => {
-		// The shared EntryFormShell now defaults its <form> enctype to
-		// multipart/form-data, so the optional Beleg bytes transmit. This page
-		// only flips `submitting` on submit so the success redirect doesn't trip
-		// the dirty-guard.
-		const form = document.getElementById('entry-form');
-		if (form instanceof HTMLFormElement) {
-			form.addEventListener('submit', () => {
-				submitting = true;
-			});
-		}
-	});
+	// On a failed submit the action echoes the typed values + per-field errors so
+	// the form re-hydrates (Ausgaben/Spenden parity); otherwise we seed from the
+	// load's empty values. Both branches carry the same `EinnahmeFormValues` shape.
+	const formValues = $derived(
+		((form && 'values' in form ? form.values : undefined) ??
+			data.values) as EinnahmeFormValues
+	);
+	const fieldErrors = $derived(
+		form && 'errors' in form
+			? (form.errors as Record<string, string[]> | undefined)
+			: undefined
+	);
 
 	function close() {
 		// eslint-disable-next-line svelte/no-navigation-without-resolve -- static parent-list route
@@ -41,10 +43,20 @@
 </svelte:head>
 
 {#snippet fields()}
+	{#if form?.error}
+		<div
+			class="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+			role="alert"
+		>
+			{form.error}
+		</div>
+	{/if}
 	<EinnahmeFields
 		kategorien={data.kategorien}
 		projects={data.projects}
 		initialProjectId={data.initialProjectId}
+		values={formValues}
+		errors={fieldErrors}
 		onDirty={() => (dirty = true)}
 	/>
 {/snippet}
@@ -53,7 +65,7 @@
 	title="Neue Einnahme"
 	action="?/create"
 	submitLabel="Speichern"
-	{submitting}
+	bind:submitting
 	{dirty}
 	{fields}
 	onClose={close}

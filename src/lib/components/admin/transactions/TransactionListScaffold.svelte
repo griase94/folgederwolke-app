@@ -336,17 +336,6 @@
 		resultCount={total}
 	/>
 
-	<!-- ── T4 Loading skeleton: shown while navigating to a new filter/sort/page ──
-	     Gated on the `navigating` store (not a wall-clock timer) so it only
-	     appears during real SvelteKit navigations; vanishes once settled. -->
-	{#if $navigating}
-		<div data-testid="list-skeleton" aria-busy="true" aria-label="Wird geladen…" class="flex flex-col gap-2">
-			{#each Array(5) as _, i (i)}
-				<div class="h-12 animate-pulse rounded-lg bg-muted"></div>
-			{/each}
-		</div>
-	{/if}
-
 	<!-- ── Bulk action bar (Ausgaben only) ──────────────────────────────────── -->
 	{#if bulk}
 		{@render bulk.bar()}
@@ -373,7 +362,19 @@
 		</div>
 	{/if}
 
-	{#if rows.length === 0}
+	<!-- ── T4 Loading skeleton: shown while navigating to a new filter/sort/page ──
+	     Gated on the `navigating` store (not a wall-clock timer) so it only
+	     appears during real SvelteKit navigations; vanishes once settled. It
+	     REPLACES the data region (rows / empty state / pagination) instead of
+	     stacking on top of the stale rows, so the user never sees the skeleton
+	     overlapping outgoing content. -->
+	{#if $navigating}
+		<div data-testid="list-skeleton" aria-busy="true" aria-label="Wird geladen…" class="flex flex-col gap-2">
+			{#each Array(5) as _, i (i)}
+				<div class="h-12 animate-pulse rounded-lg bg-muted"></div>
+			{/each}
+		</div>
+	{:else if rows.length === 0}
 		<!-- ── UX-04: two distinct zero-row empty states ────────────────────── -->
 		{#if hasActiveFilters}
 			<div

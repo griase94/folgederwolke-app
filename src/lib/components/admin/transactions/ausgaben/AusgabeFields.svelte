@@ -103,6 +103,15 @@
 		return errors?.[field]?.[0] ?? null;
 	}
 
+	// A 422 re-hydrate carries an `errors` map; a FRESH form (or a duplicate
+	// prefill) does not. We only default the dates to `today` on a fresh form —
+	// on a failed submit we keep the echoed value (incl. an empty string when
+	// DateField cleared an invalid date), so the user sees exactly what to fix
+	// instead of the field silently snapping back to today. Read once at init
+	// (the form doesn't hot-swap its props).
+	// svelte-ignore state_referenced_locally
+	const hadError = !!errors;
+
 	// ── Descriptive fields (stable across bezahlt-von switches — UX-07) ───────
 	// All seeded from `values` so a duplicate prefill / 422 re-hydrate restores
 	// what the user (or the source booking) had.
@@ -113,9 +122,9 @@
 		expenseKategorien.find((k) => k.name === values.kategorieNameSnapshot)?.sphere ?? 'ideeller',
 	);
 	// svelte-ignore state_referenced_locally
-	let rechnungsdatum = $state(values.rechnungsdatum || today);
+	let rechnungsdatum = $state(values.rechnungsdatum || (hadError ? '' : today));
 	// svelte-ignore state_referenced_locally
-	let abflussDatum = $state(values.abflussDatum || today);
+	let abflussDatum = $state(values.abflussDatum || (hadError ? '' : today));
 	// svelte-ignore state_referenced_locally
 	let projectId = $state(values.projectId);
 
@@ -254,6 +263,9 @@
 					markDirty();
 				}}
 			/>
+			{#if err('rechnungsdatum')}
+				<p class="text-xs text-destructive">{err('rechnungsdatum')}</p>
+			{/if}
 		</div>
 		<div class="flex flex-col gap-1.5">
 			<label for="abfluss_datum" class="text-sm font-medium text-foreground">
@@ -269,6 +281,9 @@
 					markDirty();
 				}}
 			/>
+			{#if err('abfluss_datum')}
+				<p class="text-xs text-destructive">{err('abfluss_datum')}</p>
+			{/if}
 		</div>
 	</div>
 
@@ -480,5 +495,5 @@
 	</fieldset>
 
 	<!-- ── Beleg (§4.1 gate: file OR kein-Beleg + Begründung) ─────────────────── -->
-	<BelegUpload bind:keinBeleg bind:begruendung />
+	<BelegUpload bind:keinBeleg bind:begruendung error={err('beleg') ?? undefined} />
 </div>

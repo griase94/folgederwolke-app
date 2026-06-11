@@ -21,12 +21,18 @@
   import BelegViewer from "$lib/components/files/BelegViewer.svelte";
   import AusgabeDetailFields from "$lib/components/admin/transactions/ausgaben/AusgabeDetailFields.svelte";
   import { statusPresentation } from "$lib/domain/transaction-status.js";
-  import type { PageData } from "./$types.js";
+  import type { ActionData, PageData } from "./$types.js";
 
-  let { data }: { data: PageData } = $props();
+  let { data, form }: { data: PageData; form: ActionData } = $props();
 
   let dirty = $state(false);
   let saving = $state(false);
+
+  // Per-field errors from a failed ?/save (mirrors Spenden) — surfaced inline in
+  // the detail fields in addition to the toast that use:enhance already shows.
+  const errors = $derived(
+    (form as { errors?: Record<string, string[]> } | null)?.errors ?? {},
+  );
 
   const today = new Date().toISOString().slice(0, 10);
   let markPaidDatum = $state(today);
@@ -80,6 +86,7 @@
     detail={data.detail}
     expenseKategorien={data.expenseKategorien}
     projects={data.projects}
+    {errors}
     onDirty={() => (dirty = true)}
     onSaving={(v) => (saving = v)}
     onSaved={() => (dirty = false)}

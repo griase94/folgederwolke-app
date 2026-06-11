@@ -105,6 +105,7 @@
 					<MemberBeitragsTimeline
 						beitrags={data.beitrags}
 						memberId={data.member.id}
+						memberName={fullName}
 						beitragExempt={data.member.beitragExempt}
 						beitragExemptReason={data.member.beitragExemptReason}
 						eintrittsJahr={data.member.eintrittsDatum
