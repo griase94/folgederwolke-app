@@ -9,34 +9,32 @@
     <meta name="text-scale" content="scale" />
 
     <!--
-      Cold-start paint fix (A2): paint a light surface immediately on launch,
-      before the CSS bundle loads. The `color-scheme: light only` rule lives in
-      app.css, which loads late, so when the installed PWA is reopened on a
-      dark-mode device the webview paints a black canvas during the cold-start /
-      SSR wait. This inline rule (parsed before the head placeholder below)
-      makes that frame white (matching the app surface), so the gap reads as a
-      brief blank rather than a black screen.
+      Cold-start paint fix: paint the light wash anchor immediately on
+      launch, before the CSS bundle loads, so a dark-mode device never
+      flashes a black canvas during cold-start / SSR wait.
 
-      Branded launch overlay (#fdw-launch): covers the frame during cold-start
-      with the detailed cloud+bolt logo on a pink (#be185d) field — legacy launch
-      chrome, re-skinned in aurora-2-shell (see SLICE_2_HANDOFF allowlist). Removed
-      via onMount in +layout.svelte once hydration runs.
-      FAILSAFE: CSS animation fades the overlay away after 10 s in case JS never
-      runs (error / disabled) so it cannot cover the app permanently.
+      Branded launch overlay (#fdw-launch): covers the frame during
+      cold-start with the line-art cloud+bolt mark on the aurora wash
+      (slice 2 — replaces the marble-era pink splash). Removed via onMount
+      in +layout.svelte once hydration runs.
+      FAILSAFE: CSS animation fades the overlay away after 10 s in case JS
+      never runs, so it cannot cover the app permanently.
       No inline <script> — CSP blocks it (script-src 'self' only).
+      Hexes here are sanctioned: pre-CSS bootstrap cannot read theme tokens;
+      values mirror --bg-wash in src/lib/themes/aurora.css.
     -->
     <style>
       html {
-        background-color: #fff;
+        background-color: #fff1f6;
         color-scheme: light;
       }
 
-      /* ── Branded launch overlay (C2 design) ────────────────────────────────
-         Covers the viewport during cold-start / SSR wait with the brand mark.
-         Pink field (#be185d) + detailed cloud+bolt logo — legacy launch chrome,
-         re-skinned in aurora-2-shell (see SLICE_2_HANDOFF allowlist).
-         Removed by +layout.svelte onMount after hydration (0.2 s fade).
+      /* ── Branded launch overlay (Aurora, spec §5) ──────────────────────────
+         Aurora wash field + gradient line-art cloud+bolt — matches the iOS
+         splash matrix (scripts/build-splash.ts). Removed by +layout.svelte
+         onMount after hydration (0.2 s fade).
          FAILSAFE: auto-hides after 10 s via fdw-launch-auto-hide animation. */
+      /* prettier-ignore */
       #fdw-launch {
         position: fixed;
         inset: 0;
@@ -44,7 +42,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background-color: #be185d;
+        background: linear-gradient(135deg, #fff1f6 0%, #f4eeff 52%, #ecf3ff 100%);
         /* FAILSAFE: fade to invisible after 10 s if JS never runs */
         animation: fdw-launch-auto-hide 0.3s ease-out 10s forwards;
       }
@@ -79,33 +77,6 @@
           animation: none;
         }
       }
-
-      /* ── iOS status-bar scrim ───────────────────────────────────────────────
-         apple-mobile-web-app-status-bar-style=black-translucent renders the
-         clock/battery/signal glyphs WHITE and lets app content draw under the bar.
-         The in-app Topbar is near-white (--background), so white-on-white glyphs
-         would be unreadable. This paints just the safe-area-inset-top strip in brand
-         pink (#be185d — legacy launch chrome, re-skinned in aurora-2-shell,
-         see SLICE_2_HANDOFF allowlist), keeping the glyphs legible and
-         echoing the splash. Standalone-only (no band in a browser tab); collapses to
-         zero height on non-notched devices. pointer-events:none so it never blocks
-         taps in that region. */
-      .pwa-statusbar-scrim {
-        display: none;
-      }
-      @media (display-mode: standalone) {
-        .pwa-statusbar-scrim {
-          display: block;
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: env(safe-area-inset-top, 0px);
-          background-color: #be185d;
-          z-index: 40;
-          pointer-events: none;
-        }
-      }
     </style>
 
     <!-- PWA manifest -->
@@ -125,16 +96,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <!--
-      black-translucent: iOS status bar overlaps the app content (transparent
-      bar with black text). The app's top chrome (Topbar + public header) both
-      apply safe-area-inset-top padding so content is NOT hidden behind the bar.
-      Topbar.svelte uses class="safe-top …" (app.css .safe-top utility).
-      Public layout header uses inline style="padding-top: max(env(safe-area-inset-top, 0px), 0.75rem)".
+      default: dark status-bar glyphs on the light aurora wash (spec §5 —
+      replaces black-translucent + the pink scrim). The top chrome keeps its
+      safe-area padding (.safe-top collapses to ~0 when iOS reserves the bar).
     -->
-    <meta
-      name="apple-mobile-web-app-status-bar-style"
-      content="black-translucent"
-    />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="FdW" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
 
@@ -371,10 +337,10 @@
       aria-hidden so screen readers skip the decorative splash.
     -->
     <div id="fdw-launch" aria-hidden="true">
-      <!-- Detailed cloud+bolt logo (static/logo.svg) — white cloud, black
-           outline, yellow bolt on the pink field. Matches the iOS splash
-           so the launch sequence (home-screen icon → iOS splash → this
-           overlay) reads as one consistent mark. -->
+      <!-- Line-art cloud+bolt (mirrors static/logo-lineart.svg) — gradient
+           outline + bolt on the wash field. Inlined: external assets may not
+           be cached yet at cold start. Matches the iOS splash so the launch
+           sequence (icon → splash → overlay) reads as one consistent mark. -->
       <svg
         version="1.1"
         xmlns="http://www.w3.org/2000/svg"
@@ -387,21 +353,33 @@
         role="img"
         aria-hidden="true"
       >
+        <defs>
+          <linearGradient
+            id="fdw-launch-grad"
+            gradientUnits="userSpaceOnUse"
+            x1="773"
+            y1="-950"
+            x2="1127"
+            y2="-950"
+          >
+            <stop offset="0" stop-color="#FF1E8C" />
+            <stop offset="0.55" stop-color="#A855F7" />
+            <stop offset="1" stop-color="#3B82F6" />
+          </linearGradient>
+        </defs>
         <style type="text/css">
           .st0 {
-            fill-rule: evenodd;
-            clip-rule: evenodd;
-            fill: #ffffff;
+            fill: none;
           }
           .st1 {
             fill-rule: evenodd;
             clip-rule: evenodd;
-            fill: #030305;
+            fill: url(#fdw-launch-grad);
           }
           .st2 {
             fill-rule: evenodd;
             clip-rule: evenodd;
-            fill: #eae014;
+            fill: url(#fdw-launch-grad);
           }
         </style>
         <g id="New_Layer">
@@ -485,11 +463,6 @@
         <g id="MasterLayer_1"></g>
       </svg>
     </div>
-    <!-- iOS status-bar scrim — paints the safe-area-inset-top strip brand pink in
-         standalone PWA so the (white) black-translucent status-bar glyphs stay
-         legible over the near-white in-app chrome. CSS lives in the <head>
-         (.pwa-statusbar-scrim); standalone-only, zero-height on non-notched screens. -->
-    <div class="pwa-statusbar-scrim" aria-hidden="true"></div>
     <div style="display: contents">%sveltekit.body%</div>
   </body>
 </html>
