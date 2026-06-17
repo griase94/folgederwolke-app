@@ -832,6 +832,216 @@ export async function listSpendenPage(
 }
 
 // ---------------------------------------------------------------------------
+// listTransaktionenFeedPage — Aurora unified feed (slice 5, spec §8).
+//
+// ONE SQL round-trip shape: UNION ALL of the three per-type projections,
+// year-scoped via the existing WHERE builders, ordered by the CASH-relevant
+// date (relevanz_datum = COALESCE(cash date, Berlin date of gebucht_am) —
+// migration-0034 semantics, identical to what the GoBD/CSV exports emit), with
+// real LIMIT/OFFSET + COUNT exactly like listAusgabenPage (the established
+// pagination idiom — no new cursor mechanics for a Verein-sized dataset).
+//
+// `state.enums.typ` (parsed by the "transaktionen" registry tab) prunes whole
+// UNION arms; the other FilterState fields flow into the per-type builders
+// (search hits bezeichnung/bezahlt_von for expenses, bezeichnung for income,
+// spender/kategorie for donations — the per-type search contract, unchanged).
+//
+// Also the replacement for the DELETED in-memory listTransactions(): the
+// Jahresabschluss Buchungsliste + transactions.csv call it with limit: "all".
+// NOTE one intentional semantic alignment: buildEinnahmenWhere always excludes
+// superseded (Storno-chained) income rows — the feed and the Jahresabschluss
+// surfaces now agree with the Einnahmen tab (pre-launch, no-compat).
+// ---------------------------------------------------------------------------
+
+export interface FeedRow {
+  id: string;
+  kind: TransactionKind;
+  businessId: string;
+  bezeichnung: string;
+  betragCents: number;
+  currency: string;
+  /** ISO timestamp string. */
+  gebuchtAm: string;
+  /**
+   * The cash-relevant date: COALESCE(abfluss/geld_eingang/zugewendet, Berlin
+   * calendar date of gebucht_am). NEVER null — bare YYYY-MM-DD inside the
+   * row's cash-year fiscal window (migration 0034).
+   */
+  relevanzDatum: string;
+  sphereSnapshot: string;
+  /** sphere_override ?? sphere_snapshot (expenses); snapshot otherwise. */
+  sphereEffective: string;
+  kategorieNameSnapshot: string;
+  /** expense only; null for income/donations. */
+  status: string | null;
+  /**
+   * expense only: no Beleg AND no Verzicht-Begründung. App-created rows can
+   * never hit this (0032 CHECK enforces beleg-or-grund) — the flag guards
+   * legacy/import paths so the "Beleg fehlt" chip stays truthful if rows
+   * predating the constraint ever reappear.
+   */
+  belegFehlt: boolean;
+  festgeschriebenAt: string | null;
+  yearOfBuchung: number | null;
+}
+
+export interface FeedPageOptions {
+  state: FilterState;
+  year: YearScope;
+  /** Row window; "all" skips LIMIT/OFFSET (Buchungsliste/CSV lane). */
+  limit: number | "all";
+  offset: number;
+}
+
+interface RawFeedRow extends Record<string, unknown> {
+  id: string;
+  kind: TransactionKind;
+  business_id: string;
+  bezeichnung: string;
+  betrag_cents: string | number;
+  currency: string;
+  gebucht_am: Date | string;
+  relevanz_datum: string;
+  sphere_snapshot: string;
+  sphere_effective: string;
+  kategorie_name_snapshot: string;
+  status: string | null;
+  beleg_fehlt: boolean;
+  festgeschrieben_at: Date | string | null;
+  year_of_buchung: number | null;
+}
+
+const FEED_TYP_TO_KIND: Record<string, TransactionKind> = {
+  ausgaben: "expense",
+  einnahmen: "income",
+  spenden: "donation",
+};
+
+export async function listTransaktionenFeedPage(
+  opts: FeedPageOptions,
+): Promise<{ rows: FeedRow[]; total: number }> {
+  const db = getDb();
+  const typVals = opts.state.enums["typ"] ?? [];
+  const wanted = new Set<TransactionKind>(
+    typVals.length
+      ? typVals.flatMap((t) =>
+          FEED_TYP_TO_KIND[t] ? [FEED_TYP_TO_KIND[t]!] : [],
+        )
+      : (["expense", "income", "donation"] as TransactionKind[]),
+  );
+
+  const arms: SQL[] = [];
+
+  if (wanted.has("expense")) {
+    const conds = buildAusgabenWhere(opts.state, opts.year);
+    const where = conds.length ? and(...conds)! : sql`TRUE`;
+    arms.push(sql`
+      SELECT ${expenses.id} AS id,
+             'expense'::text AS kind,
+             ${expenses.businessId} AS business_id,
+             ${expenses.bezeichnung} AS bezeichnung,
+             ${expenses.betragCents} AS betrag_cents,
+             ${expenses.currency} AS currency,
+             ${expenses.gebuchtAm} AS gebucht_am,
+             COALESCE(${expenses.abflussDatum}::text, (${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::date::text) AS relevanz_datum,
+             ${expenses.sphereSnapshot}::text AS sphere_snapshot,
+             COALESCE(${expenses.sphereOverride}, ${expenses.sphereSnapshot})::text AS sphere_effective,
+             ${expenses.kategorieNameSnapshot} AS kategorie_name_snapshot,
+             ${expenses.status}::text AS status,
+             (${expenses.belegFileId} IS NULL AND ${expenses.belegVerzichtGrund} IS NULL) AS beleg_fehlt,
+             ${expenses.festgeschriebenAt} AS festgeschrieben_at,
+             ${expenses.yearOfBuchung} AS year_of_buchung
+      FROM ${expenses}
+      WHERE ${where}`);
+  }
+
+  if (wanted.has("income")) {
+    const conds = buildEinnahmenWhere(opts.state, opts.year);
+    const where = conds.length ? and(...conds)! : sql`TRUE`;
+    arms.push(sql`
+      SELECT ${income.id} AS id,
+             'income'::text AS kind,
+             ${income.businessId} AS business_id,
+             ${income.bezeichnung} AS bezeichnung,
+             ${income.betragCents} AS betrag_cents,
+             ${income.currency} AS currency,
+             ${income.gebuchtAm} AS gebucht_am,
+             COALESCE(${income.geldEingangDatum}::text, (${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::date::text) AS relevanz_datum,
+             ${income.sphereSnapshot}::text AS sphere_snapshot,
+             ${income.sphereSnapshot}::text AS sphere_effective,
+             ${income.kategorieNameSnapshot} AS kategorie_name_snapshot,
+             NULL::text AS status,
+             FALSE AS beleg_fehlt,
+             ${income.festgeschriebenAt} AS festgeschrieben_at,
+             ${income.yearOfBuchung} AS year_of_buchung
+      FROM ${income}
+      WHERE ${where}`);
+  }
+
+  if (wanted.has("donation")) {
+    const conds = buildSpendenWhere(opts.state, opts.year);
+    const where = conds.length ? and(...conds)! : sql`TRUE`;
+    arms.push(sql`
+      SELECT ${donations.id} AS id,
+             'donation'::text AS kind,
+             ${donations.businessId} AS business_id,
+             COALESCE('Spende von ' || ${donations.spenderName}, ${donations.kategorieNameSnapshot}) AS bezeichnung,
+             ${donations.betragCents} AS betrag_cents,
+             ${donations.currency} AS currency,
+             ${donations.gebuchtAm} AS gebucht_am,
+             COALESCE(${donations.zugewendetAm}::text, (${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::date::text) AS relevanz_datum,
+             ${donations.sphereSnapshot}::text AS sphere_snapshot,
+             ${donations.sphereSnapshot}::text AS sphere_effective,
+             ${donations.kategorieNameSnapshot} AS kategorie_name_snapshot,
+             NULL::text AS status,
+             FALSE AS beleg_fehlt,
+             ${donations.festgeschriebenAt} AS festgeschrieben_at,
+             ${donations.yearOfBuchung} AS year_of_buchung
+      FROM ${donations}
+      WHERE ${where}`);
+  }
+
+  if (arms.length === 0) return { rows: [], total: 0 };
+
+  const unionSql = sql.join(arms, sql` UNION ALL `);
+  const pageSql =
+    opts.limit === "all"
+      ? sql``
+      : sql` LIMIT ${opts.limit} OFFSET ${opts.offset}`;
+
+  const [raw, countRows] = await Promise.all([
+    db.execute<RawFeedRow>(
+      sql`SELECT * FROM (${unionSql}) AS feed ORDER BY relevanz_datum DESC, gebucht_am DESC, id DESC${pageSql}`,
+    ),
+    db.execute<{ total: number }>(
+      sql`SELECT count(*)::int AS total FROM (${unionSql}) AS feed`,
+    ),
+  ]);
+
+  const total = Number(countRows[0]?.total ?? 0);
+  return {
+    rows: [...raw].map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      businessId: r.business_id,
+      bezeichnung: r.bezeichnung,
+      betragCents: Number(r.betrag_cents),
+      currency: r.currency,
+      gebuchtAm: formatTs(r.gebucht_am)!,
+      relevanzDatum: r.relevanz_datum,
+      sphereSnapshot: r.sphere_snapshot,
+      sphereEffective: r.sphere_effective,
+      kategorieNameSnapshot: r.kategorie_name_snapshot,
+      status: r.status ?? null,
+      belegFehlt: r.beleg_fehlt === true,
+      festgeschriebenAt: formatTs(r.festgeschrieben_at),
+      yearOfBuchung: r.year_of_buchung ?? null,
+    })),
+    total,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // getTransactionDetail
 // ---------------------------------------------------------------------------
 
