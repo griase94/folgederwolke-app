@@ -26,9 +26,10 @@
 		submissionId: string;
 		ausId: string;
 		/**
-		 * Form action target. Defaults to the detail-page `?/reject` action.
-		 * The inbox list (C7-INBOX full) overrides this to
-		 * `/app/inbox?/inline-reject` so reject works from the list row.
+		 * Form action target. Defaults to the review-page `?/reject` action.
+		 * The DecisionBand passes it explicitly. (The old list-row
+		 * `inline-reject` override was deleted in the Aurora inbox redesign —
+		 * the list no longer decides.)
 		 */
 		formAction?: string;
 	} = $props();

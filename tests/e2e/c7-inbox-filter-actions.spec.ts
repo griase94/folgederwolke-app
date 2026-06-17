@@ -183,58 +183,31 @@ async function seedDecidedSubmission(
   return { businessId, bezeichnung, submissionId: rows[0]?.id ?? "" };
 }
 
-async function fetchSentMails(
-  submissionId: string,
-): Promise<
-  Array<{ template: string; entity_id: string; send_attempt: number }>
-> {
-  const { default: postgres } = await import("postgres");
-  const client = postgres(process.env["DATABASE_URL"] ?? "", {
-    prepare: false,
-    max: 1,
-  });
-  try {
-    const rows = await client<
-      Array<{ template: string; entity_id: string; send_attempt: number }>
-    >`
-      SELECT template, entity_id, send_attempt
-      FROM sent_mails
-      WHERE entity_id = ${submissionId}
-      ORDER BY send_attempt ASC
-    `;
-    return rows;
-  } finally {
-    await client.end();
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
-test.describe("@phase-9 C7-INBOX full — filter chips + inline actions", () => {
+test.describe("@phase-aurora-inbox Prüfung — filter chips + route-driven decisions", () => {
   test.beforeEach(async ({ page }) => {
     await signIn(page);
   });
 
-  test("filter chips are visible in the header with count badges", async ({
+  test("filter chips render (Offen/Geprüft/Abgelehnt) with Offen active by default", async ({
     page,
   }) => {
     await page.goto("/app/inbox");
-
-    const offenChip = page.getByTestId("inbox-filter-Offen");
-    const gepruftChip = page.getByTestId("inbox-filter-Geprüft");
-    const abgelehntChip = page.getByTestId("inbox-filter-Abgelehnt");
-
-    await expect(offenChip).toBeVisible();
-    await expect(gepruftChip).toBeVisible();
-    await expect(abgelehntChip).toBeVisible();
-
-    // The active chip is aria-current="page" on the Offen default landing.
-    await expect(offenChip).toHaveAttribute("aria-current", "page");
+    // FilterChips testids are filter-chip-{value} (master §2.5).
+    const offen = page.getByTestId("filter-chip-Offen");
+    await expect(offen).toBeVisible();
+    await expect(page.getByTestId("filter-chip-Geprüft")).toBeVisible();
+    await expect(page.getByTestId("filter-chip-Abgelehnt")).toBeVisible();
+    // Active chip carries aria-current="true".
+    await expect(offen).toHaveAttribute("aria-current", "true");
+    // Counts are baked into the labels.
+    await expect(offen).toContainText("Offen (");
   });
 
-  test("?status=Offen shows only open submissions (data-decided='no')", async ({
+  test("?status=Offen lists open rows as txn-row links to the review route", async ({
     page,
   }) => {
     const open = await seedPendingSubmission("OPN");
@@ -242,122 +215,152 @@ test.describe("@phase-9 C7-INBOX full — filter chips + inline actions", () => 
 
     await page.goto("/app/inbox?status=Offen");
 
-    // Our seeded open row must appear with data-decided='no'.
-    const openCard = page.locator(
-      `[data-testid="inbox-card"][data-aus-id="${open.businessId}"]`,
+    const openRow = page.locator(
+      `[data-testid="txn-row"][href="/app/inbox/${open.businessId}"]`,
     );
-    await expect(openCard).toBeVisible();
-    await expect(openCard).toHaveAttribute("data-decided", "no");
-
+    await expect(openRow).toBeVisible();
     // The approved seed must NOT appear in Offen.
-    const approvedCard = page.locator(
-      `[data-testid="inbox-card"][data-aus-id="${approved.businessId}"]`,
-    );
-    await expect(approvedCard).toHaveCount(0);
-  });
-
-  test("?status=Geprüft shows only approved submissions (data-decision='approved')", async ({
-    page,
-  }) => {
-    const open = await seedPendingSubmission("OP2");
-    const approved = await seedDecidedSubmission("AP2", "approved");
-
-    await page.goto("/app/inbox?status=Geprüft");
-
-    const approvedCard = page.locator(
-      `[data-testid="inbox-card"][data-aus-id="${approved.businessId}"]`,
-    );
-    await expect(approvedCard).toBeVisible();
-    await expect(approvedCard).toHaveAttribute("data-decision", "approved");
-
-    // Open seed should NOT appear in Geprüft.
-    const openCard = page.locator(
-      `[data-testid="inbox-card"][data-aus-id="${open.businessId}"]`,
-    );
-    await expect(openCard).toHaveCount(0);
-  });
-
-  test("?status=Abgelehnt shows only rejected submissions (data-decision='rejected')", async ({
-    page,
-  }) => {
-    const rejected = await seedDecidedSubmission("REJ", "rejected");
-    await page.goto("/app/inbox?status=Abgelehnt");
-
-    const rejectedCard = page.locator(
-      `[data-testid="inbox-card"][data-aus-id="${rejected.businessId}"]`,
-    );
-    await expect(rejectedCard).toBeVisible();
-    await expect(rejectedCard).toHaveAttribute("data-decision", "rejected");
-  });
-
-  test("inline approve marks submission approved + writes auslage_approved sent_mails row", async ({
-    page,
-  }) => {
-    const seeded = await seedPendingSubmission("INL");
-
-    await page.goto("/app/inbox?status=Offen");
-
-    // Find our card and click the reveal trigger.
-    const card = page
-      .locator(
-        `[data-testid="inbox-card-wrapper"][data-aus-id="${seeded.businessId}"]`,
-      )
-      .first();
-    await expect(card).toBeVisible();
-
-    await card.getByTestId("inbox-card-approve-start").click();
-    await card.getByLabel("Kategorie").selectOption({ index: 1 });
-    await card.getByTestId("inbox-card-approve").click();
-
-    // After the action, the toast appears + invalidateAll re-renders without
-    // our card in Offen.
     await expect(
       page.locator(
-        `[data-testid="inbox-card"][data-aus-id="${seeded.businessId}"]`,
+        `[data-testid="txn-row"][href="/app/inbox/${approved.businessId}"]`,
       ),
-    ).toHaveCount(0, { timeout: 10_000 });
+    ).toHaveCount(0);
 
-    // Switch to Geprüft tab: the same business_id should now be there with
-    // data-decision='approved'.
-    await page.goto("/app/inbox?status=Geprüft");
-    const movedCard = page.locator(
-      `[data-testid="inbox-card"][data-aus-id="${seeded.businessId}"]`,
-    );
-    await expect(movedCard).toBeVisible();
-    await expect(movedCard).toHaveAttribute("data-decision", "approved");
-
-    // ADR-0005: a sent_mails row exists with template='auslage_approved'.
-    // bezahlt_von_kind='verein' means submitterEmail=null and the handler
-    // skips the actual send — so we expect 0 OR 1 (no email recipient case).
-    // To exercise the mail path we'd need a member or extern submission with
-    // an email; here the assertion is that the approval landed.
-    const mails = await fetchSentMails(seeded.submissionId);
-    // No email recipient → no sent_mails row (best-effort handler skipped).
-    // The audit_log row is still written by the bus handler.
-    // We assert the approval-side-effect chain didn't crash.
-    expect(mails).toBeInstanceOf(Array);
+    // No list-row decision affordance anywhere (view-before-decide topology).
+    await expect(page.getByTestId("inbox-card-approve-start")).toHaveCount(0);
+    await expect(page.getByTestId("inbox-card-kebab")).toHaveCount(0);
   });
 
-  test("@phase-9 detail card approves only after a Kategorie is chosen", async ({
+  test("?status=Geprüft lists approved rows; ?status=Abgelehnt lists rejected", async ({
+    page,
+  }) => {
+    const approved = await seedDecidedSubmission("AP2", "approved");
+    const rejected = await seedDecidedSubmission("REJ", "rejected");
+
+    await page.goto("/app/inbox?status=Geprüft");
+    await expect(
+      page.locator(
+        `[data-testid="txn-row"][href="/app/inbox/${approved.businessId}"]`,
+      ),
+    ).toBeVisible();
+
+    await page.goto("/app/inbox?status=Abgelehnt");
+    await expect(
+      page.locator(
+        `[data-testid="txn-row"][href="/app/inbox/${rejected.businessId}"]`,
+      ),
+    ).toBeVisible();
+  });
+
+  test("review route: approve is gated until a Kategorie is chosen, then lands the expense", async ({
     page,
   }) => {
     const seeded = await seedPendingSubmission("DET");
     await page.goto(`/app/inbox/${seeded.businessId}`);
 
-    const approve = page.locator('button:has-text("Freigeben")');
-    await expect(approve).toBeDisabled(); // gated until a Kategorie is picked
+    const approve = page.getByTestId("decision-approve");
+    await expect(approve).toBeVisible();
+    // Gate: the "Fehlt noch: Kategorie" hint is present before a pick.
+    await expect(page.getByTestId("decision-missing")).toContainText(
+      "Kategorie",
+    );
 
     await page.getByLabel("Kategorie").selectOption({ index: 1 });
-    await expect(approve).toBeEnabled();
+    await expect(page.getByTestId("decision-missing")).toHaveCount(0);
     await approve.click();
 
-    // Real success signal: the decided-state handoff to the linked expense only
-    // renders on a genuinely approved submission with a linked expense row.
-    // (Rendered as a Button via onclick goto, so it may be role=button.)
-    await expect(
-      page
-        .getByRole("link", { name: /Zur Ausgabe/ })
-        .or(page.getByRole("button", { name: /Zur Ausgabe/ })),
-    ).toBeVisible();
+    // Decided → the read-only banner with the Zur-Ausgabe handoff renders.
+    await expect(page.getByTestId("decided-banner")).toBeVisible();
+    await expect(page.getByRole("link", { name: /Zur Ausgabe/ })).toBeVisible();
+  });
+
+  test("review route: reject via RejectDialog writes the rejection and shows the decided banner", async ({
+    page,
+  }) => {
+    const seeded = await seedPendingSubmission("RJ2");
+    await page.goto(`/app/inbox/${seeded.businessId}`);
+
+    await page.getByTestId("decision-reject").click();
+    // RejectDialog default template pre-fills an editable Grund (>= 3 chars).
+    await page
+      .getByLabel(/Grund/)
+      .fill("Beleg unleserlich, bitte erneut einreichen.");
+    await page.getByRole("button", { name: "Ablehnen" }).last().click();
+
+    await expect(page.getByTestId("decided-banner")).toContainText("Abgelehnt");
+  });
+
+  test("opening the review route marks the submission reviewed (audit anchor)", async ({
+    page,
+  }) => {
+    const seeded = await seedPendingSubmission("REV");
+    await page.goto(`/app/inbox/${seeded.businessId}`);
+    // The facts block shows "Schon gesehen" on reload (reviewed_at set on first open).
+    await page.reload();
+    await expect(page.getByText("Schon gesehen")).toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Mobile (iPhone 15 Pro Max) — the responsive layout the redesign promised:
+// the decision band shares edges, Freigeben is the wide CTA (Andy's complaint
+// was Freigeben rendering NARROWER than the Kategorie field), and the Beleg
+// opens a real full-screen dialog that Escape closes without leaving the route.
+// ---------------------------------------------------------------------------
+test.describe("@phase-aurora-inbox Prüfung — mobile review layout", () => {
+  test.use({
+    viewport: { width: 430, height: 932 },
+    isMobile: true,
+    hasTouch: true,
+  });
+
+  test.beforeEach(async ({ page }) => {
+    await signIn(page);
+  });
+
+  test("decision band: select + Freigeben/Ablehnen share edges; Freigeben is the wide CTA", async ({
+    page,
+  }) => {
+    const seeded = await seedPendingSubmission("MOB");
+    await page.goto(`/app/inbox/${seeded.businessId}`);
+
+    const select = page.getByLabel("Kategorie");
+    const approve = page.getByTestId("decision-approve");
+    const reject = page.getByTestId("decision-reject");
+    await expect(select).toBeVisible();
+    await expect(approve).toBeVisible();
+    await expect(reject).toBeVisible();
+
+    const [s, a, r] = await Promise.all([
+      select.boundingBox(),
+      approve.boundingBox(),
+      reject.boundingBox(),
+    ]);
+    // Shared edges: the button row spans the same width as the full-width select.
+    expect(Math.abs(a!.x - s!.x)).toBeLessThanOrEqual(2);
+    expect(Math.abs(r!.x + r!.width - (s!.x + s!.width))).toBeLessThanOrEqual(
+      2,
+    );
+    // Freigeben (flex-1) is the wide primary CTA; Ablehnen is the fixed, narrower one.
+    expect(a!.width).toBeGreaterThan(r!.width);
+  });
+
+  test("Beleg opens a full-screen dialog; Escape closes it without leaving the route", async ({
+    page,
+  }) => {
+    const seeded = await seedPendingSubmission("MOB2");
+    await page.goto(`/app/inbox/${seeded.businessId}`);
+
+    await page.getByRole("button", { name: "Beleg ansehen" }).click();
+    const dialog = page.locator('[data-beleg-mode="fold"][role="dialog"]');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAttribute("aria-modal", "true");
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    // Escape closed the modal only — we're still on the review route.
+    expect(new URL(page.url()).pathname).toBe(
+      `/app/inbox/${seeded.businessId}`,
+    );
   });
 });

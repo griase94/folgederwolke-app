@@ -67,6 +67,10 @@ describe("CI e2e grep coverage (F3)", () => {
     expect(grepTags).toContain("@phase-aurora-slice2");
     // Aurora slice 3 (login & public flow) — boundary suite runs in CI.
     expect(grepTags).toContain("@phase-aurora-slice3");
+    // Aurora slice 4 (dashboard + Überweisungsliste) — boundary suite runs in CI.
+    expect(grepTags).toContain("@phase-aurora-slice4");
+    // Aurora inbox redesign:
+    expect(grepTags).toContain("@phase-aurora-inbox");
   });
 
   it("PWA share_target spec is covered by the CI grep (F3)", () => {
@@ -101,6 +105,7 @@ describe("CI e2e grep coverage (F3)", () => {
     "phase-6-spenden.spec.ts",
     "phase-8-export-download.spec.ts",
     "phase-8-axe-a11y.spec.ts",
+    "c7-inbox-filter-actions.spec.ts",
   ];
 
   it("every release-critical spec has at least one tag in the CI grep", () => {

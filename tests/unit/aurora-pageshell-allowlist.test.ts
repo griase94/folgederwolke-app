@@ -36,7 +36,6 @@ const ALLOWLIST = new Set<string>([
   "einstellungen/verein/+page.svelte",
   "files/+page.svelte",
   "files/papierkorb/+page.svelte",
-  "inbox/[ausId]/+page.svelte",
   "jahresabschluss/+page.svelte",
   "jahresabschluss/[year]/+page.svelte",
   "jahresabschluss/[year]/buchungsliste/+page.svelte",
