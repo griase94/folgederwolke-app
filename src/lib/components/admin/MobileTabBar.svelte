@@ -97,8 +97,8 @@
 
 	// Icon SVG paths (lucide outlines).
 	const ICONS: Record<string, string> = {
-		CheckSquare:
-			'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
+		LayoutDashboard:
+			'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
 		ArrowLeftRight: 'M8 3L4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4',
 		Inbox:
 			'M22 12h-6l-2 3H10l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'
@@ -133,9 +133,9 @@
 			stroke-linejoin="round"
 			aria-hidden="true"
 		>
-			<path d={ICONS['CheckSquare']} />
+			<path d={ICONS['LayoutDashboard']} />
 		</svg>
-		<span>Übersicht</span>
+		<span class="whitespace-nowrap leading-tight">Übersicht</span>
 	</a>
 
 	<!-- 2 · Transaktionen (href stays /app/ausgaben until slice 5) -->
@@ -159,7 +159,7 @@
 		>
 			<path d={ICONS['ArrowLeftRight']} />
 		</svg>
-		<span>Transaktionen</span>
+		<span class="whitespace-nowrap leading-tight">Transaktionen</span>
 	</a>
 
 	<!-- 3 · ⊕ raised center — full-strength gradient (sanctioned §2 budget slot) -->
@@ -215,7 +215,7 @@
 			>
 				<path d={ICONS['Inbox']} />
 			</svg>
-			<span>Prüfung</span>
+			<span class="whitespace-nowrap leading-tight">Prüfung</span>
 		</a>
 		{#if badge()}
 			<!-- Badge is outside the <a> so it doesn't pollute textContent -->
@@ -254,7 +254,7 @@
 			<circle cx="19" cy="12" r="1" />
 			<circle cx="5" cy="12" r="1" />
 		</svg>
-		<span>Mehr</span>
+		<span class="whitespace-nowrap leading-tight">Mehr</span>
 	</button>
 </nav>
 

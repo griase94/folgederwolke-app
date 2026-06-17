@@ -54,8 +54,8 @@
 
 	// Icon SVG paths by icon name (lucide outlines, stroke-based).
 	const ICONS: Record<string, string> = {
-		CheckSquare:
-			'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
+		LayoutDashboard:
+			'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
 		Inbox: 'M22 12h-6l-2 3H10l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z',
 		MinusCircle: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM8 12h8',
 		PlusCircle: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM8 12h8M12 8v8',
@@ -114,6 +114,7 @@
 						class:text-primary-text={active}
 						class:text-ink-700={!active}
 						class:hover:bg-secondary={!active}
+						class:justify-center={collapsed}
 						aria-current={active ? 'page' : undefined}
 						title={collapsed ? item.label : undefined}
 					>
@@ -181,6 +182,7 @@
 								class:text-primary-text={active}
 								class:text-ink-700={!active}
 								class:hover:bg-secondary={!active}
+								class:justify-center={collapsed}
 								aria-current={active ? 'page' : undefined}
 								title={collapsed ? item.label : undefined}
 							>
