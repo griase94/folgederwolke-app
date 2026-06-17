@@ -130,3 +130,41 @@ test.describe("@phase-aurora-slice3 Aurora login — inline alerts + bridge", ()
     await expect(page.getByTestId("auslage-bridge-card")).toBeVisible();
   });
 });
+
+test.describe("@phase-aurora-slice3 Aurora login — iPhone-SE-class viewport", () => {
+  test.use({ viewport: { width: 375, height: 667 } });
+
+  test("header action above band, no autofocus, bridge top edge visible without keyboard", async ({
+    page,
+  }) => {
+    await page.goto("/sign-in");
+
+    // Public header context action visible before any scrolling (spec §6).
+    const action = page.locator('header a[href="/auslage-einreichen"]');
+    await expect(action).toBeInViewport();
+
+    // The gradient band renders BELOW the header.
+    const band = page.getByTestId("login-mobile-band");
+    await expect(band).toBeVisible();
+    const headerBox = await page.locator("header").boundingBox();
+    const bandBox = await band.boundingBox();
+    expect(bandBox!.y).toBeGreaterThanOrEqual(
+      headerBox!.y + headerBox!.height - 1,
+    );
+
+    // Desktop hero panel is hidden on mobile.
+    await expect(page.getByTestId("login-hero-panel")).toBeHidden();
+
+    // NO autofocus on public mobile forms (the keyboard would hide the bridge).
+    const focusedId = await page.evaluate(
+      () => document.activeElement?.id ?? "",
+    );
+    expect(focusedId).not.toBe("email");
+
+    // Slice-3 device check (spec §6): the bridge card's top edge must be
+    // visible without the keyboard on an iPhone-SE-class viewport.
+    const bridge = page.getByTestId("auslage-bridge-card");
+    const box = await bridge.boundingBox();
+    expect(box!.y).toBeLessThan(667);
+  });
+});
