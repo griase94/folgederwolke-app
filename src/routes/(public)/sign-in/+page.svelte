@@ -39,13 +39,25 @@
 		},
 		'not-authorised': {
 			severity: 'warn',
-			text: 'Dein Account hat keinen Zugriff auf diese Seite.',
-			linkHref: '/auslage-einreichen',
-			linkLabel: 'Auslage ohne Anmeldung einreichen →'
+			text: 'Dein Account hat keinen Zugriff auf diese Seite.'
 		}
 	};
 
-	const reasonAlert = $derived(data.reason ? REASON_ALERTS[data.reason] : null);
+	// Gate the /auslage-einreichen link in the not-authorised alert: that route
+	// 404s when PUBLIC_FORM_ENABLED is false, so only show the link when the
+	// form is actually active (spec §6, Fix 4).
+	const reasonAlert = $derived.by((): ReasonAlert | null => {
+		if (!data.reason) return null;
+		const base = REASON_ALERTS[data.reason];
+		if (data.reason === 'not-authorised' && data.publicFormEnabled) {
+			return {
+				...base,
+				linkHref: '/auslage-einreichen',
+				linkLabel: 'Auslage ohne Anmeldung einreichen →'
+			};
+		}
+		return base;
+	});
 
 	let pending = $state(false);
 	let emailValue = $state('');
@@ -77,10 +89,19 @@
 		// Re-seed sentTo from the server echo so the no-JS full-page response (and
 		// the no-JS resend) always carries the right address into the panel + the
 		// hidden resend field.
+		// For a resend (view already 'sent'), the focus effect below won't re-fire
+		// because view doesn't change — so we move focus explicitly here via tick().
+		// Use untrack to read view without adding it as a reactive dependency (the
+		// effect already re-runs on form changes; tracking view here would cause it
+		// to re-run when backToForm sets view='form', fighting the user's intent).
 		if (form?.ok) {
+			const wasAlreadySent = untrack(() => view === 'sent');
 			view = 'sent';
 			if (form.email) sentTo = form.email;
 			cooldown = COOLDOWN_SECONDS;
+			if (wasAlreadySent) {
+				import('svelte').then(({ tick }) => tick().then(() => sentHeading?.focus()));
+			}
 		}
 	});
 
@@ -131,11 +152,10 @@
 	     header (layout) so the "Auslage einreichen" context action stays
 	     visible above it without scrolling (spec §6). -->
 	<div
-		class="relative flex items-center gap-3 overflow-hidden [background-image:var(--gradient-brand)] px-4 py-5 lg:hidden"
+		class="relative flex items-center justify-center overflow-hidden [background-image:var(--gradient-brand)] px-4 py-5 lg:hidden"
 		data-testid="login-mobile-band"
 	>
 		<img src="/logo-lineart-white.svg" alt="" class="h-9 w-9" />
-		<p class="text-base font-bold tracking-tight text-white">{page.data.vereinName}</p>
 	</div>
 
 	<!-- Right panel: heading, status banner, form. NO autofocus anywhere —
@@ -161,7 +181,6 @@
 			{#if view === 'sent'}
 				<div
 					class="space-y-4 rounded-2xl border border-[var(--hairline)] bg-card p-6 shadow-[var(--shadow-card)]"
-					role="status"
 					data-testid="link-sent-panel"
 				>
 					<h2
@@ -194,7 +213,7 @@
 							data-testid="resend-button"
 							class="h-11 w-full rounded-[10px] border border-[var(--hairline)] bg-card text-sm font-semibold text-primary-text transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none lg:h-10"
 						>
-							{cooldown > 0 ? `Erneut senden (${cooldown} s)` : 'Erneut senden'}
+							{pending ? 'Wird gesendet…' : cooldown > 0 ? `Erneut senden (${cooldown} s)` : 'Erneut senden'}
 						</button>
 					</form>
 					<button

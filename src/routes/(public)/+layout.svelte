@@ -62,7 +62,7 @@
 		<!-- eslint-enable svelte/no-navigation-without-resolve -->
 	</header>
 
-	<div class="flex flex-1 flex-col">
+	<div class="flex flex-1 flex-col bg-wash">
 		{@render children()}
 	</div>
 </div>
