@@ -1,41 +1,19 @@
 <script lang="ts">
-	import { page } from '$app/state';
-	import CashflowOverviewSection from '$lib/components/admin/dashboard/CashflowOverviewSection.svelte';
-	import ChecklistSection from '$lib/components/admin/dashboard/ChecklistSection.svelte';
-	import RecentActivity from '$lib/components/admin/dashboard/RecentActivity.svelte';
-	import WGBWidget from '$lib/components/admin/dashboard/WGBWidget.svelte';
-	import BeitragsuebersichtWidget from '$lib/components/admin/dashboard/BeitragsuebersichtWidget.svelte';
-	import TopProjekteWidget from '$lib/components/admin/dashboard/TopProjekteWidget.svelte';
-	import type { PageData } from './$types.js';
-	import { navigating } from '$app/state';
+	import { page, navigating } from '$app/state';
 	import PageShell from '$lib/components/layout/PageShell.svelte';
+	import StandStrip from '$lib/components/admin/dashboard/aurora/StandStrip.svelte';
+	import AufgabenCard from '$lib/components/admin/dashboard/aurora/AufgabenCard.svelte';
+	import LageCard from '$lib/components/admin/dashboard/aurora/LageCard.svelte';
+	import AktivitaetCard from '$lib/components/admin/dashboard/aurora/AktivitaetCard.svelte';
+	import ProjekteCard from '$lib/components/admin/dashboard/aurora/ProjekteCard.svelte';
+	import type { Sphere } from '$lib/domain/sphere.js';
+	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
 
-	const greeting = $derived(() => {
-		const hour = new Date().getHours();
-		if (hour < 12) return 'Guten Morgen';
-		if (hour < 18) return 'Guten Tag';
-		return 'Guten Abend';
-	});
-
-	const displayName = $derived(() => {
-		const n = data.user.name;
-		if (n) return n.split(' ')[0] ?? n;
-		return data.user.email.split('@')[0] ?? data.user.email;
-	});
-
-	// Year-switch keep-previous: detect when the navigation is a same-path
-	// year change (only the ?year= param differs) so we can keep the previous
-	// KPI numbers visible but clearly greyed while the new data loads, rather
-	// than blanking the dashboard. This matches the "prior numbers visible but
-	// aria-busy" spec (Task 3.4 deep-eval P2).
-	//
-	// Note: SvelteKit's default behaviour already keeps old page data rendered
-	// until the new load completes (no blank flash) because the page component
-	// is not unmounted during same-route navigations. What we add here is just
-	// the subtle visual affordance (opacity-60 + aria-busy) so the user can
-	// tell a refresh is in-flight.
+	// Year-switch keep-previous affordance (kept from the pre-Aurora page):
+	// SvelteKit keeps old data rendered during same-route navigation; we add
+	// opacity + aria-busy so the user can tell a refresh is in-flight.
 	const isYearSwitch = $derived((): boolean => {
 		const nav = navigating;
 		if (!nav) return false;
@@ -46,73 +24,94 @@
 		const toYear = nav.to?.url?.searchParams?.get('year') ?? '';
 		return fromYear !== toYear;
 	});
+
+	const SPHERE_ORDER: Sphere[] = ['ideeller', 'vermoegen', 'zweckbetrieb', 'wirtschaftlich'];
+	const sphaeren = $derived(
+		SPHERE_ORDER.map((s) => ({
+			sphere: s,
+			saldoCents:
+				data.cashflow.einnahmenBySphereCents[s] - data.cashflow.ausgabenBySphereCents[s]
+		}))
+	);
+
+	const taskInput = $derived({
+		wgb: {
+			status: data.wgb.status,
+			einnahmenCents: data.wgb.einnahmenCents,
+			freigrenzeCents: data.wgb.freigrenzeCents
+		},
+		openAuslagenCount: data.openAuslagenCount,
+		approvedNotErstattetCount: data.approvedNotErstattetCount,
+		approvedNotErstattetSumCents: data.approvedNotErstattetSumCents,
+		overdueCount: data.beitragsuebersicht.overdueCount,
+		openMemberCount: data.beitragsuebersicht.openMemberCount,
+		priorYearsUnpaidCount: data.beitragsuebersicht.priorYearsUnpaidCount,
+		festgeschriebenBis: data.festgeschriebenBis
+	});
 </script>
+
+<svelte:head>
+	<title>Übersicht – {page.data.vereinName}</title>
+</svelte:head>
 
 <PageShell width="full">
 	<div
 		aria-busy={isYearSwitch() ? 'true' : undefined}
 		style={isYearSwitch() ? 'opacity: 0.6; transition: opacity 150ms ease-in-out;' : undefined}
 	>
-	<!-- Greeting header -->
-	<div class="mb-8">
-		<h1 class="text-2xl font-bold tracking-tight text-foreground">
-			{greeting()}, {displayName()} 👋
-		</h1>
-		<p class="mt-1 text-sm text-muted-foreground">
-			{page.data.vereinName} · Kassenführung · {data.cashflow.year}
-		</p>
-	</div>
-
-	<!-- C3 — Cashflow overview: 2 large cards + 4 sphere chips + 4 link chips
-	     (cycle 1: VB-003, JB-005, UI-008, UX-330;
-	      cycle 2: C3-3 sphere chips, C3-4 festschreibung lock, C3-6 Money in
-	      Saldo, C3-9 "im Jahr" labels) -->
-	<CashflowOverviewSection
-		cashflow={data.cashflow}
-		openInboxCount={data.openAuslagenCount}
-		activeMemberCount={data.activeMemberCount}
-		festgeschriebenBis={data.festgeschriebenBis}
-	/>
-
-	<!-- Prescriptive checklist -->
-	<ChecklistSection
-		openAuslagenCount={data.openAuslagenCount}
-		approvedNotErstattetCount={data.approvedNotErstattetCount}
-		approvedNotErstattetSumCents={data.approvedNotErstattetSumCents}
-		openBeitragsMembers={data.openBeitragsMembers}
-	/>
-
-	<!-- WGB Freigrenze widget — §64 Abs. 3 AO gemeinnützigkeitsrechtliche Freigrenze -->
-	<div class="mt-6">
-		<WGBWidget
-			einnahmenCents={data.wgb.einnahmenCents}
-			freigrenzeCents={data.wgb.freigrenzeCents}
-			status={data.wgb.status}
-			year={data.wgb.year}
+		<StandStrip
+			saldoCents={data.cashflow.saldoCents}
+			zugesagtCents={data.approvedNotErstattetSumCents}
+			einnahmenCents={data.cashflow.einnahmenExclSpendenYtdCents}
+			einnahmenCount={data.cashflow.einnahmenBuchungenCount}
+			spendenCents={data.cashflow.spendenCashYtdCents}
+			spendenCount={data.cashflow.spendenBuchungenCount}
+			ausgabenCents={data.cashflow.ausgabenYtdCents}
+			ausgabenCount={data.cashflow.ausgabenBuchungenCount}
+			selectedYear={data.selectedYear}
+			currentYear={data.currentYear}
+			festgeschriebenBis={data.festgeschriebenBis}
 		/>
-	</div>
 
-	<!-- C4-DASH-lite: Beitragsübersicht widget (O-3/M-1) -->
-	<div class="mt-6">
-		<BeitragsuebersichtWidget
-			year={data.beitragsuebersicht.year}
-			memberCount={data.beitragsuebersicht.memberCount}
-			paidCents={data.beitragsuebersicht.paidCents}
-			offenCents={data.beitragsuebersicht.offenCents}
-			paidMemberCount={data.beitragsuebersicht.paidMemberCount}
-			openMemberCount={data.beitragsuebersicht.openMemberCount}
-			overdueCount={data.beitragsuebersicht.overdueCount}
-			lastPaymentDate={data.beitragsuebersicht.lastPaymentDate}
-			priorYearsUnpaidCount={data.beitragsuebersicht.priorYearsUnpaidCount}
-		/>
-	</div>
-
-	<!-- C1-PRJ-B/C: Top-Projekte widget — 5 most active by |saldo| -->
-	<div class="mt-6">
-		<TopProjekteWidget rows={data.topProjekte} />
-	</div>
-
-		<!-- Recent activity feed -->
-		<RecentActivity entries={data.recentActivity} />
+		<!--
+			Mobile stack order (spec §7): Aufgaben → Lage → Projekte → Aktivität,
+			via order-N on the cards. Desktop: two INDEPENDENT column flows —
+			the wrappers are display:contents on mobile (children join the outer
+			flex with their order) and become real flex columns at lg.
+		-->
+		<div class="mt-6 flex flex-col gap-6 lg:grid lg:grid-cols-12 lg:items-start">
+			<div class="contents lg:col-span-7 lg:flex lg:flex-col lg:gap-6">
+				<div class="order-1 lg:order-none">
+					<AufgabenCard
+						input={taskInput}
+						selectedYear={data.selectedYear}
+						currentYear={data.currentYear}
+					/>
+				</div>
+				<div class="order-3 lg:order-none">
+					<ProjekteCard rows={data.topProjekte} />
+				</div>
+			</div>
+			<div class="contents lg:col-span-5 lg:flex lg:flex-col lg:gap-6">
+				<div class="order-2 lg:order-none">
+					<LageCard
+						beitraege={{
+							year: data.beitragsuebersicht.year,
+							paidMemberCount: data.beitragsuebersicht.paidMemberCount,
+							openMemberCount: data.beitragsuebersicht.openMemberCount,
+							overdueCount: data.beitragsuebersicht.overdueCount,
+							paidCents: data.beitragsuebersicht.paidCents,
+							offenCents: data.beitragsuebersicht.offenCents
+						}}
+						dimmed={data.selectedYear !== data.currentYear}
+						{sphaeren}
+						wgb={data.wgb}
+					/>
+				</div>
+				<div class="order-4 lg:order-none">
+					<AktivitaetCard entries={data.recentActivity} />
+				</div>
+			</div>
+		</div>
 	</div>
 </PageShell>

@@ -1,5 +1,4 @@
 <script lang="ts" module>
-	import Sparkline from '$lib/components/admin/dashboard/Sparkline.svelte';
 	import { formatMoney } from '$lib/components/ui/money/index.js';
 
 	export interface MonthlyTrendStripProps {
@@ -9,6 +8,24 @@
 	}
 
 	const MONTH_LABELS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'] as const;
+
+	/** Inline sparkline helper (Sparkline.svelte was a dashboard widget, now deleted). */
+	function computeSparklinePoints(data: number[], width: number, height: number, pad = 2): string {
+		if (data.length === 0) return '';
+		const n = data.length;
+		const min = Math.min(...data);
+		const max = Math.max(...data);
+		const range = max - min;
+		const innerH = height - pad * 2;
+		const stepX = n > 1 ? (width - pad * 2) / (n - 1) : 0;
+		return data
+			.map((v, i) => {
+				const x = pad + i * stepX;
+				const y = range === 0 ? height / 2 : pad + innerH - ((v - min) / range) * innerH;
+				return `${x.toFixed(2)},${y.toFixed(2)}`;
+			})
+			.join(' ');
+	}
 </script>
 
 <script lang="ts">
@@ -30,6 +47,15 @@
 		if (max === 0) return 0;
 		return Math.round((Math.abs(v) / max) * 100);
 	}
+
+	const sparklinePoints = $derived(computeSparklinePoints(monthlyOverschuss, 320, 48));
+	const sparklineToneClass = $derived(
+		tone === 'positive'
+			? 'text-emerald-600'
+			: tone === 'negative'
+				? 'text-rose-600'
+				: 'text-muted-foreground'
+	);
 </script>
 
 <div
@@ -62,15 +88,27 @@
 			haben Buchungen. Ab 5 Monaten zeigen wir den Verlauf.
 		</div>
 	{:else}
-		<!-- Sparkline overview -->
+		<!-- Sparkline overview (inlined — Sparkline.svelte deleted with legacy dashboard widgets) -->
 		<div class="mt-4 flex items-center gap-3">
-			<Sparkline
-				data={monthlyOverschuss}
-				width={320}
-				height={48}
-				tone={tone}
-				class="w-full max-w-md"
-			/>
+			<svg
+				data-testid="sparkline"
+				class={`sparkline overflow-visible w-full max-w-md ${sparklineToneClass}`}
+				viewBox="0 0 320 48"
+				width="320"
+				height="48"
+				aria-hidden="true"
+				role="img"
+			>
+				<polyline
+					points={sparklinePoints}
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.5"
+					stroke-linejoin="round"
+					stroke-linecap="round"
+					vector-effect="non-scaling-stroke"
+				/>
+			</svg>
 		</div>
 
 		<!-- Bar strip with month labels -->
