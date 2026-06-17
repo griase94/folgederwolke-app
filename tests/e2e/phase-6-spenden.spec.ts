@@ -144,7 +144,7 @@ test.describe("@phase-6-spenden detail + Bescheinigung", () => {
   }) => {
     await signIn(page);
     await page.goto("/app/spenden");
-    const firstRow = page.locator('[data-testid="scaffold-row"]').first();
+    const firstRow = page.getByTestId("txn-row").first();
     if ((await firstRow.count()) === 0) test.skip();
     await firstRow.click();
     await page.waitForURL(/\/app\/spenden\/[0-9a-f-]+$/);
@@ -166,7 +166,8 @@ test.describe("@phase-6-spenden detail + Bescheinigung", () => {
     // The 2024 corpus donation S-2024-901 is issued (B-2024-901) → its detail
     // is read-only (no Speichern button rendered by the shell).
     const issuedRow = page
-      .locator('[data-testid="scaffold-row"]', { hasText: "B-2024-901" })
+      .getByTestId("txn-row")
+      .filter({ hasText: "B-2024-901" })
       .first();
     if ((await issuedRow.count()) === 0) test.skip();
     await issuedRow.click();
