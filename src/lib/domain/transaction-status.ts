@@ -2,9 +2,8 @@
  * Transaction status presentation (pure, no DB) — the SINGLE source of truth for
  * a transaction status's German label + its badge tone (Tailwind classes).
  *
- * Lives under `src/lib/domain/` because both the desktop Ausgaben status column
- * (`/app/ausgaben/+page.svelte`) and the mobile `TransactionCardMobile` render
- * it client-side. Before this module they each carried their own copy and DRIFTED:
+ * Lives under `src/lib/domain/` because the Aurora list pages render it
+ * client-side. Before this module each page carried its own copy and DRIFTED:
  * `geprueft` rendered blue + "Genehmigt" on desktop but amber on the card. One
  * map here keeps a status's label + colour identical everywhere (item 7).
  *

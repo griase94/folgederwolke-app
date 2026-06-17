@@ -67,7 +67,9 @@ test.describe("@phase-6-spenden Spenden — navigation", () => {
   }) => {
     await signIn(page);
     await page.goto("/app/spenden");
-    await expect(page.locator("h1")).toContainText("Spenden");
+    await expect(
+      page.getByRole("heading", { name: "Spenden" }).first(),
+    ).toBeVisible();
     // The new flat route uses the shared scaffold + the primary "Neue Spende"
     // CTA, NOT the retired AddSpendeDialog.
     await expect(page.locator('[data-slot="new-cta"]')).toContainText(

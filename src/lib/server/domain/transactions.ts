@@ -245,11 +245,10 @@ function resolveOrderBy(
 export interface BaseTxRow {
   id: string;
   /**
-   * Per-row discriminant. The shared `TransactionCardMobile` (the <md card the
-   * scaffold renders for every tab) reads it to negate expense amounts (outflow
-   * minus sign) and label the kind pill — without it expenses render as
-   * positive/green with a blank pill. Stamped as a per-table constant by each
-   * `listXPage` map (no DB column; the table identity IS the kind).
+   * Per-row discriminant. The Aurora list pages read it to negate expense
+   * amounts (outflow minus sign) and label the kind pill — without it expenses
+   * render as positive/green with a blank pill. Stamped as a per-table constant
+   * by each `listXPage` map (no DB column; the table identity IS the kind).
    */
   kind: TransactionKind;
   businessId: string;
