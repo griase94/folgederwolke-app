@@ -59,8 +59,13 @@
 	class="flex flex-col gap-6 md:flex-row md:items-end md:justify-between"
 >
 	<div>
-		<p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">
-			<span id="stand-heading">Saldo {selectedYear}</span>
+		<div class="flex items-center gap-2">
+			<h2
+				id="stand-heading"
+				class="text-xs font-semibold uppercase tracking-[0.08em] text-ink-500"
+			>
+				Saldo {selectedYear}
+			</h2>
 			{#if locked}
 				<span
 					data-testid="stand-lock-chip"
@@ -73,7 +78,7 @@
 					Festgeschrieben
 				</span>
 			{/if}
-		</p>
+		</div>
 		<p class="mt-1 tabular-nums">
 			{#if saldoCents < 0}
 				<span

@@ -57,7 +57,10 @@
     copiedKey = key;
     copyAnnounce = `${label} kopiert`;
     clearTimeout(copyTimer);
-    copyTimer = setTimeout(() => (copiedKey = null), 1200);
+    copyTimer = setTimeout(() => {
+      copiedKey = null;
+      copyAnnounce = ''; // clear the live region so the announcement isn't stale
+    }, 1200);
   }
 
   // The empty-state paragraph (tabindex=-1) is the focus landing spot once the
@@ -195,7 +198,7 @@
     <p
       bind:this={emptyEl}
       tabindex="-1"
-      class="mt-8 text-sm text-ink-500 focus-visible:outline-none"
+      class="mt-8 rounded-[8px] text-sm text-ink-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-4"
     >
       Keine freigegebenen Erstattungen — alles überwiesen.
     </p>

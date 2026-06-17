@@ -137,18 +137,11 @@
 				</span>
 			</div>
 			<div class="relative mt-2 h-1.5 rounded-full bg-dataviz-track">
-				{#if wgb.status !== 'ok'}
-					<div
-						data-testid="lage-wgb-fill"
-						class={'h-1.5 rounded-full ' + wgbFill}
-						style={`width:${wgbPct}%`}
-					></div>
-				{:else}
-					<div
-						class={'h-1.5 rounded-full ' + wgbFill}
-						style={`width:${wgbPct}%`}
-					></div>
-				{/if}
+				<div
+					data-testid="lage-wgb-fill"
+					class={'h-1.5 rounded-full ' + wgbFill}
+					style={`width:${wgbPct}%`}
+				></div>
 				<!-- 1px notch at the statutory limit (right edge of the track) -->
 				<div class="absolute right-0 top-[-2px] h-[10px] w-px bg-ink-300" aria-hidden="true"></div>
 			</div>

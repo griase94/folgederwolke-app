@@ -9,6 +9,14 @@
  * banking amount fields want a bare comma-decimal ("84,50"), not "84,50 €".
  */
 
+/**
+ * Minimal input shape for the pure copy helpers below — ONLY the fields they
+ * read. The route's `ApprovedExpense` (from `listApprovedPendingErstattet`) is
+ * a structural superset that also carries `id` / `bezahltVonMemberId`; the
+ * +page.svelte component reads those directly off that fuller inferred type
+ * (for the IBAN-fehlt link + mark-erstattet), so they intentionally do NOT
+ * belong on this helper contract.
+ */
 export interface UeberweisungClaim {
   businessId: string;
   bezeichnung: string;

@@ -59,6 +59,9 @@
 		aria-busy={isYearSwitch() ? 'true' : undefined}
 		style={isYearSwitch() ? 'opacity: 0.6; transition: opacity 150ms ease-in-out;' : undefined}
 	>
+		<!-- Top-level document heading (visually carried by the StandStrip hero;
+		     kept sr-only so the dashboard has a single h1 above the section h2s). -->
+		<h1 class="sr-only">Übersicht</h1>
 		<StandStrip
 			saldoCents={data.cashflow.saldoCents}
 			zugesagtCents={data.approvedNotErstattetSumCents}
