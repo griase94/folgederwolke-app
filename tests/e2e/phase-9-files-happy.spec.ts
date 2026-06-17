@@ -2,8 +2,8 @@
  * Phase 9 — E2E happy paths for the file-storage flows.
  *
  * Six scenarios:
- *   E1: Public form submits an Auslage with PDF; admin inbox renders the
- *       FilePreview iframe pointing at /api/files/<uuid>/blob.
+ *   E1: Public form submits an Auslage with PDF; the admin inbox review route
+ *       renders the Beleg via BelegViewer (links to /api/files/<uuid>/blob).
  *   E2: /app/files browse + year filter + Vorschau link.
  *   E3: Papierkorb soft-delete + restore round-trip.
  *   E4: bundle.zip endpoint returns HTTP 200 + application/zip.
@@ -164,10 +164,10 @@ test.beforeEach(async () => {
 });
 
 // ===========================================================================
-// E1 — Public form submit → admin inbox FilePreview iframe
+// E1 — Public form submit → admin inbox review route renders the Beleg (BelegViewer)
 // ===========================================================================
 test.describe("@phase-9 Files — happy", () => {
-  test("E1: public form submit lands in admin inbox with FilePreview iframe", async ({
+  test("E1: public form submit lands in admin inbox; review route shows the Beleg (BelegViewer)", async ({
     page,
   }) => {
     const seed = randomBytes(4).toString("hex");
@@ -217,10 +217,15 @@ test.describe("@phase-9 Files — happy", () => {
     const res = await page.goto(`/app/inbox/${ausId}`);
     expect(res?.status()).toBe(200);
 
-    // 4. FilePreview renders an <iframe> for application/pdf with src
-    //    pointing at /api/files/<fileId>/blob.
-    const iframe = page.locator(`iframe[src*="/api/files/${fileId}/blob"]`);
-    await expect(iframe).toBeVisible({ timeout: 10_000 });
+    // 4. The Aurora inbox review route renders BelegViewer (the old AuditCard
+    //    FilePreview iframe was deleted in the inbox redesign). For a PDF the
+    //    Beleg paints to a <canvas>; its header "Original öffnen" + "Herunterladen"
+    //    controls link to /api/files/<fileId>/blob (and the render-failure
+    //    fallback exposes the same link), so the blob link is the stable anchor.
+    const belegLink = page
+      .locator(`a[href*="/api/files/${fileId}/blob"]`)
+      .first();
+    await expect(belegLink).toBeVisible({ timeout: 10_000 });
   });
 
   // =========================================================================
