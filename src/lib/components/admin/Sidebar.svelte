@@ -94,7 +94,7 @@
 			aria-hidden="true"
 		/>
 		{#if !collapsed}
-			<span class="truncate text-sm font-semibold tracking-[-0.02em] text-ink-900"
+			<span class="line-clamp-2 text-xs/tight font-semibold tracking-[-0.02em] text-ink-900"
 				>{$page.data.vereinName}</span
 			>
 		{/if}
