@@ -126,6 +126,7 @@ export interface ProjectFinancials {
   saldoCents: number;
   offeneRechnungen: number;
   auslagenZuPruefen: number;
+  buchungenCount: number;
 }
 
 const ZERO_FINANCIALS: ProjectFinancials = {
@@ -134,6 +135,7 @@ const ZERO_FINANCIALS: ProjectFinancials = {
   saldoCents: 0,
   offeneRechnungen: 0,
   auslagenZuPruefen: 0,
+  buchungenCount: 0,
 };
 
 /**
@@ -207,11 +209,13 @@ export async function batchProjectFinancials(
     ausgaben_cents: string;
   }>;
 
-  // Query 2: counts (offene Rechnungen + Auslagen zu prüfen).
+  // Query 2: counts (offene Rechnungen + Auslagen zu prüfen + Aurora Buchungen).
   const counts = (await db.execute<{
     project_id: string;
     offene_rechnungen: string;
     auslagen_zu_pruefen: string;
+    einnahmen_buchungen: string;
+    ausgaben_buchungen: string;
   }>(sql`
     WITH ids AS (SELECT unnest(${idsLiteral}::uuid[]) AS pid)
     SELECT
@@ -223,12 +227,20 @@ export async function batchProjectFinancials(
       COALESCE((
         SELECT COUNT(*) FROM expenses
          WHERE project_id = ids.pid AND status = 'zu_pruefen'
-      ), 0)::text AS auslagen_zu_pruefen
+      ), 0)::text AS auslagen_zu_pruefen,
+      COALESCE((
+        SELECT COUNT(*) FROM income WHERE project_id = ids.pid
+      ), 0)::text AS einnahmen_buchungen,
+      COALESCE((
+        SELECT COUNT(*) FROM expenses WHERE project_id = ids.pid
+      ), 0)::text AS ausgaben_buchungen
     FROM ids
   `)) as Array<{
     project_id: string;
     offene_rechnungen: string;
     auslagen_zu_pruefen: string;
+    einnahmen_buchungen: string;
+    ausgaben_buchungen: string;
   }>;
 
   const sumMap = new Map(sums.map((r) => [r.project_id, r]));
@@ -245,6 +257,11 @@ export async function batchProjectFinancials(
       saldoCents: einnahmenCents - ausgabenCents,
       offeneRechnungen: Number(c?.offene_rechnungen ?? 0),
       auslagenZuPruefen: Number(c?.auslagen_zu_pruefen ?? 0),
+      // Aurora: Buchungen-count = income + expense rows — the SAME set that
+      // produced saldoCents above, so count and saldo never disagree.
+      buchungenCount:
+        Number(c?.einnahmen_buchungen ?? 0) +
+        Number(c?.ausgaben_buchungen ?? 0),
     };
   }
   return out;

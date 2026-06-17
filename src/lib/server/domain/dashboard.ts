@@ -788,6 +788,7 @@ export interface TopProjectRow {
   name: string;
   businessId: string;
   saldoCents: number;
+  buchungenCount: number;
 }
 
 /**
@@ -818,6 +819,7 @@ export async function topActiveProjects(limit = 5): Promise<TopProjectRow[]> {
       name: p.name,
       businessId: p.businessId,
       saldoCents: fins[p.id]?.saldoCents ?? 0,
+      buchungenCount: fins[p.id]?.buchungenCount ?? 0,
     }))
     .sort((a, b) => Math.abs(b.saldoCents) - Math.abs(a.saldoCents))
     .slice(0, limit);
