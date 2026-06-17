@@ -146,7 +146,7 @@
 							'inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors',
 							status === 'copied'
 								? 'bg-green-600 text-white'
-								: 'bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-60',
+								: 'bg-primary-strong text-primary-foreground hover:bg-primary-strong/90 disabled:opacity-60',
 						].join(' ')}
 					>
 						{#if status === 'copying'}

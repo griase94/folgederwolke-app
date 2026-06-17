@@ -89,7 +89,7 @@
 		>
 			{#if collapsed}
 				<div
-					class="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
+					class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-strong text-xs font-semibold text-primary-foreground"
 					title={displayName}
 				>
 					{abbr}
@@ -99,7 +99,7 @@
 					class="flex items-center gap-3 rounded-md p-1 text-left transition-colors hover:bg-muted/60"
 				>
 					<div
-						class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
+						class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-strong text-xs font-semibold text-primary-foreground"
 						aria-hidden="true"
 					>
 						{abbr}
@@ -123,7 +123,7 @@
 			data-testid={triggerTestId}
 		>
 			<span
-				class="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+				class="flex h-9 w-9 items-center justify-center rounded-full bg-primary-strong text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
 				aria-hidden="true"
 			>
 				{abbr}

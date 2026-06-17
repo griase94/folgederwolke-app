@@ -61,7 +61,7 @@
     <div class="flex flex-wrap gap-3">
       <a
         href="/auslage-status/{ausId}"
-        class="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium transition-colors"
+        class="bg-primary-strong text-primary-foreground hover:bg-primary-strong/90 inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium transition-colors"
       >
         Status verfolgen →
       </a>
@@ -82,7 +82,7 @@
     <!-- eslint-disable svelte/no-navigation-without-resolve -->
     <a
       href="/auslage-einreichen"
-      class="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium transition-colors"
+      class="bg-primary-strong text-primary-foreground hover:bg-primary-strong/90 inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium transition-colors"
     >
       Neue Auslage einreichen
     </a>

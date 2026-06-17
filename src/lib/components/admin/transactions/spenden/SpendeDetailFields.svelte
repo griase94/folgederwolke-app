@@ -161,7 +161,7 @@
           class={[
             "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
             zweckbindungKind === k
-              ? "bg-primary text-primary-foreground"
+              ? "bg-primary-strong text-primary-foreground"
               : "bg-muted text-muted-foreground hover:text-foreground",
           ].join(" ")}
           data-testid={`detail-zweckbindung-${k}`}

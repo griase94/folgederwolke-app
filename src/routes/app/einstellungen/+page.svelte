@@ -47,7 +47,7 @@
 				{#if data.user.name}
 					<p class="mt-0.5 text-sm text-muted-foreground">{data.user.name}</p>
 				{/if}
-				<p class="mt-1.5 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+				<p class="mt-1.5 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary-text">
 					{data.user.role}
 				</p>
 			</div>

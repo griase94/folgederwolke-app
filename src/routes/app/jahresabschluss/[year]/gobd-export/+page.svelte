@@ -72,7 +72,7 @@
 			<a
 				href={gobdZipUrl}
 				download="Jahresabschluss-{data.year}.zip"
-				class="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				class="inline-flex items-center gap-2 rounded-lg bg-primary-strong px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-strong/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"

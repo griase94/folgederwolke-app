@@ -144,7 +144,7 @@
 		</div>
 		<Button
 			onclick={() => (addOpen = true)}
-			class="bg-primary text-primary-foreground hover:bg-primary/90"
+			class="bg-primary-strong text-primary-foreground hover:bg-primary-strong/90"
 		>
 			<svg
 				class="mr-2 h-4 w-4"

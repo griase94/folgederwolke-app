@@ -110,7 +110,7 @@
 					<p class="text-sm text-muted-foreground">Erstattungsmails wurden versandt.</p>
 					<button
 						onclick={onclose}
-						class="mt-4 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+						class="mt-4 rounded-md bg-primary-strong px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-strong/90"
 					>
 						Schließen
 					</button>
@@ -173,7 +173,7 @@
 					<button
 						onclick={submit}
 						disabled={status === 'submitting' || !zahlungsartId}
-						class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+						class="inline-flex items-center gap-2 rounded-md bg-primary-strong px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-strong/90 disabled:opacity-60"
 					>
 						{#if status === 'submitting'}
 							<svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">

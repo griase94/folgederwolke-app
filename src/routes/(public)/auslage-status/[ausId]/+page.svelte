@@ -115,7 +115,7 @@
             class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-bold transition-colors {done
               ? 'border-green-500 bg-green-500 text-white'
               : active
-                ? 'border-primary bg-primary text-primary-foreground'
+                ? 'border-primary-strong bg-primary-strong text-primary-foreground'
                 : 'border-muted-foreground/30 bg-background text-muted-foreground/50'}"
             aria-current={active ? 'step' : undefined}
           >

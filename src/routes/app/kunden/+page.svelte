@@ -49,7 +49,7 @@
 		</div>
 		<Button
 			onclick={() => (addOpen = true)}
-			class="bg-primary text-primary-foreground hover:bg-primary/90"
+			class="bg-primary-strong text-primary-foreground hover:bg-primary-strong/90"
 		>
 			<svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 				<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />

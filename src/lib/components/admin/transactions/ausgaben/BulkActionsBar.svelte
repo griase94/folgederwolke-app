@@ -50,7 +50,7 @@
 			{#if !showDatePicker}
 				<button
 					onclick={() => (showDatePicker = true)}
-					class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+					class="inline-flex items-center gap-1.5 rounded-md bg-primary-strong px-3 py-1.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-strong/90"
 				>
 					Als erstattet markieren
 				</button>
@@ -75,7 +75,7 @@
 							onMarkErstattet(selectedIds, chosenDate, zahlungsartId);
 							showDatePicker = false;
 						}}
-						class="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+						class="rounded-md bg-primary-strong px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-strong/90"
 					>
 						Bestätigen
 					</button>

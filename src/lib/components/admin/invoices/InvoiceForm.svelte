@@ -339,7 +339,7 @@
 			<Button
 				type="submit"
 				disabled={submitting || !customerId || nettoCents <= 0}
-				class="bg-primary text-primary-foreground hover:bg-primary/90"
+				class="bg-primary-strong text-primary-foreground hover:bg-primary-strong/90"
 			>
 				{submitting ? submitLabelPending : submitLabel}
 			</Button>

@@ -66,7 +66,7 @@
 			href={`/app/jahresabschluss/${data.year}/eur.pdf`}
 			data-testid="quick-action-pdf"
 			variant="default"
-			class="bg-primary text-primary-foreground hover:bg-primary/90"
+			class="bg-primary-strong text-primary-foreground hover:bg-primary-strong/90"
 		>
 			PDF drucken (EÜR)
 		</Button>

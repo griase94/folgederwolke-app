@@ -183,7 +183,7 @@
 						/>
 					</label>
 					<label
-						class="cursor-pointer rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+						class="cursor-pointer rounded-md bg-primary-strong px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-strong/90"
 					>
 						Kamera
 						<!-- capture="environment" triggers the camera directly on mobile -->
