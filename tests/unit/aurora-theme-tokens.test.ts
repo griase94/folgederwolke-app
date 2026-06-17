@@ -221,4 +221,10 @@ describe("AA compliance of filled controls (spec §2)", () => {
     expect(inboxCard).not.toContain("primary-50");
     expect(inboxCard).toContain("text-primary-text");
   });
+
+  it("Sidebar active nav fills with primary-strong, never raw primary (AA)", () => {
+    const sidebar = read("src", "lib", "components", "admin", "Sidebar.svelte");
+    expect(sidebar).not.toContain("class:bg-primary=");
+    expect(sidebar).toContain("class:bg-primary-strong=");
+  });
 });

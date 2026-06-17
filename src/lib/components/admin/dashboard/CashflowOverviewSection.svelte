@@ -202,7 +202,7 @@
 			href={ausgabenBase}
 			data-testid="link-chip"
 			aria-label={`Saldo ${cashflow.year}`}
-			class="group flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+			class="group flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 		>
 			<span class="text-sm font-medium text-muted-foreground group-hover:text-foreground">
 				Saldo

@@ -83,7 +83,7 @@
 <DropdownMenu>
 	{#if variant === 'sidebar'}
 		<DropdownMenuTrigger
-			class="w-full rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+			class="w-full rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
 			aria-label={triggerAriaLabel}
 			data-testid={triggerTestId}
 		>
@@ -118,7 +118,7 @@
 			trigger is transparent padding around the avatar.
 		-->
 		<DropdownMenuTrigger
-			class="flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+			class="flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
 			aria-label={triggerAriaLabel}
 			data-testid={triggerTestId}
 		>
