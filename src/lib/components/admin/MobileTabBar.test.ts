@@ -1,80 +1,111 @@
 /**
- * @phase-7 C7 — MobileTabBar / FAB wiring (PM-003)
- *
- * Verifies that the "Neu" FAB is no longer disabled, has the expected
- * a11y attributes, and is a real button (so we can attach a click handler
- * that opens the FabBottomSheet).
+ * Aurora slice 2 — mobile tab bar (spec §5, option B):
+ * Übersicht · Transaktionen · ⊕ · Prüfung · Mehr.
+ *  - Transaktionen href stays /app/ausgaben (slice-5 flips it), active state
+ *    spans all three type routes via mobileTransaktionenActive()
+ *  - ⊕ / Mehr open their sheets via pushState (history-entry contract)
+ *  - Prüfung badge from page.data.openAuslagenCount, capped "9+"
  */
-
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, cleanup, screen, fireEvent } from "@testing-library/svelte";
-import { readable } from "svelte/store";
 
-// Stub $app/stores — the bare component pulls $page for active-tab logic.
-vi.mock("$app/stores", () => ({
-  page: readable({ url: new URL("http://localhost/app") }),
+// vi.mock() is hoisted above imports by vitest, so mockPage must be created
+// via vi.hoisted() to be available when the factory runs.
+const mockPage = vi.hoisted(() => ({
+  url: new URL("http://localhost/app"),
+  data: { openAuslagenCount: 3 } as Record<string, unknown>,
+  state: {} as Record<string, unknown>,
+}));
+
+vi.mock("$app/state", () => ({ page: mockPage }));
+vi.mock("$app/navigation", () => ({
+  pushState: vi.fn(),
+  goto: vi.fn(),
+  preloadData: vi.fn().mockResolvedValue(undefined),
 }));
 
 import MobileTabBar from "./MobileTabBar.svelte";
+import { pushState } from "$app/navigation";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+  mockPage.url = new URL("http://localhost/app");
+  mockPage.data = { openAuslagenCount: 3 };
+  mockPage.state = {};
+});
 
-describe("MobileTabBar — FAB", () => {
-  it('renders a "Neu erfassen" button that is NOT disabled', () => {
-    render(MobileTabBar);
-    const fab = screen.getByRole("button", { name: /Neu erfassen/i });
-    expect(fab).toBeTruthy();
-    expect((fab as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it("FAB exposes aria-haspopup=menu", () => {
-    render(MobileTabBar);
-    const fab = screen.getByRole("button", { name: /Neu erfassen/i });
-    expect(fab.getAttribute("aria-haspopup")).toBe("menu");
-  });
-
-  it("clicking the FAB opens the sheet (aria-expanded flips to true)", async () => {
-    render(MobileTabBar);
-    const fab = screen.getByRole("button", { name: /Neu erfassen/i });
-    expect(fab.getAttribute("aria-expanded")).toBe("false");
-    await fireEvent.click(fab);
-    expect(fab.getAttribute("aria-expanded")).toBe("true");
-    // Close the sheet at end of test so bits-ui body-scroll-lock teardown
-    // fires while jsdom's document is still alive — otherwise vitest's
-    // late timer flush hits `document is not defined`.
-    await fireEvent.keyDown(document.body, { key: "Escape" });
-  });
-
-  it("nav has safe-area-inset-bottom padding so home indicator is respected", () => {
+describe("MobileTabBar — Aurora five-cell bar", () => {
+  it("renders the four labeled cells in spec order with the spec hrefs", () => {
     const { container } = render(MobileTabBar);
-    const nav = container.querySelector("nav");
-    expect(nav).toBeTruthy();
-    // The documented utility (.nav-safe-bottom) is defined in app.css with
-    // padding-bottom: env(safe-area-inset-bottom, 0px). Either the class
-    // is applied OR the Tailwind arbitrary value `pb-[env(...)]` is — we
-    // accept both forms so the assertion survives the C7-9 cleanup.
-    const cls = nav!.className;
-    expect(cls).toMatch(/(\bnav-safe-bottom\b|safe-area-inset-bottom)/);
+    const links = [...container.querySelectorAll<HTMLAnchorElement>("nav a")];
+    expect(links.map((a) => a.textContent?.trim())).toEqual([
+      "Übersicht",
+      "Transaktionen",
+      "Prüfung",
+    ]);
+    expect(links.map((a) => a.getAttribute("href"))).toEqual([
+      "/app",
+      "/app/ausgaben", // slice phasing: slice 5 flips this to /app/transaktionen
+      "/app/inbox",
+    ]);
+    expect(screen.getByRole("button", { name: /^Mehr/ })).toBeTruthy();
   });
 
-  // C7-9 cycle 2 — drop the redundant arbitrary value now that
-  // .nav-safe-bottom is the documented utility. Having BOTH the class AND
-  // pb-[env(safe-area-inset-bottom,0px)] is a smell and risks divergence.
-  it("uses the .nav-safe-bottom utility class (C7-9)", () => {
-    const { container } = render(MobileTabBar);
-    const nav = container.querySelector("nav");
-    expect(nav).toBeTruthy();
-    const cls = nav!.className;
-    expect(cls).toMatch(/\bnav-safe-bottom\b/);
+  it("⊕ opens the type-chooser via pushState({ createSheet: true })", async () => {
+    render(MobileTabBar);
+    const plus = screen.getByRole("button", { name: "Neu erfassen" });
+    expect(plus.getAttribute("aria-haspopup")).toBe("dialog");
+    await fireEvent.click(plus);
+    expect(pushState).toHaveBeenCalledWith("", { createSheet: true });
   });
 
-  it("does NOT also carry the redundant pb-[env(...)] arbitrary value (C7-9)", () => {
+  it("Mehr opens its sheet via pushState({ mehrSheet: true })", async () => {
+    render(MobileTabBar);
+    await fireEvent.click(screen.getByRole("button", { name: /^Mehr/ }));
+    expect(pushState).toHaveBeenCalledWith("", { mehrSheet: true });
+  });
+
+  it("shows the Prüfung badge with the open count", () => {
+    render(MobileTabBar);
+    expect(screen.getByTestId("pruefung-badge").textContent).toBe("3");
+  });
+
+  it("caps the badge at 9+", () => {
+    mockPage.data = { openAuslagenCount: 12 };
+    render(MobileTabBar);
+    expect(screen.getByTestId("pruefung-badge").textContent).toBe("9+");
+  });
+
+  it("hides the badge at zero", () => {
+    mockPage.data = { openAuslagenCount: 0 };
+    render(MobileTabBar);
+    expect(document.querySelector('[data-testid="pruefung-badge"]')).toBeNull();
+  });
+
+  it("Transaktionen is active across all three type routes (spec §5 active-state rules)", () => {
+    mockPage.url = new URL("http://localhost/app/spenden/abc-123");
     const { container } = render(MobileTabBar);
-    const nav = container.querySelector("nav");
-    expect(nav).toBeTruthy();
-    // The cleanup: when .nav-safe-bottom is applied, the arbitrary
-    // `pb-[env(safe-area-inset-bottom...)` Tailwind class must NOT also be
-    // present. One source of truth.
-    expect(nav!.className).not.toMatch(/pb-\[env\(safe-area-inset-bottom/);
+    const tx = container.querySelector<HTMLAnchorElement>(
+      'a[href="/app/ausgaben"]',
+    );
+    expect(tx!.getAttribute("aria-current")).toBe("page");
+    expect(tx!.className).toContain("text-primary-text");
+  });
+
+  it("Prüfung is active on inbox detail routes", () => {
+    mockPage.url = new URL("http://localhost/app/inbox/aus-1");
+    const { container } = render(MobileTabBar);
+    const pruefung = container.querySelector<HTMLAnchorElement>(
+      'a[href="/app/inbox"]',
+    );
+    expect(pruefung!.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("keeps the safe-area utility on the bar (home indicator)", () => {
+    const { container } = render(MobileTabBar);
+    expect(container.querySelector("nav")!.className).toMatch(
+      /\bnav-safe-bottom\b/,
+    );
   });
 });
