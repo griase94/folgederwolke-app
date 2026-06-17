@@ -37,7 +37,9 @@
 	Zum Inhalt springen
 </a>
 
-<div class="flex h-svh overflow-hidden bg-background">
+<!-- Aurora canvas: the wash gradient on the non-scrolling frame (spec §2 —
+     blur/backdrop discipline applies to the fixed child surfaces, not here). -->
+<div class="bg-wash flex h-svh overflow-hidden">
 	<!-- Sidebar: hidden on mobile, icon-only on tablet, full on desktop -->
 	<div class="hidden md:flex md:shrink-0">
 		<!-- Tablet: collapsed icon-only sidebar -->
@@ -59,8 +61,13 @@
 			class="flex-1 overflow-y-auto"
 			style="padding-bottom: env(safe-area-inset-bottom, 0px);"
 		>
-			<!-- Extra bottom padding on mobile so tab bar doesn't obscure content -->
-			<div class="pb-20 md:pb-0">
+			<!-- Mobile bottom clearance is owned by PageShell (master §2.3) — no
+			     wrapper padding here, or converted pages double up (PageShell's
+			     pb-[calc(6rem+safe-area)] + this pb-20 + <main> safe-area). The
+			     plain wrapper stays only to host the children render. Not-yet-
+			     converted allowlisted routes lose the old pb-20 in the interim
+			     (acceptable — legacy, burns down with the allowlist). -->
+			<div>
 				{@render children()}
 			</div>
 		</main>
