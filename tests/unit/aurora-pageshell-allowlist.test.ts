@@ -27,7 +27,6 @@ const ALLOWLIST = new Set<string>([
   "ausgaben/[id]/+page.svelte",
   "ausgaben/neu/+page.svelte",
   "dsgvo/+page.svelte",
-  "einnahmen/+page.svelte",
   "einnahmen/[id]/+page.svelte",
   "einnahmen/neu/+page.svelte",
   "einstellungen/+page.svelte",
