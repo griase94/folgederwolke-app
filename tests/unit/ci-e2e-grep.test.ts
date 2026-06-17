@@ -65,6 +65,8 @@ describe("CI e2e grep coverage (F3)", () => {
     // PR boundary (spec §10 testing norms).
     expect(grepTags).toContain("@phase-aurora-1");
     expect(grepTags).toContain("@phase-aurora-slice2");
+    // Aurora slice 3 (login & public flow) — boundary suite runs in CI.
+    expect(grepTags).toContain("@phase-aurora-slice3");
   });
 
   it("PWA share_target spec is covered by the CI grep (F3)", () => {
