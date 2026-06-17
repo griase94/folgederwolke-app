@@ -100,8 +100,7 @@ vi.mock("$lib/server/domain/audit-inbox-actions.js", () => ({
 // SUT — imported AFTER the mocks
 // ---------------------------------------------------------------------------
 
-const { load, actions } =
-  await import("../../src/routes/app/ausgaben/+page.server.js");
+const { load } = await import("../../src/routes/app/ausgaben/+page.server.js");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -124,26 +123,6 @@ const PARENT_2025 = {
   selectedYear: 2025,
   currentYear: 2026,
 };
-
-interface ActionEvent {
-  request: Request;
-  locals: { session: { user: { id: string } } | null };
-}
-
-function makeActionEvent(
-  fields: Record<string, string>,
-  user: { id: string } | null = { id: "user-1" },
-): ActionEvent {
-  const fd = new FormData();
-  for (const [k, v] of Object.entries(fields)) fd.set(k, v);
-  return {
-    request: new Request("http://test.local/app/ausgaben", {
-      method: "POST",
-      body: fd,
-    }),
-    locals: { session: user ? { user } : null },
-  };
-}
 
 beforeEach(() => {
   listAusgabenPageMock.mockClear();
