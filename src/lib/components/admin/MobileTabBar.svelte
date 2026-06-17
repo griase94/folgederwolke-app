@@ -1,23 +1,78 @@
-<script lang="ts">
-	import { page } from '$app/stores';
-	import { onMount } from 'svelte';
-	import { preloadData } from '$app/navigation';
-	import { mobileTabItems, mobileTransaktionenActive } from './nav-registry.js';
-	import FabBottomSheet from './FabBottomSheet.svelte';
-	import MoreSheet from './MoreSheet.svelte';
+<!--
+  MobileTabBar — Aurora five-cell bar (spec §5, option B):
+  Übersicht · Transaktionen · ⊕ · Prüfung · Mehr.
 
-	function isActive(href: string): boolean {
-		const current = $page.url.pathname;
-		if (href === '/app') return current === '/app';
-		return current.startsWith(href);
+  The five cells are SPEC-FIXED and hardcoded here — nav-registry carries
+  desktop IA only. mobileTransaktionenActive() (registry) is the shared
+  Transaktionen active-predicate. Slice phasing: the Transaktionen href
+  stays /app/ausgaben until slice 5 flips it to /app/transaktionen.
+
+  Active-state rules (spec §5): Transaktionen spans the feed + three type
+  routes + details · Prüfung spans inbox + details · Mehr is active on all
+  sheet-grid destinations · tapping the already-active tab pops to its root
+  (the href IS the root; an exact-root re-tap scrolls to top).
+
+  ⊕: raised 52px circle, full-strength brand gradient (sanctioned slot in
+  the §2 gradient budget) — opens CreateSheet. Mehr opens MehrSheet. Both
+  via pushState (history entry consumed on dismiss, spec §5).
+
+  Badge: page.data.openAuslagenCount (layout load, Task 2.5), capped "9+".
+  Glass + hairline fixed surface; .nav-safe-bottom keeps the bar above the
+  home indicator. Visible only < md.
+-->
+<script lang="ts">
+	import { page } from '$app/state';
+	import { onMount } from 'svelte';
+	import { preloadData, pushState } from '$app/navigation';
+	import { mobileTransaktionenActive } from './nav-registry.js';
+	import CreateSheet from './CreateSheet.svelte';
+	import MehrSheet from './MehrSheet.svelte';
+
+	// Every destination reachable from the Mehr sheet (tiles + footer) —
+	// the Mehr cell lights up on all of them (spec §5 active-state rules).
+	const MEHR_DESTINATIONS = [
+		'/app/projekte',
+		'/app/mitglieder',
+		'/app/jahresabschluss',
+		'/app/rechnungen',
+		'/app/kunden',
+		'/app/einstellungen',
+		'/app/dsgvo'
+	];
+
+	const path = $derived(page.url.pathname);
+	const uebersichtActive = $derived(path === '/app');
+	const transaktionenActive = $derived(mobileTransaktionenActive(path));
+	const pruefungActive = $derived(path === '/app/inbox' || path.startsWith('/app/inbox/'));
+	const mehrActive = $derived(
+		MEHR_DESTINATIONS.some((h) => path === h || path.startsWith(h + '/'))
+	);
+
+	const badge = $derived((): string | null => {
+		const n = (page.data['openAuslagenCount'] as number | undefined) ?? 0;
+		if (n <= 0) return null;
+		return n > 9 ? '9+' : String(n);
+	});
+
+	function onTabClick(e: MouseEvent, href: string): void {
+		// Already at this tab's ROOT: scroll to top instead of a same-URL
+		// navigation. Deeper inside the tab, the default anchor nav to the
+		// root href IS the pop-to-root (spec §5).
+		if (page.url.pathname === href) {
+			e.preventDefault();
+			document.getElementById('main-content')?.scrollTo({ top: 0, behavior: 'smooth' });
+		}
 	}
 
-	// Speculative prefetch — on idle, preload the highest-frequency tab routes
-	// that are NOT the current page. Best-effort: uses requestIdleCallback when
-	// available, falls back to setTimeout(0). Only the top 2 non-active tab
-	// routes are prefetched to stay cheap. The tab bar only mounts in the
-	// browser (it's inside the app shell), so no SSR guard needed here.
-	const PREFETCH_HREFS = ['/app', '/app/inbox', '/app/projekte', '/app/ausgaben', '/app/einnahmen', '/app/spenden'];
+	function openCreate(): void {
+		pushState('', { createSheet: true });
+	}
+	function openMehr(): void {
+		pushState('', { mehrSheet: true });
+	}
+
+	// Speculative prefetch — on idle, preload the top 2 non-active tab routes.
+	const PREFETCH_HREFS = ['/app', '/app/ausgaben', '/app/inbox'];
 
 	onMount(() => {
 		const schedule = (cb: () => void) => {
@@ -27,77 +82,124 @@
 				setTimeout(cb, 0);
 			}
 		};
-
 		schedule(() => {
-			const current = $page.url.pathname;
-			const candidates = PREFETCH_HREFS.filter((href) => {
-				// Exclude the currently active route
-				if (href === '/app') return current !== '/app';
-				return !current.startsWith(href);
-			});
-			// Prefetch the first 2 candidates only
+			const current = page.url.pathname;
+			const candidates = PREFETCH_HREFS.filter((href) =>
+				href === '/app' ? current !== '/app' : !current.startsWith(href)
+			);
 			for (const href of candidates.slice(0, 2)) {
 				preloadData(href).catch(() => {
-					// Best-effort — silently ignore network errors
+					// Best-effort — silently ignore network errors.
 				});
 			}
 		});
 	});
 
-	// Icon SVG paths used by mobile tab items.
-	// Zone-A 2026-05-21 — added FolderOpen for Projekte (now in bottom bar).
+	// Icon SVG paths (lucide outlines).
 	const ICONS: Record<string, string> = {
-		CheckSquare:
-			'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
-		FolderOpen:
-			'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z',
-		CreditCard:
-			'M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2zM2 11h20',
-		MinusCircle: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM8 12h8',
-		PlusCircle: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM8 12h8M12 8v8',
-		Gift: 'M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z',
+		LayoutDashboard:
+			'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
+		ArrowLeftRight: 'M8 3L4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4',
 		Inbox:
-			'M22 12h-6l-2 3H10l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z',
+			'M22 12h-6l-2 3H10l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'
 	};
 
-	let sheetOpen = $state(false);
-	let moreOpen = $state(false);
+	const cellClass = (active: boolean): string =>
+		'flex min-h-[56px] flex-col items-center justify-center gap-1 py-2 text-[10px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ' +
+		(active ? 'text-primary-text' : 'text-ink-500');
 </script>
 
-<!--
-  Mobile bottom tab bar.
-  Visible only on screens < md (768px).
-
-  Zone-A 2026-05-21 — revised 6-cell geometry: 4 nav tabs (Übersicht /
-  Projekte / Transaktionen / Belegprüfung) + Mehr trigger + FAB. Mitglieder
-  + secondary destinations move to MoreSheet to keep cells comfortable on a
-  390px viewport.
-
-  safe-area-inset-bottom: ensures content isn't hidden behind the iPhone
-  home indicator. We pad the *bar* (not just an inner spacer) so the
-  background extends behind the indicator on devices that need it.
-
-  C7-9 — the `.nav-safe-bottom` utility (defined in app.css) is the
-  documented single source of truth for bottom-bar safe-area padding;
-  drop the duplicate `pb-[env(safe-area-inset-bottom,0px)]` arbitrary
-  value so we don't risk the two diverging.
--->
 <nav
-	class="nav-safe-bottom fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-background md:hidden"
+	class="nav-safe-bottom surface-glass fixed bottom-0 left-0 right-0 z-40 grid grid-cols-5 border-t border-hairline md:hidden"
 	aria-label="Mobile Navigation"
 >
-	{#each mobileTabItems as item (item.href)}
-		{@const active =
-			item.href === '/app/ausgaben'
-				? mobileTransaktionenActive($page.url.pathname)
-				: isActive(item.href)}
-		<!-- eslint-disable svelte/no-navigation-without-resolve -->
+	<!-- eslint-disable svelte/no-navigation-without-resolve -->
+	<!-- 1 · Übersicht -->
+	<a
+		href="/app"
+		class={cellClass(uebersichtActive)}
+		aria-current={uebersichtActive ? 'page' : undefined}
+		onclick={(e) => onTabClick(e, '/app')}
+	>
+		<svg
+			xmlns="http://www.w3.org/2000/svg"
+			width="22"
+			height="22"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width={uebersichtActive ? '2.5' : '2'}
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			aria-hidden="true"
+		>
+			<path d={ICONS['LayoutDashboard']} />
+		</svg>
+		<span class="whitespace-nowrap leading-tight">Übersicht</span>
+	</a>
+
+	<!-- 2 · Transaktionen (href stays /app/ausgaben until slice 5) -->
+	<a
+		href="/app/ausgaben"
+		class={cellClass(transaktionenActive)}
+		aria-current={transaktionenActive ? 'page' : undefined}
+		onclick={(e) => onTabClick(e, '/app/ausgaben')}
+	>
+		<svg
+			xmlns="http://www.w3.org/2000/svg"
+			width="22"
+			height="22"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width={transaktionenActive ? '2.5' : '2'}
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			aria-hidden="true"
+		>
+			<path d={ICONS['ArrowLeftRight']} />
+		</svg>
+		<span class="whitespace-nowrap leading-tight">Transaktionen</span>
+	</a>
+
+	<!-- 3 · ⊕ raised center — full-strength gradient (sanctioned §2 budget slot) -->
+	<div class="flex items-start justify-center">
+		<button
+			type="button"
+			aria-label="Neu erfassen"
+			aria-haspopup="dialog"
+			aria-expanded={page.state.createSheet === true}
+			onclick={openCreate}
+			class="-mt-5 flex h-[52px] w-[52px] items-center justify-center rounded-full bg-gradient-brand text-white shadow-glow-brand transition-transform active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+			data-testid="mobile-tab-plus"
+		>
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				width="24"
+				height="24"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2.5"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				aria-hidden="true"
+			>
+				<path d="M12 5v14M5 12h14" />
+			</svg>
+		</button>
+	</div>
+
+	<!-- 4 · Prüfung (+ numeric badge, capped 9+) -->
+	<div class="relative flex items-stretch">
 		<a
-			href={item.href}
-			class="flex min-h-[56px] flex-1 flex-col items-center justify-center gap-1 py-2 text-[10px] font-medium transition-colors"
-			class:text-primary={active}
-			class:text-muted-foreground={!active}
-			aria-current={active ? 'page' : undefined}
+			href="/app/inbox"
+			class={cellClass(pruefungActive) + ' flex-1'}
+			aria-current={pruefungActive ? 'page' : undefined}
+			aria-label={badge()
+				? `Prüfung, ${page.data['openAuslagenCount']} offene Auslagen`
+				: undefined}
+			onclick={(e) => onTabClick(e, '/app/inbox')}
 		>
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
@@ -106,26 +208,34 @@
 				viewBox="0 0 24 24"
 				fill="none"
 				stroke="currentColor"
-				stroke-width={active ? '2.5' : '2'}
+				stroke-width={pruefungActive ? '2.5' : '2'}
 				stroke-linecap="round"
 				stroke-linejoin="round"
 				aria-hidden="true"
 			>
-				<path d={ICONS[item.icon] ?? ''} />
+				<path d={ICONS['Inbox']} />
 			</svg>
-			<span>{item.mobileLabel ?? item.label}</span>
+			<span class="whitespace-nowrap leading-tight">Prüfung</span>
 		</a>
-		<!-- eslint-enable svelte/no-navigation-without-resolve -->
-	{/each}
+		{#if badge()}
+			<!-- Badge is outside the <a> so it doesn't pollute textContent -->
+			<span
+				class="pointer-events-none absolute right-[calc(50%-20px)] top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-strong px-1 text-[10px] font-bold leading-none text-white"
+				data-testid="pruefung-badge"
+				aria-hidden="true">{badge()}</span
+			>
+		{/if}
+	</div>
+	<!-- eslint-enable svelte/no-navigation-without-resolve -->
 
-	<!-- "Mehr" trigger — opens MoreSheet with Mitglieder + secondary nav -->
+	<!-- 5 · Mehr — opens MehrSheet -->
 	<button
 		type="button"
-		class="flex min-h-[56px] flex-1 flex-col items-center justify-center gap-1 py-2 text-[10px] font-medium text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-		aria-label="Mehr Navigationspunkte"
+		class={cellClass(mehrActive)}
+		aria-label="Mehr Bereiche"
 		aria-haspopup="dialog"
-		aria-expanded={moreOpen}
-		onclick={() => (moreOpen = true)}
+		aria-expanded={page.state.mehrSheet === true}
+		onclick={openMehr}
 		data-testid="mobile-tab-mehr"
 	>
 		<svg
@@ -144,44 +254,11 @@
 			<circle cx="19" cy="12" r="1" />
 			<circle cx="5" cy="12" r="1" />
 		</svg>
-		<span>Mehr</span>
-	</button>
-
-	<!-- Quick-add FAB — opens FabBottomSheet (PM-003) -->
-	<button
-		type="button"
-		class="flex min-h-[56px] flex-1 flex-col items-center justify-center gap-1 py-2 text-[10px] font-medium text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-		aria-label="Neu erfassen"
-		aria-haspopup="menu"
-		aria-expanded={sheetOpen}
-		onclick={() => (sheetOpen = true)}
-	>
-		<span
-			class="flex h-[22px] w-[22px] items-center justify-center rounded-full bg-primary text-primary-foreground"
-			aria-hidden="true"
-		>
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				width="14"
-				height="14"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="2.5"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-			>
-				<path d="M12 5v14M5 12h14" />
-			</svg>
-		</span>
-		<span>Neu</span>
+		<span class="whitespace-nowrap leading-tight">Mehr</span>
 	</button>
 </nav>
 
-<!-- Bottom sheet for the FAB. Rendered outside the nav so the Sheet's
-     portal overlays the entire viewport, not just the tab bar. -->
-<FabBottomSheet bind:open={sheetOpen} />
-
-<!-- "Mehr" bottom sheet — Mitglieder + secondary nav destinations.
-     Triggered by the data-testid="mobile-tab-mehr" button above. -->
-<MoreSheet bind:open={moreOpen} />
+<!-- Sheets render via portal over the whole viewport; their open state is
+     page.state (shallow routing) — no bindings needed here. -->
+<CreateSheet />
+<MehrSheet />

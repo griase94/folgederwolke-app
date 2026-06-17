@@ -1,4 +1,8 @@
 // tests/unit/nav-registry.test.ts
+// Aurora slice 2: mobileLabel/mobileTab fields removed from nav-registry
+// (mobile IA is hardcoded in MobileTabBar.svelte — spec §5). The canonical
+// nav-registry tests live in src/lib/components/admin/c9-nav-registry.test.ts
+// and src/lib/components/admin/admin.test.ts.
 import { describe, it, expect } from "vitest";
 import {
   mainNavItems,
@@ -15,18 +19,16 @@ describe("nav registry — three tabs", () => {
       ]),
     );
   });
-  it('desktop sidebar shows "Ausgaben" for /app/ausgaben, with mobileLabel "Transaktionen"', () => {
+  it('desktop sidebar shows "Ausgaben" for /app/ausgaben', () => {
     const ausgaben = mainNavItems.find((i) => i.href === "/app/ausgaben");
     expect(ausgaben?.label).toBe("Ausgaben");
-    expect(ausgaben?.mobileLabel).toBe("Transaktionen");
+    // Aurora slice 2: mobileLabel removed (mobile IA lives in MobileTabBar).
   });
-  it("Einnahmen + Spenden keep their distinct desktop labels and carry no mobileLabel", () => {
+  it("Einnahmen + Spenden keep their distinct desktop labels", () => {
     const einnahmen = mainNavItems.find((i) => i.href === "/app/einnahmen");
     const spenden = mainNavItems.find((i) => i.href === "/app/spenden");
     expect(einnahmen?.label).toBe("Einnahmen");
-    expect(einnahmen?.mobileLabel).toBeUndefined();
     expect(spenden?.label).toBe("Spenden");
-    expect(spenden?.mobileLabel).toBeUndefined();
   });
   it("mobile Transaktionen tab is active on any of the three tab paths (+ their detail routes)", () => {
     expect(mobileTransaktionenActive("/app/ausgaben")).toBe(true);

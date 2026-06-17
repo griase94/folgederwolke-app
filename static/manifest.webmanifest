@@ -4,7 +4,7 @@
   "short_name": "FdW",
   "description": "Vereinsverwaltung für Folge der Wolke e.V.",
   "theme_color": "#fff1f6",
-  "background_color": "#ffffff",
+  "background_color": "#fff1f6",
   "display": "standalone",
   "display_override": [
     "window-controls-overlay",
@@ -53,9 +53,9 @@
   ],
   "shortcuts": [
     {
-      "name": "Audit Inbox",
-      "short_name": "Inbox",
-      "description": "Prüf-Inbox für offene Belege",
+      "name": "Prüfung",
+      "short_name": "Prüfung",
+      "description": "Prüfung offener Auslagen",
       "url": "/app/inbox?source=shortcut",
       "icons": [
         {

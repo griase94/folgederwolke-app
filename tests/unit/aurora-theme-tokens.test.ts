@@ -222,9 +222,11 @@ describe("AA compliance of filled controls (spec §2)", () => {
     expect(inboxCard).toContain("text-primary-text");
   });
 
-  it("Sidebar active nav fills with primary-strong, never raw primary (AA)", () => {
+  it("Sidebar active nav uses gradient-soft pill, never raw primary (Aurora §5 / AA)", () => {
     const sidebar = read("src", "lib", "components", "admin", "Sidebar.svelte");
+    // Aurora slice 2 upgrades the active pill from bg-primary-strong → bg-gradient-brand-soft
+    // (spec §5 "gradient-soft treatment, §2 budget"). Raw bg-primary is still banned.
     expect(sidebar).not.toContain("class:bg-primary=");
-    expect(sidebar).toContain("class:bg-primary-strong=");
+    expect(sidebar).toContain("class:bg-gradient-brand-soft=");
   });
 });

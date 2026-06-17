@@ -1,23 +1,21 @@
-// Regenerate the marble app-icon / favicon pack from assets/app-icon-marble.jpg.
-// Marble is the single icon identity everywhere. sharp resizes/composits; ImageMagick
-// assembles favicon.ico (sharp has no .ico encoder). Run: pnpm icons:build
+// Regenerate the Aurora app-icon / favicon pack (spec §5 — replaces the
+// PR #108 single-identity icon system; the source JPG under assets/ is
+// retired). Identity: WHITE line-art cloud+bolt centered on the brand
+// gradient field — legible at every size down to 16px, survives any
+// Android maskable crop (the gradient field is full-bleed; the centered
+// mark sits inside the 80% safe zone).
+// sharp rasterizes/composits; ImageMagick assembles favicon.ico (sharp has
+// no .ico encoder). Run: pnpm icons:build
 import sharp from "sharp";
 import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
+import { BRAND_GRADIENT_STOPS } from "../src/lib/brand";
 
 const ROOT = process.cwd();
-const MARBLE = join(ROOT, "assets/app-icon-marble.jpg");
+const LOGO_WHITE = join(ROOT, "static/logo-lineart-white.svg");
 const STATIC = join(ROOT, "static");
 const ICONS = join(STATIC, "icons");
-
-// MASKABLE_MODE: "cover" = full-bleed marble (Android masks the corners, which are
-// just texture — the centered cloud+bolt survives any circle/squircle mask); "inset"
-// = content scaled into the 80% safe zone. We use "cover": the marble's sampled
-// "dominant" color comes out near-white (the cloud + light marble dominate), so an
-// inset background would show a white ring, not pink. Full-bleed avoids that and
-// reads cleaner for this centered-texture mark.
-const MASKABLE_MODE: "inset" | "cover" = "cover";
 
 function ensureMagick(): string {
   for (const bin of ["magick", "convert"]) {
@@ -34,44 +32,52 @@ function ensureMagick(): string {
   process.exit(1);
 }
 
-async function square(size: number, out: string): Promise<void> {
-  await sharp(MARBLE).resize(size, size, { fit: "cover" }).png().toFile(out);
+// Brand-gradient field (≈92deg → near-horizontal sweep), rasterized from an
+// inline SVG. Stops mirror --gradient-brand (src/lib/themes/aurora.css).
+function gradientField(size: number): Buffer {
+  const [a, b, c] = BRAND_GRADIENT_STOPS;
+  return Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">` +
+      `<defs><linearGradient id="g" x1="0" y1="0.05" x2="1" y2="0.95">` +
+      `<stop offset="0" stop-color="${a}"/>` +
+      `<stop offset="0.55" stop-color="${b}"/>` +
+      `<stop offset="1" stop-color="${c}"/>` +
+      `</linearGradient></defs>` +
+      `<rect width="100%" height="100%" fill="url(#g)"/></svg>`,
+  );
 }
 
-async function maskable(size: number, out: string): Promise<void> {
-  if (MASKABLE_MODE === "cover") {
-    await square(size, out);
-    return;
-  }
-  const inner = Math.round(size * 0.8);
-  const { dominant } = await sharp(MARBLE).stats();
-  const art = await sharp(MARBLE)
-    .resize(inner, inner, { fit: "cover" })
+async function icon(
+  size: number,
+  logoRatio: number,
+  out: string,
+): Promise<void> {
+  const logoW = Math.round(size * logoRatio);
+  const logo = await sharp(LOGO_WHITE, { density: 600 })
+    .resize({ width: logoW })
     .png()
     .toBuffer();
-  await sharp({
-    create: {
-      width: size,
-      height: size,
-      channels: 4,
-      background: { ...dominant, alpha: 1 },
-    },
-  })
-    .composite([{ input: art, gravity: "center" }])
+  await sharp(gradientField(size))
+    .composite([{ input: logo, gravity: "center" }])
     .png()
     .toFile(out);
 }
 
+// "any" icons: generous mark (72%). Maskable: mark inside the 80% safe zone
+// (56%) so circle/squircle masks never clip the cloud.
+const ANY_RATIO = 0.72;
+const MASKABLE_RATIO = 0.56;
+
 async function main(): Promise<void> {
   const magick = ensureMagick();
 
-  await square(180, join(STATIC, "apple-touch-icon.png"));
-  await square(192, join(ICONS, "icon-192.png"));
-  await square(512, join(ICONS, "icon-512.png"));
-  await maskable(192, join(ICONS, "icon-192-maskable.png"));
-  await maskable(512, join(ICONS, "icon-512-maskable.png"));
+  await icon(180, ANY_RATIO, join(STATIC, "apple-touch-icon.png"));
+  await icon(192, ANY_RATIO, join(ICONS, "icon-192.png"));
+  await icon(512, ANY_RATIO, join(ICONS, "icon-512.png"));
+  await icon(192, MASKABLE_RATIO, join(ICONS, "icon-192-maskable.png"));
+  await icon(512, MASKABLE_RATIO, join(ICONS, "icon-512-maskable.png"));
   for (const s of [16, 32, 48, 96])
-    await square(s, join(STATIC, `favicon-${s}.png`));
+    await icon(s, ANY_RATIO, join(STATIC, `favicon-${s}.png`));
 
   // favicon.ico bundles 16/32/48; the loose 48 is only a seed for the .ico.
   execFileSync(magick, [
@@ -83,7 +89,7 @@ async function main(): Promise<void> {
   rmSync(join(STATIC, "favicon-48.png"), { force: true });
 
   console.log(
-    "icons built: favicon.ico, favicon-16/32/96.png, apple-touch-icon.png, icons/icon-192|512[-maskable].png",
+    "aurora icons built: favicon.ico, favicon-16/32/96.png, apple-touch-icon.png, icons/icon-192|512[-maskable].png",
   );
 }
 

@@ -3,8 +3,7 @@
 	import { page } from '$app/stores';
 	import { SvelteMap } from 'svelte/reactivity';
 	import UserMenu from './UserMenu.svelte';
-	import YearSwitcher, { type YearSwitcherOption } from './YearSwitcher.svelte';
-	import MobileYearPicker from './MobileYearPicker.svelte';
+	import YearMenu, { type YearMenuOption } from './YearMenu.svelte';
 	import type { SessionUser } from '$lib/server/auth/index.js';
 	import { ALL_YEARS, type YearScope } from '$lib/domain/year.js';
 	import InstallPrompt from '$lib/components/pwa/InstallPrompt.svelte';
@@ -22,17 +21,22 @@
 	// reactively so route changes (including filter swaps via the switcher
 	// itself) update the rendered control without explicit prop threading.
 	//
-	// Persistence: the last-selected year is mirrored to localStorage so a
-	// returning user lands on their year even when they bookmark `/app`. The
-	// URL remains the source of truth for the current navigation.
-	const YEAR_LS_KEY = 'fdw.year.selected';
+	// Persistence: the selected year is mirrored to a server-readable cookie
+	// (fdw_year) so a returning user lands on their year even on plain
+	// navigations without ?year= in the URL. The URL remains the source of
+	// truth for the current navigation. Cookie is written from the browser
+	// before goto() so the server resolves the same year on the next SSR
+	// request (no flash of the default year).
+
+	const YEAR_COOKIE = 'fdw_year';
+	const YEAR_COOKIE_MAX_AGE = 365 * 24 * 60 * 60; // 1 year in seconds
 
 	const yearData = $derived(() => {
 		const d = $page.data as Record<string, unknown>;
-		const availableYears = (d['availableYears'] ?? []) as YearSwitcherOption[];
+		const availableYears = (d['availableYears'] ?? []) as YearMenuOption[];
 		const selectedYear = (d['selectedYear'] as number | undefined) ?? null;
 		// yearScope (Task 2) is the wider YearScope — `number | ALL_YEARS`. The
-		// switcher highlights "Alle Jahre" when this is the "all" sentinel; for
+		// menu highlights "Alle Jahre" when this is the "all" sentinel; for
 		// concrete years it equals selectedYear.
 		const yearScope = (d['yearScope'] as YearScope | undefined) ?? null;
 		const currentYear = (d['currentYear'] as number | undefined) ?? null;
@@ -45,17 +49,21 @@
 		/^\/app\/(ausgaben|einnahmen|spenden)(\/|$)/.test($page.url.pathname)
 	);
 
-	function persistYear(year: number) {
+	function persistYearCookie(year: number) {
+		// Write the year cookie so the server can resolve it on next navigation.
+		// document.cookie is acceptable here — this is a non-sensitive UI pref
+		// (mirrors the theme cookie pattern). The server validates it against
+		// availableYears before trusting it.
 		try {
-			localStorage.setItem(YEAR_LS_KEY, String(year));
+			document.cookie = `${YEAR_COOKIE}=${year}; path=/; max-age=${YEAR_COOKIE_MAX_AGE}; samesite=lax`;
 		} catch {
-			// Storage unavailable (Safari private mode etc.) — ignore.
+			// Unlikely — ignore if cookie API unavailable.
 		}
 	}
 
 	function handleYearChange(year: YearScope) {
 		// "all" sentinel: navigate to ?year=all verbatim — do NOT persist to
-		// localStorage (it's a list-only view, not a year we want to restore on
+		// the cookie (it's a list-only view, not a year we want to restore on
 		// next visit). Numeric years keep the existing persist + navigate path.
 		if (year === ALL_YEARS) {
 			const u = new URL($page.url);
@@ -64,7 +72,8 @@
 			goto(u.pathname + u.search, { keepFocus: true, noScroll: true });
 			return;
 		}
-		persistYear(year);
+		// Write cookie BEFORE goto so the server sees it on the next SSR request.
+		persistYearCookie(year);
 		// Mutate ?year= on the current path; preserve every other query param
 		// (search, filter, kind, …) so the user's view context survives.
 		const u = new URL($page.url);
@@ -73,91 +82,11 @@
 		goto(u.pathname + u.search, { keepFocus: true, noScroll: true });
 	}
 
-	// On first mount, if the URL has no ?year but localStorage has a value
-	// different from the server-derived default, swap it in. This is the
-	// "year persists across hard reload" behaviour the E2E asserts.
-	$effect(() => {
-		if (typeof window === 'undefined') return;
-		const hasUrlYear = $page.url.searchParams.has('year');
-		if (hasUrlYear) return;
-		let stored: string | null;
-		try {
-			stored = localStorage.getItem(YEAR_LS_KEY);
-		} catch {
-			return;
-		}
-		if (!stored) return;
-		const n = Number.parseInt(stored, 10);
-		const data = yearData();
-		if (!Number.isFinite(n)) return;
-		if (data.selectedYear === n) return;
-		// Only restore if the stored year is in availableYears — otherwise
-		// the user's stale localStorage value would silently land them on a
-		// year that doesn't exist.
-		const present = data.availableYears.some((y) => y.year === n);
-		if (!present) return;
-		const u = new URL($page.url);
-		u.searchParams.set('year', String(n));
-		// eslint-disable-next-line svelte/no-navigation-without-resolve
-		goto(u.pathname + u.search, {
-			replaceState: true,
-			keepFocus: true,
-			noScroll: true
-		});
-	});
-
-	// ── Breadcrumbs ──────────────────────────────────────────────────────────
-	interface Crumb {
-		label: string;
-		href: string;
-	}
-
-	const ROUTE_LABELS: Record<string, string> = {
-		app: 'Übersicht',
-		inbox: 'Audit Inbox',
-		transactions: 'Transaktionen',
-		ausgaben: 'Ausgaben',
-		einnahmen: 'Einnahmen',
-		spenden: 'Spenden',
-		mitglieder: 'Mitglieder',
-		rechnungen: 'Rechnungen',
-		projekte: 'Projekte',
-		kunden: 'Kunden',
-		jahresabschluss: 'Jahresabschluss',
-		einstellungen: 'Einstellungen',
-		dsgvo: 'DSGVO',
-		dev: 'Dev',
-		mails: 'Mails',
-		neu: 'Neu',
-	};
-
-	const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-	const breadcrumbs = $derived((): Crumb[] => {
-		const segments = $page.url.pathname.replace(/^\//, '').split('/');
-		const crumbs: Crumb[] = [];
-		let accumulated = '';
-		for (const seg of segments) {
-			accumulated += '/' + seg;
-			if (UUID_RE.test(seg)) {
-				// UUID segment: use member name from page data if available, otherwise omit.
-				const pageData = $page.data as Record<string, unknown>;
-				const member = pageData['member'] as
-					| { vorname?: string; nachname?: string }
-					| null
-					| undefined;
-				if (member?.vorname || member?.nachname) {
-					const label = [member.vorname, member.nachname].filter(Boolean).join(' ');
-					crumbs.push({ label, href: accumulated });
-				}
-				// else: omit UUID segment entirely
-			} else {
-				const label = ROUTE_LABELS[seg] ?? seg;
-				crumbs.push({ label, href: accumulated });
-			}
-		}
-		return crumbs;
-	});
+	// NOTE: The localStorage restore $effect was removed. Year persistence is now
+	// handled via the fdw_year cookie resolved server-side in
+	// /app/+layout.server.ts — eliminates the 2025→2026 flicker that occurred
+	// when the $effect ran client-side AFTER the server had already rendered the
+	// default year.
 
 	// ── Search ───────────────────────────────────────────────────────────────
 	const RECENT_KEY = 'fdw.search.recent';
@@ -273,6 +202,14 @@
 		highlightIndex = -1;
 	}
 
+	function clearSearch() {
+		searchValue = '';
+		searchResults = null;
+		searchLoading = false;
+		highlightIndex = -1;
+		searchInput?.focus();
+	}
+
 	function navigateTo(href: string) {
 		closeSearch();
 		searchValue = '';
@@ -323,40 +260,39 @@
 		}
 		return m;
 	});
+
+	// True when there is text in the search input (controls clear-✕ / ⌘K visibility)
+	const hasSearchText = $derived(searchValue.length > 0);
 </script>
 
 <svelte:window onkeydown={handleGlobalKeydown} />
 
+<!--
+	Aurora topbar (spec §5): ONE row — year menu left, search + user menu
+	right (desktop); year pill left + avatar right on one baseline (mobile,
+	no global search at launch). Glass is allowed: small fixed surface
+	(spec §2 blur discipline). Breadcrumbs are gone — PageHeader's mobile
+	back slot and the sidebar carry orientation now.
+-->
 <header
-	class="safe-top sticky top-0 z-30 flex min-h-14 items-center gap-4 border-b border-border bg-background/95 px-4 backdrop-blur-sm supports-[backdrop-filter]:bg-background/80 lg:px-6"
+	class="safe-top sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-hairline surface-glass px-4 lg:px-6"
 >
-	<!-- Breadcrumbs -->
-	<nav aria-label="Breadcrumb" class="hidden flex-1 items-center gap-1 text-sm sm:flex">
-		{#each breadcrumbs() as crumb, i (crumb.href)}
-			{#if i > 0}
-				<span class="text-muted-foreground" aria-hidden="true">/</span>
-			{/if}
-			{#if i === breadcrumbs().length - 1}
-				<span class="font-medium text-foreground">{crumb.label}</span>
-			{:else}
-				<!-- eslint-disable svelte/no-navigation-without-resolve -->
-				<a
-					href={crumb.href}
-					class="text-muted-foreground transition-colors hover:text-foreground"
-				>
-					{crumb.label}
-				</a>
-				<!-- eslint-enable svelte/no-navigation-without-resolve -->
-			{/if}
-		{/each}
-	</nav>
+	<!-- Year menu (spec §5: leftmost on both devices) — compact dropdown,
+	     same on desktop and mobile (no more two-variant responsive switch) -->
+	{#if yearData().availableYears.length > 0 && yearData().selectedYear !== null}
+		<div data-fdw="year-switcher-wrap">
+			<YearMenu
+				years={yearData().availableYears}
+				selected={yearData().yearScope ?? yearData().selectedYear!}
+				onChange={handleYearChange}
+				{allowAllYears}
+			/>
+		</div>
+	{/if}
 
-	<!--
-		Mobile (PM-010 / C7-3): hide the Vereinsname wordmark on mobile so the
-		topbar gets back its horizontal space — there's no room for it next to
-		the search-icon + bell + user-menu at iPhone width. The breadcrumb
-		nav above already takes over from `sm:` upwards.
-	-->
+	<!-- Spacer: pushes search + user menu to the right edge -->
+	<div class="flex-1" aria-hidden="true"></div>
+
 	<span class="hidden" data-testid="verein-wordmark">{$page.data.vereinName}</span>
 
 	<!-- Search input (desktop) -->
@@ -384,7 +320,7 @@
 			bind:value={searchValue}
 			type="search"
 			placeholder="Mitglied, Auslage, Rechnung suchen…"
-			class="h-9 w-full rounded-lg border border-border bg-muted/40 py-2 pl-9 pr-16 text-base placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 sm:text-sm"
+			class="h-9 w-full rounded-lg border border-hairline bg-muted/40 py-2 pl-9 pr-16 text-base placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 sm:text-sm"
 			aria-label="Admin-Suche"
 			aria-expanded={searchOpen}
 			aria-controls="fdw-search-listbox"
@@ -396,12 +332,41 @@
 			onblur={handleBlur}
 			onkeydown={handleKeydown}
 		/>
-		<kbd
-			class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[10px] font-medium text-muted-foreground"
-			aria-hidden="true"
-		>
-			⌘K
-		</kbd>
+
+		<!-- Trailing affordances: ⌘K hint (empty) XOR clear-✕ button (has text) -->
+		{#if hasSearchText}
+			<!-- Clear button: ≥32px tap target, vertically centered, right-aligned -->
+			<button
+				type="button"
+				onclick={clearSearch}
+				class="absolute inset-y-0 right-2 flex h-full min-w-[2rem] items-center justify-center px-1 text-ink-500 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+				aria-label="Suche zurücksetzen"
+				tabindex="-1"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					width="14"
+					height="14"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
+				>
+					<line x1="18" y1="6" x2="6" y2="18" />
+					<line x1="6" y1="6" x2="18" y2="18" />
+				</svg>
+			</button>
+		{:else}
+			<kbd
+				class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[10px] font-medium text-muted-foreground"
+				aria-hidden="true"
+			>
+				⌘K
+			</kbd>
+		{/if}
 
 		<!-- Results / recents popover -->
 		{#if searchOpen}
@@ -494,33 +459,6 @@
 		(`hidden md:block`) covers ≥md; mobile users reach entities via the
 		bottom tab bar + list filters.
 	-->
-
-	<!-- Year switcher (C2 — sticky in topbar) -->
-	{#if yearData().availableYears.length > 0 && yearData().selectedYear !== null}
-		<!-- Desktop variant (>= sm): SegmentedControl with one segment per year. -->
-		<div class="fdw-year-switcher-wrap hidden sm:block" data-fdw="year-switcher-wrap">
-			<YearSwitcher
-				years={yearData().availableYears}
-				selected={yearData().yearScope ?? yearData().selectedYear!}
-				onChange={handleYearChange}
-				{allowAllYears}
-			/>
-		</div>
-		<!--
-			Mobile variant (< sm, C2-4): native <select> picker. Renders ONLY
-			below sm so the desktop SegmentedControl remains the default once
-			there's horizontal space for it. Both variants share the same
-			?year= URL contract via handleYearChange.
-		-->
-		<div class="sm:hidden">
-			<MobileYearPicker
-				years={yearData().availableYears}
-				selected={yearData().yearScope ?? yearData().selectedYear!}
-				onChange={handleYearChange}
-				{allowAllYears}
-			/>
-		</div>
-	{/if}
 
 	<!--
 		Notification bell removed: no notifications feature exists, so a disabled

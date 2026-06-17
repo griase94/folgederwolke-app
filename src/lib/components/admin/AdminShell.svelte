@@ -37,7 +37,9 @@
 	Zum Inhalt springen
 </a>
 
-<div class="flex h-svh overflow-hidden bg-background">
+<!-- Aurora canvas: the wash gradient on the non-scrolling frame (spec §2 —
+     blur/backdrop discipline applies to the fixed child surfaces, not here). -->
+<div class="bg-wash flex h-svh overflow-hidden">
 	<!-- Sidebar: hidden on mobile, icon-only on tablet, full on desktop -->
 	<div class="hidden md:flex md:shrink-0">
 		<!-- Tablet: collapsed icon-only sidebar -->
@@ -56,11 +58,13 @@
 
 		<main
 			id="main-content"
-			class="flex-1 overflow-y-auto"
-			style="padding-bottom: env(safe-area-inset-bottom, 0px);"
+			class="flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom,0px))] md:pb-0"
 		>
-			<!-- Extra bottom padding on mobile so tab bar doesn't obscure content -->
-			<div class="pb-20 md:pb-0">
+			<!-- Mobile bottom clearance is owned HERE (AdminShell) so ALL /app
+			     routes — both PageShell-converted and legacy allowlisted — get
+			     uniform tab-bar + home-indicator clearance without double-up.
+			     PageShell no longer carries the mobile safe-area padding. -->
+			<div>
 				{@render children()}
 			</div>
 		</main>

@@ -1,106 +1,50 @@
 /**
- * nav-registry.ts — single source of truth for admin navigation (§4.1.1 #3).
+ * nav-registry.ts — single source of truth for DESKTOP admin navigation
+ * (Aurora spec §5 "Desktop sidebar").
  *
- * Consumed by:
- *  - AdminShell / Sidebar (desktop)
- *  - MobileTabBar (mobile bottom tabs)
+ * Consumed by AdminShell / Sidebar only. The mobile five-cell bar
+ * (Übersicht · Transaktionen · ⊕ · Prüfung · Mehr) is SPEC-FIXED and
+ * hardcoded in MobileTabBar.svelte; the Mehr-sheet tile grid likewise in
+ * MehrSheet.svelte — the marble-era mobileTab/mobileLabel/MoreSheet wiring
+ * is gone (Aurora slice 2, 2026-06).
  *
- * Adding a new admin route: add one entry here, nothing else to edit.
+ * Adding a desktop route: add one entry here, nothing else to edit.
  *
- * ── IA shift (Zone-A, 2026-05-21) ───────────────────────────────────────────
- * The sidebar's "main" group lists first-class destinations:
- *   Übersicht, Belegprüfung, Projekte, Ausgaben, Einnahmen, Spenden,
- *   Mitglieder, Jahresabschluss.
- *
- * (Phase 3) "Transaktionen" split into three flat desktop entries —
- * Ausgaben / Einnahmen / Spenden. The mobile bottom tab bar still shows a
- * single "Transaktionen" cell: the Ausgaben entry carries mobileLabel
- * "Transaktionen" and its active-state spans all three routes.
- *
- * - "Belegprüfung" replaces the legacy "Audit Inbox" label (the underlying
- *   route is still /app/inbox).
- * - "Projekte" is promoted from "more" → main (Kassenwartin reaches it
- *   multiple times per session).
- * - "Jahresabschluss" is promoted from "more" → main (Julia + Vorstand
- *   reviews both flagged daily-need).
- * - "Rechnungen" and "Kunden" demote to "more" — they are reached only
- *   from project / customer detail pages once IA shift is in effect.
- *
- * Mobile bottom tab bar shows mobileTab !== undefined entries — currently
- * Übersicht / Projekte / Transaktionen / Belegprüfung — plus a "Mehr"
- * trigger that opens MoreSheet for the remaining destinations.
- *
- * The legacy `/app/sheet-resync` importer is intentionally NOT in this
- * registry: it remains reachable by URL for one-time admin tasks but is
- * hidden from sidebar + mobile tab bar. Andy confirmed migration done on
- * 2026-05-21.
+ * - 'Prüfung' is THE label for /app/inbox on both devices — never two
+ *   names for one destination (spec §5). Replaces 'Belegprüfung'.
+ * - The three-page transaction split stays first-class on desktop:
+ *   Ausgaben / Einnahmen / Spenden (spec §8).
+ * - The legacy /app/sheet-resync importer stays URL-reachable but hidden.
  */
 
 export interface NavItem {
-  /** Display label shown in the desktop sidebar / tab bar */
+  /** Display label (desktop sidebar). */
   label: string;
-  /**
-   * Optional override for the mobile bottom tab bar cell label.
-   * When set, the mobile tab renders this instead of `label`.
-   * Used so the Ausgaben sidebar entry collapses to a single
-   * "Transaktionen" cell on mobile while the desktop sidebar keeps
-   * the three distinct labels (Ausgaben / Einnahmen / Spenden).
-   */
-  mobileLabel?: string;
-  /** Route href */
+  /** Route href. */
   href: string;
-  /** Lucide icon name (string key) — components import by name */
+  /** Icon key — components map it to an inline SVG path. */
   icon: string;
   /**
-   * If set, this item appears in the mobile bottom tab bar.
-   * Lower number = further left.
-   */
-  mobileTab?: number;
-  /**
-   * Visual group in the sidebar.
-   * "main"  — primary nav (always visible)
-   * "more"  — collapsible "Mehr" section at bottom
+   * Sidebar group: "main" (always visible) | "more" (collapsible group,
+   * expanded state persisted by the Sidebar).
    */
   group: "main" | "more";
 }
 
 export const navItems: NavItem[] = [
-  // ── Main group (6 entries — IA shift Zone-A 2026-05-21) ──────────────────
+  // ── Main group (spec §5 order) ────────────────────────────────────────
+  { label: "Übersicht", href: "/app", icon: "LayoutDashboard", group: "main" },
+  { label: "Prüfung", href: "/app/inbox", icon: "Inbox", group: "main" },
   {
-    label: "Übersicht",
-    href: "/app",
-    icon: "CheckSquare",
-    mobileTab: 1,
-    group: "main",
-  },
-  {
-    // Renamed Audit Inbox → Belegprüfung (auslagen-tester report finding)
-    label: "Belegprüfung",
-    href: "/app/inbox",
-    icon: "Inbox",
-    mobileTab: 4,
-    group: "main",
-  },
-  {
-    // Promoted to main (Projekte first-class IA shift)
     label: "Projekte",
     href: "/app/projekte",
     icon: "FolderOpen",
-    mobileTab: 2,
     group: "main",
   },
-  // ── Transactions: three flat desktop tabs (Phase 3) ─────────────────────
-  // Ausgaben carries the single mobile "Transaktionen" entry (mobileTab: 3);
-  // its active state on the mobile bar spans all three routes via
-  // mobileTransaktionenActive(). Einnahmen + Spenden have no mobileTab.
   {
-    // Desktop sidebar shows "Ausgaben"; the single mobile tab cell collapses
-    // the three transaction routes under "Transaktionen" via mobileLabel.
     label: "Ausgaben",
-    mobileLabel: "Transaktionen",
     href: "/app/ausgaben",
     icon: "MinusCircle",
-    mobileTab: 3,
     group: "main",
   },
   {
@@ -109,12 +53,7 @@ export const navItems: NavItem[] = [
     icon: "PlusCircle",
     group: "main",
   },
-  {
-    label: "Spenden",
-    href: "/app/spenden",
-    icon: "Gift",
-    group: "main",
-  },
+  { label: "Spenden", href: "/app/spenden", icon: "Gift", group: "main" },
   {
     label: "Mitglieder",
     href: "/app/mitglieder",
@@ -122,49 +61,27 @@ export const navItems: NavItem[] = [
     group: "main",
   },
   {
-    // Promoted to main (julia + vorstand both flagged need)
     label: "Jahresabschluss",
     href: "/app/jahresabschluss",
     icon: "BookOpen",
     group: "main",
   },
-  // ── More group ───────────────────────────────────────────────────────────
+  // ── "Mehr" group ──────────────────────────────────────────────────────
   {
     label: "Rechnungen",
     href: "/app/rechnungen",
     icon: "FileText",
     group: "more",
   },
-  {
-    label: "Kunden",
-    href: "/app/kunden",
-    icon: "Building2",
-    group: "more",
-  },
+  { label: "Kunden", href: "/app/kunden", icon: "Building2", group: "more" },
   {
     label: "Einstellungen",
     href: "/app/einstellungen",
     icon: "Settings",
     group: "more",
   },
-  {
-    label: "DSGVO",
-    href: "/app/dsgvo",
-    icon: "Shield",
-    group: "more",
-  },
-  // "Dev / Mails" removed: route /app/dev/mails was never implemented and
-  // surfaced as a 404 in production. Re-add (gated on dev env) if/when the
-  // dev mailbox preview lands.
+  { label: "DSGVO", href: "/app/dsgvo", icon: "Shield", group: "more" },
 ];
-
-/** Items that appear in the mobile tab bar, sorted by mobileTab index. */
-export const mobileTabItems = navItems
-  .filter(
-    (item): item is NavItem & { mobileTab: number } =>
-      item.mobileTab !== undefined,
-  )
-  .sort((a, b) => a.mobileTab - b.mobileTab);
 
 /** Items for the main sidebar section. */
 export const mainNavItems = navItems.filter((item) => item.group === "main");
@@ -173,11 +90,11 @@ export const mainNavItems = navItems.filter((item) => item.group === "main");
 export const moreNavItems = navItems.filter((item) => item.group === "more");
 
 /**
- * Mobile "Transaktionen" tab active-predicate.
- *
- * The single mobile entry (`/app/ausgaben`) stands in for all three flat
- * transaction routes, so the bottom-bar cell must light up on any of them
- * (and their detail routes) — not just `startsWith(item.href)`.
+ * Mobile "Transaktionen" cell active-predicate (spec §5 active-state
+ * rules): the single mobile cell stands in for all three flat transaction
+ * routes (+ their details), so it must light up on any of them. Slice 5
+ * adds /app/transaktionen to the cell href; this predicate then ALSO gains
+ * that route (one line, slice-5 scope).
  */
 export function mobileTransaktionenActive(path: string): boolean {
   return ["/app/ausgaben", "/app/einnahmen", "/app/spenden"].some(

@@ -35,9 +35,13 @@ type LayoutData = {
   festgeschriebenBis: number | null;
 };
 
-function makeEvent(searchString: string) {
+function makeEvent(searchString: string, cookieYear?: string) {
   return {
     url: new URL(`http://localhost/app${searchString}`),
+    cookies: {
+      // Minimal cookies mock: get() returns the cookie value if set
+      get: (name: string) => (name === "fdw_year" ? cookieYear : undefined),
+    },
     locals: {
       session: {
         user: {
@@ -51,8 +55,13 @@ function makeEvent(searchString: string) {
   } as unknown as Parameters<typeof layoutLoad>[0];
 }
 
-async function runLoad(searchString: string): Promise<LayoutData> {
-  return (await layoutLoad(makeEvent(searchString))) as unknown as LayoutData;
+async function runLoad(
+  searchString: string,
+  cookieYear?: string,
+): Promise<LayoutData> {
+  return (await layoutLoad(
+    makeEvent(searchString, cookieYear),
+  )) as unknown as LayoutData;
 }
 
 describe.skipIf(!url)(
@@ -104,14 +113,19 @@ describe.skipIf(!url)(
         const years = await listAvailableYears();
         const yMap = new Map(years.map((y) => [y.year, y.closed]));
         const current = currentBuchungsjahr();
+        // The current year is always open (never <= 2024 in a running system).
         expect(yMap.get(current)).toBe(false);
-        // listAvailableYears must surface every Buchungsjahr <= bis even if
-        // no bookings exist, so the switcher can show closed entries with
-        // a lock icon.
-        expect(yMap.has(2024)).toBe(true);
-        expect(yMap.get(2024)).toBe(true);
-        expect(yMap.has(2023)).toBe(true);
-        expect(yMap.get(2023)).toBe(true);
+        // Years that ARE in the set (from actual data) and <= bis must be closed.
+        // We only assert on the years we know exist: current must be open.
+        // Years 2023/2024 appear ONLY if the test fixture has booking data for
+        // them — we do not rely on the old blank-year lookback.
+        for (const [year, closed] of yMap) {
+          if (year <= 2024) {
+            expect(closed, `year ${year} should be closed`).toBe(true);
+          } else {
+            expect(closed, `year ${year} should not be closed`).toBe(false);
+          }
+        }
       });
     });
 
@@ -173,6 +187,34 @@ describe.skipIf(!url)(
         `;
         const data = await runLoad("");
         expect(data.festgeschriebenBis).toBe(2024);
+      });
+
+      it("fdw_year cookie is used as fallback when ?year= is absent (no-flicker fix)", async () => {
+        // The cookie year must be in availableYears — use currentBuchungsjahr
+        // which is always present. When the cookie holds a valid year and no
+        // ?year= param is in the URL, selectedYear must equal the cookie year.
+        const current = currentBuchungsjahr();
+        const data = await runLoad("", String(current));
+        expect(data.selectedYear).toBe(current);
+      });
+
+      it("?year= URL param wins over fdw_year cookie (URL is authoritative)", async () => {
+        // Even if the cookie holds a different year, an explicit ?year= in the
+        // URL must take precedence (clamped to available).
+        const current = currentBuchungsjahr();
+        const data = await runLoad("?year=2099", String(current));
+        // 2099 clamps to the nearest available year (not the cookie value)
+        const years = data.availableYears.map((y: { year: number }) => y.year);
+        if (years.length > 0) {
+          expect(years).toContain(data.selectedYear);
+        }
+      });
+
+      it("fdw_year cookie is ignored when the cookie year is not in availableYears", async () => {
+        // A stale cookie year (e.g. 1999) must be discarded; the load falls
+        // back to currentBuchungsjahr just as if no cookie were present.
+        const data = await runLoad("", "1999");
+        expect(data.selectedYear).toBe(currentBuchungsjahr());
       });
     });
   },

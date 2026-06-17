@@ -1,54 +1,42 @@
 /**
- * @phase-7.5 C9 — Sidebar diet + "Heute" → "Übersicht" rename.
+ * Aurora slice 2 — nav-registry contract (spec §5 "Desktop sidebar").
  *
- * Resolves UX-001 (sidebar diet 9 → 5) and UX-040 (Heute → Übersicht).
+ * Desktop main group: Übersicht, Prüfung, Projekte, Ausgaben, Einnahmen,
+ * Spenden, Mitglieder, Jahresabschluss. "Mehr" group: Rechnungen, Kunden,
+ * Einstellungen, DSGVO. 'Prüfung' is THE label for /app/inbox on BOTH
+ * devices (never two names for one destination — spec §5).
  *
- * 2026-05-21 Zone-A — IA shift: Projekte + Jahresabschluss promoted to
- * main group; "Audit Inbox" renamed to "Belegprüfung"; Kunden + Rechnungen
- * demoted to "more"; Mitglieder retained in main.
- *
- * Phase 3 — the single "Transaktionen" main entry (/app/transactions) splits
- * into three flat desktop entries: Ausgaben (/app/ausgaben), Einnahmen
- * (/app/einnahmen), Spenden (/app/spenden). The desktop sidebar shows all
- * three distinct labels; the mobile bottom tab bar collapses them into a
- * single "Transaktionen" cell (Ausgaben carries mobileLabel "Transaktionen"
- * + mobileTab; its active-state spans all three via mobileTransaktionenActive).
- * Main group grows 6 → 8 entries.
+ * The registry carries DESKTOP IA only: the mobile five-cell bar is
+ * spec-fixed and hardcoded in MobileTabBar.svelte; mobileTab/mobileLabel
+ * are gone. mobileTransaktionenActive() stays — the shared active-state
+ * predicate for the single mobile Transaktionen cell (slice-5 flips the
+ * cell's href to /app/transaktionen; the predicate keeps spanning the
+ * three type routes).
  */
-
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   mainNavItems,
-  mobileTransaktionenActive,
+  moreNavItems,
   navItems,
-  type NavItem,
+  mobileTransaktionenActive,
 } from "./nav-registry.js";
 
-describe("Zone-A + Phase 3 — IA shift (main group has 8 entries)", () => {
-  it("mainNavItems has exactly 8 entries", () => {
-    expect(mainNavItems.length).toBe(8);
+describe("nav-registry — Aurora desktop IA (spec §5)", () => {
+  it("main group holds the 8 first-class destinations", () => {
+    expect(mainNavItems.map((i) => i.label)).toEqual([
+      "Übersicht",
+      "Prüfung",
+      "Projekte",
+      "Ausgaben",
+      "Einnahmen",
+      "Spenden",
+      "Mitglieder",
+      "Jahresabschluss",
+    ]);
   });
 
-  it("the 8 main entries are: Übersicht, Belegprüfung, Projekte, Ausgaben, Einnahmen, Spenden, Mitglieder, Jahresabschluss", () => {
-    const labels = mainNavItems.map((i) => i.label).sort();
-    expect(labels).toEqual(
-      [
-        "Übersicht",
-        "Belegprüfung",
-        "Projekte",
-        "Ausgaben",
-        "Einnahmen",
-        "Spenden",
-        "Mitglieder",
-        "Jahresabschluss",
-      ].sort(),
-    );
-  });
-
-  it("the main-group hrefs cover the IA-shift route set (three flat transaction routes)", () => {
-    const hrefs = mainNavItems.map((i) => i.href).sort();
-    expect(hrefs).toEqual(
+  it("main-group hrefs cover the route set (three flat transaction routes stay)", () => {
+    expect(mainNavItems.map((i) => i.href).sort()).toEqual(
       [
         "/app",
         "/app/inbox",
@@ -62,88 +50,51 @@ describe("Zone-A + Phase 3 — IA shift (main group has 8 entries)", () => {
     );
   });
 
-  it("the legacy single /app/transactions route is gone from nav", () => {
-    const hrefs = navItems.map((i: NavItem) => i.href);
-    expect(hrefs).not.toContain("/app/transactions");
+  it("'Prüfung' is the one label for /app/inbox; 'Belegprüfung' is gone", () => {
+    expect(navItems.find((i) => i.href === "/app/inbox")?.label).toBe(
+      "Prüfung",
+    );
+    expect(navItems.map((i) => i.label)).not.toContain("Belegprüfung");
   });
 
-  it("desktop shows three distinct transaction labels (no main 'Transaktionen' label)", () => {
-    const labels = mainNavItems.map((i) => i.label);
-    expect(labels).toContain("Ausgaben");
-    expect(labels).toContain("Einnahmen");
-    expect(labels).toContain("Spenden");
-    expect(labels).not.toContain("Transaktionen");
+  it("'Mehr' group: Rechnungen, Kunden, Einstellungen, DSGVO", () => {
+    expect(moreNavItems.map((i) => i.label)).toEqual([
+      "Rechnungen",
+      "Kunden",
+      "Einstellungen",
+      "DSGVO",
+    ]);
   });
 
-  it("mobile bottom tab collapses to a single 'Transaktionen' cell on Ausgaben", () => {
-    const ausgaben = mainNavItems.find((i) => i.href === "/app/ausgaben");
-    // Desktop label stays "Ausgaben"; the mobile cell renders mobileLabel.
-    expect(ausgaben?.label).toBe("Ausgaben");
-    expect(ausgaben?.mobileLabel).toBe("Transaktionen");
-    expect(ausgaben?.mobileTab).toBeDefined();
-    // Einnahmen + Spenden do not get their own mobile tab.
-    expect(
-      mainNavItems.find((i) => i.href === "/app/einnahmen")?.mobileTab,
-    ).toBeUndefined();
-    expect(
-      mainNavItems.find((i) => i.href === "/app/spenden")?.mobileTab,
-    ).toBeUndefined();
-  });
-
-  it("mobileTransaktionenActive lights up across all three transaction routes", () => {
-    expect(mobileTransaktionenActive("/app/ausgaben")).toBe(true);
-    expect(mobileTransaktionenActive("/app/einnahmen")).toBe(true);
-    expect(mobileTransaktionenActive("/app/spenden/abc-123")).toBe(true);
-    expect(mobileTransaktionenActive("/app/mitglieder")).toBe(false);
-  });
-
-  it("sheet-resync route is NOT in any nav group (still reachable by URL)", () => {
-    const hrefs = navItems.map((i: NavItem) => i.href);
-    expect(hrefs).not.toContain("/app/sheet-resync");
-  });
-
-  it("Kunden, Rechnungen, Einstellungen, DSGVO are preserved (in more group)", () => {
-    const hrefs = navItems.map((i: NavItem) => i.href);
-    expect(hrefs).toContain("/app/kunden");
-    expect(hrefs).toContain("/app/rechnungen");
-    expect(hrefs).toContain("/app/einstellungen");
-    expect(hrefs).toContain("/app/dsgvo");
-  });
-
-  it('the inbox route is labelled "Belegprüfung" (not "Audit Inbox")', () => {
-    const inbox = navItems.find((i) => i.href === "/app/inbox");
-    expect(inbox?.label).toBe("Belegprüfung");
-    const labels = navItems.map((i) => i.label);
-    expect(labels).not.toContain("Audit Inbox");
+  it("no mobile fields remain on any entry (mobile IA lives in MobileTabBar)", () => {
+    for (const item of navItems) {
+      expect("mobileTab" in item).toBe(false);
+      expect("mobileLabel" in item).toBe(false);
+    }
   });
 });
 
-describe("C9 — rename Heute → Übersicht (UX-040)", () => {
-  it('no nav item is labelled "Heute"', () => {
-    const labels = navItems.map((i) => i.label);
-    expect(labels).not.toContain("Heute");
+describe("mobileTransaktionenActive", () => {
+  it("spans the three type routes and their details", () => {
+    for (const p of [
+      "/app/ausgaben",
+      "/app/ausgaben/abc",
+      "/app/einnahmen",
+      "/app/einnahmen/neu",
+      "/app/spenden/x/zuwendungsbestaetigung",
+    ]) {
+      expect(mobileTransaktionenActive(p)).toBe(true);
+    }
   });
 
-  it('the /app route is labelled "Übersicht"', () => {
-    const dashboard = navItems.find((i) => i.href === "/app");
-    expect(dashboard?.label).toBe("Übersicht");
-  });
-});
-
-describe("C9 — Topbar breadcrumb root rename (UX-040, cycle 2)", () => {
-  // Topbar's ROUTE_LABELS map is local (not exported). Source-grep the
-  // component file to guarantee the breadcrumb root matches the sidebar.
-  const TOPBAR_SRC = readFileSync(
-    `${process.cwd()}/src/lib/components/admin/Topbar.svelte`,
-    "utf-8",
-  );
-
-  it('Topbar maps the "app" segment to "Übersicht" (not "Start")', () => {
-    expect(TOPBAR_SRC).toMatch(/app:\s*'Übersicht'/);
-    expect(TOPBAR_SRC).not.toMatch(/app:\s*'Start'/);
-  });
-
-  it('Topbar contains no breadcrumb label "Heute"', () => {
-    expect(TOPBAR_SRC).not.toMatch(/:\s*'Heute'/);
+  it("is false elsewhere (incl. prefix-collision paths)", () => {
+    for (const p of [
+      "/app",
+      "/app/inbox",
+      "/app/projekte",
+      "/app/ausgabenliste",
+    ]) {
+      expect(mobileTransaktionenActive(p)).toBe(false);
+    }
   });
 });

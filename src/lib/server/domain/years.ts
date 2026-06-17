@@ -1,19 +1,21 @@
 /**
  * C2 — Server-side Buchungsjahr discovery for the global year switcher.
  *
- * Powers `Topbar.svelte` / `YearSwitcher.svelte` via the `/app/+layout.server.ts`
+ * Powers `Topbar.svelte` / `YearMenu.svelte` via the `/app/+layout.server.ts`
  * load: the topbar needs the list of switchable years and which of them are
  * locked (festgeschrieben).
  *
  * Source of truth for the "available years" set:
  *   1. Every distinct `year_of_buchung` from income, expenses, donations and
- *      invoices (STORED generated columns, ADR-0001).
+ *      invoices (STORED generated columns, ADR-0001) — years with actual data.
  *   2. The current Berlin-TZ Buchungsjahr (`yearForBooking(new Date())`),
  *      always included so a freshly-seeded DB still shows the year switcher.
- *   3. Every year up to `settings.festgeschrieben_bis` (inclusive), so the
- *      switcher can surface a closed year even when no bookings exist for it
- *      (covers ADR-0006 lock-icon UX — JB-003 showed the inverse: 0/null bis
- *      was being interpreted as "everything closed").
+ *
+ * Note: we deliberately do NOT inflate the list with blank festgeschrieben years
+ * that have no booking data. The lock icon + closed annotation is applied to any
+ * year <= festgeschrieben_bis that is in the set for other reasons (data or
+ * current). This prevents the dropdown from showing empty years like 2021–2024
+ * when the user has no entries for those years.
  *
  * The set is then annotated with `closed`:
  *   - settings.festgeschrieben_bis is null  → every year is open.
@@ -62,6 +64,11 @@ async function readFestgeschriebenBis(): Promise<number | null> {
 /**
  * List every Buchungsjahr the user might want to switch into, newest first,
  * annotated with `closed` per ADR-0006.
+ *
+ * Only years with ≥1 actual booking entry (income/expense/donation/invoice)
+ * and the current Buchungsjahr are included. Empty past years are excluded
+ * regardless of festgeschrieben_bis — those would only add noise to the
+ * dropdown for users who haven't used those years.
  */
 export async function listAvailableYears(): Promise<AvailableYear[]> {
   const db = getDb();
@@ -90,15 +97,9 @@ export async function listAvailableYears(): Promise<AvailableYear[]> {
   // shows the switcher in a useful state.
   yearSet.add(current);
 
-  // Surface every closed year even when no bookings exist for it, so the
-  // switcher can show the lock-icon UX. Cap at festBis - 4 lookback to avoid
-  // exploding the dropdown on first-time setups (covers prior 4 years).
-  if (festBis !== null && Number.isFinite(festBis)) {
-    const lowerBound = festBis - 3;
-    for (let y = lowerBound; y <= festBis; y += 1) {
-      if (y > 0) yearSet.add(y);
-    }
-  }
+  // Note: we do NOT add festBis years without data here (old lookback window
+  // removed). Empty past years should not clutter the dropdown. Years with
+  // actual data already have the closed flag applied below.
 
   const out: AvailableYear[] = [];
   for (const year of yearSet) {

@@ -8,6 +8,7 @@
 	import TopProjekteWidget from '$lib/components/admin/dashboard/TopProjekteWidget.svelte';
 	import type { PageData } from './$types.js';
 	import { navigating } from '$app/state';
+	import PageShell from '$lib/components/layout/PageShell.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -47,11 +48,11 @@
 	});
 </script>
 
-<div
-	class="mx-auto max-w-4xl px-4 py-8 lg:px-8"
-	aria-busy={isYearSwitch() ? 'true' : undefined}
-	style={isYearSwitch() ? 'opacity: 0.6; transition: opacity 150ms ease-in-out;' : undefined}
->
+<PageShell width="full">
+	<div
+		aria-busy={isYearSwitch() ? 'true' : undefined}
+		style={isYearSwitch() ? 'opacity: 0.6; transition: opacity 150ms ease-in-out;' : undefined}
+	>
 	<!-- Greeting header -->
 	<div class="mb-8">
 		<h1 class="text-2xl font-bold tracking-tight text-foreground">
@@ -111,6 +112,7 @@
 		<TopProjekteWidget rows={data.topProjekte} />
 	</div>
 
-	<!-- Recent activity feed -->
-	<RecentActivity entries={data.recentActivity} />
-</div>
+		<!-- Recent activity feed -->
+		<RecentActivity entries={data.recentActivity} />
+	</div>
+</PageShell>

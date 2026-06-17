@@ -10,7 +10,16 @@ declare global {
       session: ResolvedSession | null;
     }
     // interface PageData {}
-    // interface PageState {}
+    interface PageState {
+      /**
+       * Aurora bottom sheets (spec §5): open state lives in a history entry
+       * (SvelteKit shallow routing). MobileTabBar pushState()s these flags;
+       * dismissing a sheet calls history.back() so Android back / iOS
+       * swipe-back closes the SHEET, not the page.
+       */
+      mehrSheet?: boolean;
+      createSheet?: boolean;
+    }
     // interface Platform {}
   }
 

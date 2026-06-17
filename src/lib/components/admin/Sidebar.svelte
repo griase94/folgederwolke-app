@@ -1,3 +1,14 @@
+<!--
+  Sidebar — Aurora desktop navigation (spec §5).
+
+  White/glass fixed surface on the wash (backdrop-filter is allowed here:
+  small fixed surface, never scrolling content — spec §2 blur discipline).
+  Line-art mark + Verein name. Entries from nav-registry (single source of
+  truth for desktop IA). Active state: gradient-soft pill + primary-text
+  label (spec §5 — the sanctioned soft-gradient treatment, §2 budget).
+  "Mehr" collapsible group persists its expanded state in localStorage.
+  Tablet (768–1023px) renders the 64px icon-only collapse (collapsed prop).
+-->
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { mainNavItems, moreNavItems } from './nav-registry.js';
@@ -12,21 +23,40 @@
 
 	let { user, collapsed = false }: Props = $props();
 
-	let moreOpen = $state(false);
+	// "Mehr" expanded state persists per device (spec §5).
+	const MEHR_LS_KEY = 'fdw.nav.mehrOpen';
+
+	function initialMehrOpen(): boolean {
+		if (typeof localStorage === 'undefined') return false;
+		try {
+			return localStorage.getItem(MEHR_LS_KEY) === '1';
+		} catch {
+			return false; // Safari private mode etc.
+		}
+	}
+
+	let moreOpen = $state(initialMehrOpen());
+
+	function toggleMore(): void {
+		moreOpen = !moreOpen;
+		try {
+			localStorage.setItem(MEHR_LS_KEY, moreOpen ? '1' : '0');
+		} catch {
+			// Storage unavailable — state stays session-local.
+		}
+	}
 
 	function isActive(href: string): boolean {
 		const current = $page.url.pathname;
 		if (href === '/app') return current === '/app';
-		return current.startsWith(href);
+		return current === href || current.startsWith(href + '/');
 	}
 
-	// Icon SVG paths by icon name
+	// Icon SVG paths by icon name (lucide outlines, stroke-based).
 	const ICONS: Record<string, string> = {
-		CheckSquare:
-			'M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11',
+		LayoutDashboard:
+			'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
 		Inbox: 'M22 12h-6l-2 3H10l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z',
-		CreditCard:
-			'M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2zM2 11h20',
 		MinusCircle: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM8 12h8',
 		PlusCircle: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM8 12h8M12 8v8',
 		Gift: 'M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z',
@@ -40,32 +70,33 @@
 			'M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z',
 		Settings:
 			'M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM12 2v2M12 22v-2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M22 12h-2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41',
-		Shield:
-			'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
-		Mail: 'M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zM22 6l-10 7L2 6',
+		Shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
 		ChevronDown: 'M6 9l6 6 6-6',
 		ChevronUp: 'M18 15l-6-6-6 6',
 	};
 </script>
 
 <aside
-	class="flex h-full flex-col border-r border-border bg-sidebar"
+	class="surface-glass flex h-full flex-col border-r border-hairline"
 	class:w-[240px]={!collapsed}
 	class:w-[64px]={collapsed}
 	aria-label="Hauptnavigation"
 >
-	<!-- Logo header -->
+	<!-- Brand header: line-art mark + Verein name (spec §5 "Logo & iOS chrome") -->
 	<div
-		class="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4"
+		class="flex h-14 shrink-0 items-center gap-3 border-b border-hairline px-4"
 		class:justify-center={collapsed}
 	>
-		<div
-			class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-strong text-sm font-bold text-primary-foreground"
-		>
-			FW
-		</div>
+		<img
+			src="/logo-lineart.svg"
+			alt=""
+			class="h-9 w-9 shrink-0"
+			aria-hidden="true"
+		/>
 		{#if !collapsed}
-			<span class="text-sm font-semibold text-foreground">{$page.data.vereinName}</span>
+			<span class="line-clamp-2 text-xs/tight font-semibold tracking-[-0.02em] text-ink-900"
+				>{$page.data.vereinName}</span
+			>
 		{/if}
 	</div>
 
@@ -78,17 +109,16 @@
 					<!-- eslint-disable svelte/no-navigation-without-resolve -->
 					<a
 						href={item.href}
-						class="group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
-						class:bg-primary-strong={active}
-						class:text-primary-foreground={active}
-						class:text-sidebar-foreground={!active}
-						class:hover:bg-sidebar-accent={!active}
-						class:hover:text-sidebar-accent-foreground={!active}
+						class="group flex items-center gap-3 rounded-full px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+						class:bg-gradient-brand-soft={active}
+						class:text-primary-text={active}
+						class:text-ink-700={!active}
+						class:hover:bg-secondary={!active}
+						class:justify-center={collapsed}
 						aria-current={active ? 'page' : undefined}
 						title={collapsed ? item.label : undefined}
 					>
 						<!-- eslint-enable svelte/no-navigation-without-resolve -->
-						<!-- Icon -->
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							width="18"
@@ -112,13 +142,13 @@
 			{/each}
 		</ul>
 
-		<!-- "Mehr" collapsible section -->
+		<!-- "Mehr" collapsible section — expanded state persists (spec §5) -->
 		<div class="mt-4">
 			{#if !collapsed}
 				<button
 					type="button"
-					onclick={() => (moreOpen = !moreOpen)}
-					class="flex w-full items-center justify-between rounded-md px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+					onclick={toggleMore}
+					class="flex w-full items-center justify-between rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-wider text-ink-500 transition-colors hover:bg-secondary hover:text-ink-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 					aria-expanded={moreOpen}
 				>
 					<span>Mehr</span>
@@ -147,12 +177,12 @@
 							<!-- eslint-disable svelte/no-navigation-without-resolve -->
 							<a
 								href={item.href}
-								class="group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors"
-								class:bg-primary-strong={active}
-								class:text-primary-foreground={active}
-								class:text-sidebar-foreground={!active}
-								class:hover:bg-sidebar-accent={!active}
-								class:hover:text-sidebar-accent-foreground={!active}
+								class="group flex items-center gap-3 rounded-full px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+								class:bg-gradient-brand-soft={active}
+								class:text-primary-text={active}
+								class:text-ink-700={!active}
+								class:hover:bg-secondary={!active}
+								class:justify-center={collapsed}
 								aria-current={active ? 'page' : undefined}
 								title={collapsed ? item.label : undefined}
 							>
@@ -183,14 +213,9 @@
 		</div>
 	</nav>
 
-	<!--
-		User avatar at bottom — Zone-A 2026-05-21: now the trigger for
-		UserMenu (Einstellungen + Hilfe + Version + Abmelden). Clicking the
-		user card opens a dropdown to the right (collapsed sidebar uses the
-		icon-only variant).
-	-->
+	<!-- User card → UserMenu dropdown (unchanged behaviour) -->
 	<div
-		class="shrink-0 border-t border-border p-3"
+		class="shrink-0 border-t border-hairline p-3"
 		class:flex={collapsed}
 		class:justify-center={collapsed}
 	>

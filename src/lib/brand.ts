@@ -15,3 +15,6 @@ export const BRAND_PRIMARY = "#ff1e8c"; // --primary (non-text accents only)
 export const BRAND_PRIMARY_STRONG = "#d6116f"; // --primary-strong (fill behind white text, AA 4.5:1)
 export const BRAND_PRIMARY_TEXT = "#c71e6e"; // --primary-text (links/text on light surfaces)
 export const BRAND_WASH_ANCHOR = "#fff1f6"; // solid anchor of --bg-wash (manifest/meta theme color)
+export const BRAND_INK = "#1a1126"; // --ink-900 — splash wordmark (dark text on the wash)
+export const BRAND_WASH_STOPS = ["#fff1f6", "#f4eeff", "#ecf3ff"] as const; // --bg-wash stops
+export const BRAND_GRADIENT_STOPS = ["#ff1e8c", "#a855f7", "#3b82f6"] as const; // --gradient-brand stops (icon field)

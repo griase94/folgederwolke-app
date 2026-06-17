@@ -28,11 +28,9 @@ const TEXT_EXTENSIONS = [
   ".txt",
 ];
 
-// Slice-2 handoff (spec §5 iOS chrome): aurora-2-shell re-skins the
-// #fdw-launch overlay, deletes the .pwa-statusbar-scrim, switches the
-// status-bar style, and regenerates splash/icons. Until then app.html
-// legitimately carries the legacy pink in those two inline-CSS sites.
-const SLICE_2_HANDOFF = new Set(["src/app.html"]);
+// Slice 2 cleaned app.html (overlay re-skin, scrim deletion, status-bar
+// default) — the allowlist is now EMPTY and may only ever stay that way.
+const SLICE_2_HANDOFF = new Set<string>([]);
 
 const LEGACY_PINK = ["#be185d", "be185d"] as const;
 
@@ -60,16 +58,7 @@ describe("Aurora brand sweep — no zombie legacy pink", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("allowlist entries still need the handoff (delete entries as slice 2 cleans them)", () => {
-    for (const rel of SLICE_2_HANDOFF) {
-      const content = readFileSync(
-        resolve(repoRoot, rel),
-        "utf8",
-      ).toLowerCase();
-      expect(
-        content.includes("be185d"),
-        `${rel} no longer contains the legacy pink — remove it from SLICE_2_HANDOFF`,
-      ).toBe(true);
-    }
+  it("the slice-2 handoff allowlist is empty (it only ever shrinks — and it did)", () => {
+    expect([...SLICE_2_HANDOFF]).toEqual([]);
   });
 });
