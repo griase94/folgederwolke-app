@@ -4,7 +4,10 @@
 	import { untrack } from 'svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import InlineAlert from '$lib/components/public/InlineAlert.svelte';
+	import AuslageBridgeCard from '$lib/components/public/AuslageBridgeCard.svelte';
 	import type { PageData } from './$types.js';
+	import type { SignInReason } from './+page.server.js';
 
 	// B-2 — `data.reason` is whitelist-validated on the server (load fn);
 	// the page only renders banner copy for values it knows about, and
@@ -17,23 +20,32 @@
 		data: PageData;
 	} = $props();
 
-	const REASON_BANNERS = {
-		'signed-out': { kind: 'info' as const, text: 'Du wurdest abgemeldet.' },
+	type ReasonAlert = {
+		severity: 'info' | 'warn';
+		text: string;
+		linkHref?: string;
+		linkLabel?: string;
+	};
+
+	const REASON_ALERTS: Record<SignInReason, ReasonAlert> = {
+		'signed-out': { severity: 'info', text: 'Du wurdest abgemeldet.' },
 		'signed-out-everywhere': {
-			kind: 'info' as const,
+			severity: 'info',
 			text: 'Du wurdest auf allen Geräten abgemeldet.'
 		},
 		'public-form-coming-soon': {
-			kind: 'info' as const,
+			severity: 'info',
 			text: 'Das öffentliche Formular ist momentan nicht aktiv.'
 		},
 		'not-authorised': {
-			kind: 'warn' as const,
-			text: 'Dein Account hat keinen Zugriff auf diese Seite.'
+			severity: 'warn',
+			text: 'Dein Account hat keinen Zugriff auf diese Seite.',
+			linkHref: '/auslage-einreichen',
+			linkLabel: 'Auslage ohne Anmeldung einreichen →'
 		}
-	} as const;
+	};
 
-	const banner = $derived(data.reason ? REASON_BANNERS[data.reason] : null);
+	const reasonAlert = $derived(data.reason ? REASON_ALERTS[data.reason] : null);
 
 	let pending = $state(false);
 	let emailValue = $state('');
@@ -135,17 +147,15 @@
 				<p class="text-sm text-ink-500">Anmelde-Link per E-Mail — kein Passwort nötig.</p>
 			</div>
 
-			{#if banner}
-				<div
-					class="rounded-[10px] border px-4 py-3 text-sm {banner.kind === 'warn'
-						? 'border-severity-warn/40 bg-severity-warn/10 text-severity-warn-text'
-						: 'border-severity-info/40 bg-severity-info/10 text-ink-700'}"
-					role={banner.kind === 'warn' ? 'alert' : 'status'}
-					data-testid="sign-in-reason-banner"
-					data-reason={data.reason}
-				>
-					{banner.text}
-				</div>
+			{#if reasonAlert}
+				<InlineAlert
+					severity={reasonAlert.severity}
+					text={reasonAlert.text}
+					linkHref={reasonAlert.linkHref}
+					linkLabel={reasonAlert.linkLabel}
+					testid="sign-in-reason-banner"
+					reason={data.reason ?? undefined}
+				/>
 			{/if}
 
 			{#if view === 'sent'}
@@ -243,6 +253,10 @@
 						{pending ? 'Wird gesendet…' : 'Anmelde-Link anfordern'}
 					</button>
 				</form>
+			{/if}
+
+			{#if data.publicFormEnabled}
+				<AuslageBridgeCard />
 			{/if}
 		</div>
 	</section>

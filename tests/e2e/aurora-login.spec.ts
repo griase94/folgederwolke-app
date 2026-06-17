@@ -95,3 +95,38 @@ test.describe("@phase-aurora-slice3 Aurora login — Link gesendet state", () =>
     await expect(email).toBeFocused();
   });
 });
+
+test.describe("@phase-aurora-slice3 Aurora login — inline alerts + bridge", () => {
+  test("?reason=not-authorised renders a warn alert linking to /auslage-einreichen", async ({
+    page,
+  }) => {
+    await page.goto("/sign-in?reason=not-authorised");
+    const banner = page.getByTestId("sign-in-reason-banner");
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText("keinen Zugriff");
+    await expect(banner.locator('a[href="/auslage-einreichen"]')).toBeVisible();
+  });
+
+  test("?reason=signed-out renders an info alert without a link", async ({
+    page,
+  }) => {
+    await page.goto("/sign-in?reason=signed-out");
+    const banner = page.getByTestId("sign-in-reason-banner");
+    await expect(banner).toContainText("Du wurdest abgemeldet.");
+    await expect(banner.locator("a")).toHaveCount(0);
+  });
+
+  test("bridge card renders below the form AND persists in the Link-gesendet state", async ({
+    page,
+  }) => {
+    await page.goto("/sign-in");
+    await expect(page.getByTestId("auslage-bridge-card")).toBeVisible();
+
+    await page.fill('input[name="email"]', "julia@example.com");
+    await page.getByTestId("login-submit").click();
+    await expect(page.getByTestId("link-sent-panel")).toBeVisible();
+    // Anti-enumeration exit: a non-member sees "sent" for a mail that never
+    // comes — the bridge is their way out (spec §6).
+    await expect(page.getByTestId("auslage-bridge-card")).toBeVisible();
+  });
+});
