@@ -14,58 +14,55 @@
 	// dead-end. The header always offers "the other door": on /sign-in it points
 	// back to the form; everywhere else it points to login. The wordmark always
 	// returns to the role-aware root (`/`).
+	//
+	// Aurora (slice 3): the header renders ABOVE the sign-in gradient band on
+	// mobile (spec §6 — the context action must be visible before any
+	// scrolling), and the flex column wrapper lets the sign-in split hero
+	// stretch to the remaining viewport height.
 	const onSignIn = $derived(page.url.pathname.startsWith('/sign-in'));
 </script>
 
 <OfflineBanner />
 
-<header
-	class="flex items-center justify-between gap-3 px-4 py-3"
-	style="padding-top: max(env(safe-area-inset-top, 0px), 0.75rem);"
->
-	<!-- eslint-disable svelte/no-navigation-without-resolve -->
-	<a
-		href="/"
-		class="flex min-h-11 items-center gap-2 rounded-lg pr-2 text-foreground transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-		aria-label="Zur Startseite"
+<div class="flex min-h-dvh flex-col">
+	<header
+		class="flex items-center justify-between gap-3 px-4 py-3"
+		style="padding-top: max(env(safe-area-inset-top, 0px), 0.75rem);"
 	>
-		<span class="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10" aria-hidden="true">
-			<svg
-				class="h-4 w-4 text-primary"
-				viewBox="0 0 24 24"
-				fill="none"
-				stroke="currentColor"
-				stroke-width="1.75"
-				stroke-linecap="round"
-				stroke-linejoin="round"
-			>
-				<path d="M17.5 19a4.5 4.5 0 1 0 0-9 6 6 0 0 0-11.6-1.5A4 4 0 0 0 6 19z" />
-			</svg>
-		</span>
-		<span class="text-sm font-semibold tracking-tight">{page.data.vereinName}</span>
-	</a>
+		<!-- eslint-disable svelte/no-navigation-without-resolve -->
+		<a
+			href="/"
+			class="flex min-h-11 items-center gap-2 rounded-[10px] pr-2 text-ink-900 transition-colors hover:text-primary-text focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+			aria-label="Zur Startseite"
+		>
+			<img src="/logo-lineart.svg" alt="" class="h-7 w-7" aria-hidden="true" />
+			<span class="text-sm font-semibold tracking-tight">{page.data.vereinName}</span>
+		</a>
 
-	{#if onSignIn}
-		{#if data.publicFormEnabled}
+		{#if onSignIn}
+			{#if data.publicFormEnabled}
+				<a
+					href="/auslage-einreichen"
+					class="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-2.5 text-sm font-medium text-ink-500 transition-colors hover:text-primary-text focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+				>
+					<Receipt class="size-4" aria-hidden="true" />
+					Auslage einreichen
+				</a>
+			{/if}
+		{:else}
 			<a
-				href="/auslage-einreichen"
-				class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm text-muted-foreground transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+				href="/sign-in"
+				onclick={() => clearPreferredEntry()}
+				class="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-2.5 text-sm font-medium text-ink-500 transition-colors hover:text-primary-text focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 			>
-				<Receipt class="size-4" aria-hidden="true" />
-				Auslage einreichen
+				<LogIn class="size-4" aria-hidden="true" />
+				Vereins-Login
 			</a>
 		{/if}
-	{:else}
-		<a
-			href="/sign-in"
-			onclick={() => clearPreferredEntry()}
-			class="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm text-muted-foreground transition-colors hover:text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-		>
-			<LogIn class="size-4" aria-hidden="true" />
-			Vereins-Login
-		</a>
-	{/if}
-	<!-- eslint-enable svelte/no-navigation-without-resolve -->
-</header>
+		<!-- eslint-enable svelte/no-navigation-without-resolve -->
+	</header>
 
-{@render children()}
+	<div class="flex flex-1 flex-col">
+		{@render children()}
+	</div>
+</div>
