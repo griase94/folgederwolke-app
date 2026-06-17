@@ -183,31 +183,6 @@ async function seedDecidedSubmission(
   return { businessId, bezeichnung, submissionId: rows[0]?.id ?? "" };
 }
 
-async function fetchSentMails(
-  submissionId: string,
-): Promise<
-  Array<{ template: string; entity_id: string; send_attempt: number }>
-> {
-  const { default: postgres } = await import("postgres");
-  const client = postgres(process.env["DATABASE_URL"] ?? "", {
-    prepare: false,
-    max: 1,
-  });
-  try {
-    const rows = await client<
-      Array<{ template: string; entity_id: string; send_attempt: number }>
-    >`
-      SELECT template, entity_id, send_attempt
-      FROM sent_mails
-      WHERE entity_id = ${submissionId}
-      ORDER BY send_attempt ASC
-    `;
-    return rows;
-  } finally {
-    await client.end();
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
