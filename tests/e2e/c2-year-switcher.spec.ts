@@ -1,21 +1,19 @@
 /**
- * C2 — End-to-end critical-path tests for the global year switcher.
+ * C2 — End-to-end critical-path tests for the global year switcher (dropdown).
  *
  * Resolves: VB-002, JB-001, JB-006, UX-010, UI-009.
  *
+ * The YearMenu is a compact dropdown trigger (data-fdw="year-menu-trigger")
+ * replacing the old SegmentedControl pill-row. The dropdown contains
+ * RadioGroup items, one per year.
+ *
  * Coverage strategy
  * -----------------
- * The full E2E matrix (default-on-first-visit / URL pre-selection /
- * lock-icon / a11y) is split between this spec and lower-level tests.
- *
  * This file validates the user-visible contract end-to-end (auth → render
- * → URL state → DOM assertions). The harder properties — localStorage
- * persistence across hard reloads, switcher-click navigation behaviour —
- * are exercised at the component layer in
- * `src/lib/components/admin/YearSwitcher.test.ts` and at the integration
- * layer in `tests/unit/c2-layout-year.test.ts`. Together they prove the
- * full "click → URL → reload → restore" loop without depending on the
- * full SSR stack.
+ * → URL state → DOM assertions). The harder properties — cookie persistence
+ * across hard reloads, switcher-click navigation behaviour — are exercised at
+ * the component layer in `src/lib/components/admin/YearMenu.test.ts` and at
+ * the integration layer in `tests/unit/c2-layout-year.test.ts`.
  *
  * Known pre-existing fragility (NOT introduced by C2):
  *   `virtual:pwa-register/svelte`'s `useRegisterSW` accesses `navigator`
@@ -95,14 +93,11 @@ async function clearFestgeschriebenBis() {
 // Each test must run against a freshly-booted webserver (see the SSR-crash
 // note in the file header). describe.serial ensures the tests run in order,
 // and we set festgeschrieben_bis BEFORE each /app navigation so the layout
-// load surfaces 2024 as a closed year for the lock-icon + URL assertions.
+// load surfaces a closed year for the lock-icon + URL assertions.
 
 test.describe
-  .serial("@phase-2 @overnight-c2 year switcher (VB-002 / JB-001 / UI-009)", () => {
+  .serial("@phase-2 @overnight-c2 year switcher dropdown (VB-002 / JB-001 / UI-009)", () => {
   test.beforeEach(async () => {
-    // Each test prepares the closed-year state. The afterEach below
-    // resets it. Tests that don't need a closed year are unaffected —
-    // the current Buchungsjahr is always open.
     await setFestgeschriebenBis(2024);
   });
 
@@ -110,7 +105,7 @@ test.describe
     await clearFestgeschriebenBis();
   });
 
-  test("year switcher renders + selects current year + locks 2024 (VB-002 / UX-010 / UI-009 / JB-006)", async ({
+  test("year menu trigger renders + shows current year + lock icon for closed year (VB-002 / UX-010 / UI-009 / JB-006)", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -119,26 +114,28 @@ test.describe
     await page.goto("/app?year=2024");
     if (page.url().includes("/sign-in")) test.skip();
 
-    // (1) Switcher visible — proves the topbar wired YearSwitcher correctly.
-    const group = page.getByRole("radiogroup", { name: "Buchungsjahr" });
-    await expect(group).toBeVisible();
+    // (1) Year menu trigger is visible — compact dropdown, not a pill-row.
+    const trigger = page.locator('[data-fdw="year-menu-trigger"]');
+    await expect(trigger).toBeVisible();
 
-    // (2) ?year=2024 in URL selects the 2024 radio (JB-006 — was being ignored).
-    const checked = group.getByRole("radio", { checked: true });
-    const checkedName = (await checked.getAttribute("aria-label")) ?? "";
-    expect(checkedName).toMatch(/2024/);
+    // (2) ?year=2024 in URL → trigger shows "2024" as the label (JB-006).
+    await expect(trigger).toContainText("2024");
 
-    // (3) Closed year carries lock icon (UI-009).
+    // (3) Trigger aria-label includes "2024" (UX-010 — year is explicit).
+    const label = await trigger.getAttribute("aria-label");
+    expect(label).toMatch(/2024/);
+
+    // (4) Closed year carries lock icon (UI-009) — visible in the open menu.
+    // Open the dropdown first.
+    await trigger.click();
     const lock = page.locator('[data-testid="year-lock-2024"]');
     await expect(lock).toBeVisible();
 
-    // (4) Closed year carries "festgeschrieben" suffix for SR users (UI-009 a11y).
-    const closedRadio = page.getByRole("radio", {
-      name: /2024.*festgeschrieben/i,
-    });
-    await expect(closedRadio).toBeVisible();
+    // (5) Closed year has aria-label including "festgeschrieben" (UI-009 a11y).
+    const closedItem = page.locator('[aria-label="2024 (festgeschrieben)"]');
+    await expect(closedItem).toBeVisible();
 
-    // (5) Current Buchungsjahr is OPEN — no lock icon on it.
+    // (6) Current Buchungsjahr is OPEN — no lock icon for it.
     const current = new Date().getFullYear();
     const openLock = page.locator(`[data-testid="year-lock-${current}"]`);
     await expect(openLock).toHaveCount(0);

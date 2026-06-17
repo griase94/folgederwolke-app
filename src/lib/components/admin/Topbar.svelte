@@ -3,8 +3,7 @@
 	import { page } from '$app/stores';
 	import { SvelteMap } from 'svelte/reactivity';
 	import UserMenu from './UserMenu.svelte';
-	import YearSwitcher, { type YearSwitcherOption } from './YearSwitcher.svelte';
-	import MobileYearPicker from './MobileYearPicker.svelte';
+	import YearMenu, { type YearMenuOption } from './YearMenu.svelte';
 	import type { SessionUser } from '$lib/server/auth/index.js';
 	import { ALL_YEARS, type YearScope } from '$lib/domain/year.js';
 	import InstallPrompt from '$lib/components/pwa/InstallPrompt.svelte';
@@ -22,17 +21,22 @@
 	// reactively so route changes (including filter swaps via the switcher
 	// itself) update the rendered control without explicit prop threading.
 	//
-	// Persistence: the last-selected year is mirrored to localStorage so a
-	// returning user lands on their year even when they bookmark `/app`. The
-	// URL remains the source of truth for the current navigation.
-	const YEAR_LS_KEY = 'fdw.year.selected';
+	// Persistence: the selected year is mirrored to a server-readable cookie
+	// (fdw_year) so a returning user lands on their year even on plain
+	// navigations without ?year= in the URL. The URL remains the source of
+	// truth for the current navigation. Cookie is written from the browser
+	// before goto() so the server resolves the same year on the next SSR
+	// request (no flash of the default year).
+
+	const YEAR_COOKIE = 'fdw_year';
+	const YEAR_COOKIE_MAX_AGE = 365 * 24 * 60 * 60; // 1 year in seconds
 
 	const yearData = $derived(() => {
 		const d = $page.data as Record<string, unknown>;
-		const availableYears = (d['availableYears'] ?? []) as YearSwitcherOption[];
+		const availableYears = (d['availableYears'] ?? []) as YearMenuOption[];
 		const selectedYear = (d['selectedYear'] as number | undefined) ?? null;
 		// yearScope (Task 2) is the wider YearScope — `number | ALL_YEARS`. The
-		// switcher highlights "Alle Jahre" when this is the "all" sentinel; for
+		// menu highlights "Alle Jahre" when this is the "all" sentinel; for
 		// concrete years it equals selectedYear.
 		const yearScope = (d['yearScope'] as YearScope | undefined) ?? null;
 		const currentYear = (d['currentYear'] as number | undefined) ?? null;
@@ -45,17 +49,21 @@
 		/^\/app\/(ausgaben|einnahmen|spenden)(\/|$)/.test($page.url.pathname)
 	);
 
-	function persistYear(year: number) {
+	function persistYearCookie(year: number) {
+		// Write the year cookie so the server can resolve it on next navigation.
+		// document.cookie is acceptable here — this is a non-sensitive UI pref
+		// (mirrors the theme cookie pattern). The server validates it against
+		// availableYears before trusting it.
 		try {
-			localStorage.setItem(YEAR_LS_KEY, String(year));
+			document.cookie = `${YEAR_COOKIE}=${year}; path=/; max-age=${YEAR_COOKIE_MAX_AGE}; samesite=lax`;
 		} catch {
-			// Storage unavailable (Safari private mode etc.) — ignore.
+			// Unlikely — ignore if cookie API unavailable.
 		}
 	}
 
 	function handleYearChange(year: YearScope) {
 		// "all" sentinel: navigate to ?year=all verbatim — do NOT persist to
-		// localStorage (it's a list-only view, not a year we want to restore on
+		// the cookie (it's a list-only view, not a year we want to restore on
 		// next visit). Numeric years keep the existing persist + navigate path.
 		if (year === ALL_YEARS) {
 			const u = new URL($page.url);
@@ -64,7 +72,8 @@
 			goto(u.pathname + u.search, { keepFocus: true, noScroll: true });
 			return;
 		}
-		persistYear(year);
+		// Write cookie BEFORE goto so the server sees it on the next SSR request.
+		persistYearCookie(year);
 		// Mutate ?year= on the current path; preserve every other query param
 		// (search, filter, kind, …) so the user's view context survives.
 		const u = new URL($page.url);
@@ -73,38 +82,11 @@
 		goto(u.pathname + u.search, { keepFocus: true, noScroll: true });
 	}
 
-	// On first mount, if the URL has no ?year but localStorage has a value
-	// different from the server-derived default, swap it in. This is the
-	// "year persists across hard reload" behaviour the E2E asserts.
-	$effect(() => {
-		if (typeof window === 'undefined') return;
-		const hasUrlYear = $page.url.searchParams.has('year');
-		if (hasUrlYear) return;
-		let stored: string | null;
-		try {
-			stored = localStorage.getItem(YEAR_LS_KEY);
-		} catch {
-			return;
-		}
-		if (!stored) return;
-		const n = Number.parseInt(stored, 10);
-		const data = yearData();
-		if (!Number.isFinite(n)) return;
-		if (data.selectedYear === n) return;
-		// Only restore if the stored year is in availableYears — otherwise
-		// the user's stale localStorage value would silently land them on a
-		// year that doesn't exist.
-		const present = data.availableYears.some((y) => y.year === n);
-		if (!present) return;
-		const u = new URL($page.url);
-		u.searchParams.set('year', String(n));
-		// eslint-disable-next-line svelte/no-navigation-without-resolve
-		goto(u.pathname + u.search, {
-			replaceState: true,
-			keepFocus: true,
-			noScroll: true
-		});
-	});
+	// NOTE: The localStorage restore $effect was removed. Year persistence is now
+	// handled via the fdw_year cookie resolved server-side in
+	// /app/+layout.server.ts — eliminates the 2025→2026 flicker that occurred
+	// when the $effect ran client-side AFTER the server had already rendered the
+	// default year.
 
 	// ── Search ───────────────────────────────────────────────────────────────
 	const RECENT_KEY = 'fdw.search.recent';
@@ -220,6 +202,14 @@
 		highlightIndex = -1;
 	}
 
+	function clearSearch() {
+		searchValue = '';
+		searchResults = null;
+		searchLoading = false;
+		highlightIndex = -1;
+		searchInput?.focus();
+	}
+
 	function navigateTo(href: string) {
 		closeSearch();
 		searchValue = '';
@@ -270,12 +260,15 @@
 		}
 		return m;
 	});
+
+	// True when there is text in the search input (controls clear-✕ / ⌘K visibility)
+	const hasSearchText = $derived(searchValue.length > 0);
 </script>
 
 <svelte:window onkeydown={handleGlobalKeydown} />
 
 <!--
-	Aurora topbar (spec §5): ONE row — year switcher left, search + user menu
+	Aurora topbar (spec §5): ONE row — year menu left, search + user menu
 	right (desktop); year pill left + avatar right on one baseline (mobile,
 	no global search at launch). Glass is allowed: small fixed surface
 	(spec §2 blur discipline). Breadcrumbs are gone — PageHeader's mobile
@@ -284,20 +277,11 @@
 <header
 	class="safe-top sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-hairline surface-glass px-4 lg:px-6"
 >
-	<!-- Year switcher (spec §5: leftmost on both devices) -->
+	<!-- Year menu (spec §5: leftmost on both devices) — compact dropdown,
+	     same on desktop and mobile (no more two-variant responsive switch) -->
 	{#if yearData().availableYears.length > 0 && yearData().selectedYear !== null}
-		<!-- Desktop variant (>= sm): SegmentedControl with one segment per year. -->
-		<div class="fdw-year-switcher-wrap hidden sm:block" data-fdw="year-switcher-wrap">
-			<YearSwitcher
-				years={yearData().availableYears}
-				selected={yearData().yearScope ?? yearData().selectedYear!}
-				onChange={handleYearChange}
-				{allowAllYears}
-			/>
-		</div>
-		<!-- Mobile variant (< sm): native select picker, same ?year= contract. -->
-		<div class="sm:hidden">
-			<MobileYearPicker
+		<div data-fdw="year-switcher-wrap">
+			<YearMenu
 				years={yearData().availableYears}
 				selected={yearData().yearScope ?? yearData().selectedYear!}
 				onChange={handleYearChange}
@@ -348,12 +332,41 @@
 			onblur={handleBlur}
 			onkeydown={handleKeydown}
 		/>
-		<kbd
-			class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[10px] font-medium text-muted-foreground"
-			aria-hidden="true"
-		>
-			⌘K
-		</kbd>
+
+		<!-- Trailing affordances: ⌘K hint (empty) XOR clear-✕ button (has text) -->
+		{#if hasSearchText}
+			<!-- Clear button: ≥32px tap target, vertically centered, right-aligned -->
+			<button
+				type="button"
+				onclick={clearSearch}
+				class="absolute inset-y-0 right-2 flex h-full min-w-[2rem] items-center justify-center px-1 text-ink-500 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+				aria-label="Suche zurücksetzen"
+				tabindex="-1"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					width="14"
+					height="14"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
+				>
+					<line x1="18" y1="6" x2="6" y2="18" />
+					<line x1="6" y1="6" x2="18" y2="18" />
+				</svg>
+			</button>
+		{:else}
+			<kbd
+				class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[10px] font-medium text-muted-foreground"
+				aria-hidden="true"
+			>
+				⌘K
+			</kbd>
+		{/if}
 
 		<!-- Results / recents popover -->
 		{#if searchOpen}

@@ -1,11 +1,9 @@
 /**
- * C2 cycle 3 — mobile <sm year-picker variant.
+ * C2 — mobile year switcher (compact dropdown, all viewports).
  *
- * At iPhone-12 width (390x844), the desktop SegmentedControl is hidden
- * (`hidden sm:block`) — without a mobile alternative there is no way to
- * switch Buchungsjahr on a phone. This spec asserts that a compact year
- * picker is visible and tappable on iPhone-12 emulation, and that
- * selecting a year updates the URL to `?year=NNNN`.
+ * The old two-variant approach (SegmentedControl ≥sm / native select <sm) has
+ * been replaced by a single compact YearMenu dropdown that works on every
+ * viewport. This spec validates the behaviour at iPhone-12 width (390px).
  *
  * Resolves: C2-4 (julia P1 + UX-1 blocker).
  *
@@ -53,8 +51,8 @@ async function signIn(page: import("@playwright/test").Page): Promise<void> {
   ]);
 }
 
-test.describe.serial("@phase-2 @overnight-c2 mobile year picker (C2-4)", () => {
-  test("mobile <sm year-picker is visible + selecting a year updates the URL", async ({
+test.describe.serial("@phase-2 @overnight-c2 mobile year menu (C2-4)", () => {
+  test("compact year menu trigger is visible at iPhone-12 width + selecting a year updates the URL", async ({
     page,
   }) => {
     await signIn(page);
@@ -62,32 +60,38 @@ test.describe.serial("@phase-2 @overnight-c2 mobile year picker (C2-4)", () => {
     await page.goto("/app");
     if (page.url().includes("/sign-in")) test.skip();
 
-    // (1) Mobile picker is visible at iPhone-12 width.
-    const mobile = page.locator('[data-fdw="year-switcher-mobile"]');
-    await expect(mobile).toBeVisible();
+    // (1) The compact year menu trigger is visible at iPhone-12 width.
+    //     It is no longer hidden on mobile — the single dropdown works on all
+    //     viewports (no hidden sm:block / sm:hidden split anymore).
+    const trigger = page.locator('[data-fdw="year-menu-trigger"]');
+    await expect(trigger).toBeVisible();
 
-    // (2) The desktop SegmentedControl wrap is hidden at iPhone-12 width.
-    // Use `toBeHidden` rather than `toHaveCount(0)` because the markup
-    // remains in the DOM, just hidden via `hidden sm:block`.
-    const desktop = page.locator('[data-fdw="year-switcher-wrap"]');
-    if ((await desktop.count()) > 0) {
-      await expect(desktop.first()).toBeHidden();
-    }
+    // (2) The old wide MobileYearPicker native select is gone.
+    //     The data-fdw="year-switcher-mobile" selector should no longer exist.
+    const oldMobilePicker = page.locator('[data-fdw="year-switcher-mobile"]');
+    await expect(oldMobilePicker).toHaveCount(0);
 
-    // (3) The picker exposes a native <select> with at least one option.
-    const select = mobile.locator("select");
-    await expect(select).toBeVisible();
-    const options = await select
-      .locator("option")
-      .evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value));
-    expect(options.length).toBeGreaterThan(0);
+    // (3) Opening the dropdown shows year options.
+    //     bits-ui DropdownMenuRadioItem renders as role="menuitemradio".
+    await trigger.click();
+    const radioItems = page.locator('[role="menuitemradio"]');
+    await expect(radioItems.first()).toBeVisible({ timeout: 5_000 });
+    const count = await radioItems.count();
+    expect(count).toBeGreaterThan(0);
 
     // (4) Selecting a year updates ?year= in the URL.
-    const targetValue = options[0]!;
-    await select.selectOption(targetValue);
-    await page.waitForURL(new RegExp(`year=${targetValue}`), {
-      timeout: 5_000,
-    });
-    expect(page.url()).toMatch(new RegExp(`year=${targetValue}`));
+    //     Click the first radio item (newest year = current default).
+    const firstItem = radioItems.first();
+    const targetLabel = await firstItem.getAttribute("aria-label");
+    // Extract year number from aria-label (e.g. "2026" or "2026 (festgeschrieben)")
+    const yearMatch = targetLabel?.match(/\d{4}/);
+    if (yearMatch) {
+      const targetYear = yearMatch[0];
+      await firstItem.click();
+      await page.waitForURL(new RegExp(`year=${targetYear}`), {
+        timeout: 5_000,
+      });
+      expect(page.url()).toMatch(new RegExp(`year=${targetYear}`));
+    }
   });
 });
