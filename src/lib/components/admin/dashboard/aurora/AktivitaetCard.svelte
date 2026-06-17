@@ -76,9 +76,12 @@
 			{/if}
 		</div>
 		{#if !expanded && entries.length > MOBILE_CAP}
+			<!-- 7–8 entries are fully visible on desktop (DESKTOP_CAP=8), so the
+			     expander is mobile-only there; >8 it shows on both viewports. -->
 			<button
 				type="button"
-				class="mt-1 w-full rounded-[10px] py-2 text-left text-[13px] font-medium text-primary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
+				class={'mt-1 w-full rounded-[10px] py-2 text-left text-[13px] font-medium text-primary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) ' +
+					(entries.length > DESKTOP_CAP ? '' : 'md:hidden')}
 				onclick={() => (expanded = true)}
 			>
 				Alle Aktivitäten →

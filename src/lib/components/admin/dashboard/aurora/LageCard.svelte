@@ -54,7 +54,14 @@
 	);
 </script>
 
-<section class="rounded-2xl bg-white p-4 shadow-(--shadow-card)" aria-label="Lage">
+<section class="rounded-2xl bg-white p-4 shadow-(--shadow-card)" aria-labelledby="lage-heading">
+	<!-- Desktop-only: gives the card the same header rhythm as the Aufgaben
+	     column. Hidden on mobile (single stack) so it doesn't eat the
+	     above-the-fold budget; aria-labelledby still resolves the name. -->
+	<h2 id="lage-heading" class="mb-3 hidden text-sm font-semibold tracking-tight text-ink-900 md:block">
+		Lage
+	</h2>
+
 	<!-- (1) Beiträge — anchored to the Berlin year, NOT the year switcher -->
 	<div class={dimmed ? 'opacity-60' : ''} data-testid="lage-beitraege">
 		<div class="flex items-baseline justify-between">

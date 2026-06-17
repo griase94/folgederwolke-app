@@ -97,16 +97,16 @@
 	</div>
 
 	{#snippet stat(label: string, cents: number, count: number, testid: string)}
-		<div class="flex flex-col" data-testid={testid}>
+		<div class="flex min-w-0 flex-col" data-testid={testid}>
 			<dt class="text-xs font-medium text-ink-500">{label}</dt>
-			<dd class="mt-0.5 text-lg font-semibold tabular-nums text-ink-900">
+			<dd class="mt-0.5 truncate text-base font-semibold tabular-nums text-ink-900 md:text-lg">
 				{formatMoney(cents)}
 			</dd>
 			<dd class="text-xs text-ink-500">{buchungenLabel(count)}</dd>
 		</div>
 	{/snippet}
 
-	<dl class="grid grid-cols-3 gap-6 md:gap-10">
+	<dl class="grid grid-cols-3 gap-3 md:gap-10">
 		{@render stat('Einnahmen', einnahmenCents, einnahmenCount, 'stand-stat-einnahmen')}
 		{@render stat('Spenden', spendenCents, spendenCount, 'stand-stat-spenden')}
 		{@render stat('Ausgaben', -ausgabenCents, ausgabenCount, 'stand-stat-ausgaben')}

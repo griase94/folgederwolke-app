@@ -6,6 +6,7 @@
    * fehlt" chip linking to the member (or the expense for extern payers).
    * "Als erstattet markieren" posts the absorbed ?/bulk-mark-erstattet.
    */
+  import { tick } from 'svelte';
   import { page } from '$app/state';
   import PageShell from '$lib/components/layout/PageShell.svelte';
   import PageHeader from '$lib/components/layout/PageHeader.svelte';
@@ -41,9 +42,12 @@
   const totalCents = $derived(data.claims.reduce((s, c) => s + c.betragCents, 0));
 
   // ── copy-to-clipboard with checkmark morph (~1.2s) ────────────────────────
+  // The morph is purely visual; copyAnnounce drives an sr-only aria-live region
+  // so screen-reader users hear "{label} kopiert" on success too.
   let copiedKey = $state<string | null>(null);
+  let copyAnnounce = $state('');
   let copyTimer: ReturnType<typeof setTimeout> | undefined;
-  async function copy(key: string, value: string) {
+  async function copy(key: string, value: string, label: string) {
     try {
       await navigator.clipboard.writeText(value);
     } catch {
@@ -51,9 +55,14 @@
       return;
     }
     copiedKey = key;
+    copyAnnounce = `${label} kopiert`;
     clearTimeout(copyTimer);
     copyTimer = setTimeout(() => (copiedKey = null), 1200);
   }
+
+  // The empty-state paragraph (tabindex=-1) is the focus landing spot once the
+  // last claim is marked erstattet — keeps keyboard/SR focus on the page.
+  let emptyEl = $state<HTMLParagraphElement | null>(null);
 
   // ── mark erstattet (absorbed bulk action; per-row posts a single id) ──────
   interface BulkSummary {
@@ -99,6 +108,14 @@
         const payload = result.data as { summary?: BulkSummary };
         if (payload.summary) summarize(payload.summary);
         await invalidateAll();
+        // The marked row(s) vanish from the list → the button that had focus is
+        // gone. Re-home focus: the next remaining "markieren" button, else the
+        // empty-state line. Without this, focus drops to <body>.
+        await tick();
+        const nextBtn = document.querySelector<HTMLElement>(
+          '[data-testid="mark-erstattet"]'
+        );
+        (nextBtn ?? emptyEl)?.focus();
       } else if (result.type === 'failure') {
         toast.error(
           ((result.data as { error?: string } | undefined)?.error) ?? 'Fehler beim Markieren'
@@ -121,7 +138,7 @@
   <button
     type="button"
     data-testid={`copy-${field}`}
-    onclick={() => copy(key, value)}
+    onclick={() => copy(key, value, label)}
     aria-label={`${label} kopieren`}
     class="inline-flex h-11 items-center gap-1.5 rounded-full border border-(--hairline) bg-white px-3 text-[13px] font-medium text-ink-700 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-9"
   >
@@ -172,8 +189,16 @@
     {/snippet}
   </PageHeader>
 
+  <div aria-live="polite" class="sr-only" data-testid="copy-live">{copyAnnounce}</div>
+
   {#if data.claims.length === 0}
-    <p class="mt-8 text-sm text-ink-500">Keine freigegebenen Erstattungen — alles überwiesen.</p>
+    <p
+      bind:this={emptyEl}
+      tabindex="-1"
+      class="mt-8 text-sm text-ink-500 focus-visible:outline-none"
+    >
+      Keine freigegebenen Erstattungen — alles überwiesen.
+    </p>
   {:else}
     <ul class="mt-4 flex flex-col gap-3">
       {#each data.claims as claim (claim.id)}
@@ -188,41 +213,48 @@
               {formatMoney(claim.betragCents)}
             </p>
           </div>
-          <div class="mt-3 flex flex-wrap items-center gap-2">
-            {#each COPY_FIELD_ORDER as field (field)}
-              {#if field === 'iban' && !iban}
-                <button
-                  type="button"
-                  disabled
-                  data-testid="copy-iban-disabled"
-                  class="inline-flex h-11 cursor-not-allowed items-center rounded-full border border-(--hairline) px-3 text-[13px] text-ink-300 md:h-9"
-                >IBAN</button>
-              {:else}
-                {@render copyBtn(
-                  claim.id,
-                  field,
-                  COPY_FIELD_LABELS[field],
-                  claimCopyValue(claim, field)
-                )}
+          <!-- Mobile: copy chips group on top, the commit button on its own
+               full-width row below (clear separation of "prepare" vs "commit").
+               Desktop: one row, commit button pushed right. -->
+          <div class="mt-3 flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
+            <div class="flex flex-wrap items-center gap-2">
+              {#each COPY_FIELD_ORDER as field (field)}
+                {#if field === 'iban' && !iban}
+                  <button
+                    type="button"
+                    disabled
+                    data-testid="copy-iban-disabled"
+                    aria-label="IBAN fehlt – keine IBAN zum Kopieren hinterlegt"
+                    title="Keine IBAN hinterlegt"
+                    class="inline-flex h-11 cursor-not-allowed items-center rounded-full border border-(--hairline) px-3 text-[13px] text-ink-300 md:h-9"
+                  >IBAN</button>
+                {:else}
+                  {@render copyBtn(
+                    claim.id,
+                    field,
+                    COPY_FIELD_LABELS[field],
+                    claimCopyValue(claim, field)
+                  )}
+                {/if}
+              {/each}
+              {#if !iban}
+                <!-- eslint-disable svelte/no-navigation-without-resolve -->
+                <a
+                  data-testid="iban-fehlt-chip"
+                  href={claim.bezahltVonMemberId
+                    ? `/app/mitglieder/${claim.bezahltVonMemberId}`
+                    : `/app/ausgaben/${claim.id}`}
+                  class="inline-flex items-center rounded-full bg-severity-warn/10 px-2.5 py-1 text-xs font-medium text-severity-warn-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
+                >IBAN fehlt</a>
+                <!-- eslint-enable svelte/no-navigation-without-resolve -->
               {/if}
-            {/each}
-            {#if !iban}
-              <!-- eslint-disable svelte/no-navigation-without-resolve -->
-              <a
-                data-testid="iban-fehlt-chip"
-                href={claim.bezahltVonMemberId
-                  ? `/app/mitglieder/${claim.bezahltVonMemberId}`
-                  : `/app/ausgaben/${claim.id}`}
-                class="inline-flex items-center rounded-full bg-severity-warn/10 px-2.5 py-1 text-xs font-medium text-severity-warn-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
-              >IBAN fehlt</a>
-              <!-- eslint-enable svelte/no-navigation-without-resolve -->
-            {/if}
+            </div>
             <button
               type="button"
               data-testid="mark-erstattet"
               disabled={posting}
               onclick={() => markErstattet([claim.id])}
-              class="ml-auto inline-flex h-11 items-center rounded-full bg-primary-strong px-4 text-[13px] font-semibold text-white disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:h-9"
+              class="inline-flex h-11 w-full items-center justify-center rounded-full bg-primary-strong px-4 text-[13px] font-semibold text-white disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:ml-auto md:h-9 md:w-auto md:justify-start"
             >
               Als erstattet markieren
             </button>

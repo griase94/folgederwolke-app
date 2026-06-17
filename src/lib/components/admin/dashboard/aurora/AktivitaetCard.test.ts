@@ -49,6 +49,19 @@ describe("AktivitaetCard", () => {
     ).toBeNull();
   });
 
+  it("expander is mobile-only at 7-8 entries (desktop shows all 8, nothing to reveal)", () => {
+    render(AktivitaetCard, { props: { entries: entries(8) } });
+    const btn = screen.getByRole("button", { name: /Alle Aktivitäten/ });
+    // visible on mobile, hidden on desktop where the full 8 already render
+    expect(btn.className).toContain("md:hidden");
+  });
+
+  it("expander shows on both viewports when more than 8 entries", () => {
+    render(AktivitaetCard, { props: { entries: entries(9) } });
+    const btn = screen.getByRole("button", { name: /Alle Aktivitäten/ });
+    expect(btn.className).not.toContain("md:hidden");
+  });
+
   it("no expander and no fade when 6 or fewer entries", () => {
     const { container } = render(AktivitaetCard, {
       props: { entries: entries(4) },

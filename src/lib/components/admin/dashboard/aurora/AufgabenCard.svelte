@@ -114,7 +114,8 @@
 						{#snippet chipIcon()}{@render icon(task)}{/snippet}
 					</TaskRow>
 					{#if task.subline}
-						<p class="-mt-0.5 mb-1 pl-[49px] text-xs text-ink-500">{task.subline}</p>
+						<!-- align under TaskRow title: px-1(4)+rail(3)+gap(10)+chip(26)+gap(10)=53px -->
+						<p class="-mt-0.5 mb-1 pl-[53px] text-xs text-ink-500">{task.subline}</p>
 					{/if}
 				</li>
 			{/each}
