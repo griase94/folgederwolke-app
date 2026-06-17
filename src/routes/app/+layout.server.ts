@@ -16,6 +16,14 @@
  *   - `currentYear`        — Berlin-TZ current Buchungsjahr (default selection).
  *   - `festgeschriebenBis` — for downstream gate checks (settings cache).
  *
+ * Cookie fallback (fdw_year):
+ *   When the URL has no `?year=` param, we read the `fdw_year` cookie (written
+ *   by Topbar.svelte before goto()) and use it as the year selection, validated
+ *   against availableYears. This eliminates the client-side flicker that the
+ *   old localStorage $effect caused: the server now resolves the correct year
+ *   on the very first SSR render without a post-hydration goto().
+ *   Precedence: URL param > cookie > currentYear.
+ *
  * Resolves: VB-002 (no year switching), JB-001 (no global year filter),
  * JB-006 (?year ignored on dashboard), UX-010 (year was implicit).
  *
@@ -34,6 +42,8 @@ import { ALL_YEARS, currentBuchungsjahr } from "$lib/domain/year.js";
 import { resolveLayoutYear } from "$lib/server/domain/layout-year.js";
 import { countOpenAuslagen } from "$lib/server/domain/inbox-count.js";
 
+const YEAR_COOKIE = "fdw_year";
+
 async function readFestgeschriebenBis(): Promise<number | null> {
   const db = getDb();
   const rows = await db.execute<{ value: unknown }>(
@@ -50,7 +60,7 @@ async function readFestgeschriebenBis(): Promise<number | null> {
   return null;
 }
 
-export const load: LayoutServerLoad = async ({ locals, url }) => {
+export const load: LayoutServerLoad = async ({ locals, url, cookies }) => {
   // locals.session is guaranteed non-null here because hooks.server.ts
   // redirects unauthenticated requests before this runs.
   const currentYear = currentBuchungsjahr();
@@ -74,8 +84,35 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
   // is empty (fresh DB), the clamp is a pass-through — that matches the helper
   // contract and keeps existing layout-in-empty-fixture tests stable.
   const availableYearNumbers = availableYears.map((y) => y.year);
+
+  // Cookie fallback: when no ?year= param is in the URL, check fdw_year cookie.
+  // Validated: must be a number in availableYears (prevents stale values from
+  // landing the user on a nonexistent year). ?year= in the URL always wins.
+  const hasUrlYearParam = url.searchParams.has("year");
+  let effectiveSearchParams = url.searchParams;
+
+  if (!hasUrlYearParam) {
+    const cookieRaw = cookies.get(YEAR_COOKIE);
+    if (cookieRaw && cookieRaw !== ALL_YEARS) {
+      const cookieYear = Number.parseInt(cookieRaw, 10);
+      if (
+        Number.isFinite(cookieYear) &&
+        availableYearNumbers.includes(cookieYear)
+      ) {
+        // Inject the cookie value as a synthetic ?year= param
+        effectiveSearchParams = new URLSearchParams(url.searchParams);
+        effectiveSearchParams.set("year", String(cookieYear));
+      }
+    } else if (cookieRaw === ALL_YEARS) {
+      // Cookie holds "all" — inject it. The list routes will preserve it;
+      // non-list routes will ignore it via their own scope handling.
+      effectiveSearchParams = new URLSearchParams(url.searchParams);
+      effectiveSearchParams.set("year", ALL_YEARS);
+    }
+  }
+
   const yearScope = resolveLayoutYear(
-    url.searchParams,
+    effectiveSearchParams,
     currentYear,
     availableYearNumbers,
   );
