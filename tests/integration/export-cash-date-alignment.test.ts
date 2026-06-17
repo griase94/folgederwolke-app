@@ -28,8 +28,14 @@ import {
   loadEurAggregatesForPdf,
   loadEurWorkspaceData,
 } from "$lib/server/eur/load.js";
-import { listTransactions } from "$lib/server/domain/transactions.js";
+import { listTransaktionenFeedPage } from "$lib/server/domain/transactions.js";
+import { parseFilterState } from "$lib/domain/transaction-filters.js";
 import type { EurRow } from "$lib/server/domain/eur.js";
+
+/** Empty feed filter state — the Buchungsliste/CSV lane passes no filters. */
+function emptyFeedState() {
+  return parseFilterState("transaktionen", new URLSearchParams());
+}
 
 const DATABASE_URL = process.env["DATABASE_URL"] ?? "";
 const DIRECT_DATABASE_URL = process.env["DIRECT_DATABASE_URL"] ?? "";
@@ -296,38 +302,15 @@ describe.skipIf(!dbConfigured)(
       expect(expBlock).toMatch(new RegExp(`<Datum>${CASH_DATE}</Datum>`));
     });
 
-    it("listTransactions month filter buckets by the cash month, not gebucht_am month", async () => {
-      // Pivot: cash 2095-12-20, gebucht 2096-01-08. Year filter = 2095 (cash
-      // year). The month filter must align to the CASH month (12), NOT the
-      // gebucht_am month (1) — else a month=12 drill-down would wrongly exclude
-      // it and a month=1 drill-down would wrongly include it.
-      const dec = await listTransactions({
-        year: CASH_YEAR,
-        month: 12,
-        limit: 2000,
-      });
-      expect(
-        dec.rows.some((r) => r.businessId === `E-${CASH_YEAR}-940001`),
-      ).toBe(true);
-      expect(
-        dec.rows.some((r) => r.businessId === `A-${CASH_YEAR}-940001`),
-      ).toBe(true);
+    // Aurora slice 5: the deprecated listTransactions() (and its month filter) is deleted. Cash-month bucketing remains covered by the EÜR monthly-trendline test below; the unified feed has no month filter.
 
-      const jan = await listTransactions({
+    it("transactions CSV (via listTransaktionenFeedPage) emits the cash date as Datum", async () => {
+      const { rows } = await listTransaktionenFeedPage({
+        state: emptyFeedState(),
         year: CASH_YEAR,
-        month: 1,
-        limit: 2000,
+        limit: "all",
+        offset: 0,
       });
-      expect(
-        jan.rows.some((r) => r.businessId === `E-${CASH_YEAR}-940001`),
-      ).toBe(false);
-      expect(
-        jan.rows.some((r) => r.businessId === `A-${CASH_YEAR}-940001`),
-      ).toBe(false);
-    });
-
-    it("transactions CSV (via listTransactions) emits the cash date as Datum", async () => {
-      const { rows } = await listTransactions({ year: CASH_YEAR, limit: 2000 });
       const inc = rows.find((r) => r.businessId === `E-${CASH_YEAR}-940001`);
       const exp = rows.find((r) => r.businessId === `A-${CASH_YEAR}-940001`);
       expect(inc).toBeDefined();
@@ -384,10 +367,12 @@ describe.skipIf(!dbConfigured)(
         expect(d <= `${BOUNDARY_BERLIN_YEAR}-12-31`).toBe(true);
       }
 
-      // The transactions CSV path (listTransactions) must agree.
-      const { rows } = await listTransactions({
+      // The transactions CSV path (listTransaktionenFeedPage) must agree.
+      const { rows } = await listTransaktionenFeedPage({
+        state: emptyFeedState(),
         year: BOUNDARY_BERLIN_YEAR,
-        limit: 2000,
+        limit: "all",
+        offset: 0,
       });
       const incRow = rows.find(
         (r) => r.businessId === `E-${BOUNDARY_BERLIN_YEAR}-950001`,

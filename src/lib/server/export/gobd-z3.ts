@@ -46,7 +46,7 @@ function berlinYmd(d: Date | string | null | undefined): string {
  * (= relevanz_datum) when present, else the Berlin-local date of gebucht_am.
  * Migration 0034 selects rows into a fiscal year by year_of_buchung =
  * COALESCE(<cash>, year_for_booking(gebucht_am)) — Europe/Berlin. The exporting
- * loaders (load.ts / listTransactions) already thread relevanzDatum as
+ * loaders (load.ts / listTransaktionenFeedPage) already thread relevanzDatum as
  * COALESCE(<cash>, (gebucht_am AT TIME ZONE 'Europe/Berlin')::date), so this is
  * normally a non-null bare YYYY-MM-DD and the fallback below is a defensive
  * belt. It MUST stay Berlin-local (NOT toISOString/UTC): a year-boundary

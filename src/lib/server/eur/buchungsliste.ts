@@ -2,7 +2,7 @@
  * Buchungsliste tab — filter + sort helpers (pure, no DB).
  *
  * Consumed by /app/jahresabschluss/[year]/buchungsliste/+page.server.ts which
- * loads the year-scoped rows via existing listTransactions(), maps them to
+ * loads the year-scoped rows via listTransaktionenFeedPage(), maps them to
  * BuchungslisteRow, then applies these helpers in-process.
  *
  * For a ~1k-row year this keeps the SQL simple (single year filter) and
