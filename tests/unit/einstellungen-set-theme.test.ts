@@ -36,6 +36,8 @@ describe("einstellungen ?/setTheme action", () => {
     expect(sets[0]!.name).toBe(THEME_COOKIE);
     expect(sets[0]!.value).toBe("aurora");
     expect(sets[0]!.opts["path"]).toBe("/");
+    expect(sets[0]!.opts["sameSite"]).toBe("lax");
+    expect(sets[0]!.opts["maxAge"]).toBe(60 * 60 * 24 * 365);
   });
 
   it("rejects an unregistered theme id with 422 and sets no cookie", async () => {
