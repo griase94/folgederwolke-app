@@ -44,6 +44,13 @@ const cashflowFixture = {
     wirtschaftlich: 250_000,
     vermoegen: 50_000,
   },
+  // Aurora triplet fields (slice 4) — not consumed by this component but
+  // required by the CashflowOverview interface.
+  einnahmenExclSpendenYtdCents: 1_200_000,
+  spendenCashYtdCents: 300_000,
+  einnahmenBuchungenCount: 15,
+  ausgabenBuchungenCount: 8,
+  spendenBuchungenCount: 3,
 };
 
 describe("CashflowOverviewSection (cycle 2)", () => {
