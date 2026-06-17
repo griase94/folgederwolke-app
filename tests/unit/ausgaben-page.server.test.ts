@@ -145,26 +145,11 @@ function makeActionEvent(
   };
 }
 
-async function runAction(
-  name: "bulk-mark-erstattet" | "sepa-mark-erstattet",
-  event: ActionEvent,
-): Promise<unknown> {
-  const fn = (
-    actions as unknown as Record<string, (e: ActionEvent) => Promise<unknown>>
-  )[name]!;
-  return fn(event);
-}
-
 beforeEach(() => {
   listAusgabenPageMock.mockClear();
   listAusgabenKpiMock.mockClear();
   listApprovedPendingErstattetMock.mockClear();
   listKategorieOptionsMock.mockClear();
-  markExpenseErstattetMock.mockClear();
-  markExpenseErstattetMock.mockResolvedValue({
-    ok: true,
-    alreadyErstattet: false,
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -194,15 +179,14 @@ describe("/app/ausgaben load (Phase 4)", () => {
     expect(listAusgabenKpiMock).toHaveBeenCalledWith(ALL_YEARS);
   });
 
-  it("loads the bulk pool (listApprovedPendingErstattet) + zahlungsarten and returns them", async () => {
-    const data = (await load(makeLoadEvent("", PARENT_2025))) as {
-      approvedPending: { id: string }[];
-      zahlungsarten: { id: string }[];
-    };
-    expect(listApprovedPendingErstattetMock).toHaveBeenCalledTimes(1);
-    expect(data.approvedPending).toHaveLength(1);
-    expect(data.approvedPending[0]!.id).toBe("exp-open-1");
-    expect(data.zahlungsarten).toHaveLength(1);
+  it("no longer loads the bulk pool — the Überweisungsliste route owns it (Aurora slice 4)", async () => {
+    const data = (await load(makeLoadEvent("", PARENT_2025))) as Record<
+      string,
+      unknown
+    >;
+    expect(listApprovedPendingErstattetMock).not.toHaveBeenCalled();
+    expect("approvedPending" in data).toBe(false);
+    expect("zahlungsarten" in data).toBe(false);
   });
 
   it("still parses the status enum filter + passes memberOptions: [] (bezahltVon is an enum)", async () => {
@@ -221,155 +205,5 @@ describe("/app/ausgaben load (Phase 4)", () => {
       { value: "Verpflegung", label: "Verpflegung" },
     ]);
     expect(data.memberOptions).toEqual([]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// bulk actions — per-row result array (Task 3)
-// ---------------------------------------------------------------------------
-
-describe("/app/ausgaben ?/bulk-mark-erstattet (Phase 4)", () => {
-  it("marks N expenses erstattet (one markExpenseErstattet per row) and returns a per-row result array", async () => {
-    const event = makeActionEvent({
-      expenseIds: "exp-1,exp-2,exp-3",
-      chosenDate: "2026-05-10",
-      zahlungsartId: "11111111-1111-4111-8111-111111111111",
-    });
-    const result = (await runAction("bulk-mark-erstattet", event)) as {
-      ok: boolean;
-      results: { id: string; status: string }[];
-    };
-    expect(markExpenseErstattetMock).toHaveBeenCalledTimes(3);
-    expect(result.ok).toBe(true);
-    expect(result.results).toHaveLength(3);
-    expect(result.results.every((r) => r.status === "erstattet")).toBe(true);
-    expect(result.results.map((r) => r.id)).toEqual([
-      "exp-1",
-      "exp-2",
-      "exp-3",
-    ]);
-  });
-
-  it("reports partial failure per row (festgeschrieben row → status, not a thrown error)", async () => {
-    // Row 2 is festgeschrieben (409) — the others succeed. The action must
-    // surface a per-row status, NOT collapse to a single fail(409, "a; b").
-    markExpenseErstattetMock.mockImplementation(
-      async (input: { expenseId: string }) =>
-        input.expenseId === "exp-2"
-          ? {
-              ok: false as const,
-              status: 409,
-              error: "Jahr 2025 ist festgeschrieben",
-            }
-          : { ok: true as const, alreadyErstattet: false },
-    );
-
-    const event = makeActionEvent({
-      expenseIds: "exp-1,exp-2,exp-3",
-      chosenDate: "2026-05-10",
-      zahlungsartId: "11111111-1111-4111-8111-111111111111",
-    });
-    const result = (await runAction("bulk-mark-erstattet", event)) as {
-      ok: boolean;
-      results: { id: string; status: string }[];
-    };
-    expect(result.results).toHaveLength(3);
-    const byId = Object.fromEntries(
-      result.results.map((r) => [r.id, r.status]),
-    );
-    expect(byId["exp-1"]).toBe("erstattet");
-    expect(byId["exp-2"]).toBe("festgeschrieben");
-    expect(byId["exp-3"]).toBe("erstattet");
-  });
-
-  it("returns a structured per-row summary (erstattet/festgeschrieben/bereitsBezahlt/notFound/fehler buckets, §8)", async () => {
-    markExpenseErstattetMock.mockImplementation(
-      async (input: { expenseId: string }) => {
-        switch (input.expenseId) {
-          case "fest-1":
-            return {
-              ok: false as const,
-              status: 409,
-              error: "Jahr 2025 ist festgeschrieben",
-            };
-          case "gone-1":
-            return {
-              ok: false as const,
-              status: 404,
-              error: "Buchung nicht gefunden",
-            };
-          case "bereits-1":
-            return { ok: true as const, alreadyErstattet: true };
-          case "boom-1":
-            return { ok: false as const, status: 500, error: "DB-Fehler" };
-          default:
-            return { ok: true as const, alreadyErstattet: false };
-        }
-      },
-    );
-
-    const event = makeActionEvent({
-      expenseIds: "ok-1,fest-1,gone-1,bereits-1,boom-1",
-      chosenDate: "2026-05-10",
-      zahlungsartId: "11111111-1111-4111-8111-111111111111",
-    });
-    const result = (await runAction("bulk-mark-erstattet", event)) as {
-      ok: boolean;
-      summary: {
-        erstattet: string[];
-        festgeschrieben: string[];
-        bereitsBezahlt: string[];
-        notFound: string[];
-        fehler: { id: string; error: string }[];
-      };
-    };
-    expect(result.summary.erstattet).toEqual(["ok-1"]);
-    expect(result.summary.festgeschrieben).toEqual(["fest-1"]);
-    expect(result.summary.notFound).toEqual(["gone-1"]);
-    expect(result.summary.bereitsBezahlt).toEqual(["bereits-1"]);
-    expect(result.summary.fehler).toEqual([
-      { id: "boom-1", error: "DB-Fehler" },
-    ]);
-    // A hard row error → ok:false (the toast warns); pure festgeschrieben/already
-    // partial outcomes stay ok:true (expected, not a failure).
-    expect(result.ok).toBe(false);
-  });
-
-  it("maps an already-reimbursed row to status 'bereits-erstattet'", async () => {
-    markExpenseErstattetMock.mockImplementation(
-      async (input: { expenseId: string }) =>
-        input.expenseId === "exp-2"
-          ? { ok: true as const, alreadyErstattet: true }
-          : { ok: true as const, alreadyErstattet: false },
-    );
-    const event = makeActionEvent({
-      expenseIds: "exp-1,exp-2",
-      chosenDate: "2026-05-10",
-      zahlungsartId: "11111111-1111-4111-8111-111111111111",
-    });
-    const result = (await runAction("bulk-mark-erstattet", event)) as {
-      results: { id: string; status: string }[];
-    };
-    const byId = Object.fromEntries(
-      result.results.map((r) => [r.id, r.status]),
-    );
-    expect(byId["exp-1"]).toBe("erstattet");
-    expect(byId["exp-2"]).toBe("bereits-erstattet");
-  });
-
-  it("rejects when not signed in", async () => {
-    const event = makeActionEvent(
-      {
-        expenseIds: "exp-1",
-        chosenDate: "2026-05-10",
-        zahlungsartId: "11111111-1111-4111-8111-111111111111",
-      },
-      null,
-    );
-    const result = (await runAction("bulk-mark-erstattet", event)) as {
-      status?: number;
-    };
-    expect(result.status).toBe(401);
-    expect(markExpenseErstattetMock).not.toHaveBeenCalled();
   });
 });

@@ -6,25 +6,21 @@
    * (`AusgabenRow`) with: an `AusgabenKpi` header pill snippet, the Ausgaben
    * `columns` (Datum, ID mono, Bezeichnung + Bezahlt-von subtitle, Bezahlt von,
    * Kategorie, the §13 Sphäre LEFT COLOR-RULE — a thin tone bar, not a filled
-   * badge —, Betrag right via Money, Status badge, chevron), and the bulk
-   * action wiring (BulkActionsBar + SEPA + post-SEPA modals — Task 3).
+   * badge —, Betrag right via Money, Status badge, chevron). Bulk Erstattung
+   * moved to /app/ausgaben/ueberweisungen (Aurora slice 4).
    */
   import { page } from "$app/stores";
   import TransactionListScaffold from "$lib/components/admin/transactions/TransactionListScaffold.svelte";
   import AusgabenKpi from "$lib/components/admin/transactions/ausgaben/AusgabenKpi.svelte";
   import { ausgabenColumns } from "$lib/components/admin/transactions/ausgaben/columns.js";
-  import BulkActionsBar from "$lib/components/admin/transactions/ausgaben/BulkActionsBar.svelte";
-  import SepaCopyModal from "$lib/components/admin/transactions/ausgaben/SepaCopyModal.svelte";
-  import PostSepaMarkErstattetModal from "$lib/components/admin/transactions/ausgaben/PostSepaMarkErstattetModal.svelte";
   import Money from "$lib/components/ui/money/money.svelte";
   import type { Sphere } from "$lib/domain/sphere.js";
   import { SPHERE_LABELS } from "$lib/domain/sphere.js";
   import { statusPresentation } from "$lib/domain/transaction-status.js";
   import type { AusgabenRow } from "$lib/server/domain/transactions.js";
-  import { deserialize, enhance } from "$app/forms";
+  import { enhance } from "$app/forms";
   import { invalidateAll } from "$app/navigation";
   import { toast } from "svelte-sonner";
-  import type { ActionResult } from "@sveltejs/kit";
   import type { PageData } from "./$types.js";
 
   let { data }: { data: PageData } = $props();
@@ -35,118 +31,6 @@
   let markPaidRowId = $state<string | null>(null);
   const today = new Date().toISOString().slice(0, 10);
   let markPaidDatum = $state(today);
-
-  // ── Bulk select + Als-bezahlt (Task 3) ────────────────────────────────────
-  // The bulk pool is `approvedPending` (member/extern rows awaiting Erstattung;
-  // Verein-direct rows are created already-erstattet and never appear). Bulk
-  // Als-bezahlt POSTs `?/bulk-mark-erstattet` (one markExpenseErstattet per row,
-  // each fires the SEPA-payout confirmation mail) and surfaces a PER-ROW summary
-  // toast ("9 erstattet, 1 festgeschrieben", spec §7.1).
-  let selectedIds = $state<string[]>([]);
-
-  /** Structured per-row bulk summary (§8) — mirrors the server's BulkSummary. */
-  interface BulkSummary {
-    erstattet: string[];
-    festgeschrieben: string[];
-    bereitsBezahlt: string[];
-    notFound: string[];
-    fehler: { id: string; error: string }[];
-  }
-
-  function toggleSelect(id: string) {
-    selectedIds = selectedIds.includes(id)
-      ? selectedIds.filter((x) => x !== id)
-      : [...selectedIds, id];
-  }
-
-  /** Render the structured per-row summary as a single German toast (§8). */
-  function summarize(summary: BulkSummary) {
-    const parts: string[] = [];
-    if (summary.erstattet.length)
-      parts.push(`${summary.erstattet.length} erstattet`);
-    if (summary.bereitsBezahlt.length)
-      parts.push(`${summary.bereitsBezahlt.length} bereits erstattet`);
-    if (summary.festgeschrieben.length)
-      parts.push(`${summary.festgeschrieben.length} festgeschrieben`);
-    if (summary.notFound.length)
-      parts.push(`${summary.notFound.length} nicht gefunden`);
-    if (summary.fehler.length)
-      parts.push(`${summary.fehler.length} fehlgeschlagen`);
-    const msg = parts.join(", ") || "Keine Auslagen verarbeitet";
-    const hadProblem =
-      summary.festgeschrieben.length > 0 ||
-      summary.notFound.length > 0 ||
-      summary.fehler.length > 0;
-    if (hadProblem) toast.warning(msg);
-    else toast.success(msg);
-  }
-
-  async function postBulk(
-    action: string,
-    ids: string[],
-    chosenDate: string,
-    zahlungsartId: string,
-  ) {
-    const fd = new FormData();
-    fd.set("expenseIds", ids.join(","));
-    fd.set("chosenDate", chosenDate);
-    fd.set("zahlungsartId", zahlungsartId);
-    const res = await fetch(action, { method: "POST", body: fd });
-    const result = deserialize(await res.text()) as ActionResult;
-    if (result.type === "success" && result.data) {
-      const payload = result.data as { summary?: BulkSummary };
-      if (payload.summary) summarize(payload.summary);
-      selectedIds = [];
-      await invalidateAll();
-    } else if (result.type === "failure") {
-      const err = (result.data as { error?: string } | undefined)?.error;
-      toast.error(err ?? "Fehler beim Markieren");
-    } else {
-      toast.error("Fehler beim Markieren");
-    }
-  }
-
-  function handleBulkMarkErstattet(
-    ids: string[],
-    chosenDate: string,
-    zahlungsartId: string,
-  ) {
-    void postBulk("?/bulk-mark-erstattet", ids, chosenDate, zahlungsartId);
-  }
-
-  // ── SEPA modals ────────────────────────────────────────────────────────────
-  let sepaModalOpen = $state(false);
-  let postSepaModalOpen = $state(false);
-  let sepaExpenseIds = $state<string[]>([]);
-  let sepaTotalCents = $state(0);
-
-  const sepaExpenses = $derived(
-    sepaExpenseIds.length > 0
-      ? data.approvedPending.filter((e) => sepaExpenseIds.includes(e.id))
-      : data.approvedPending,
-  );
-
-  function openSepaModal(ids: string[]) {
-    const approvedIds = new Set(data.approvedPending.map((e) => e.id));
-    sepaExpenseIds = ids.filter((id) => approvedIds.has(id));
-    sepaModalOpen = true;
-  }
-
-  function onSepaXmlCopied(ids: string[], totalCents: number) {
-    sepaModalOpen = false;
-    sepaExpenseIds = ids;
-    sepaTotalCents = totalCents;
-    postSepaModalOpen = true;
-  }
-
-  async function onPostSepaSuccess(count: number) {
-    postSepaModalOpen = false;
-    selectedIds = [];
-    await invalidateAll();
-    toast.success(
-      `${count} ${count === 1 ? "Auslage" : "Auslagen"} als erstattet markiert`,
-    );
-  }
 
   // ── Sphäre LEFT color-rule (§13) ──────────────────────────────────────────
   // A thin vertical tone bar keyed on the row's sphere — NOT the filled
@@ -373,18 +257,15 @@
   <!-- eslint-enable svelte/no-navigation-without-resolve -->
 {/snippet}
 
-<!-- ── Bulk action bar (rendered by the scaffold above the list) ───────────── -->
-{#snippet bulkBar()}
-  <BulkActionsBar
-    {selectedIds}
-    zahlungsarten={data.zahlungsarten}
-    onMarkErstattet={handleBulkMarkErstattet}
-    onSepaXml={openSepaModal}
-    onClear={() => (selectedIds = [])}
-  />
-{/snippet}
-
 <div class="container mx-auto max-w-6xl px-4 py-8 sm:px-6">
+  <div class="mb-3 flex justify-end">
+    <!-- eslint-disable svelte/no-navigation-without-resolve -->
+    <a
+      href="/app/ausgaben/ueberweisungen"
+      class="text-sm font-medium text-primary-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) rounded"
+    >Zur Überweisungsliste →</a>
+    <!-- eslint-enable svelte/no-navigation-without-resolve -->
+  </div>
   <TransactionListScaffold
     tab="ausgaben"
     rows={data.rows}
@@ -398,27 +279,9 @@
     memberOptions={data.memberOptions}
     {columns}
     {kpi}
-    bulk={{ selectedIds, onToggle: toggleSelect, bar: bulkBar }}
     detailHrefBase="/app/ausgaben"
     newLabel="Neue Ausgabe"
     newHref="/app/ausgaben/neu"
     rowAfter={rowAfterSnippet}
   />
 </div>
-
-<!-- ── SEPA modals (bulk payout flow) ──────────────────────────────────────── -->
-<SepaCopyModal
-  open={sepaModalOpen}
-  expenses={sepaExpenses}
-  onclose={() => (sepaModalOpen = false)}
-  oncopied={onSepaXmlCopied}
-/>
-
-<PostSepaMarkErstattetModal
-  open={postSepaModalOpen}
-  expenseIds={sepaExpenseIds}
-  totalCents={sepaTotalCents}
-  zahlungsarten={data.zahlungsarten}
-  onclose={() => (postSepaModalOpen = false)}
-  onsuccess={onPostSepaSuccess}
-/>
