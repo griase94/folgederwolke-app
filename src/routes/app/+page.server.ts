@@ -78,7 +78,7 @@ export const load: PageServerLoad = async ({ url, parent }) => {
   const [kpis, recentActivity, topProjekte, beitragsRows, layoutData] =
     await Promise.all([
       loadDashboardKpis(year),
-      loadRecentActivity(),
+      loadRecentActivity(30),
       topActiveProjects(5),
       beitragsQuery,
       parent(),

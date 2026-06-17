@@ -21,9 +21,9 @@ import {
   sum,
 } from "drizzle-orm";
 import { batchProjectFinancials } from "$lib/server/domain/projects.js";
+import { countOpenAuslagen } from "$lib/server/domain/inbox-count.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { getDb } from "$lib/server/db/index.js";
-import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
 import { donations } from "$lib/server/db/schema/donations.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
@@ -85,6 +85,21 @@ export interface CashflowOverview {
    */
   einnahmenBySphereCents: SphereSplit;
   ausgabenBySphereCents: SphereSplit;
+  /**
+   * Aurora triplet (spec §7 Stand strip): Einnahmen = income table + paid
+   * Mitgliedsbeiträge, EXCLUDING Spenden. Derived from the SAME cash-month
+   * buckets as einnahmenYtdCents, so the triplet reconciles with the hero
+   * Saldo by construction:
+   *   einnahmenExclSpendenYtdCents + spendenCashYtdCents === einnahmenYtdCents
+   *   saldoCents === einnahmenYtdCents − ausgabenYtdCents
+   */
+  einnahmenExclSpendenYtdCents: number;
+  /** Spenden YTD from the cash-bucketed series (zugewendet_am, supersedes-filtered). */
+  spendenCashYtdCents: number;
+  /** Year-scoped Buchungen counts for the stat-triplet micro-captions. */
+  einnahmenBuchungenCount: number; // income rows + paid beitrags rows
+  ausgabenBuchungenCount: number;
+  spendenBuchungenCount: number;
 }
 
 export interface DashboardKpis {
@@ -205,12 +220,15 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
     beitragPaidAgg,
     beitragTotalDueAgg,
     beitragExemptAgg,
+    incomeCountAgg,
+    beitragsPaidRowsAgg,
+    donationsCountAgg,
+    expensesCountAgg,
   ] = await Promise.all([
-    // 1. Open auslagen submissions (no decision yet)
-    db
-      .select({ value: count() })
-      .from(auslagenSubmissions)
-      .where(isNull(auslagenSubmissions.decidedAt)),
+    // 1. Open auslagen submissions (no decision yet) — shared helper so
+    //    the Prüfung tab badge and dashboard task row can never disagree
+    //    (FIX 8 from slice-4 plan: single-source via countOpenAuslagen()).
+    countOpenAuslagen(),
 
     // 2. Approved expenses not yet erstattet
     db
@@ -534,6 +552,49 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
           ),
         ),
       ),
+
+    // 23. Aurora — Einnahmen Buchungen count (income table, year-scoped,
+    //     supersedes-filtered — same predicates as the monthly sum query 7).
+    db
+      .select({ value: count() })
+      .from(income)
+      .where(
+        and(eq(income.yearOfBuchung, currentYear), isNull(income.supersedesId)),
+      ),
+
+    // 24. Aurora — paid Mitgliedsbeitrags rows (cash realized) for the year —
+    //     same predicates as the monthly sum query 9.
+    db
+      .select({ value: count() })
+      .from(memberBeitrags)
+      .where(
+        and(
+          eq(memberBeitrags.year, currentYear),
+          isNotNull(memberBeitrags.gezahltAm),
+        ),
+      ),
+
+    // 25. Aurora — Spenden Buchungen count (same predicates as query 8).
+    db
+      .select({ value: count() })
+      .from(donations)
+      .where(
+        and(
+          eq(donations.yearOfBuchung, currentYear),
+          isNull(donations.supersedesId),
+        ),
+      ),
+
+    // 26. Aurora — Ausgaben Buchungen count (same predicates as query 10).
+    db
+      .select({ value: count() })
+      .from(expenses)
+      .where(
+        and(
+          eq(expenses.yearOfBuchung, currentYear),
+          isNull(expenses.supersedesId),
+        ),
+      ),
   ]);
 
   // § 64 Abs. 3 AO Besteuerungsfreigrenze for wirtschaftlicher Geschäftsbetrieb:
@@ -571,7 +632,19 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
     (v, i) => v + (donationsMonthly[i] ?? 0) + (beitragsMonthly[i] ?? 0),
   );
   const ausgabenMonthlyCents = bucketByMonth(ausgabenMonthlyRows);
-  const einnahmenYtdCents = einnahmenMonthlyCents.reduce((a, b) => a + b, 0);
+  // Aurora triplet (spec §7) — derived BY CONSTRUCTION from the three cash-
+  // bucketed component series, so the Stand-strip triplet reconciles with the
+  // hero Saldo identically every time:
+  //   einnahmenExclSpendenYtdCents + spendenCashYtdCents === einnahmenYtdCents
+  // is true by definition, not by parallel re-derivation. The reduces run over
+  // the UN-clamped monthly arrays (clampMonthlyForCurrentYear is only for the
+  // displayed monthly trend series — NEVER applied to these YTD totals, exactly
+  // as the previous einnahmenMonthlyCents.reduce did).
+  const incomeYtdCents = incomeMonthly.reduce((a, b) => a + b, 0);
+  const beitragsYtdCents = beitragsMonthly.reduce((a, b) => a + b, 0);
+  const spendenCashYtdCents = donationsMonthly.reduce((a, b) => a + b, 0);
+  const einnahmenExclSpendenYtdCents = incomeYtdCents + beitragsYtdCents;
+  const einnahmenYtdCents = einnahmenExclSpendenYtdCents + spendenCashYtdCents;
   const ausgabenYtdCents = ausgabenMonthlyCents.reduce((a, b) => a + b, 0);
   const einnahmenLyYtdCents =
     Number(incomeLyRows[0]?.sumCents ?? 0) +
@@ -610,7 +683,7 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
   const ausgabenBySphereCents = bucketBySphere(expensesBySphereRows);
 
   return {
-    openAuslagenCount: openAuslagen[0]?.value ?? 0,
+    openAuslagenCount: openAuslagen,
     approvedNotErstattetCount: approvedNotErstattet[0]?.cnt ?? 0,
     approvedNotErstattetSumCents: BigInt(
       approvedNotErstattet[0]?.sumCents ?? 0,
@@ -642,6 +715,12 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
       openInvoicesCount: openInvoicesAgg[0]?.value ?? 0,
       einnahmenBySphereCents,
       ausgabenBySphereCents,
+      einnahmenExclSpendenYtdCents,
+      spendenCashYtdCents,
+      einnahmenBuchungenCount:
+        (incomeCountAgg[0]?.value ?? 0) + (beitragsPaidRowsAgg[0]?.value ?? 0),
+      ausgabenBuchungenCount: expensesCountAgg[0]?.value ?? 0,
+      spendenBuchungenCount: donationsCountAgg[0]?.value ?? 0,
     },
   };
 }
@@ -745,9 +824,15 @@ export async function topActiveProjects(limit = 5): Promise<TopProjectRow[]> {
 }
 
 /**
- * Load last 10 audit_log entries for the recent activity feed.
+ * Load recent audit_log entries for the activity feed.
+ *
+ * @param limit  Number of entries to return (default 10). Aurora Aktivität card
+ *               shows 8 on desktop + expander, so the dashboard passes 30 to
+ *               cover the full expand-all case without a second round-trip.
  */
-export async function loadRecentActivity(): Promise<RecentActivityEntry[]> {
+export async function loadRecentActivity(
+  limit = 10,
+): Promise<RecentActivityEntry[]> {
   const db = getDb();
 
   const rows = await db
@@ -761,7 +846,7 @@ export async function loadRecentActivity(): Promise<RecentActivityEntry[]> {
     })
     .from(auditLog)
     .orderBy(desc(auditLog.occurredAt))
-    .limit(10);
+    .limit(limit);
 
   return rows.map((row) => ({
     ...row,
