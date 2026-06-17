@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { enhance } from '$app/forms';
+	import { untrack } from 'svelte';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import type { PageData } from './$types.js';
@@ -12,7 +13,7 @@
 		form,
 		data
 	}: {
-		form: { ok?: boolean; message?: string; error?: string } | null;
+		form: { ok?: boolean; email?: string; message?: string; error?: string } | null;
 		data: PageData;
 	} = $props();
 
@@ -36,6 +37,61 @@
 
 	let pending = $state(false);
 	let emailValue = $state('');
+
+	// Submit-state machine (spec §6). The server answers every POST with the
+	// identical success message (anti-enumeration — see +page.server.ts) plus
+	// an echo of the caller's OWN email, so 'sent' is purely client view state.
+	// Without JS the page still degrades to the sent panel via form.ok on the
+	// full-page response — and form.email seeds sentTo so the panel shows the
+	// right address and an ENABLED resend (the use:enhance callback that would
+	// otherwise set sentTo never runs without JS).
+	// Initialize from the server response (no-JS full-page path); the $effect
+	// below also catches JS-enhanced transitions and resends.
+	// untrack: intentionally capturing the initial `form` value only — the
+	// $effect below handles all reactive updates.
+	let view = $state<'form' | 'sent'>(untrack(() => (form?.ok ? 'sent' : 'form')));
+	let sentTo = $state(untrack(() => form?.email ?? ''));
+	let cooldown = $state(0);
+	let sentHeading = $state<HTMLHeadingElement | null>(null);
+	let emailInputEl = $state<HTMLInputElement | null>(null);
+
+	// Client-side visible cooldown only: the real guard is the Postgres
+	// sliding-window rate limit (3 per 5 min per email) inside issueMagicLink,
+	// which deliberately never reveals itself to the caller.
+	const COOLDOWN_SECONDS = 60;
+
+	$effect(() => {
+		// A confirmed send (initial or resend) swaps the panel + arms the cooldown.
+		// Re-seed sentTo from the server echo so the no-JS full-page response (and
+		// the no-JS resend) always carries the right address into the panel + the
+		// hidden resend field.
+		if (form?.ok) {
+			view = 'sent';
+			if (form.email) sentTo = form.email;
+			cooldown = COOLDOWN_SECONDS;
+		}
+	});
+
+	$effect(() => {
+		if (view === 'sent') {
+			// Focus contract (spec §5 keyboard/SR): focus moves to the new heading.
+			sentHeading?.focus();
+		}
+	});
+
+	$effect(() => {
+		if (cooldown <= 0) return;
+		const t = setInterval(() => {
+			cooldown -= 1;
+		}, 1000);
+		return () => clearInterval(t);
+	});
+
+	function backToForm() {
+		view = 'form';
+		// Defer focus until the form has re-rendered.
+		setTimeout(() => emailInputEl?.focus(), 0);
+	}
 </script>
 
 <svelte:head>
@@ -92,21 +148,66 @@
 				</div>
 			{/if}
 
-			{#if form?.ok}
+			{#if view === 'sent'}
 				<div
-					class="rounded-[10px] border border-[var(--hairline)] bg-card px-4 py-3 text-sm font-medium text-primary-text"
+					class="space-y-4 rounded-2xl border border-[var(--hairline)] bg-card p-6 shadow-[var(--shadow-card)]"
 					role="status"
+					data-testid="link-sent-panel"
 				>
-					{form.message}
+					<h2
+						bind:this={sentHeading}
+						tabindex="-1"
+						class="text-xl font-bold tracking-tight text-ink-900 outline-none"
+					>
+						Link gesendet
+					</h2>
+					<p class="text-sm leading-relaxed text-ink-700">
+						Schau in dein Postfach — dein Anmelde-Link ist unterwegs an
+						<span class="font-semibold text-ink-900" data-testid="link-sent-email"
+							>{sentTo || 'deine E-Mail-Adresse'}</span
+						>.
+					</p>
+					<form
+						method="POST"
+						use:enhance={() => {
+							pending = true;
+							return async ({ update }) => {
+								pending = false;
+								await update({ reset: false });
+							};
+						}}
+					>
+						<input type="hidden" name="email" value={sentTo} />
+						<button
+							type="submit"
+							disabled={pending || cooldown > 0 || !sentTo}
+							data-testid="resend-button"
+							class="h-11 w-full rounded-[10px] border border-[var(--hairline)] bg-card text-sm font-semibold text-primary-text transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none lg:h-10"
+						>
+							{cooldown > 0 ? `Erneut senden (${cooldown} s)` : 'Erneut senden'}
+						</button>
+					</form>
+					<button
+						type="button"
+						onclick={backToForm}
+						data-testid="wrong-address-button"
+						class="text-sm font-medium text-primary-text underline underline-offset-2 hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+					>
+						Falsche Adresse?
+					</button>
 				</div>
 			{:else}
 				<form
 					method="POST"
-					use:enhance={() => {
+					use:enhance={({ formData }) => {
 						pending = true;
-						return async ({ update }) => {
+						const submitted = String(formData.get('email') ?? '').trim();
+						return async ({ update, result }) => {
 							pending = false;
-							await update();
+							if (result.type === 'success' && result.data?.['ok']) {
+								sentTo = submitted;
+							}
+							await update({ reset: false });
 						};
 					}}
 					class="space-y-4"
@@ -118,6 +219,7 @@
 							name="email"
 							type="email"
 							bind:value={emailValue}
+							bind:ref={emailInputEl}
 							autocomplete="email"
 							inputmode="email"
 							autocapitalize="none"

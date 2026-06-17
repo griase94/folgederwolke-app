@@ -51,13 +51,17 @@ export const actions: Actions = {
       await issueMagicLink(email, { ip, ua, origin: url.origin }, cookies);
     } catch (err) {
       if (err instanceof RateLimitError) {
-        // Still return identical message — don't reveal rate-limiting to caller
-        return { ok: true, message: "Schau in dein Postfach 💌" };
+        // Still return identical message — don't reveal rate-limiting to caller.
+        // `email` is the caller's OWN input (enumeration-safe — never reveals
+        // whether the account exists); the no-JS sent panel reads it via form.email.
+        return { ok: true, email, message: "Schau in dein Postfach 💌" };
       }
       // Unexpected error — log but still return generic message
       console.error("[sign-in] issueMagicLink error:", err);
     }
 
-    return { ok: true, message: "Schau in dein Postfach 💌" };
+    // `email` echoes the caller's own input (enumeration-safe); the no-JS sent
+    // panel reads form.email so it shows the right address + an enabled resend.
+    return { ok: true, email, message: "Schau in dein Postfach 💌" };
   },
 };

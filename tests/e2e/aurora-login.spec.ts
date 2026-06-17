@@ -53,3 +53,45 @@ test.describe("@phase-aurora-slice3 Aurora login — desktop split hero", () => 
     expect(name).toBe("none");
   });
 });
+
+test.describe("@phase-aurora-slice3 Aurora login — Link gesendet state", () => {
+  test("submit swaps to the panel: exact email, focused heading, cooldown, anti-enumeration copy", async ({
+    page,
+  }) => {
+    await page.goto("/sign-in");
+    await page.fill('input[name="email"]', "julia@example.com");
+    await page.getByTestId("login-submit").click();
+
+    const panel = page.getByTestId("link-sent-panel");
+    await expect(panel).toBeVisible();
+    // Exact email shown (the user's own input — no enumeration leak).
+    await expect(page.getByTestId("link-sent-email")).toHaveText(
+      "julia@example.com",
+    );
+    // Anti-enumeration copy preserved (auth.spec.ts @phase-1 contract).
+    await expect(panel).toContainText("Schau in dein Postfach");
+    // Focus contract: focus moves to the new heading.
+    await expect(
+      page.getByRole("heading", { name: "Link gesendet" }),
+    ).toBeFocused();
+    // Resend is disabled with a visible countdown.
+    const resend = page.getByTestId("resend-button");
+    await expect(resend).toBeDisabled();
+    await expect(resend).toContainText("Erneut senden (");
+  });
+
+  test("Falsche Adresse? returns to the form with the email preserved and focused", async ({
+    page,
+  }) => {
+    await page.goto("/sign-in");
+    await page.fill('input[name="email"]', "julia@example.com");
+    await page.getByTestId("login-submit").click();
+    await expect(page.getByTestId("link-sent-panel")).toBeVisible();
+
+    await page.getByTestId("wrong-address-button").click();
+    const email = page.locator('input[name="email"]');
+    await expect(email).toBeVisible();
+    await expect(email).toHaveValue("julia@example.com");
+    await expect(email).toBeFocused();
+  });
+});
