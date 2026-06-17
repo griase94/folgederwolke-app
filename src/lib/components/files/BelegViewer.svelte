@@ -29,6 +29,7 @@
 	// trick does NOT resolve node_modules assets).
 	import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 	import * as pdfjs from 'pdfjs-dist';
+	import { focusTrap } from '$lib/actions/focus-trap.js';
 	import XIcon from '@lucide/svelte/icons/x';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import MinusIcon from '@lucide/svelte/icons/minus';
@@ -271,41 +272,41 @@
   ===========================================================================
 -->
 {#if mode === 'fold'}
+	<!-- The peek trigger stays mounted while the full-screen viewer is open (the
+	     opaque overlay covers it) so focusTrap can restore focus here on close. -->
 	<div data-beleg-mode="fold" class="w-full">
-		{#if !foldOpen}
-			<button
-				type="button"
-				onclick={openFold}
-				class="relative block w-full overflow-hidden rounded-lg border bg-muted/30 text-left"
-				aria-label="Beleg ansehen"
+		<button
+			type="button"
+			onclick={openFold}
+			class="relative block w-full overflow-hidden rounded-lg border bg-muted/30 text-left"
+			aria-label="Beleg ansehen"
+		>
+			<!-- Clipped peek (top slice). -->
+			<div class="pointer-events-none h-32 overflow-hidden">
+				{#if isImage}
+					<img
+						src={thumbnailUrl}
+						alt={originalFilename}
+						class="w-full object-cover object-top"
+					/>
+				{:else if isPdf && !peekFailed}
+					<!-- P3-05: page-1 rendered to a small canvas (default peek). -->
+					<canvas bind:this={peekCanvas} class="w-full"></canvas>
+				{:else}
+					<!-- Render-failure fallback ONLY (or non-image/non-pdf). -->
+					<div class="flex h-full items-center justify-center text-muted-foreground">
+						<FileTextIcon class="size-10" aria-hidden="true" />
+					</div>
+				{/if}
+			</div>
+			<!-- Fade gradient + label. -->
+			<div
+				class="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-gradient-to-t from-background via-background/90 to-transparent px-4 pb-2 pt-8 text-sm font-medium"
 			>
-				<!-- Clipped peek (top slice). -->
-				<div class="pointer-events-none h-32 overflow-hidden">
-					{#if isImage}
-						<img
-							src={thumbnailUrl}
-							alt={originalFilename}
-							class="w-full object-cover object-top"
-						/>
-					{:else if isPdf && !peekFailed}
-						<!-- P3-05: page-1 rendered to a small canvas (default peek). -->
-						<canvas bind:this={peekCanvas} class="w-full"></canvas>
-					{:else}
-						<!-- Render-failure fallback ONLY (or non-image/non-pdf). -->
-						<div class="flex h-full items-center justify-center text-muted-foreground">
-							<FileTextIcon class="size-10" aria-hidden="true" />
-						</div>
-					{/if}
-				</div>
-				<!-- Fade gradient + label. -->
-				<div
-					class="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-gradient-to-t from-background via-background/90 to-transparent px-4 pb-2 pt-8 text-sm font-medium"
-				>
-					<ExpandIcon class="size-4" aria-hidden="true" />
-					Beleg ansehen
-				</div>
-			</button>
-		{/if}
+				<ExpandIcon class="size-4" aria-hidden="true" />
+				Beleg ansehen
+			</div>
+		</button>
 	</div>
 {/if}
 
@@ -314,16 +315,10 @@
   VIEWER — inline (permanent left column) OR full-screen overlay (fold open).
   ===========================================================================
 -->
-{#if viewerOpen}
-	<div
-		data-beleg-mode={mode}
-		class={mode === 'fold'
-			? 'fixed inset-0 z-50 flex flex-col bg-background'
-			: 'flex h-full flex-col rounded-lg border bg-card'}
-	>
+{#snippet viewerBody(titleId: string | undefined)}
 		<!-- Header: filename + controls. -->
 		<div class="flex items-center gap-2 border-b px-3 py-2">
-			<span class="truncate text-sm font-medium" title={originalFilename}>
+			<span id={titleId} class="truncate text-sm font-medium" title={originalFilename}>
 				{originalFilename}
 			</span>
 
@@ -491,5 +486,35 @@
 				</button>
 			</div>
 		{/if}
+{/snippet}
+
+<!--
+  VIEWER render. inline → permanent left column (NOT a dialog). fold + open →
+  full-screen modal: role=dialog + aria-modal + aria-labelledby + focusTrap
+  (traps Tab and restores focus to the peek trigger on close); Escape closes
+  and stops propagation so the review route's page-level Escape handler does
+  not also fire and navigate away.
+-->
+{#if mode === 'fold' && foldOpen}
+	<div
+		data-beleg-mode="fold"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="beleg-fold-title"
+		tabindex="-1"
+		use:focusTrap
+		onkeydown={(e) => {
+			if (e.key === 'Escape') {
+				e.stopPropagation();
+				closeFold();
+			}
+		}}
+		class="fixed inset-0 z-50 flex flex-col bg-background"
+	>
+		{@render viewerBody('beleg-fold-title')}
+	</div>
+{:else if mode === 'inline'}
+	<div data-beleg-mode="inline" class="flex h-full flex-col rounded-lg border bg-card">
+		{@render viewerBody(undefined)}
 	</div>
 {/if}

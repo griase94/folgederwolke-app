@@ -45,7 +45,12 @@
 	{/if}
 
 	{#if missing.length > 0}
-		<p class="text-sm text-ink-500" data-testid="form-footer-missing" aria-live="polite">
+		<p
+			class="text-sm text-ink-500"
+			data-testid="form-footer-missing"
+			aria-live="polite"
+			aria-atomic="true"
+		>
 			<span class="font-medium text-ink-700">Fehlt noch:</span>
 			{missing.join(', ')}
 		</p>

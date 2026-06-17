@@ -120,11 +120,11 @@
 			{/if}
 		</div>
 
-		<!-- Full-width Kategorie select. KategoriePicker renders its own <label>
-		     (visually redundant with the label row, so we hide it via sr-only by
-		     wrapping; but the picker's <label for> is the a11y name the gate
-		     focuses). We keep the picker's native select; its inline SphereBadge
-		     is suppressed by passing a no-op onSphere result is mirrored above. -->
+		<!-- Full-width Kategorie select. KategoriePicker's own <label> is hidden
+		     (sr-only, via hideLabel) since the label row above already shows
+		     "Kategorie" + the Sphäre chip; its inline SphereBadge is suppressed
+		     (hideSphere) so the Sphäre isn't shown twice. The picker's sr-only
+		     <label for> remains the a11y name the gate focuses. -->
 		<div bind:this={pickerEl} data-slot="decision-picker">
 			<KategoriePicker
 				id="approve-kategorie"
@@ -133,18 +133,27 @@
 				value={kategorieName}
 				onChange={(n) => (kategorieName = n)}
 				onSphere={(s) => (sphere = s)}
+				hideLabel
+				hideSphere
 			/>
 		</div>
 
 		{#if missing.length > 0}
-			<p data-testid="decision-missing" class="text-sm text-ink-500" aria-live="polite">
+			<p
+				data-testid="decision-missing"
+				class="text-sm text-ink-500"
+				aria-live="polite"
+				aria-atomic="true"
+			>
 				<span class="font-medium text-ink-700">Fehlt noch:</span>
 				{missing.join(', ')}
 			</p>
 		{/if}
 
-		<!-- Button row sharing the select's edges. -->
-		<div class="flex items-stretch gap-2">
+		<!-- Button row sharing the select's edges (w-full so the row spans the
+		     same width as the full-width select even if a parent's align-items
+		     is ever overridden). -->
+		<div class="flex w-full items-stretch gap-2">
 			<button
 				type="submit"
 				data-testid="decision-approve"

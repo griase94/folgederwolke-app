@@ -51,6 +51,17 @@
 		 */
 		name?: string;
 		required?: boolean;
+		/**
+		 * Visually hide the built-in `<label>` (kept for AT via sr-only) when the
+		 * host already renders its own label — e.g. the inbox DecisionBand's label
+		 * row. Default false keeps the label visible for transaction forms.
+		 */
+		hideLabel?: boolean;
+		/**
+		 * Suppress the inline derived-Sphäre badge when the host renders the Sphäre
+		 * itself (the DecisionBand shows it in its label row). Default false.
+		 */
+		hideSphere?: boolean;
 	}
 
 	let {
@@ -61,6 +72,8 @@
 		id = 'kategorie',
 		name = 'kategorieNameSnapshot',
 		required = false,
+		hideLabel = false,
+		hideSphere = false,
 	}: Props = $props();
 
 	// Derived sphere for the current value (only meaningful once a value is chosen).
@@ -83,16 +96,25 @@
 </script>
 
 <div class="flex flex-col gap-1.5" data-slot="kategorie-picker">
-	<label for={id} class="text-sm font-medium text-foreground">
+	<label
+		for={id}
+		class={hideLabel ? 'sr-only' : 'text-sm font-medium text-foreground'}
+	>
 		Kategorie{#if required}<span class="text-destructive" aria-hidden="true">&nbsp;*</span>{/if}
 	</label>
+	<!-- The inbox DecisionBand reuses this picker with Aurora styling (rounded-[10px]
+	     + hairline + ring-2) so it shares edges with the Freigeben/Ablehnen row;
+	     transaction forms keep the legacy field tokens until slice 5 harmonises them. -->
 	<select
 		{id}
 		{name}
 		{required}
 		{value}
 		onchange={onSelect}
-		class="h-11 min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+		class={'h-11 min-h-11 w-full px-3 text-sm outline-none ' +
+			(hideLabel
+				? 'rounded-[10px] border border-hairline bg-white text-ink-900 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
+				: 'rounded-md border border-input bg-background focus-visible:ring-1 focus-visible:ring-ring')}
 	>
 		<option value="">Kategorie wählen…</option>
 		{#each options as opt (opt.name)}
@@ -100,7 +122,7 @@
 		{/each}
 	</select>
 
-	{#if derivedSphere}
+	{#if derivedSphere && !hideSphere}
 		<!-- Derived Sphäre (§13 palette); the EÜR-Zeile hint only when a Zeile exists. -->
 		<div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
 			<SphereBadge sphere={derivedSphere} />

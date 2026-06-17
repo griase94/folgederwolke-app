@@ -300,3 +300,67 @@ test.describe("@phase-aurora-inbox Prüfung — filter chips + route-driven deci
     await expect(page.getByText("Schon gesehen")).toBeVisible();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Mobile (iPhone 15 Pro Max) — the responsive layout the redesign promised:
+// the decision band shares edges, Freigeben is the wide CTA (Andy's complaint
+// was Freigeben rendering NARROWER than the Kategorie field), and the Beleg
+// opens a real full-screen dialog that Escape closes without leaving the route.
+// ---------------------------------------------------------------------------
+test.describe("@phase-aurora-inbox Prüfung — mobile review layout", () => {
+  test.use({
+    viewport: { width: 430, height: 932 },
+    isMobile: true,
+    hasTouch: true,
+  });
+
+  test.beforeEach(async ({ page }) => {
+    await signIn(page);
+  });
+
+  test("decision band: select + Freigeben/Ablehnen share edges; Freigeben is the wide CTA", async ({
+    page,
+  }) => {
+    const seeded = await seedPendingSubmission("MOB");
+    await page.goto(`/app/inbox/${seeded.businessId}`);
+
+    const select = page.getByLabel("Kategorie");
+    const approve = page.getByTestId("decision-approve");
+    const reject = page.getByTestId("decision-reject");
+    await expect(select).toBeVisible();
+    await expect(approve).toBeVisible();
+    await expect(reject).toBeVisible();
+
+    const [s, a, r] = await Promise.all([
+      select.boundingBox(),
+      approve.boundingBox(),
+      reject.boundingBox(),
+    ]);
+    // Shared edges: the button row spans the same width as the full-width select.
+    expect(Math.abs(a!.x - s!.x)).toBeLessThanOrEqual(2);
+    expect(Math.abs(r!.x + r!.width - (s!.x + s!.width))).toBeLessThanOrEqual(
+      2,
+    );
+    // Freigeben (flex-1) is the wide primary CTA; Ablehnen is the fixed, narrower one.
+    expect(a!.width).toBeGreaterThan(r!.width);
+  });
+
+  test("Beleg opens a full-screen dialog; Escape closes it without leaving the route", async ({
+    page,
+  }) => {
+    const seeded = await seedPendingSubmission("MOB2");
+    await page.goto(`/app/inbox/${seeded.businessId}`);
+
+    await page.getByRole("button", { name: "Beleg ansehen" }).click();
+    const dialog = page.locator('[data-beleg-mode="fold"][role="dialog"]');
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAttribute("aria-modal", "true");
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    // Escape closed the modal only — we're still on the review route.
+    expect(new URL(page.url()).pathname).toBe(
+      `/app/inbox/${seeded.businessId}`,
+    );
+  });
+});
