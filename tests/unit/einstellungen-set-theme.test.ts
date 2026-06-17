@@ -23,14 +23,14 @@ function makeEvent(theme: string) {
         sets.push({ name, value, opts });
       },
     },
-  } as unknown as Parameters<(typeof actions)["setTheme"]>[0];
+  } as unknown as Parameters<NonNullable<(typeof actions)["setTheme"]>>[0];
   return { event, sets };
 }
 
 describe("einstellungen ?/setTheme action", () => {
   it("sets the fdw_theme cookie for a registered theme id", async () => {
     const { event, sets } = makeEvent("aurora");
-    const result = await actions.setTheme(event);
+    const result = await actions.setTheme!(event);
     expect(result).toEqual({ action: "setTheme", success: true });
     expect(sets).toHaveLength(1);
     expect(sets[0]!.name).toBe(THEME_COOKIE);
@@ -42,7 +42,7 @@ describe("einstellungen ?/setTheme action", () => {
 
   it("rejects an unregistered theme id with 422 and sets no cookie", async () => {
     const { event, sets } = makeEvent('"><script>alert(1)</script>');
-    const result = await actions.setTheme(event);
+    const result = await actions.setTheme!(event);
     expect(result).toMatchObject({ status: 422 });
     expect(sets).toHaveLength(0);
   });
@@ -59,8 +59,8 @@ describe("einstellungen ?/setTheme action", () => {
           sets.push({ name, value, opts });
         },
       },
-    } as unknown as Parameters<(typeof actions)["setTheme"]>[0];
-    const result = await actions.setTheme(event);
+    } as unknown as Parameters<NonNullable<(typeof actions)["setTheme"]>>[0];
+    const result = await actions.setTheme!(event);
     expect(result).toMatchObject({ status: 422 });
     expect(sets).toHaveLength(0);
   });
