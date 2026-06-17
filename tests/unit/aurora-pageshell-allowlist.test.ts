@@ -24,7 +24,6 @@ const appRoutesDir = resolve(repoRoot, "src", "routes", "app");
 
 // Paths relative to src/routes/app, posix separators.
 const ALLOWLIST = new Set<string>([
-  "ausgaben/+page.svelte",
   "ausgaben/[id]/+page.svelte",
   "ausgaben/neu/+page.svelte",
   "dsgvo/+page.svelte",

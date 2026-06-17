@@ -181,7 +181,7 @@ test.describe("@phase-4-ausgaben Ausgaben tab", () => {
     await page.goto("/app/ausgaben");
     // Open the first detail row, duplicate, and assert the entry form opened
     // with the descriptive fields prefilled but no Beleg / payment carried.
-    const firstRow = page.getByTestId("scaffold-row").first();
+    const firstRow = page.getByTestId("txn-row").first();
     if (await firstRow.isVisible().catch(() => false)) {
       await firstRow.click();
       await page
@@ -251,7 +251,7 @@ test.describe("@phase-4-ausgaben Ausgaben tab", () => {
     await page.goto("/app/ausgaben");
     // Find a row with an attached image Beleg, open it, assert the viewer shows
     // an <img> from the blob endpoint. Skipped gracefully if no such row seeded.
-    const firstRow = page.getByTestId("scaffold-row").first();
+    const firstRow = page.getByTestId("txn-row").first();
     if (await firstRow.isVisible().catch(() => false)) {
       await firstRow.click();
       const belegSlot = page.locator('[data-slot="detail-beleg"]');
