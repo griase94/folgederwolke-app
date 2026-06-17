@@ -11,7 +11,7 @@ import sharp from "sharp";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { BRAND_PINK } from "../src/lib/brand";
+import { BRAND_PRIMARY_STRONG } from "../src/lib/brand";
 
 const ROOT = process.cwd();
 const LOGO = join(ROOT, "static/logo.svg");
@@ -98,7 +98,12 @@ async function render(pxW: number, pxH: number, file: string): Promise<void> {
   }
 
   await sharp({
-    create: { width: pxW, height: pxH, channels: 4, background: BRAND_PINK },
+    create: {
+      width: pxW,
+      height: pxH,
+      channels: 4,
+      background: BRAND_PRIMARY_STRONG,
+    },
   })
     .composite([
       { input: logo, top: top0, left: Math.round((pxW - logoW) / 2) },

@@ -3,7 +3,7 @@
   "name": "Folge der Wolke",
   "short_name": "FdW",
   "description": "Vereinsverwaltung für Folge der Wolke e.V.",
-  "theme_color": "#be185d",
+  "theme_color": "#fff1f6",
   "background_color": "#ffffff",
   "display": "standalone",
   "display_override": [
