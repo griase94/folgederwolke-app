@@ -196,11 +196,13 @@ describe("manifest.webmanifest — shortcuts (PM-004)", () => {
     }>;
   };
 
-  it("declares 4 shortcuts: Audit Inbox, Neue Spende, EÜR aktuelles Jahr, Auslage einreichen", () => {
+  it("declares 4 shortcuts: Prüfung, Neue Spende, EÜR aktuelles Jahr, Auslage einreichen", () => {
     expect(Array.isArray(manifest.shortcuts)).toBe(true);
     expect(manifest.shortcuts!.length).toBeGreaterThanOrEqual(4);
     const names = manifest.shortcuts!.map((s) => s.name);
-    expect(names.some((n) => /audit.*inbox/i.test(n))).toBe(true);
+    // Aurora slice 2: inbox shortcut renamed from "Audit Inbox" → "Prüfung"
+    // (spec §5 "never two names for one destination").
+    expect(names.some((n) => /prüfung/i.test(n))).toBe(true);
     expect(names.some((n) => /spende/i.test(n))).toBe(true);
     expect(names.some((n) => /eür|euer|jahr/i.test(n))).toBe(true);
     expect(names.some((n) => /auslage/i.test(n))).toBe(true);
