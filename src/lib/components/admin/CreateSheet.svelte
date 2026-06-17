@@ -45,6 +45,37 @@
 		void goto(href, { replaceState: true });
 	}
 
+	// ── Drag-dismiss 1:1 (grabber zone) ─────────────────────────────────────
+	let dragY = $state(0);
+	let dragging = $state(false);
+	let startY = 0;
+
+	function onPointerDown(e: PointerEvent): void {
+		dragging = true;
+		startY = e.clientY;
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+	}
+	function onPointerMove(e: PointerEvent): void {
+		if (!dragging) return;
+		dragY = Math.max(0, e.clientY - startY);
+	}
+	function onPointerEnd(): void {
+		if (!dragging) return;
+		dragging = false;
+		if (dragY > 96) {
+			dragY = 0;
+			dismiss();
+		} else {
+			dragY = 0;
+		}
+	}
+
+	const dragStyle = $derived(
+		dragging || dragY > 0
+			? `transform: translateY(${dragY}px); transition: none; animation: none;`
+			: undefined
+	);
+
 	type Tile = { href: string; label: string; icon: Component; chip: string };
 	const TILES: Tile[] = [
 		{
@@ -73,9 +104,19 @@
 		side="bottom"
 		showCloseButton={false}
 		class="fdw-sheet-bottom gap-0 rounded-t-2xl border-hairline bg-background pb-[max(env(safe-area-inset-bottom),1rem)]"
+		style={dragStyle}
 		data-testid="create-sheet"
 	>
-		<div class="pb-2 pt-2">
+		<!-- Grabber (4px grid) — also the drag-dismiss handle -->
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="cursor-grab touch-none pb-2 pt-2"
+			data-testid="sheet-grabber"
+			onpointerdown={onPointerDown}
+			onpointermove={onPointerMove}
+			onpointerup={onPointerEnd}
+			onpointercancel={onPointerEnd}
+		>
 			<div aria-hidden="true" class="mx-auto h-1 w-9 rounded-full bg-ink-300/50"></div>
 		</div>
 

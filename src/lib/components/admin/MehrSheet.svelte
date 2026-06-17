@@ -128,7 +128,9 @@
 	}
 
 	const dragStyle = $derived(
-		dragging || dragY > 0 ? `transform: translateY(${dragY}px); transition: none;` : undefined
+		dragging || dragY > 0
+			? `transform: translateY(${dragY}px); transition: none; animation: none;`
+			: undefined
 	);
 </script>
 
