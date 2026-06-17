@@ -100,7 +100,7 @@
 		aria-label="Einreichung {submission.ausId} öffnen"
 		class={[
 			'group focus-visible:ring-ring relative flex items-stretch gap-4 rounded-xl border bg-card px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 sm:px-5 sm:py-4',
-			isUnread ? 'border-primary bg-primary-50' : 'border-border',
+			isUnread ? 'border-primary bg-primary/5' : 'border-border',
 			isRejected ? 'opacity-75' : ''
 		].join(' ')}
 	>

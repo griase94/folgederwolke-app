@@ -340,23 +340,3 @@
     contain-intrinsic-size: auto 48px;
   }
 }
-
-/* Brand pink ramp — overrides shadcn zinc primary with the brand color.
-   #be185d === Tailwind pink-700. Canonical value: src/lib/brand.ts (BRAND_PINK).
-   NOTE: this static @theme block intentionally overrides the earlier
-   `@theme inline { --color-primary: var(--primary) }` mapping (last definition wins).
-   Fine here: the app is light-only, so the .dark { --primary } path is inert. */
-@theme {
-  --color-primary: #be185d;
-  --color-primary-foreground: oklch(0.99 0 0);
-  --color-primary-50: #fdf2f8;
-  --color-primary-100: #fce7f3;
-  --color-primary-200: #fbcfe8;
-  --color-primary-300: #f9a8d4;
-  --color-primary-400: #f472b6;
-  --color-primary-500: #ec4899;
-  --color-primary-600: #db2777;
-  --color-primary-700: #be185d;
-  --color-primary-800: #9d174d;
-  --color-primary-900: #831843;
-}
