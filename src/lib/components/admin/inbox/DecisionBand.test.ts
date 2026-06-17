@@ -48,7 +48,9 @@ describe("DecisionBand", () => {
 
   it("shows 'Fehlt noch: Kategorie' until a Kategorie is chosen; pressing Freigeben focuses the picker", async () => {
     render(DecisionBand, { props: baseProps });
-    expect(screen.getByTestId("decision-missing").textContent).toContain("Kategorie");
+    expect(screen.getByTestId("decision-missing").textContent).toContain(
+      "Kategorie",
+    );
     await fireEvent.click(screen.getByTestId("decision-approve"));
     expect(document.activeElement).toBe(screen.getByLabelText("Kategorie"));
   });
@@ -59,7 +61,9 @@ describe("DecisionBand", () => {
       target: { value: "Bürobedarf" },
     });
     expect(screen.getByTestId("decision-sphere").textContent).toMatch(/Sphäre/);
-    expect(document.querySelector('[data-testid="decision-missing"]')).toBeNull();
+    expect(
+      document.querySelector('[data-testid="decision-missing"]'),
+    ).toBeNull();
   });
 
   it("'Verzicht spenden' is a ghost link with an 'In Vorbereitung' chip", () => {
@@ -69,7 +73,9 @@ describe("DecisionBand", () => {
   });
 
   it("renders a LockBanner when the current year is festgeschrieben (festBis >= currentYear)", () => {
-    render(DecisionBand, { props: { ...baseProps, festgeschriebenBis: 2026, currentYear: 2026 } });
+    render(DecisionBand, {
+      props: { ...baseProps, festgeschriebenBis: 2026, currentYear: 2026 },
+    });
     expect(screen.getByTestId("lock-banner")).toBeTruthy();
   });
 });
