@@ -33,6 +33,7 @@ import {
 } from "$lib/server/domain/years.js";
 import { ALL_YEARS, currentBuchungsjahr } from "$lib/domain/year.js";
 import { resolveLayoutYear } from "$lib/server/domain/layout-year.js";
+import { countOpenAuslagen } from "$lib/server/domain/inbox-count.js";
 
 async function readFestgeschriebenBis(): Promise<number | null> {
   const db = getDb();
@@ -55,8 +56,17 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
   // redirects unauthenticated requests before this runs.
   const currentYear = currentBuchungsjahr();
 
-  const [availableYears, festgeschriebenBis]: [AvailableYear[], number | null] =
-    await Promise.all([listAvailableYears(), readFestgeschriebenBis()]);
+  const [availableYears, festgeschriebenBis, openAuslagenCount]: [
+    AvailableYear[],
+    number | null,
+    number,
+  ] = await Promise.all([
+    listAvailableYears(),
+    readFestgeschriebenBis(),
+    // Aurora slice 2 (spec §5): Prüfung tab badge — undecided inbox
+    // submissions, same predicate as the dashboard task row.
+    countOpenAuslagen(),
+  ]);
 
   // Phase 3 (B1): resolve the wider year *scope*. Lists need the `ALL_YEARS`
   // ("Alle Jahre") sentinel to survive — `resolveLayoutYear` passes `?year=all`
@@ -94,5 +104,6 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
     currentYear,
     festgeschriebenBis,
     formEnabled,
+    openAuslagenCount,
   };
 };
