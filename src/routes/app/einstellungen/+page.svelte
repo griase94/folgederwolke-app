@@ -57,6 +57,55 @@
 		</div>
 	</section>
 
+	<!-- ── Darstellung (Aurora theme switcher — spec §3) ──────────────────── -->
+	<section aria-labelledby="section-darstellung" class="mb-10">
+		<h2 id="section-darstellung" class="mb-4 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+			Darstellung
+		</h2>
+		<div class="rounded-xl border border-border bg-card p-6">
+			<p class="mb-4 text-sm text-muted-foreground">
+				Design für dieses Gerät auswählen.
+			</p>
+			<!-- Deliberately NO use:enhance: the <html data-theme> attribute is set
+			     server-side (hooks.server.ts transformPageChunk), so the switch
+			     needs a full page load to take visual effect. A native form POST
+			     gives us exactly that. -->
+			<form method="POST" action="?/setTheme" class="flex flex-wrap gap-3">
+				{#each data.themes as theme (theme.id)}
+					{@const isActive = theme.id === data.activeTheme}
+					<button
+						type="submit"
+						name="theme"
+						value={theme.id}
+						data-testid="theme-swatch-{theme.id}"
+						aria-pressed={isActive}
+						aria-label="Design &bdquo;{theme.label}&ldquo; aktivieren"
+						class={[
+							'flex min-h-11 w-44 flex-col gap-2 rounded-xl border p-4 text-left transition-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+							isActive
+								? 'border-primary-text shadow-card'
+								: 'border-border hover:border-primary-text/40'
+						].join(' ')}
+					>
+						<span class="flex gap-1.5" aria-hidden="true">
+							{#each theme.swatches as swatch (swatch)}
+								<!-- Swatch colors are registry DATA (preview chips), not styling
+								     tokens — the one sanctioned non-token color source. -->
+								<span class="h-5 w-5 rounded-full" style="background-color: {swatch}"></span>
+							{/each}
+						</span>
+						<span class="flex items-center gap-2">
+							<span class="text-sm font-medium text-foreground">{theme.label}</span>
+							{#if isActive}
+								<span class="rounded-full bg-primary-strong px-2 py-0.5 text-xs font-medium text-white">Aktiv</span>
+							{/if}
+						</span>
+					</button>
+				{/each}
+			</form>
+		</div>
+	</section>
+
 	<!-- ── Verein ───────────────────────────────────────────────────────────── -->
 	<section aria-labelledby="section-verein" class="mb-10">
 		<h2 id="section-verein" class="mb-4 text-sm font-semibold uppercase tracking-widest text-muted-foreground">
