@@ -18,15 +18,7 @@ import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { validateAuslageInput } from "$lib/server/domain/auslagen.js";
-import {
-  manualImportSubmission,
-  approveSubmission,
-  rejectSubmission,
-} from "$lib/server/domain/audit-inbox-actions.js";
-import {
-  listKategorieOptions,
-  IMPORT_SENTINEL_NAME,
-} from "$lib/server/domain/transaction-pickers.js";
+import { manualImportSubmission } from "$lib/server/domain/audit-inbox-actions.js";
 import type { InboxSubmissionView } from "$lib/domain/inbox.js";
 
 /**
@@ -84,12 +76,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     .where(whereClause)
     .orderBy(desc(auslagenSubmissions.submittedAt));
 
-  // Counts for the filter chip badges — single round-trip via FILTER clauses.
+  // Counts for the filter chip badges + open-€ sum (header meta, spec §2.1) —
+  // single round-trip via FILTER clauses.
   const [counts] = await db
     .select({
       offen: sql<number>`count(*) filter (where ${auslagenSubmissions.decidedAt} is null)::int`,
       geprueft: sql<number>`count(*) filter (where ${auslagenSubmissions.decision} = 'approved')::int`,
       abgelehnt: sql<number>`count(*) filter (where ${auslagenSubmissions.decision} = 'rejected')::int`,
+      offenSummeCents: sql<number>`coalesce(sum(${auslagenSubmissions.betragCents}) filter (where ${auslagenSubmissions.decidedAt} is null), 0)::bigint`,
     })
     .from(auslagenSubmissions);
 
@@ -146,12 +140,6 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     email: m.email ?? undefined,
   }));
 
-  // Spec §4.6: expense Kategorie options for the inline-approve picker.
-  // Exclude the Import sentinel — treasurer must choose a real Kategorie.
-  const kategorieOptions = (await listKategorieOptions("expense"))
-    .filter((o) => o.name !== IMPORT_SENTINEL_NAME)
-    .map((o) => ({ name: o.name, sphere: o.sphere }));
-
   return {
     submissions,
     members: memberList,
@@ -162,7 +150,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       geprueft: Number(counts?.geprueft ?? 0),
       abgelehnt: Number(counts?.abgelehnt ?? 0),
     },
-    kategorieOptions,
+    offenSummeCents: Number(counts?.offenSummeCents ?? 0),
   };
 };
 
@@ -267,93 +255,5 @@ export const actions: Actions = {
       success: true,
       ausId: result.ausId,
     };
-  },
-
-  /**
-   * C7-INBOX full: inline approve from the list row (no detail-page detour).
-   * Idempotent — second call returns the existing expense without re-emitting.
-   * Approval emits `expense.approved` + `auslage.approved` (ApprovalMail).
-   */
-  "inline-approve": async ({ request, locals }) => {
-    const actorUserId = locals.session!.user.id;
-
-    if (locals.session?.user.role !== "admin") {
-      return fail(403, { error: "Nur Admins können freigeben." });
-    }
-
-    let formData: FormData;
-    try {
-      formData = await request.formData();
-    } catch {
-      return fail(400, { error: "Ungültige Anfrage: FormData defekt." });
-    }
-
-    const submissionId = String(formData.get("submissionId") ?? "");
-    if (!submissionId) {
-      return fail(400, { error: "submissionId fehlt" });
-    }
-
-    const kategorieName = String(formData.get("kategorieName") ?? "").trim();
-    if (!kategorieName) {
-      return fail(400, { error: "Bitte eine Kategorie wählen" });
-    }
-
-    const result = await approveSubmission({
-      submissionId,
-      actorUserId,
-      kategorieName,
-    });
-    if (!result.ok) {
-      return fail(result.status, { error: result.error });
-    }
-
-    return {
-      success: true,
-      action: "inline-approve",
-      expenseId: result.expenseId,
-      ausId: result.expenseBusinessId,
-    };
-  },
-
-  /**
-   * C7-INBOX full: inline reject from the list row, with reasoned modal.
-   * Idempotent — second call against an already-decided row is a no-op.
-   * Rejection emits `auslage.rejected` → RejectionMail (best-effort).
-   */
-  "inline-reject": async ({ request, locals }) => {
-    const actorUserId = locals.session!.user.id;
-
-    if (locals.session?.user.role !== "admin") {
-      return fail(403, { error: "Nur Admins können freigeben." });
-    }
-
-    let formData: FormData;
-    try {
-      formData = await request.formData();
-    } catch {
-      return fail(400, { error: "Ungültige Anfrage: FormData defekt." });
-    }
-
-    const submissionId = String(formData.get("submissionId") ?? "");
-    const grund = String(formData.get("grund") ?? "").trim();
-    if (!submissionId) {
-      return fail(400, { error: "submissionId fehlt" });
-    }
-    if (!grund || grund.length < 3) {
-      return fail(422, {
-        error: "Bitte gib eine Begründung an (mind. 3 Zeichen)",
-      });
-    }
-
-    const result = await rejectSubmission({
-      submissionId,
-      actorUserId,
-      grund,
-    });
-    if (!result.ok) {
-      return fail(result.status, { error: result.error });
-    }
-
-    return { success: true, action: "inline-reject" };
   },
 };
