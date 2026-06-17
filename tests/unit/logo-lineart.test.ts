@@ -61,3 +61,16 @@ describe("logo-lineart-white.svg (for gradient surfaces)", () => {
     expect(white).not.toContain("fdw-brand-grad");
   });
 });
+
+describe("both line-art SVGs are valid XML (no illegal comment hyphens)", () => {
+  it.each([
+    ["logo-lineart.svg", lineart],
+    ["logo-lineart-white.svg", white],
+  ])("%s has no '--' inside XML comments", (_name, svg) => {
+    const comments = svg.match(/<!--[\s\S]*?-->/g) ?? [];
+    for (const c of comments) {
+      const body = c.slice(4, -3); // strip <!-- and -->
+      expect(body).not.toContain("--");
+    }
+  });
+});
