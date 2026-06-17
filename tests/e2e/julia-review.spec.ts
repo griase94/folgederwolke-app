@@ -283,7 +283,7 @@ test.describe("@julia Sign-in flow", () => {
     await page.waitForTimeout(800);
     await shot(page, "11-signin-after-submit-nonadmin");
     const status = await page
-      .locator('[role="status"]')
+      .getByTestId("link-sent-panel")
       .textContent()
       .catch(() => null);
     note({
