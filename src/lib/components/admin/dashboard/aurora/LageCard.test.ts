@@ -36,7 +36,9 @@ describe("LageCard", () => {
   it("renders sections in spec order: Beiträge → Sphären → WGB", () => {
     const { container } = render(LageCard, { props: base });
     const ids = Array.from(
-      container.querySelectorAll("[data-testid^='lage-']"),
+      container.querySelectorAll(
+        "[data-testid='lage-beitraege'], [data-testid='lage-sphaeren'], [data-testid='lage-wgb']",
+      ),
     ).map((el) => el.getAttribute("data-testid"));
     expect(ids).toEqual(["lage-beitraege", "lage-sphaeren", "lage-wgb"]);
   });
