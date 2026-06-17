@@ -2,80 +2,20 @@
 @import "tw-animate-css";
 @import "shadcn-svelte/tailwind.css";
 @import "@fontsource-variable/inter";
+@import "./lib/themes/aurora.css";
 
 @plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
 
-:root {
-  color-scheme: light only;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: #be185d; /* BRAND_PINK — see src/lib/brand.ts */
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-}
+/* Theme tokens live in src/lib/themes/<id>.css under [data-theme="<id>"]
+   (imported above). app.html carries data-theme="aurora" as the static
+   fallback; hooks.server.ts swaps the attribute per the fdw_theme cookie
+   (validated against the registry). Adding a theme = one CSS file + one
+   registry line in src/lib/themes/index.ts.
+   The @custom-variant above stays CLASS-based so `dark:` utilities shipped
+   inside shadcn components remain inert (no .dark class is ever applied)
+   instead of reverting to the prefers-color-scheme media query. */
 
 @theme inline {
   --font-sans: "Inter Variable", sans-serif;
@@ -110,6 +50,32 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  /* ── Aurora extensions (master §2.1) ──
+     Same-name self-references (e.g. --color-severity-critical) are safe:
+     @theme inline emits them into @layer theme, and the UNLAYERED
+     [data-theme] rule in src/lib/themes/aurora.css wins the cascade. */
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-text: var(--primary-text);
+  --color-ink-900: var(--ink-900);
+  --color-ink-700: var(--ink-700);
+  --color-ink-500: var(--ink-500);
+  --color-ink-300: var(--ink-300);
+  --color-hairline: var(--hairline);
+  --color-severity-critical: var(--color-severity-critical);
+  --color-severity-critical-text: var(--color-severity-critical-text);
+  --color-severity-warn: var(--color-severity-warn);
+  --color-severity-warn-text: var(--color-severity-warn-text);
+  --color-severity-info: var(--color-severity-info);
+  --color-type-ausgabe: var(--color-type-ausgabe);
+  --color-type-ausgabe-tint: var(--color-type-ausgabe-tint);
+  --color-type-einnahme: var(--color-type-einnahme);
+  --color-type-einnahme-tint: var(--color-type-einnahme-tint);
+  --color-type-spende: var(--color-type-spende);
+  --color-type-spende-tint: var(--color-type-spende-tint);
+  --color-dataviz-paid: var(--color-dataviz-paid);
+  --color-dataviz-track: var(--color-dataviz-track);
+  --shadow-card: var(--shadow-card);
+  --shadow-glow-brand: var(--glow-brand);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -117,6 +83,34 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* ── Aurora composite utilities ──────────────────────────────────────────
+   Gradients/wash/glass are not Tailwind color namespaces — exposed as
+   custom utilities so components never touch raw var() or hexes.
+   Gradient budget (spec §2): full-strength bg-gradient-brand is rationed
+   (one hero text + one rank-1 spine + the mobile ⊕ per viewport);
+   bg-gradient-brand-soft is the sanctioned treatment for active nav pills,
+   sheet tile chips, and task rails. */
+@utility bg-wash {
+  background: var(--bg-wash);
+}
+@utility bg-gradient-brand {
+  background-image: var(--gradient-brand);
+}
+@utility bg-gradient-brand-soft {
+  background-image: var(--gradient-brand-soft);
+}
+@utility text-gradient-brand {
+  background-image: var(--gradient-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+@utility surface-glass {
+  background-color: var(--surface-glass);
+  -webkit-backdrop-filter: blur(var(--blur-glass));
+  backdrop-filter: blur(var(--blur-glass));
 }
 
 @layer base {

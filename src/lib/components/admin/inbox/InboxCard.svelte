@@ -139,7 +139,7 @@
 				</span>
 				<span class="text-xs text-muted-foreground">{relativeTime(submission.submittedAt)}</span>
 			</div>
-			<div class="mt-0.5 truncate font-medium text-foreground group-hover:text-primary">
+			<div class="mt-0.5 truncate font-medium text-foreground group-hover:text-primary-text">
 				{submission.bezeichnung}
 			</div>
 			<div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -154,7 +154,7 @@
 					</span>
 				{/if}
 				{#if isUnread}
-					<Badge variant="secondary" class="bg-primary/10 text-primary">Neu</Badge>
+					<Badge variant="secondary" class="bg-primary/10 text-primary-text">Neu</Badge>
 				{:else if isApproved}
 					<Badge variant="secondary" class="bg-emerald-50 text-emerald-700">Genehmigt</Badge>
 				{:else if isRejected}
