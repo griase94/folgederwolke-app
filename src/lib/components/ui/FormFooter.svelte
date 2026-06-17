@@ -57,7 +57,7 @@
 		disabled={submitting}
 		class={'flex h-11 items-center justify-center rounded-[10px] px-5 text-sm font-semibold text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-10 ' +
 			(missing.length > 0
-				? 'bg-primary-strong/50'
+				? 'bg-primary-strong/70'
 				: 'bg-primary-strong hover:bg-primary-strong/85') +
 			(submitting ? ' opacity-60' : '')}
 	>

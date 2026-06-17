@@ -169,7 +169,7 @@
 		<!-- ── Unified sticky footer: Speichern only (no Verwerfen) ──────────── -->
 		<footer
 			data-slot="entry-footer"
-			class="sticky bottom-0 z-10 flex items-center justify-end gap-3 border-t border-border bg-background px-5 py-4"
+			class="sticky bottom-0 z-10 flex items-center justify-end gap-3 border-t border-border bg-background px-5 pt-4 pb-[max(env(safe-area-inset-bottom),1rem)]"
 		>
 			<button
 				type="submit"
