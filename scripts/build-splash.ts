@@ -1,20 +1,19 @@
-// Generate iOS apple-touch-startup-image splash screens.
-// Brand-pink field + the repaired logo SVG + the Verein-name wordmark.
-// ONE light set (no prefers-color-scheme variants): the app is light-only, so this
-// set is used in both light AND dark appearance — which is what fixes the dark-mode
-// black launch frame. Logo rasterized via sharp (reliable SVG); wordmark via
-// ImageMagick `label:` with an explicit TTF (FreeType — no fontconfig dependency);
-// final composite via sharp. The 0.42 / 0.058 / 0.06 layout constants are tuned at
-// the visual review gate. Re-runs may produce non-byte-identical PNGs (acceptable).
+// Generate iOS apple-touch-startup-image splash screens (Aurora, spec §5).
+// Wash-gradient field + gradient line-art logo + INK wordmark (dark text on
+// light wash — replaces the marble-era pink splash from PR #108).
+// ONE light set (no prefers-color-scheme variants): the app is light-only.
+// Logo rasterized via sharp; wordmark via ImageMagick `label:` with an
+// explicit TTF. The 0.42 / 0.058 / 0.06 layout constants are tuned at the
+// visual review gate. Re-runs may produce non-byte-identical PNGs (ok).
 // Run: VEREIN_NAME="Folge der Wolke e.V." pnpm splash:build
 import sharp from "sharp";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { BRAND_PRIMARY_STRONG } from "../src/lib/brand";
+import { BRAND_INK, BRAND_WASH_STOPS } from "../src/lib/brand";
 
 const ROOT = process.cwd();
-const LOGO = join(ROOT, "static/logo.svg");
+const LOGO = join(ROOT, "static/logo-lineart.svg");
 const FONT = join(ROOT, "assets/fonts/Inter-SemiBold.ttf");
 const OUT = join(ROOT, "static/splash");
 const NAME = process.env.VEREIN_NAME || "Folge der Wolke e.V.";
@@ -56,7 +55,7 @@ function wordmarkBuffer(pointPx: number): Buffer {
       "-background",
       "none",
       "-fill",
-      "#FFFFFF",
+      BRAND_INK,
       "-font",
       FONT,
       "-pointsize",
@@ -65,6 +64,21 @@ function wordmarkBuffer(pointPx: number): Buffer {
       "png:-",
     ],
     { maxBuffer: 64 * 1024 * 1024 },
+  );
+}
+
+// Wash-gradient field rasterized from an inline SVG (sharp's `create` only
+// takes solid colors). Stops mirror --bg-wash (src/lib/themes/aurora.css).
+function washBackground(pxW: number, pxH: number): Buffer {
+  const [a, b, c] = BRAND_WASH_STOPS;
+  return Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${pxW}" height="${pxH}">` +
+      `<defs><linearGradient id="w" x1="0" y1="0" x2="1" y2="1">` +
+      `<stop offset="0" stop-color="${a}"/>` +
+      `<stop offset="0.52" stop-color="${b}"/>` +
+      `<stop offset="1" stop-color="${c}"/>` +
+      `</linearGradient></defs>` +
+      `<rect width="100%" height="100%" fill="url(#w)"/></svg>`,
   );
 }
 
@@ -97,14 +111,7 @@ async function render(pxW: number, pxH: number, file: string): Promise<void> {
     );
   }
 
-  await sharp({
-    create: {
-      width: pxW,
-      height: pxH,
-      channels: 4,
-      background: BRAND_PRIMARY_STRONG,
-    },
-  })
+  await sharp(washBackground(pxW, pxH))
     .composite([
       { input: logo, top: top0, left: Math.round((pxW - logoW) / 2) },
       { input: wm, top: top0 + logoH + gap, left: Math.round((pxW - wmW) / 2) },
