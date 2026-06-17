@@ -29,12 +29,13 @@
 >
 	<p>{text}</p>
 	{#if linkHref && linkLabel}
-		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+		<!-- eslint-disable svelte/no-navigation-without-resolve -->
 		<a
 			href={linkHref}
 			class="mt-1 inline-block font-medium text-primary-text underline underline-offset-2 hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 		>
 			{linkLabel}
 		</a>
+		<!-- eslint-enable svelte/no-navigation-without-resolve -->
 	{/if}
 </div>
