@@ -58,15 +58,12 @@
 
 		<main
 			id="main-content"
-			class="flex-1 overflow-y-auto"
-			style="padding-bottom: env(safe-area-inset-bottom, 0px);"
+			class="flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom,0px))] md:pb-0"
 		>
-			<!-- Mobile bottom clearance is owned by PageShell (master §2.3) — no
-			     wrapper padding here, or converted pages double up (PageShell's
-			     pb-[calc(6rem+safe-area)] + this pb-20 + <main> safe-area). The
-			     plain wrapper stays only to host the children render. Not-yet-
-			     converted allowlisted routes lose the old pb-20 in the interim
-			     (acceptable — legacy, burns down with the allowlist). -->
+			<!-- Mobile bottom clearance is owned HERE (AdminShell) so ALL /app
+			     routes — both PageShell-converted and legacy allowlisted — get
+			     uniform tab-bar + home-indicator clearance without double-up.
+			     PageShell no longer carries the mobile safe-area padding. -->
 			<div>
 				{@render children()}
 			</div>

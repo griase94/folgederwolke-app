@@ -43,14 +43,18 @@ describe("PageShell", () => {
     expect(shell!.className).toContain("max-w-none");
   });
 
-  it("carries the one horizontal padding scale and the mobile tab-bar clearance", () => {
+  it("carries the one horizontal padding scale and vertical padding (clearance owned by AdminShell)", () => {
     render(PageShellHarness, { props: {} });
     const cls =
       document.querySelector<HTMLElement>("[data-page-shell]")!.className;
     expect(cls).toContain("px-4");
     expect(cls).toContain("sm:px-6");
     expect(cls).toContain("lg:px-8");
-    expect(cls).toContain("safe-area-inset-bottom");
+    // Mobile tab-bar + home-indicator clearance is owned by AdminShell's <main>
+    // (pb-[calc(5rem+env(safe-area-inset-bottom,0px))] md:pb-0) so ALL /app
+    // routes get uniform clearance. PageShell adds desktop bottom padding only.
+    expect(cls).toContain("pb-6");
+    expect(cls).toContain("md:pb-12");
   });
 });
 

@@ -8,10 +8,9 @@
     form → 640px (create/edit forms) · list → 1100px (lists/tables)
     · full → no max (dashboard 12-col grid).
   ONE horizontal padding scale per breakpoint on the 4px grid: 16 / 24 / 32.
-  Mobile bottom padding clears the fixed tab bar + iOS home indicator —
-  safe-area is handled HERE for converted pages. AdminShell still carries a
-  legacy clearance wrapper for not-yet-converted routes; delete that wrapper
-  when the allowlist reaches zero (follow-up passes).
+  Bottom padding: AdminShell's <main> owns mobile tab-bar + home-indicator
+  clearance uniformly (pb-[calc(5rem+env(safe-area-inset-bottom,0px))] md:pb-0).
+  PageShell adds its own desktop bottom padding (md:pb-12) on top of that.
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
@@ -31,7 +30,7 @@
 <div
 	data-page-shell
 	data-width={width}
-	class="mx-auto w-full px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] sm:px-6 md:pt-8 md:pb-12 lg:px-8 {WIDTH_CLASS[width]}"
+	class="mx-auto w-full px-4 pt-6 pb-6 sm:px-6 md:pt-8 md:pb-12 lg:px-8 {WIDTH_CLASS[width]}"
 >
 	{@render children()}
 </div>
