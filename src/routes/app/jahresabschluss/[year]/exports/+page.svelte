@@ -20,7 +20,7 @@
 			<Button
 				href={`/app/jahresabschluss/${data.year}/bundle.zip`}
 				data-testid="exports-download-bundle"
-				class="bg-primary text-primary-foreground hover:bg-primary/90"
+				class="bg-primary-strong text-primary-foreground hover:bg-primary-strong/90"
 			>
 				ZIP herunterladen
 			</Button>

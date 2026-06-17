@@ -13,7 +13,7 @@
 	<!-- eslint-disable svelte/no-navigation-without-resolve -->
 	<a
 		{href}
-		class="group block rounded-xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+		class="group block rounded-xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 	>
 		<p class="text-sm font-medium text-muted-foreground">{label}</p>
 		<p class="mt-1 text-2xl font-bold tracking-tight text-foreground group-hover:text-primary">

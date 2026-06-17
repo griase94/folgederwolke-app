@@ -272,7 +272,7 @@
 				type="submit"
 				form="detail-form"
 				disabled={!dirty || saving}
-				class="inline-flex h-11 min-h-11 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+				class="inline-flex h-11 min-h-11 items-center justify-center rounded-md bg-primary-strong px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-strong/90 disabled:cursor-not-allowed disabled:opacity-50"
 			>
 				Speichern
 			</button>

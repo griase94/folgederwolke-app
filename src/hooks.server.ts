@@ -13,6 +13,7 @@ import { resolveSession } from "$lib/server/auth/index.js";
 import { registerHandlers } from "$lib/server/events/index.js";
 import { assertProductionEnvSafe } from "$lib/server/env.js";
 import { building } from "$app/environment";
+import { resolveThemeId, THEME_COOKIE } from "$lib/themes/index.js";
 
 // ---------------------------------------------------------------------------
 // One-time startup safety checks
@@ -74,6 +75,25 @@ const authHandle: Handle = async ({ event, resolve }) => {
 };
 
 // ---------------------------------------------------------------------------
+// Theme handle — swaps <html data-theme="…"> per the fdw_theme cookie
+// ---------------------------------------------------------------------------
+// app.html carries data-theme="aurora" as the static fallback. The cookie
+// value is validated against the theme registry (resolveThemeId returns
+// DEFAULT_THEME for unknown values), so the substituted string is always one
+// of our registry literals — no injection surface.
+//
+// NOTE (spec §3): PRERENDERED pages (/impressum, /datenschutz) are baked at
+// build time and always render the static default theme. Acceptable while
+// there is a single theme; recorded here so theme #2 doesn't surprise.
+const themeHandle: Handle = async ({ event, resolve }) => {
+  const theme = resolveThemeId(event.cookies.get(THEME_COOKIE));
+  return resolve(event, {
+    transformPageChunk: ({ html }) =>
+      html.replace('data-theme="aurora"', `data-theme="${theme}"`),
+  });
+};
+
+// ---------------------------------------------------------------------------
 // Security headers handle
 // ---------------------------------------------------------------------------
 
@@ -113,4 +133,4 @@ const securityHandle: Handle = async ({ event, resolve }) => {
 // Compose handles in order: auth first, then security headers
 // ---------------------------------------------------------------------------
 
-export const handle: Handle = sequence(authHandle, securityHandle);
+export const handle: Handle = sequence(authHandle, themeHandle, securityHandle);

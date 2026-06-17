@@ -357,7 +357,7 @@
 					class={[
 						'inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
 						bezahltVonKind === k
-							? 'bg-primary text-primary-foreground'
+							? 'bg-primary-strong text-primary-foreground'
 							: 'bg-muted text-muted-foreground hover:text-foreground',
 					].join(' ')}
 				>

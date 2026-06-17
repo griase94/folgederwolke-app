@@ -316,7 +316,7 @@
 			<a
 				href={newHref}
 				data-slot="new-cta"
-				class="inline-flex h-11 min-h-11 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+				class="inline-flex h-11 min-h-11 items-center justify-center rounded-md bg-primary-strong px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-strong/90"
 			>
 				{newLabel}
 			</a>
@@ -503,7 +503,7 @@
 		href={newHref}
 		data-slot="new-cta-mobile"
 		aria-label={newLabel}
-		class="fixed right-4 bottom-20 z-30 inline-flex h-14 min-h-14 w-14 min-w-14 items-center justify-center rounded-full bg-primary text-2xl leading-none text-primary-foreground shadow-lg transition-colors hover:bg-primary/90 sm:hidden"
+		class="fixed right-4 bottom-20 z-30 inline-flex h-14 min-h-14 w-14 min-w-14 items-center justify-center rounded-full bg-primary-strong text-2xl leading-none text-primary-foreground shadow-lg transition-colors hover:bg-primary-strong/90 sm:hidden"
 	>
 		<span aria-hidden="true">+</span>
 	</a>

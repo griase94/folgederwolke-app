@@ -207,7 +207,7 @@ test.describe("@phase-9 C4-DASH-lite dashboard upgrades", () => {
     await expect(sessionRow).toBeVisible();
   });
 
-  test("BeitragsuebersichtWidget ships with dark: variants applied", async ({
+  test("stays light under OS dark mode (Aurora is light-only at launch)", async ({
     page,
   }) => {
     await page.emulateMedia({ colorScheme: "dark" });
@@ -215,12 +215,14 @@ test.describe("@phase-9 C4-DASH-lite dashboard upgrades", () => {
     await page.goto("/app");
     const widget = page.getByTestId("beitragsuebersicht-widget");
     await expect(widget).toBeVisible();
-    // BG color in dark mode must not be pure white (i.e. dark: variants kicked
-    // in). Tailwind's `dark:bg-card/40` resolves to a dark, semi-transparent
-    // surface — never rgb(255, 255, 255).
-    const bg = await widget.evaluate(
-      (el) => getComputedStyle(el).backgroundColor,
+    // Aurora ships LIGHT-ONLY at launch (spec §2/§3): aurora.css sets
+    // `color-scheme: light only` and the dark variant stays class-based with no
+    // `.dark` class ever applied, so the app must NOT auto-darken under the OS
+    // dark preference. Dark ships later as a switchable theme via the registry,
+    // not via prefers-color-scheme. This guards that decision.
+    const htmlClass = await page.evaluate(
+      () => document.documentElement.className,
     );
-    expect(bg).not.toBe("rgb(255, 255, 255)");
+    expect(htmlClass).not.toContain("dark");
   });
 });

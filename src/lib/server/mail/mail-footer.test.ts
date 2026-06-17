@@ -11,6 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { renderMailTemplate } from "./render.js";
 import MailFooter from "./templates/MailFooter.svelte";
+import { BRAND_PRIMARY_STRONG } from "$lib/brand.js";
 
 describe("MailFooter", () => {
   const footerProps = {
@@ -38,9 +39,10 @@ describe("MailFooter", () => {
   it("uses the default brand color when none is passed", () => {
     const { html } = renderMailTemplate(MailFooter as never, footerProps);
 
-    // The default brandColor (#be185d) drives the footer accent on the
-    // Verein name; mail clients strip CSS vars so this is a render-time prop.
-    expect(html).toContain("#be185d");
+    // The default brandColor (BRAND_PRIMARY_STRONG — Aurora fill-behind-white
+    // tier) drives the footer accent on the Verein name; mail clients strip
+    // CSS vars so this is a render-time prop.
+    expect(html).toContain(BRAND_PRIMARY_STRONG);
   });
 
   it("honours an explicit brandColor prop", () => {
@@ -50,6 +52,6 @@ describe("MailFooter", () => {
     });
 
     expect(html).toContain("#123456");
-    expect(html).not.toContain("#be185d");
+    expect(html).not.toContain(BRAND_PRIMARY_STRONG);
   });
 });

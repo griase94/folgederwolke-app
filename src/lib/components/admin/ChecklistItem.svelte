@@ -35,7 +35,7 @@
 		<!-- eslint-disable svelte/no-navigation-without-resolve -->
 		<a
 			{href}
-			class="inline-flex min-h-[44px] shrink-0 items-center rounded-md bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+			class="inline-flex min-h-[44px] shrink-0 items-center rounded-md bg-primary-strong px-4 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-strong/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 		>
 			{cta}
 		</a>
@@ -44,7 +44,7 @@
 		<button
 			type="button"
 			{onclick}
-			class="inline-flex min-h-[44px] shrink-0 items-center rounded-md bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+			class="inline-flex min-h-[44px] shrink-0 items-center rounded-md bg-primary-strong px-4 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary-strong/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 		>
 			{cta}
 		</button>

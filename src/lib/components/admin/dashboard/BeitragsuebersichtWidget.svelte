@@ -11,6 +11,7 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { BRAND_PRIMARY } from '$lib/brand.js';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import CheckCircle2 from '@lucide/svelte/icons/check-circle-2';
 
@@ -95,7 +96,7 @@
 
 	// Confetti particle colors — brand-adjacent palette (rosa + emerald + amber).
 	const particleColors = [
-		'#BE185D', // rosa primary
+		BRAND_PRIMARY, // brand primary
 		'#059669', // emerald-600
 		'#D97706', // amber-600
 		'#7C3AED', // violet-600

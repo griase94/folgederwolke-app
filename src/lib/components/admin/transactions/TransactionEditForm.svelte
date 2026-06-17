@@ -233,7 +233,7 @@
 							toast.error(body?.data?.error ?? 'Fehler beim Speichern');
 						}
 					}}
-					class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60 transition-colors"
+					class="rounded-md bg-primary-strong px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-strong/90 disabled:opacity-60 transition-colors"
 				>
 					{savingAndNotifying ? 'Sende…' : 'Speichern und Mitglied benachrichtigen'}
 				</button>

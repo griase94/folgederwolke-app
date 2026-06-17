@@ -103,7 +103,7 @@
 				class={[
 					'inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
 					isActive
-						? 'bg-primary text-primary-foreground'
+						? 'bg-primary-strong text-primary-foreground'
 						: 'bg-muted text-muted-foreground hover:bg-muted/70 hover:text-foreground'
 				].join(' ')}
 				data-testid={`inbox-filter-${label}`}

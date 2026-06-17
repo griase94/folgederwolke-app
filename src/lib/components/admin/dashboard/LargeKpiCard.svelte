@@ -111,7 +111,7 @@
 {#if href}
 	<a
 		{href}
-		class="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-xl"
+		class="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-xl"
 		data-testid="large-kpi-card-link"
 	>
 		<Card class="hover:shadow-md transition-shadow">

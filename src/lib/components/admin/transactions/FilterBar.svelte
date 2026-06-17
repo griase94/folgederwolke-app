@@ -433,7 +433,7 @@
           {#if activeFieldCount > 0}
             <span
               aria-hidden="true"
-              class="bg-primary text-primary-foreground inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-medium"
+              class="bg-primary-strong text-primary-foreground inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-medium"
             >
               {activeFieldCount}
             </span>
@@ -461,7 +461,7 @@
           {#if activeFieldCount > 0}
             <span
               aria-hidden="true"
-              class="bg-primary text-primary-foreground inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-medium"
+              class="bg-primary-strong text-primary-foreground inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-medium"
             >
               {activeFieldCount}
             </span>

@@ -187,7 +187,7 @@
         </select>
         <button
           type="submit"
-          class="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex h-11 min-h-11 items-center justify-center rounded-md px-4 text-sm font-medium"
+          class="bg-primary-strong text-primary-foreground hover:bg-primary-strong/90 inline-flex h-11 min-h-11 items-center justify-center rounded-md px-4 text-sm font-medium"
         >
           Als bezahlt markieren
         </button>

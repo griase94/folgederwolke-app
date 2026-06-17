@@ -109,7 +109,7 @@
 			<ol class="space-y-3 text-sm text-foreground">
 				<li class="flex items-start gap-3">
 					<span
-						class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white"
+						class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-strong text-[10px] font-bold text-white"
 						>1</span
 					>
 					<span>
@@ -137,7 +137,7 @@
 				</li>
 				<li class="flex items-start gap-3">
 					<span
-						class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white"
+						class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-strong text-[10px] font-bold text-white"
 						>2</span
 					>
 					<span>
@@ -147,7 +147,7 @@
 				</li>
 				<li class="flex items-start gap-3">
 					<span
-						class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white"
+						class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-strong text-[10px] font-bold text-white"
 						>3</span
 					>
 					<span>Tippe auf <span class="font-medium">„Hinzufügen"</span>.</span>
@@ -157,7 +157,7 @@
 			<button
 				type="button"
 				onclick={dismiss}
-				class="mt-6 w-full rounded-xl bg-primary py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+				class="mt-6 w-full rounded-xl bg-primary-strong py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
 			>
 				Verstanden
 			</button>

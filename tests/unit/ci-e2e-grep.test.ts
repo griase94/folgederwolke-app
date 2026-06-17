@@ -61,6 +61,9 @@ describe("CI e2e grep coverage (F3)", () => {
     expect(grepTags).toContain("@phase-9");
     // @smoke added from main: cross-cutting always-on authenticated-route check.
     expect(grepTags).toContain("@smoke");
+    // Aurora UI redesign slices (2026-06): each slice adds its tag at its
+    // PR boundary (spec §10 testing norms).
+    expect(grepTags).toContain("@phase-aurora-1");
   });
 
   it("PWA share_target spec is covered by the CI grep (F3)", () => {

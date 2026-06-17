@@ -13,6 +13,7 @@ import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { env } from "$lib/server/env.js";
 import { addressLines } from "$lib/server/domain/address.js";
+import { themes, THEME_COOKIE, resolveThemeId } from "$lib/themes/index.js";
 
 const KASSEN_KEY = "verein.kassenwaert_name";
 
@@ -20,7 +21,7 @@ function unquote(s: string): string {
   return s.replace(/^"|"$/g, "");
 }
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, cookies }) => {
   const db = getDb();
   const rows = await db.execute<{ value: unknown }>(
     sql`SELECT value FROM settings WHERE key = ${KASSEN_KEY}`,
@@ -35,6 +36,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   return {
     user: locals.session!.user,
+    themes,
+    activeTheme: resolveThemeId(cookies.get(THEME_COOKIE)),
     verein: {
       name: env.VEREIN_NAME,
       steuernummer: env.VEREIN_STEUERNUMMER,
@@ -79,5 +82,22 @@ export const actions: Actions = {
     );
 
     return { action: "saveKassenwaertName", success: true };
+  },
+
+  // Set the UI theme for this device (spec §3 — cookie-persisted, validated
+  // against the registry so the value injected into <html data-theme> can
+  // only ever be one of our literals).
+  setTheme: async ({ request, cookies }) => {
+    const formData = await request.formData();
+    const theme = String(formData.get("theme") ?? "");
+    if (!themes.some((t) => t.id === theme)) {
+      return fail(422, { action: "setTheme", error: "Unbekanntes Design" });
+    }
+    cookies.set(THEME_COOKIE, theme, {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+    });
+    return { action: "setTheme", success: true };
   },
 };

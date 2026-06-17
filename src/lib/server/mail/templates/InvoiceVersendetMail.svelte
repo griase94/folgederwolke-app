@@ -56,6 +56,7 @@
 				})
 			: ''
 	);
+	import { BRAND_PRIMARY_STRONG } from '$lib/brand.js';
 </script>
 
 <!--
@@ -86,7 +87,7 @@
 					<tbody>
 						<!-- Brand strip -->
 						<tr>
-							<td style="background:#be185d;padding:18px 32px;border-radius:16px 16px 0 0;">
+							<td style="background:{BRAND_PRIMARY_STRONG};padding:18px 32px;border-radius:16px 16px 0 0;">
 								<p
 									style="margin:0;color:#ffffff;font-size:13px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;"
 								>
@@ -190,7 +191,7 @@
 												<td align="center">
 													<a
 														href={downloadUrl}
-														style="display:inline-block;padding:14px 32px;background:#be185d;color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;"
+														style="display:inline-block;padding:14px 32px;background:{BRAND_PRIMARY_STRONG};color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;"
 													>
 														Rechnung herunterladen
 													</a>

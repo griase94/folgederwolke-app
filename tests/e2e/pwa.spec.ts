@@ -19,7 +19,7 @@ test.describe("@phase-2 PWA", () => {
       name: "Folge der Wolke",
       short_name: "FdW",
       display: "standalone",
-      theme_color: "#be185d",
+      theme_color: "#fff1f6",
     });
     expect(Array.isArray(manifest.icons)).toBe(true);
     expect(manifest.icons.length).toBeGreaterThanOrEqual(2);
@@ -43,7 +43,7 @@ test.describe("@phase-2 PWA", () => {
     // theme-color
     const themeColor = page.locator('meta[name="theme-color"]');
     await expect(themeColor).toHaveCount(1);
-    await expect(themeColor).toHaveAttribute("content", "#be185d");
+    await expect(themeColor).toHaveAttribute("content", "#fff1f6");
   });
 
   test("icons are accessible", async ({ page }) => {

@@ -123,7 +123,7 @@
 					class={[
 						'inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
 						spendeKind === k
-							? 'bg-primary text-primary-foreground'
+							? 'bg-primary-strong text-primary-foreground'
 							: 'bg-muted text-muted-foreground hover:text-foreground'
 					].join(' ')}
 					data-testid={`spendeart-${k}`}
@@ -161,7 +161,7 @@
 					class={[
 						'inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
 						zweckbindungKind === k
-							? 'bg-primary text-primary-foreground'
+							? 'bg-primary-strong text-primary-foreground'
 							: 'bg-muted text-muted-foreground hover:text-foreground'
 					].join(' ')}
 					data-testid={`zweckbindung-${k}`}
@@ -370,7 +370,7 @@
 					class={[
 						'inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
 						spenderMode === k
-							? 'bg-primary text-primary-foreground'
+							? 'bg-primary-strong text-primary-foreground'
 							: 'bg-muted text-muted-foreground hover:text-foreground'
 					].join(' ')}
 					data-testid={`spender-mode-${k}`}
