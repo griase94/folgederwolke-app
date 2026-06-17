@@ -32,14 +32,8 @@ const buttonSvelte = read(
   "button",
   "button.svelte",
 );
-const inboxCard = read(
-  "src",
-  "lib",
-  "components",
-  "admin",
-  "inbox",
-  "InboxCard.svelte",
-);
+// InboxCard.svelte was deleted in the Aurora inbox redesign (package A) —
+// the InboxList now uses TransactionRow (hex-free by token enforcement there).
 
 // Master §2.1 — names AND values are law.
 const FROZEN_VALUES: Record<string, string> = {
@@ -215,11 +209,6 @@ describe("AA compliance of filled controls (spec §2)", () => {
 
   it("Button link variant uses the text-tier pink", () => {
     expect(buttonSvelte).toContain("text-primary-text");
-  });
-
-  it("InboxCard uses text-tier pink for text, no shade utilities", () => {
-    expect(inboxCard).not.toContain("primary-50");
-    expect(inboxCard).toContain("text-primary-text");
   });
 
   it("Sidebar active nav uses gradient-soft pill, never raw primary (Aurora §5 / AA)", () => {
