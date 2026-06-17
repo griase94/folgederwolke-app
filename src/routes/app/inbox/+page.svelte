@@ -22,6 +22,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { invalidateAll } from '$app/navigation';
 	import type { PageData } from './$types.js';
+	import PageShell from '$lib/components/layout/PageShell.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -68,7 +69,7 @@
 	<title>Audit Inbox – {page.data.vereinName}</title>
 </svelte:head>
 
-<div class="container mx-auto max-w-3xl px-4 py-8 sm:px-6">
+<PageShell width="list">
 	<!-- ── Header ─────────────────────────────────────────────────────────── -->
 	<div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 		<div>
@@ -149,7 +150,7 @@
 	{:else}
 		<InboxList submissions={data.submissions} kategorieOptions={data.kategorieOptions} />
 	{/if}
-</div>
+</PageShell>
 
 <!-- ── ManualImportSheet ────────────────────────────────────────────────── -->
 <ManualImportSheet

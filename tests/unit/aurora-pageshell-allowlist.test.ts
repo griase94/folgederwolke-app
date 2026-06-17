@@ -24,7 +24,6 @@ const appRoutesDir = resolve(repoRoot, "src", "routes", "app");
 
 // Paths relative to src/routes/app, posix separators.
 const ALLOWLIST = new Set<string>([
-  "+page.svelte",
   "ausgaben/+page.svelte",
   "ausgaben/[id]/+page.svelte",
   "ausgaben/neu/+page.svelte",
@@ -37,7 +36,6 @@ const ALLOWLIST = new Set<string>([
   "einstellungen/verein/+page.svelte",
   "files/+page.svelte",
   "files/papierkorb/+page.svelte",
-  "inbox/+page.svelte",
   "inbox/[ausId]/+page.svelte",
   "jahresabschluss/+page.svelte",
   "jahresabschluss/[year]/+page.svelte",
@@ -51,7 +49,6 @@ const ALLOWLIST = new Set<string>([
   "mitglieder/+page.svelte",
   "mitglieder/[id]/+page.svelte",
   "mitglieder/bericht/[year]/+page.svelte",
-  "projekte/+page.svelte",
   "projekte/[id]/+page.svelte",
   "rechnungen/+page.svelte",
   "rechnungen/[id]/+page.svelte",

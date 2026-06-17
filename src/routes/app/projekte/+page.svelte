@@ -6,6 +6,7 @@
 	import EditProjectDialog from '$lib/components/admin/projects/EditProjectDialog.svelte';
 	import type { ProjectView } from '$lib/server/domain/projects.js';
 	import type { PageData } from './$types.js';
+	import PageShell from '$lib/components/layout/PageShell.svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -38,7 +39,7 @@
 	<title>Projekte – {page.data.vereinName}</title>
 </svelte:head>
 
-<div class="container mx-auto max-w-5xl px-4 py-8 sm:px-6">
+<PageShell width="list">
 	<!-- Header -->
 	<div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 		<div>
@@ -91,7 +92,7 @@
 		onEdit={openEdit}
 		onAdd={() => (addOpen = true)}
 	/>
-</div>
+</PageShell>
 
 <AddProjectDialog bind:open={addOpen} customers={data.customers} />
 <EditProjectDialog
