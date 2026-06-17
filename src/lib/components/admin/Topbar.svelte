@@ -106,59 +106,6 @@
 		});
 	});
 
-	// ── Breadcrumbs ──────────────────────────────────────────────────────────
-	interface Crumb {
-		label: string;
-		href: string;
-	}
-
-	const ROUTE_LABELS: Record<string, string> = {
-		app: 'Übersicht',
-		inbox: 'Audit Inbox',
-		transactions: 'Transaktionen',
-		ausgaben: 'Ausgaben',
-		einnahmen: 'Einnahmen',
-		spenden: 'Spenden',
-		mitglieder: 'Mitglieder',
-		rechnungen: 'Rechnungen',
-		projekte: 'Projekte',
-		kunden: 'Kunden',
-		jahresabschluss: 'Jahresabschluss',
-		einstellungen: 'Einstellungen',
-		dsgvo: 'DSGVO',
-		dev: 'Dev',
-		mails: 'Mails',
-		neu: 'Neu',
-	};
-
-	const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-	const breadcrumbs = $derived((): Crumb[] => {
-		const segments = $page.url.pathname.replace(/^\//, '').split('/');
-		const crumbs: Crumb[] = [];
-		let accumulated = '';
-		for (const seg of segments) {
-			accumulated += '/' + seg;
-			if (UUID_RE.test(seg)) {
-				// UUID segment: use member name from page data if available, otherwise omit.
-				const pageData = $page.data as Record<string, unknown>;
-				const member = pageData['member'] as
-					| { vorname?: string; nachname?: string }
-					| null
-					| undefined;
-				if (member?.vorname || member?.nachname) {
-					const label = [member.vorname, member.nachname].filter(Boolean).join(' ');
-					crumbs.push({ label, href: accumulated });
-				}
-				// else: omit UUID segment entirely
-			} else {
-				const label = ROUTE_LABELS[seg] ?? seg;
-				crumbs.push({ label, href: accumulated });
-			}
-		}
-		return crumbs;
-	});
-
 	// ── Search ───────────────────────────────────────────────────────────────
 	const RECENT_KEY = 'fdw.search.recent';
 	const RECENT_MAX = 5;
@@ -327,36 +274,41 @@
 
 <svelte:window onkeydown={handleGlobalKeydown} />
 
+<!--
+	Aurora topbar (spec §5): ONE row — year switcher left, search + user menu
+	right (desktop); year pill left + avatar right on one baseline (mobile,
+	no global search at launch). Glass is allowed: small fixed surface
+	(spec §2 blur discipline). Breadcrumbs are gone — PageHeader's mobile
+	back slot and the sidebar carry orientation now.
+-->
 <header
-	class="safe-top sticky top-0 z-30 flex min-h-14 items-center gap-4 border-b border-border bg-background/95 px-4 backdrop-blur-sm supports-[backdrop-filter]:bg-background/80 lg:px-6"
+	class="safe-top sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-hairline surface-glass px-4 lg:px-6"
 >
-	<!-- Breadcrumbs -->
-	<nav aria-label="Breadcrumb" class="hidden flex-1 items-center gap-1 text-sm sm:flex">
-		{#each breadcrumbs() as crumb, i (crumb.href)}
-			{#if i > 0}
-				<span class="text-muted-foreground" aria-hidden="true">/</span>
-			{/if}
-			{#if i === breadcrumbs().length - 1}
-				<span class="font-medium text-foreground">{crumb.label}</span>
-			{:else}
-				<!-- eslint-disable svelte/no-navigation-without-resolve -->
-				<a
-					href={crumb.href}
-					class="text-muted-foreground transition-colors hover:text-foreground"
-				>
-					{crumb.label}
-				</a>
-				<!-- eslint-enable svelte/no-navigation-without-resolve -->
-			{/if}
-		{/each}
-	</nav>
+	<!-- Year switcher (spec §5: leftmost on both devices) -->
+	{#if yearData().availableYears.length > 0 && yearData().selectedYear !== null}
+		<!-- Desktop variant (>= sm): SegmentedControl with one segment per year. -->
+		<div class="fdw-year-switcher-wrap hidden sm:block" data-fdw="year-switcher-wrap">
+			<YearSwitcher
+				years={yearData().availableYears}
+				selected={yearData().yearScope ?? yearData().selectedYear!}
+				onChange={handleYearChange}
+				{allowAllYears}
+			/>
+		</div>
+		<!-- Mobile variant (< sm): native select picker, same ?year= contract. -->
+		<div class="sm:hidden">
+			<MobileYearPicker
+				years={yearData().availableYears}
+				selected={yearData().yearScope ?? yearData().selectedYear!}
+				onChange={handleYearChange}
+				{allowAllYears}
+			/>
+		</div>
+	{/if}
 
-	<!--
-		Mobile (PM-010 / C7-3): hide the Vereinsname wordmark on mobile so the
-		topbar gets back its horizontal space — there's no room for it next to
-		the search-icon + bell + user-menu at iPhone width. The breadcrumb
-		nav above already takes over from `sm:` upwards.
-	-->
+	<!-- Spacer: pushes search + user menu to the right edge -->
+	<div class="flex-1" aria-hidden="true"></div>
+
 	<span class="hidden" data-testid="verein-wordmark">{$page.data.vereinName}</span>
 
 	<!-- Search input (desktop) -->
@@ -384,7 +336,7 @@
 			bind:value={searchValue}
 			type="search"
 			placeholder="Mitglied, Auslage, Rechnung suchen…"
-			class="h-9 w-full rounded-lg border border-border bg-muted/40 py-2 pl-9 pr-16 text-base placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 sm:text-sm"
+			class="h-9 w-full rounded-lg border border-hairline bg-muted/40 py-2 pl-9 pr-16 text-base placeholder:text-muted-foreground focus:border-primary focus:bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 sm:text-sm"
 			aria-label="Admin-Suche"
 			aria-expanded={searchOpen}
 			aria-controls="fdw-search-listbox"
@@ -494,33 +446,6 @@
 		(`hidden md:block`) covers ≥md; mobile users reach entities via the
 		bottom tab bar + list filters.
 	-->
-
-	<!-- Year switcher (C2 — sticky in topbar) -->
-	{#if yearData().availableYears.length > 0 && yearData().selectedYear !== null}
-		<!-- Desktop variant (>= sm): SegmentedControl with one segment per year. -->
-		<div class="fdw-year-switcher-wrap hidden sm:block" data-fdw="year-switcher-wrap">
-			<YearSwitcher
-				years={yearData().availableYears}
-				selected={yearData().yearScope ?? yearData().selectedYear!}
-				onChange={handleYearChange}
-				{allowAllYears}
-			/>
-		</div>
-		<!--
-			Mobile variant (< sm, C2-4): native <select> picker. Renders ONLY
-			below sm so the desktop SegmentedControl remains the default once
-			there's horizontal space for it. Both variants share the same
-			?year= URL contract via handleYearChange.
-		-->
-		<div class="sm:hidden">
-			<MobileYearPicker
-				years={yearData().availableYears}
-				selected={yearData().yearScope ?? yearData().selectedYear!}
-				onChange={handleYearChange}
-				{allowAllYears}
-			/>
-		</div>
-	{/if}
 
 	<!--
 		Notification bell removed: no notifications feature exists, so a disabled

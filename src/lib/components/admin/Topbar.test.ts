@@ -73,4 +73,16 @@ describe("Topbar — mobile polish (C7-3 / C7-7)", () => {
     // sm+ only and keep the wordmark visible on mobile).
     expect(cls).not.toMatch(/\bsm:hidden\b/);
   });
+
+  it("renders NO breadcrumb navigation (Aurora §5 one-row contract)", () => {
+    const { container } = render(Topbar, { props: { user: mockUser } });
+    expect(container.querySelector('nav[aria-label="Breadcrumb"]')).toBeNull();
+  });
+
+  it("header is a glass fixed surface with hairline border (Aurora §5)", () => {
+    const { container } = render(Topbar, { props: { user: mockUser } });
+    const header = container.querySelector("header")!;
+    expect(header.className).toContain("surface-glass");
+    expect(header.className).toContain("border-hairline");
+  });
 });

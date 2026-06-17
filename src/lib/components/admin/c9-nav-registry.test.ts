@@ -16,7 +16,6 @@
  * Main group grows 6 → 8 entries.
  */
 
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   mainNavItems,
@@ -130,20 +129,8 @@ describe("C9 — rename Heute → Übersicht (UX-040)", () => {
   });
 });
 
-describe("C9 — Topbar breadcrumb root rename (UX-040, cycle 2)", () => {
-  // Topbar's ROUTE_LABELS map is local (not exported). Source-grep the
-  // component file to guarantee the breadcrumb root matches the sidebar.
-  const TOPBAR_SRC = readFileSync(
-    `${process.cwd()}/src/lib/components/admin/Topbar.svelte`,
-    "utf-8",
-  );
-
-  it('Topbar maps the "app" segment to "Übersicht" (not "Start")', () => {
-    expect(TOPBAR_SRC).toMatch(/app:\s*'Übersicht'/);
-    expect(TOPBAR_SRC).not.toMatch(/app:\s*'Start'/);
-  });
-
-  it('Topbar contains no breadcrumb label "Heute"', () => {
-    expect(TOPBAR_SRC).not.toMatch(/:\s*'Heute'/);
-  });
-});
+// Aurora slice 2 (Task 2.4): Topbar breadcrumbs are fully removed — the
+// PageHeader mobile back slot and the sidebar carry orientation instead
+// (spec §5 one-row contract, project rule: no compat shim). The C9 source-
+// grep that asserted ROUTE_LABELS['app'] === 'Übersicht' is deleted here
+// because ROUTE_LABELS no longer exists in Topbar.svelte.
