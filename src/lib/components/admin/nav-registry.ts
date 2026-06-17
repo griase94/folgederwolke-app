@@ -33,7 +33,7 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   // ── Main group (spec §5 order) ────────────────────────────────────────
-  { label: "Übersicht", href: "/app", icon: "CheckSquare", group: "main" },
+  { label: "Übersicht", href: "/app", icon: "LayoutDashboard", group: "main" },
   { label: "Prüfung", href: "/app/inbox", icon: "Inbox", group: "main" },
   {
     label: "Projekte",

@@ -66,14 +66,14 @@
 </script>
 
 <svelte:head>
-	<title>Audit Inbox – {page.data.vereinName}</title>
+	<title>Prüfung – {page.data.vereinName}</title>
 </svelte:head>
 
 <PageShell width="list">
 	<!-- ── Header ─────────────────────────────────────────────────────────── -->
 	<div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 		<div>
-			<h1 class="text-2xl font-bold tracking-tight text-foreground">Audit Inbox</h1>
+			<h1 class="text-2xl font-bold tracking-tight text-foreground">Prüfung</h1>
 			<p class="mt-0.5 text-sm text-muted-foreground">
 				{headerSummary(activeStatus, visibleCount)}
 			</p>

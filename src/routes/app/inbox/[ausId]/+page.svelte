@@ -47,7 +47,7 @@
 </script>
 
 <svelte:head>
-	<title>{data.submission.ausId} – Audit Inbox</title>
+	<title>{data.submission.ausId} – Prüfung</title>
 </svelte:head>
 
 <svelte:window onkeydown={onKeydown} />

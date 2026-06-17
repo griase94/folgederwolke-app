@@ -26,7 +26,6 @@
 import type { LayoutServerLoad } from "./$types.js";
 import { sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
-import { env } from "$lib/server/env.js";
 import {
   listAvailableYears,
   type AvailableYear,
@@ -89,13 +88,6 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
   // `selectedYear` to `YearScope` — that would break those consumers.
   const selectedYear = yearScope === ALL_YEARS ? currentYear : yearScope;
 
-  // B-2 — expose PUBLIC_FORM_ENABLED to /app/* pages via $page.data.formEnabled
-  // so the FabBottomSheet can gate its "Externe Auslage einreichen" action.
-  // Reading `env.PUBLIC_FORM_ENABLED` here (not at every consumer) keeps the
-  // env-reading discipline centralized and means the gate is a pure-render
-  // decision in the FAB component.
-  const formEnabled = env.PUBLIC_FORM_ENABLED;
-
   return {
     user: locals.session!.user,
     availableYears,
@@ -103,7 +95,6 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
     selectedYear,
     currentYear,
     festgeschriebenBis,
-    formEnabled,
     openAuslagenCount,
   };
 };

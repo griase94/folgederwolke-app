@@ -46,7 +46,7 @@
 			count={openAuslagenCount}
 			label={openAuslagenCount > 0
 				? `${openAuslagenCount} Auslage${openAuslagenCount !== 1 ? 'n' : ''} warten auf Prüfung`
-				: 'Keine offenen Auslagen — Audit Inbox leer'}
+				: 'Keine offenen Auslagen — Prüfung leer'}
 			cta={openAuslagenCount > 0 ? 'Review starten →' : 'Inbox öffnen →'}
 			href="/app/inbox"
 			empty={openAuslagenCount === 0}
