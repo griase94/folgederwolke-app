@@ -7,7 +7,7 @@
  * fallback otherwise.
  */
 
-export type ShareOutcome = "shared" | "copied" | "failed";
+export type ShareOutcome = "shared" | "copied" | "cancelled" | "failed";
 
 export function buildStatusUrl(ausId: string, origin: string): string {
   return new URL(`/auslage-status/${encodeURIComponent(ausId)}`, origin).href;
@@ -25,9 +25,9 @@ export async function shareOrCopyStatusLink(
       await navigator.share({ title: `Auslage-Status — ${vereinName}`, url });
       return "shared";
     } catch (err) {
-      // User dismissed the native sheet — do NOT silently copy instead.
+      // User dismissed the native sheet — normal action, not a failure.
       if (err instanceof DOMException && err.name === "AbortError") {
-        return "failed";
+        return "cancelled";
       }
       // Other share failures (unsupported payload, transient) → clipboard.
     }

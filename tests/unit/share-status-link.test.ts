@@ -42,12 +42,12 @@ describe("shareOrCopyStatusLink", () => {
     expect(writeText).toHaveBeenCalledWith(URL_);
   });
 
-  it("returns 'failed' without copying when the user cancels the share sheet", async () => {
+  it("returns 'cancelled' without copying when the user cancels the share sheet", async () => {
     const abort = new DOMException("cancelled", "AbortError");
     const share = vi.fn().mockRejectedValue(abort);
     const writeText = vi.fn();
     vi.stubGlobal("navigator", { share, clipboard: { writeText } });
-    await expect(shareOrCopyStatusLink(URL_, "X")).resolves.toBe("failed");
+    await expect(shareOrCopyStatusLink(URL_, "X")).resolves.toBe("cancelled");
     expect(writeText).not.toHaveBeenCalled();
   });
 

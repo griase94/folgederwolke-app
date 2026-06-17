@@ -76,7 +76,7 @@ test.describe("@phase-1 Auth — anti-enumeration", () => {
     await page.goto("/sign-in");
     await page.fill('input[name="email"]', "notanadmin@randomdomain.example");
     await page.click('button[type="submit"]');
-    await expect(page.locator('[role="status"]')).toContainText(
+    await expect(page.getByTestId("link-sent-panel")).toContainText(
       "Schau in dein Postfach",
     );
 
@@ -84,7 +84,7 @@ test.describe("@phase-1 Auth — anti-enumeration", () => {
     await page.goto("/sign-in");
     await page.fill('input[name="email"]', "admin@example.com");
     await page.click('button[type="submit"]');
-    await expect(page.locator('[role="status"]')).toContainText(
+    await expect(page.getByTestId("link-sent-panel")).toContainText(
       "Schau in dein Postfach",
     );
   });

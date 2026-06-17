@@ -53,6 +53,17 @@
 				? 'Link geteilt ✓'
 				: 'Link speichern'
 	);
+
+	// Announcement for screen readers via the aria-live region below.
+	const shareAnnouncement = $derived(
+		shareState === 'copied'
+			? 'Link kopiert'
+			: shareState === 'shared'
+				? 'Link geteilt'
+				: shareState === 'failed'
+					? `Konnte nicht gespeichert werden — Link: ${shareUrl}`
+					: ''
+	);
 </script>
 
 <svelte:head>
@@ -107,6 +118,9 @@
 				<span class="font-mono" data-testid="share-url-fallback">{shareUrl}</span>
 			</p>
 		{/if}
+		<!-- Visually hidden live region: announces share outcome to screen readers
+		     without polluting visible UI. Empty when idle or cancelled. -->
+		<p class="sr-only" aria-live="polite" aria-atomic="true">{shareAnnouncement}</p>
 
 		<p class="mt-8">
 			<a
