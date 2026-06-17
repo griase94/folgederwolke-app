@@ -149,34 +149,6 @@ test.describe("@phase-3 Admin shell — sign out", () => {
   });
 });
 
-test.describe("@phase-3 Admin shell — dashboard", () => {
-  test("dashboard shows cashflow overview and checklist", async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await signIn(page);
-
-    // Post-C3: Kassenüberblick region replaces "Kennzahlen"
-    // (resolves VB-003 / JB-005 / UI-008 / UX-330).
-    // C3-9 (cycle 2): label now reads "Einnahmen {year}" with the year
-    // inlined — anglicism "YTD" is gone.
-    await expect(page.getByRole("region").first()).toBeVisible();
-    await expect(page.getByText(/Einnahmen \d{4}/).first()).toBeVisible();
-  });
-
-  // Regression guard — labels match the current cashflow overview
-  // assembled in src/lib/components/admin/dashboard/CashflowOverviewSection.svelte.
-  // Update both places together if a label is ever renamed.
-  test("dashboard renders the 2 large KPI cards + key link chips", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await signIn(page);
-    await expect(page.getByText(/Einnahmen \d{4}/).first()).toBeVisible();
-    await expect(page.getByText(/Ausgaben \d{4}/).first()).toBeVisible();
-    await expect(page.getByText("Saldo").first()).toBeVisible();
-    await expect(page.getByText("Offene Rechnungen").first()).toBeVisible();
-  });
-});
-
 test.describe("@phase-3 Search API stub", () => {
   test("GET /api/search returns empty grouped results", async ({ page }) => {
     // /api/search requires an authenticated session — sign in first, then

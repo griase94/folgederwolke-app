@@ -129,22 +129,28 @@ test.describe("@phase-4-ausgaben Ausgaben tab", () => {
     await expect(page.getByText(/Genehmigt/i).first()).toBeVisible();
   });
 
-  test("bulk Als bezahlt markieren over the approved-pending pool", async ({
+  test("Überweisungsliste: approved-pending pool surfaces with copy buttons and per-row erstattet action", async ({
     page,
   }) => {
     await signIn(page);
-    await page.goto("/app/ausgaben");
-    // Select the first row checkbox (mobile card / desktop row toggle) if any
-    // approved-pending rows exist, then mark erstattet via the bulk bar.
-    const firstCheckbox = page.locator('input[type="checkbox"]').first();
-    if (await firstCheckbox.isVisible().catch(() => false)) {
-      await firstCheckbox.check();
-      await page
-        .getByRole("button", { name: /Als erstattet markieren/i })
-        .click();
-      await page.getByRole("button", { name: /Bestätigen/i }).click();
-      // A per-row summary toast appears.
-      await expect(page.getByText(/erstattet/i).first()).toBeVisible();
+    await page.goto("/app/ausgaben/ueberweisungen");
+    await expect(
+      page.getByRole("heading", { name: "Überweisungsliste" }),
+    ).toBeVisible();
+    const claims = page.getByTestId("ueberweisung-claim");
+    if ((await claims.count()) > 0) {
+      const first = claims.first();
+      // Bank-form copy order: Empfängername → IBAN → Betrag → Verwendungszweck
+      const buttons = first.locator(
+        "[data-testid='copy-name'], [data-testid='copy-iban'], [data-testid='copy-iban-disabled'], [data-testid='copy-betrag'], [data-testid='copy-zweck']",
+      );
+      await expect(buttons.nth(0)).toHaveText(/Empfängername/);
+      await expect(buttons.nth(2)).toHaveText(/Betrag/);
+      await expect(buttons.nth(3)).toHaveText(/Verwendungszweck/);
+      await first.getByTestId("mark-erstattet").click();
+      await expect(
+        page.getByText(/1 erstattet|bereits erstattet/).first(),
+      ).toBeVisible();
     }
   });
 

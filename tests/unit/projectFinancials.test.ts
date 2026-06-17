@@ -136,6 +136,7 @@ describe.skipIf(!dbConfigured)(
         saldoCents: 0,
         offeneRechnungen: 0,
         auslagenZuPruefen: 0,
+        buchungenCount: 0,
       });
       expect(batch[p3]).toEqual({
         einnahmenCents: 0,
@@ -143,6 +144,7 @@ describe.skipIf(!dbConfigured)(
         saldoCents: 0,
         offeneRechnungen: 0,
         auslagenZuPruefen: 0,
+        buchungenCount: 0,
       });
     });
 
@@ -154,6 +156,7 @@ describe.skipIf(!dbConfigured)(
         saldoCents: 0,
         offeneRechnungen: 0,
         auslagenZuPruefen: 0,
+        buchungenCount: 0,
       });
     });
 
