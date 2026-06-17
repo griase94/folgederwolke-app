@@ -19,7 +19,8 @@
 		brandColor?: string;
 	};
 
-	let { vereinName, adresse, vr, steuernummer, brandColor = '#be185d' }: Props = $props();
+	import { BRAND_PRIMARY_STRONG } from '$lib/brand.js';
+	let { vereinName, adresse, vr, steuernummer, brandColor = BRAND_PRIMARY_STRONG }: Props = $props();
 </script>
 
 <tr>

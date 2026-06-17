@@ -5,7 +5,7 @@
  * Component-level mail-template tests for the C8 re-skin.
  *
  * The MagicLink.svelte template established the "brand strip" pattern:
- * a flat `#be185d` top bar (no gradient, no playful subtitle) containing
+ * a flat BRAND_PRIMARY_STRONG top bar (no gradient, no playful subtitle) containing
  * the Verein name in white, uppercase, letter-spaced 1.2px, weight 600.
  * Five templates (EingangsMail, ErstattungsMail, RejectionMail,
  * BeitragsReminder, InvoiceVersendetMail) must adopt that same strip.
@@ -22,6 +22,7 @@
 
 import { describe, expect, it } from "vitest";
 import { renderMailTemplate } from "../../src/lib/server/mail/render.js";
+import { BRAND_PRIMARY_STRONG } from "../../src/lib/brand.js";
 
 // White-label identity props that sendMail() injects into every template
 // from readStammdaten() (Task 2.2). Rendered directly here, so each fixture
@@ -48,7 +49,7 @@ async function renderTemplate(name: string, props: Record<string, unknown>) {
 //
 // We assert on the *visual* shape MagicLink established, not on a CSS class
 // (the templates use inline styles for mail-client compatibility):
-//   - solid #be185d background
+//   - solid BRAND_PRIMARY_STRONG background (Aurora: #d6116f)
 //   - uppercase
 //   - letter-spacing ~1.2px
 //   - text-transform:uppercase
@@ -59,8 +60,8 @@ async function renderTemplate(name: string, props: Record<string, unknown>) {
 // Also enforce the "no gradient header / no playful subtitle in header" rule.
 
 function expectBrandStrip(html: string) {
-  // Flat pink bar (no gradient).
-  expect(html).toMatch(/background:#be185d/i);
+  // Flat brand bar (no gradient). Aurora: BRAND_PRIMARY_STRONG (#d6116f).
+  expect(html).toContain(`background:${BRAND_PRIMARY_STRONG}`);
   // Uppercased + tight letter-spacing.
   expect(html).toMatch(/text-transform:uppercase/i);
   expect(html).toMatch(/letter-spacing:1\.2px/i);

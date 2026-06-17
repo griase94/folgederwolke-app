@@ -85,7 +85,7 @@ describe("manifest.webmanifest — structural validity", () => {
   it("keeps core branding fields", () => {
     expect(manifest.name).toBe("Folge der Wolke");
     expect(manifest.short_name).toBe("FdW");
-    expect(manifest.theme_color).toBe("#be185d");
+    expect(manifest.theme_color).toBe("#fff1f6"); // Aurora wash anchor (Task 1.8)
     expect(manifest.lang).toBe("de");
     expect(manifest.scope).toBe("/");
   });
