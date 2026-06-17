@@ -43,6 +43,9 @@ export const BUILTIN_PRESETS: Record<TabKey, SavedView[]> = {
       readonly: true,
     },
   ],
+  // The unified feed has no saved-view presets — the type chips serve as the
+  // primary filter. The empty array satisfies the Record<TabKey, …> shape.
+  transaktionen: [],
 };
 
 // ── Storage helpers ───────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 import { describe, it, expect } from "vitest";
 import {
   FILTER_REGISTRY,
+  parseFilterState,
   type TabKey,
 } from "$lib/domain/transaction-filters.js";
 
@@ -54,5 +55,26 @@ describe("filter registry", () => {
         "betrag",
       ]),
     );
+  });
+
+  it("transaktionen feed tab: parses ?typ= (single + comma list + q) and drops junk values", () => {
+    const s1 = parseFilterState(
+      "transaktionen",
+      new URLSearchParams("typ=spenden&q=beleg"),
+    );
+    expect(s1.enums.typ).toEqual(["spenden"]);
+    expect(s1.search).toBe("beleg");
+
+    const s2 = parseFilterState(
+      "transaktionen",
+      new URLSearchParams("typ=ausgaben,einnahmen"),
+    );
+    expect(s2.enums.typ).toEqual(["ausgaben", "einnahmen"]);
+
+    const s3 = parseFilterState(
+      "transaktionen",
+      new URLSearchParams("typ=bogus"),
+    );
+    expect(s3.enums.typ).toBeUndefined();
   });
 });
