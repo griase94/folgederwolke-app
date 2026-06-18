@@ -19,6 +19,7 @@
   import { toast } from "svelte-sonner";
   import KategoriePicker from "$lib/components/admin/transactions/fields/KategoriePicker.svelte";
   import { DateField } from "$lib/components/ui/date-field/index.js";
+  import { parseBetragCents } from "$lib/client/parse-betrag.js";
   import type { Sphere } from "$lib/domain/sphere.js";
 
   interface KategorieOption {
@@ -74,8 +75,18 @@
   // The detail is loaded once per page render; these inputs are intentionally
   // seeded from the initial prop values and then owned locally (the user edits
   // them). The "captures only the initial value" hints are expected here.
+  // Betrag: de-DE editable text (type=text + inputmode=decimal + parseBetragCents),
+  // mirroring AusgabeDetailFields — so the value reads "2.500,00" (comma decimal,
+  // ADR-0003) rather than the period-formatted "2500.00" a type=number forces.
+  // Seeded de-DE; the hidden betragCents is derived via parseBetragCents (NOT
+  // parseFloat, which breaks on the de-DE comma).
   // svelte-ignore state_referenced_locally
-  let betragEur = $state((betragCents / 100).toFixed(2));
+  let betragEur = $state(
+    (betragCents / 100).toLocaleString("de-DE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }),
+  );
   // svelte-ignore state_referenced_locally
   let geld = $state(geldEingangDatum ?? "");
   // svelte-ignore state_referenced_locally
@@ -83,7 +94,7 @@
   let sphere = $state<Sphere | "">("");
 
   const betragCentsOut = $derived(
-    Math.round(parseFloat(betragEur || "0") * 100),
+    betragEur ? String(parseBetragCents(betragEur) || "") : "",
   );
 
   function markDirty() {
@@ -155,12 +166,11 @@
     </label>
     <input
       id="detail-betrag"
-      type="number"
+      type="text"
       inputmode="decimal"
-      step="0.01"
-      min="0"
       required
       bind:value={betragEur}
+      placeholder="0,00"
       oninput={markDirty}
       aria-invalid={err("betragCents") ? true : undefined}
       class="border-input bg-background focus-visible:ring-ring h-11 min-h-11 w-full rounded-md border px-3 text-sm tabular-nums outline-none focus-visible:ring-1"
