@@ -19,7 +19,6 @@ import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { isoCalendarDate } from "$lib/domain/date.js";
-import { composeBezahltVonDisplay } from "$lib/server/domain/auslagen.js";
 import { manualImportSubmission } from "$lib/server/domain/audit-inbox-actions.js";
 import { handleAuslageUpload } from "$lib/server/files/handleAuslageUpload.js";
 import { validateIban, normalizeIban } from "$lib/server/domain/iban.js";

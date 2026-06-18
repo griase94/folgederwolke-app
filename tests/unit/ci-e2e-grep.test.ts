@@ -74,6 +74,8 @@ describe("CI e2e grep coverage (F3)", () => {
     // Member Beiträge-Zahlung redesign (Package F boundary — member-detail +
     // mitglieder specs, tag @phase-member-zahlung):
     expect(grepTags).toContain("@phase-member-zahlung");
+    // Entry-modals redesign + Beleg enforcement boundary suite:
+    expect(grepTags).toContain("@phase-entry-modals");
   });
 
   it("PWA share_target spec is covered by the CI grep (F3)", () => {
@@ -109,6 +111,8 @@ describe("CI e2e grep coverage (F3)", () => {
     "phase-8-export-download.spec.ts",
     "phase-8-axe-a11y.spec.ts",
     "c7-inbox-filter-actions.spec.ts",
+    // Beleg enforcement + modal isolation boundary (entry-modals):
+    "entry-modals.spec.ts",
   ];
 
   it("every release-critical spec has at least one tag in the CI grep", () => {

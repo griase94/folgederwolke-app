@@ -7,7 +7,7 @@
 // - bind:value local-state pattern (existing regression guard)
 //
 // pnpm test --run src/lib/components/admin/transactions/einnahmen/EinnahmeFields.test.ts
-import { render, screen, cleanup } from "@testing-library/svelte";
+import { render, cleanup } from "@testing-library/svelte";
 import { describe, it, expect, afterEach } from "vitest";
 import EinnahmeFields from "./EinnahmeFields.svelte";
 

@@ -9,7 +9,7 @@
 //
 // pnpm test --run src/lib/components/admin/inbox/ManualImportSheet.test.ts
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, cleanup, screen } from "@testing-library/svelte";
+import { render, cleanup } from "@testing-library/svelte";
 
 vi.mock("$app/forms", () => ({ enhance: () => () => {} }));
 vi.mock("svelte-sonner", () => ({
