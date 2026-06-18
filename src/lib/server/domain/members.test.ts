@@ -6,7 +6,6 @@ import { describe, it, expect } from "vitest";
 import {
   validateAddMember,
   validateEditMember,
-  beitragStatusFor,
   beitragYearsRange,
 } from "./members.js";
 
@@ -27,41 +26,6 @@ describe("beitragYearsRange", () => {
   it("accepts an anchor year and returns [anchor-1, anchor, anchor+1] (C2-2)", () => {
     const years = beitragYearsRange(2024);
     expect(years).toEqual([2023, 2024, 2025]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// beitragStatusFor
-// ---------------------------------------------------------------------------
-
-describe("beitragStatusFor", () => {
-  it("returns paid when paidCents >= betragCents (> 0)", () => {
-    expect(beitragStatusFor({ betragCents: 6969n, paidCents: 6969n })).toBe(
-      "paid",
-    );
-    expect(beitragStatusFor({ betragCents: 6969n, paidCents: 7000n })).toBe(
-      "paid",
-    );
-  });
-
-  it("returns open when paidCents < betragCents", () => {
-    expect(beitragStatusFor({ betragCents: 6969n, paidCents: 0n })).toBe(
-      "open",
-    );
-    expect(beitragStatusFor({ betragCents: 6969n, paidCents: 1000n })).toBe(
-      "open",
-    );
-  });
-
-  it("returns waived when betragCents is 0", () => {
-    expect(beitragStatusFor({ betragCents: 0n, paidCents: 0n })).toBe("waived");
-  });
-
-  it("accepts number inputs as well as bigint", () => {
-    expect(beitragStatusFor({ betragCents: 6969, paidCents: 6969 })).toBe(
-      "paid",
-    );
-    expect(beitragStatusFor({ betragCents: 6969, paidCents: 0 })).toBe("open");
   });
 });
 

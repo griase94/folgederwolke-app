@@ -5,7 +5,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import BeitragsBadge from './BeitragsBadge.svelte';
 	import MarkPaidControl from './MarkPaidControl.svelte';
-	import { beitragStatusFor, type MemberView } from '$lib/domain/members.js';
+	import type { MemberView } from '$lib/domain/members.js';
 	import { currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
 
 	let {
@@ -36,6 +36,16 @@
 		satzByYear?: Record<number, number>;
 		onToggleSelect?: (id: string, checked: boolean) => void;
 	} = $props();
+
+	// Package A: beitragStatusFor removed; inline cents check until Package D
+	// migrates this component to resolveBeitragState.
+	function simpleBeitragStatus(b: { betragCents: number; paidCents: number }): 'paid' | 'open' | 'waived' {
+		const betrag = BigInt(b.betragCents);
+		const paid = BigInt(b.paidCents);
+		if (betrag === 0n) return 'waived';
+		if (paid >= betrag) return 'paid';
+		return 'open';
+	}
 
 	// Deterministic avatar color from name hash
 	function nameHash(s: string): number {
@@ -106,7 +116,7 @@
 	const reminderStatus = $derived.by(() => {
 		if (reminderYear === null) return 'open';
 		const b = member.beitrags[reminderYear];
-		return b ? beitragStatusFor(b) : 'open';
+		return b ? simpleBeitragStatus(b) : 'open';
 	});
 	const canRemind = $derived(
 		reminderYear !== null &&
@@ -167,7 +177,7 @@
 	     ticked and re-paid. -->
 	{#if selectable}
 		{@const bulkBeitrag = bulkYear !== null ? member.beitrags[bulkYear] : null}
-		{@const bulkStatus = bulkBeitrag ? beitragStatusFor(bulkBeitrag) : 'open'}
+		{@const bulkStatus = bulkBeitrag ? simpleBeitragStatus(bulkBeitrag) : 'open'}
 		{@const selectDisabled =
 			bulkYear === null ||
 			member.beitragExempt ||
@@ -221,7 +231,7 @@
 	<div class="hidden items-center gap-1.5 sm:flex">
 		{#each years as year (year)}
 			{@const b = member.beitrags[year]}
-			{@const status = b ? beitragStatusFor(b) : 'open'}
+			{@const status = b ? simpleBeitragStatus(b) : 'open'}
 			{@const cellState = status === 'waived' ? 'exempt' : status}
 			<BeitragsBadge
 				{year}
@@ -280,7 +290,7 @@
 			     than firing a hidden form with no date field. -->
 			{#each years as year (year)}
 				{@const b = member.beitrags[year]}
-				{@const status = b ? beitragStatusFor(b) : 'open'}
+				{@const status = b ? simpleBeitragStatus(b) : 'open'}
 				{#if status !== 'paid' && status !== 'waived' && !member.beitragExempt}
 					<DropdownMenu.Item
 						onSelect={(e) => {

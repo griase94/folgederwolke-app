@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { beitragStatusFor, type BeitragStatus } from '$lib/domain/members.js';
 	import MarkPaidControl from './MarkPaidControl.svelte';
 
 	type BeitragRow = {
@@ -18,7 +17,8 @@
 	// hide the "als bezahlt markieren" CTA for them. The flag is propagated
 	// as a 4th status type — `exempt` — purely for display; the underlying
 	// rows keep their own paid/open/waived semantic in the DB.
-	type RowStatus = BeitragStatus | 'exempt';
+	// Package A: BeitragStatus removed; use inline type.
+	type RowStatus = 'paid' | 'open' | 'waived' | 'exempt';
 
 	let {
 		beitrags,
@@ -103,9 +103,20 @@
 	 * semantic. Exempt overrides everything except `paid` (a fully-paid
 	 * row stays "bezahlt" even if the member is later marked exempt — we
 	 * preserve history).
+	 *
+	 * Package A: beitragStatusFor removed; inline cents check until Package D
+	 * migrates this component to resolveBeitragState.
 	 */
+	function simpleBeitragStatus(b: BeitragRow): 'paid' | 'open' | 'waived' {
+		const betrag = BigInt(b.betragCents);
+		const paid = BigInt(b.paidCents);
+		if (betrag === 0n) return 'waived';
+		if (paid >= betrag) return 'paid';
+		return 'open';
+	}
+
 	function rowStatus(b: BeitragRow): RowStatus {
-		const base = beitragStatusFor(b);
+		const base = simpleBeitragStatus(b);
 		if (base === 'paid') return 'paid';
 		return beitragExempt ? 'exempt' : base;
 	}

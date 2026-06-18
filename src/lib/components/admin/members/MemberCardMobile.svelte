@@ -11,10 +11,7 @@
     into the detail page (members-list-no-pay-action finding).
 -->
 <script lang="ts">
-	import {
-		beitragStatusFor,
-		type MemberView,
-	} from '$lib/domain/members.js';
+	import type { MemberView } from '$lib/domain/members.js';
 	import { currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
 	import MarkPaidControl from './MarkPaidControl.svelte';
 
@@ -68,8 +65,19 @@
 		years.length > 0 ? clampYearToAvailable(currentBuchungsjahr(), years) : null,
 	);
 	const currentBeitrag = $derived(currentYear !== null ? member.beitrags[currentYear] : null);
+
+	// Package A: beitragStatusFor removed; inline cents check until Package D
+	// migrates this component to resolveBeitragState.
+	function simpleBeitragStatus(b: { betragCents: number; paidCents: number }): 'paid' | 'open' | 'waived' {
+		const betrag = BigInt(b.betragCents);
+		const paid = BigInt(b.paidCents);
+		if (betrag === 0n) return 'waived';
+		if (paid >= betrag) return 'paid';
+		return 'open';
+	}
+
 	const currentStatus = $derived(
-		currentBeitrag ? beitragStatusFor(currentBeitrag) : 'open',
+		currentBeitrag ? simpleBeitragStatus(currentBeitrag) : 'open',
 	);
 	const statusLabel: Record<string, string> = {
 		paid: 'Bezahlt',

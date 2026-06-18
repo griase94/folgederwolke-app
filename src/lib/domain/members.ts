@@ -9,8 +9,6 @@
 // Shared view types (used by components to avoid importing from route $types)
 // ---------------------------------------------------------------------------
 
-export type BeitragStatus = "paid" | "open" | "waived";
-
 export type BeitragCell = {
   id: string;
   betragCents: number;
@@ -63,20 +61,8 @@ export type MemberView = {
 // ---------------------------------------------------------------------------
 // Beitrag status helper
 // ---------------------------------------------------------------------------
-
-/**
- * Derive the display status from paid_cents and betrag_cents.
- * waived = betrag_cents is 0 (Ehrenmitglied / Beitragserlass).
- * paid   = paid_cents >= betrag_cents (and betrag_cents > 0).
- * open   = everything else.
- */
-export function beitragStatusFor(row: {
-  betragCents: bigint | number;
-  paidCents: bigint | number;
-}): BeitragStatus {
-  const betrag = BigInt(row.betragCents);
-  const paid = BigInt(row.paidCents);
-  if (betrag === 0n) return "waived";
-  if (paid >= betrag) return "paid";
-  return "open";
-}
+// NOTE: beitragStatusFor + BeitragStatus are removed as part of Package A
+// (member-zahlung redesign). Call sites now use resolveBeitragState from
+// $lib/domain/beitrag-state.ts (or an inline cents check during the Package D
+// UI migration). This comment block is intentionally left for reviewer context.
+// ---------------------------------------------------------------------------

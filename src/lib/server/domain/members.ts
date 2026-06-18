@@ -5,8 +5,9 @@
  * - beitragYearsRange: returns the 3-year window centered on the anchor year
  *   (anchor − 1 … anchor + 1). Default anchor is the current calendar year.
  *
- * Client-safe types (MemberView, BeitragStatus, beitragStatusFor) live in
+ * Client-safe types (MemberView, BeitragCell, MemberBeitragsTotals) live in
  * $lib/domain/members.ts to avoid the server-module restriction in browser code.
+ * resolveBeitragState (the canonical status resolver) lives in $lib/domain/beitrag-state.ts.
  */
 
 import { sql } from "drizzle-orm";
@@ -17,13 +18,13 @@ import { berlinYear } from "$lib/domain/year.js";
 
 // Re-export shared client-safe items so callers that don't need browser
 // compatibility can import everything from one place.
+// NOTE: BeitragStatus and beitragStatusFor removed in Package A (member-zahlung
+// redesign). Callers use resolveBeitragState from $lib/domain/beitrag-state.ts.
 export type {
-  BeitragStatus,
   BeitragCell,
   MemberView,
   MemberBeitragsTotals,
 } from "$lib/domain/members.js";
-export { beitragStatusFor } from "$lib/domain/members.js";
 
 // ---------------------------------------------------------------------------
 // Zod schemas
