@@ -136,7 +136,7 @@
 				<!-- eslint-disable svelte/no-navigation-without-resolve -->
 				<a
 					href="/app/ausgaben/ueberweisungen"
-					class="rounded text-sm font-medium text-primary-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
+					class="inline-flex h-11 items-center rounded-[10px] px-3 text-sm font-medium text-primary-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
 					>Überweisungsliste</a
 				>
 				<a
