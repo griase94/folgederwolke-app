@@ -14,6 +14,7 @@
 
 export type CellState =
   | "paid"
+  | "partial"
   | "open"
   | "overdue"
   | "exempt"
@@ -79,6 +80,7 @@ export function popoverKindForState(state: CellState): PopoverKind {
   switch (state) {
     case "open":
     case "overdue":
+    case "partial":
       return "mark-paid";
     case "paid":
       return "paid";
