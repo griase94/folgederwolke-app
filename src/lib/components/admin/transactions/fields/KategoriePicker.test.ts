@@ -95,4 +95,42 @@ describe("KategoriePicker", () => {
     const select = container.querySelector("select") as HTMLSelectElement;
     expect(select.value).toBe("");
   });
+
+  // B4: "Sphäre:" caption prefix + FIELD_CLASS on select
+  it("prefixes the derived sphere badge with a 'Sphäre:' caption", () => {
+    render(KategoriePicker, {
+      props: {
+        options,
+        value: "Eintritt",
+        onChange: vi.fn(),
+        onSphere: vi.fn(),
+      },
+    });
+    // Caption text "Sphäre:" must appear when a sphere is derived
+    expect(screen.getByText(/Sphäre:/i)).toBeTruthy();
+  });
+
+  it("select carries h-11 class from FIELD_CLASS", () => {
+    const { container } = render(KategoriePicker, {
+      props: { options, value: "", onChange: vi.fn(), onSphere: vi.fn() },
+    });
+    const select = container.querySelector("select") as HTMLSelectElement;
+    expect(select.className).toContain("h-11");
+  });
+
+  it("select carries rounded-[10px] from FIELD_CLASS", () => {
+    const { container } = render(KategoriePicker, {
+      props: { options, value: "", onChange: vi.fn(), onSphere: vi.fn() },
+    });
+    const select = container.querySelector("select") as HTMLSelectElement;
+    expect(select.className).toContain("rounded-[10px]");
+  });
+
+  it("select carries border-hairline from FIELD_CLASS", () => {
+    const { container } = render(KategoriePicker, {
+      props: { options, value: "", onChange: vi.fn(), onSphere: vi.fn() },
+    });
+    const select = container.querySelector("select") as HTMLSelectElement;
+    expect(select.className).toContain("border-hairline");
+  });
 });
