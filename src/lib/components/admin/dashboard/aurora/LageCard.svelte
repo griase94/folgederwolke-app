@@ -18,6 +18,10 @@
 	}: {
 		beitraege: {
 			year: number;
+			/** Active members (austritts_datum IS NULL) — the universe. */
+			memberCount: number;
+			/** Active members marked beitragsbefreit this year (Ehrenmitglieder). */
+			exemptMemberCount: number;
 			paidMemberCount: number;
 			openMemberCount: number;
 			overdueCount: number;
@@ -37,7 +41,11 @@
 		};
 	} = $props();
 
-	const total = $derived(beitraege.paidMemberCount + beitraege.openMemberCount);
+	// Denominator = members EXPECTED to pay = active members minus exempt
+	// (Ehrenmitglieder). The old `paidMemberCount + openMemberCount` only counted
+	// members who already HAD a beitrags row, so genuinely-unpaid members with no
+	// row vanished and "total" wrongly equalled "paid". (deep-verification HIGH)
+	const total = $derived(Math.max(beitraege.memberCount - beitraege.exemptMemberCount, 0));
 	const paidPct = $derived(total === 0 ? 0 : (beitraege.paidMemberCount / total) * 100);
 	const overduePct = $derived(total === 0 ? 0 : (beitraege.overdueCount / total) * 100);
 
@@ -73,12 +81,16 @@
 			{/if}
 		</div>
 		<p class="mt-2 text-sm font-medium text-ink-900">
-			{beitraege.paidMemberCount}/{total} bezahlt
+			{beitraege.paidMemberCount}/{total} bezahlt{#if beitraege.exemptMemberCount > 0}<span
+					class="font-normal text-ink-500"
+				>
+					· {beitraege.exemptMemberCount} befreit</span
+				>{/if}
 		</p>
 		<div
 			class="mt-2 flex h-2 overflow-hidden rounded-full bg-dataviz-track"
 			role="img"
-			aria-label={`${beitraege.paidMemberCount} von ${total} Beiträgen bezahlt, ${beitraege.overdueCount} überfällig`}
+			aria-label={`${beitraege.paidMemberCount} von ${total} Beiträgen bezahlt, ${beitraege.overdueCount} überfällig${beitraege.exemptMemberCount > 0 ? `, ${beitraege.exemptMemberCount} befreit` : ''}`}
 		>
 			<div class="bg-dataviz-paid" style={`width:${paidPct}%`}></div>
 			<div class="bg-severity-warn" style={`width:${overduePct}%`}></div>

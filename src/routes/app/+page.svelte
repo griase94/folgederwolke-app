@@ -100,6 +100,8 @@
 					<LageCard
 						beitraege={{
 							year: data.beitragsuebersicht.year,
+							memberCount: data.beitragsuebersicht.memberCount,
+							exemptMemberCount: data.beitragsuebersicht.exemptMemberCount,
 							paidMemberCount: data.beitragsuebersicht.paidMemberCount,
 							openMemberCount: data.beitragsuebersicht.openMemberCount,
 							overdueCount: data.beitragsuebersicht.overdueCount,

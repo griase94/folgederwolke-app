@@ -12,6 +12,8 @@ afterEach(() => cleanup());
 const base = {
   beitraege: {
     year: 2026,
+    memberCount: 7,
+    exemptMemberCount: 0,
     paidMemberCount: 4,
     openMemberCount: 3,
     overdueCount: 1,
@@ -51,6 +53,28 @@ describe("LageCard", () => {
     expect(sums.textContent).toContain("eingegangen");
     expect(sums.textContent).toContain("120,00");
     expect(sums.textContent).toContain("offen");
+  });
+
+  it("denominator is active members (memberCount), NOT paid+open — no-row members stay visible", () => {
+    // 10 active, 4 paid, 3 with an open row → 3 members have NO row. The old
+    // paid+open logic would show 4/7 and hide them; correct is 4/10.
+    render(LageCard, {
+      props: { ...base, beitraege: { ...base.beitraege, memberCount: 10 } },
+    });
+    expect(screen.getByText("4/10 bezahlt")).toBeTruthy();
+  });
+
+  it("excludes exempt members from the denominator and shows a 'befreit' note", () => {
+    // 8 active, 1 exempt → 7 expected payers; 4 paid → 4/7 · 1 befreit.
+    render(LageCard, {
+      props: {
+        ...base,
+        beitraege: { ...base.beitraege, memberCount: 8, exemptMemberCount: 1 },
+      },
+    });
+    const block = screen.getByTestId("lage-beitraege");
+    expect(block.textContent).toContain("4/7 bezahlt");
+    expect(block.textContent).toContain("1 befreit");
   });
 
   it("dimmed mode (selected year ≠ Berlin year) dims the Beiträge block and shows the Heute label", () => {
