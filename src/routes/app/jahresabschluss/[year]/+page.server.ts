@@ -14,6 +14,7 @@ import { fail, error } from "@sveltejs/kit";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { closeBuchhaltungsjahr } from "$lib/server/domain/jahresabschluss.js";
 import { archiveYear } from "$lib/server/files/archive-job.js";
+import { berlinYear } from "$lib/domain/year.js";
 
 export const load: PageServerLoad = async () => {
   // All payload comes from +layout.server.ts via inherited `data`.
@@ -30,6 +31,16 @@ export const actions: Actions = {
     const user = locals.session?.user;
     if (!user) {
       return fail(401, { error: "Nicht angemeldet" });
+    }
+
+    // Guardrail: the in-progress (current) year — and any future year — cannot
+    // be festgeschrieben. The Jahresabschluss is only possible once the year has
+    // fully ended (domain enforces this too; this returns the friendly message).
+    const currentYear = berlinYear();
+    if (year >= currentYear) {
+      return fail(409, {
+        error: `Das laufende Jahr ${year} kann noch nicht festgeschrieben werden — der Jahresabschluss ist erst nach Jahresende möglich.`,
+      });
     }
 
     try {

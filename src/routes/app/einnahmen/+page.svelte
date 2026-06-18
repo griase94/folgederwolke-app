@@ -112,8 +112,9 @@
 			/>
 		{/snippet}
 		{#snippet toolbar()}
-			<div class="flex w-full flex-wrap items-center gap-2">
-				<div class="min-w-0 flex-1">
+			<!-- Mobile-first toolbar: FilterBar full-width own row; links grouped below. -->
+			<div class="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
+				<div class="w-full min-w-0 md:flex-1">
 					<FilterBar
 						tab="einnahmen"
 						state={data.filterState}
@@ -123,19 +124,21 @@
 					/>
 				</div>
 				<!-- eslint-disable svelte/no-navigation-without-resolve -->
-				<a
-					href={exportHref}
-					data-testid="export-cta"
-					title="Gefilterte und sortierte Liste vollständig herunterladen (alle Seiten)"
-					class="inline-flex h-11 items-center rounded-[10px] border border-(--hairline) bg-white px-3 text-sm font-medium text-ink-700 hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
-					>CSV</a
-				>
-				<a
-					href="/app/einnahmen/neu"
-					data-slot="new-cta"
-					class="inline-flex h-11 items-center rounded-full bg-primary-strong px-4 text-sm font-semibold text-white shadow-(--glow-brand) transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:h-10"
-					>Neue Einnahme</a
-				>
+				<div class="flex flex-wrap items-center gap-2">
+					<a
+						href={exportHref}
+						data-testid="export-cta"
+						title="Gefilterte und sortierte Liste vollständig herunterladen (alle Seiten)"
+						class="inline-flex h-11 items-center rounded-[10px] border border-(--hairline) bg-white px-3 text-sm font-medium text-ink-700 hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
+						>CSV</a
+					>
+					<a
+						href="/app/einnahmen/neu"
+						data-slot="new-cta"
+						class="ml-auto inline-flex h-11 items-center rounded-full bg-primary-strong px-4 text-sm font-semibold text-white shadow-(--glow-brand) transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:ml-0 md:h-10"
+						>Neue Einnahme</a
+					>
+				</div>
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			</div>
 		{/snippet}

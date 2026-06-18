@@ -29,8 +29,9 @@
 </script>
 
 <div data-testid="kpi-strip">
-	<h1 class="text-2xl font-bold tracking-tight text-foreground">Ausgaben</h1>
-	<div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+	<!-- No <h1> here: PageHeader owns the page title. This KPI strip renders only
+	     the quiet meta line + the disappearing offen-pill inside the meta slot. -->
+	<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
 		<span>{yearLabel}</span>
 		<span aria-hidden="true">·</span>
 		<span>{buchungenLabel}</span>

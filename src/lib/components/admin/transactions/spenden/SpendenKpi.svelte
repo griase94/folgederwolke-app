@@ -29,10 +29,8 @@
 </script>
 
 <div data-testid="kpi-strip">
-	<h1 class="text-2xl font-bold tracking-tight text-foreground">Spenden</h1>
-
-	<!-- Quiet anchor: Jahr|Alle · Summe · N Spenden. -->
-	<p class="mt-0.5 text-sm text-muted-foreground" data-testid="spenden-kpi-anchor">
+	<!-- No <h1>: PageHeader owns the page title; render only the quiet anchor. -->
+	<p class="text-sm text-muted-foreground" data-testid="spenden-kpi-anchor">
 		{yearLabel} · {formatMoney(totalCents)} · {spendenLabel}
 	</p>
 

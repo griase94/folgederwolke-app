@@ -123,8 +123,11 @@
 			/>
 		{/snippet}
 		{#snippet toolbar()}
-			<div class="flex w-full flex-wrap items-center gap-2">
-				<div class="min-w-0 flex-1">
+			<!-- Mobile-first: FilterBar (with its full-width search) on its own row;
+			     action links grouped on a wrapping row below. On md+ one row
+			     (FilterBar flex-1, links right). Fixes the mobile collapse/overlap. -->
+			<div class="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
+				<div class="w-full min-w-0 md:flex-1">
 					<FilterBar
 						tab="ausgaben"
 						state={data.filterState}
@@ -134,24 +137,26 @@
 					/>
 				</div>
 				<!-- eslint-disable svelte/no-navigation-without-resolve -->
-				<a
-					href="/app/ausgaben/ueberweisungen"
-					class="inline-flex h-11 items-center rounded-[10px] px-3 text-sm font-medium text-primary-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
-					>Überweisungsliste</a
-				>
-				<a
-					href={exportHref}
-					data-testid="export-cta"
-					title="Gefilterte und sortierte Liste vollständig herunterladen (alle Seiten)"
-					class="inline-flex h-11 items-center rounded-[10px] border border-(--hairline) bg-white px-3 text-sm font-medium text-ink-700 hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
-					>CSV</a
-				>
-				<a
-					href="/app/ausgaben/neu"
-					data-slot="new-cta"
-					class="inline-flex h-11 items-center rounded-full bg-primary-strong px-4 text-sm font-semibold text-white shadow-(--glow-brand) transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:h-10"
-					>Neue Ausgabe</a
-				>
+				<div class="flex flex-wrap items-center gap-2">
+					<a
+						href="/app/ausgaben/ueberweisungen"
+						class="inline-flex h-11 items-center rounded-[10px] px-3 text-sm font-medium text-primary-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
+						>Überweisungsliste</a
+					>
+					<a
+						href={exportHref}
+						data-testid="export-cta"
+						title="Gefilterte und sortierte Liste vollständig herunterladen (alle Seiten)"
+						class="inline-flex h-11 items-center rounded-[10px] border border-(--hairline) bg-white px-3 text-sm font-medium text-ink-700 hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
+						>CSV</a
+					>
+					<a
+						href="/app/ausgaben/neu"
+						data-slot="new-cta"
+						class="ml-auto inline-flex h-11 items-center rounded-full bg-primary-strong px-4 text-sm font-semibold text-white shadow-(--glow-brand) transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:ml-0 md:h-10"
+						>Neue Ausgabe</a
+					>
+				</div>
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			</div>
 		{/snippet}

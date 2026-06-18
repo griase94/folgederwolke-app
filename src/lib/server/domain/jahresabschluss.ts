@@ -8,6 +8,7 @@
 
 import { sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
+import { berlinYear } from "$lib/domain/year.js";
 
 export interface FestschreibungResult {
   year: number;
@@ -19,13 +20,25 @@ export interface FestschreibungResult {
  * Festschreibung: atomically marks all expense/income/donation/invoice rows
  * for the given year as festgeschrieben. Returns row counts per table.
  *
- * @param year    Buchungsjahr to close (2020 ≤ year ≤ current year)
+ * @param year    Buchungsjahr to close — must be a PAST year (2020 ≤ year <
+ *                current Berlin year). The in-progress (current) year cannot be
+ *                closed mid-year; the Jahresabschluss is only possible once the
+ *                year has fully ended.
  * @param actorId UUID of the user performing the action (for audit trail)
  */
 export async function closeBuchhaltungsjahr(
   year: number,
   actorId: string,
 ): Promise<FestschreibungResult> {
+  // Guardrail (authoritative): never close the current/in-progress year — or a
+  // future one. Only past years are closeable. Any caller is protected here.
+  const currentYear = berlinYear();
+  if (year >= currentYear) {
+    throw new Error(
+      `Das Jahr ${year} läuft noch — der Jahresabschluss ist erst nach Jahresende (ab ${currentYear === year ? year + 1 : currentYear}) möglich.`,
+    );
+  }
+
   const db = getDb();
 
   const rows = await db.execute<{
