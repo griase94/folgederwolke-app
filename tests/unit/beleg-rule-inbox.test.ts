@@ -149,27 +149,36 @@ function makeDbFake() {
         }
         return chain;
       },
-      leftJoin() { return chain; },
-      limit() { return chain; },
-      orderBy() { return chain; },
+      leftJoin() {
+        return chain;
+      },
+      limit() {
+        return chain;
+      },
+      orderBy() {
+        return chain;
+      },
       then(resolve: (rows: unknown[]) => unknown) {
         let rows: unknown[];
         if (ctx.table === "submissions") {
           rows = [...submissionsStore.values()].filter((r) =>
             ctx.whereField
-              ? (r as Record<string, unknown>)[ctx.whereField] === ctx.whereValue
+              ? (r as unknown as Record<string, unknown>)[ctx.whereField] ===
+                ctx.whereValue
               : true,
           );
         } else if (ctx.table === "expenses") {
           rows = [...expensesStore.values()].filter((r) =>
             ctx.whereField
-              ? (r as Record<string, unknown>)[ctx.whereField] === ctx.whereValue
+              ? (r as unknown as Record<string, unknown>)[ctx.whereField] ===
+                ctx.whereValue
               : true,
           );
         } else if (ctx.table === "kategorien") {
           rows = [...kategorienStore.values()].filter((r) =>
             ctx.whereField
-              ? (r as Record<string, unknown>)[ctx.whereField] === ctx.whereValue
+              ? (r as unknown as Record<string, unknown>)[ctx.whereField] ===
+                ctx.whereValue
               : true,
           );
         } else {
@@ -202,7 +211,8 @@ function makeDbFake() {
           const id = `exp-${nextId++}`;
           const row: ExpenseRow = {
             id,
-            businessId: (ctx.values.businessId as string) ?? `AUS-NEW-${nextId}`,
+            businessId:
+              (ctx.values.businessId as string) ?? `AUS-NEW-${nextId}`,
             bezeichnung: (ctx.values.bezeichnung as string) ?? "Test",
             betragCents: (ctx.values.betragCents as bigint) ?? 0n,
             gebuchtAm: new Date(),
@@ -212,15 +222,19 @@ function makeDbFake() {
             zahlungsartId: null,
             status: (ctx.values.status as string) ?? "geprueft",
             bezahltVonKind: (ctx.values.bezahltVonKind as "verein") ?? "verein",
-            bezahltVonMemberId: (ctx.values.bezahltVonMemberId as string | null) ?? null,
+            bezahltVonMemberId:
+              (ctx.values.bezahltVonMemberId as string | null) ?? null,
             externName: (ctx.values.externName as string | null) ?? null,
             externIban: null,
             externEmail: (ctx.values.externEmail as string | null) ?? null,
             kategorieId: (ctx.values.kategorieId as string | null) ?? null,
-            kategorieNameSnapshot: (ctx.values.kategorieNameSnapshot as string | null) ?? null,
-            sphereSnapshot: (ctx.values.sphereSnapshot as string | null) ?? null,
+            kategorieNameSnapshot:
+              (ctx.values.kategorieNameSnapshot as string | null) ?? null,
+            sphereSnapshot:
+              (ctx.values.sphereSnapshot as string | null) ?? null,
             belegFileId: (ctx.values.belegFileId as string | null) ?? null,
-            belegVerzichtGrund: (ctx.values.belegVerzichtGrund as string | null) ?? null,
+            belegVerzichtGrund:
+              (ctx.values.belegVerzichtGrund as string | null) ?? null,
           };
           expensesStore.set(id, row);
           return Promise.resolve([{ id: row.id, businessId: row.businessId }]);
@@ -236,15 +250,20 @@ function makeDbFake() {
           betragCents: (ctx.values.betragCents as bigint) ?? 0n,
           currency: (ctx.values.currency as string) ?? "EUR",
           bezahltVonKind: (ctx.values.bezahltVonKind as "verein") ?? "verein",
-          bezahltVonMemberId: (ctx.values.bezahltVonMemberId as string | null) ?? null,
+          bezahltVonMemberId:
+            (ctx.values.bezahltVonMemberId as string | null) ?? null,
           externName: (ctx.values.externName as string | null) ?? null,
           externIban: (ctx.values.externIban as string | null) ?? null,
           externEmail: (ctx.values.externEmail as string | null) ?? null,
-          bezahltVonDisplay: (ctx.values.bezahltVonDisplay as string) ?? "Verein",
-          belegDriveFileId: (ctx.values.belegDriveFileId as string | null) ?? null,
-          belegOriginalName: (ctx.values.belegOriginalName as string | null) ?? null,
+          bezahltVonDisplay:
+            (ctx.values.bezahltVonDisplay as string) ?? "Verein",
+          belegDriveFileId:
+            (ctx.values.belegDriveFileId as string | null) ?? null,
+          belegOriginalName:
+            (ctx.values.belegOriginalName as string | null) ?? null,
           belegFileId: (ctx.values.belegFileId as string | null) ?? null,
-          belegVerzichtGrund: (ctx.values.belegVerzichtGrund as string | null) ?? null,
+          belegVerzichtGrund:
+            (ctx.values.belegVerzichtGrund as string | null) ?? null,
           decidedAt: null,
           decision: null,
           decidedByUserId: null,
@@ -279,10 +298,11 @@ function makeDbFake() {
         return chain;
       },
       returning() {
-        const store = tableKind === "submissions" ? submissionsStore : expensesStore;
+        const store =
+          tableKind === "submissions" ? submissionsStore : expensesStore;
         const changed: { id: string }[] = [];
         for (const row of store.values()) {
-          const r = row as Record<string, unknown>;
+          const r = row as unknown as Record<string, unknown>;
           if (ctx.whereField && r[ctx.whereField] !== ctx.whereValue) continue;
           Object.assign(row, ctx.values);
           changed.push({ id: r.id as string });
@@ -314,11 +334,21 @@ const dbFake = makeDbFake();
 vi.mock("$lib/server/db/index.js", () => ({ getDb: () => dbFake }));
 
 vi.mock("$lib/server/db/schema/auslagen_submissions.js", () => ({
-  auslagenSubmissions: { _kind: "submissions", id: "id", businessId: "businessId", reviewedAt: "reviewedAt" },
+  auslagenSubmissions: {
+    _kind: "submissions",
+    id: "id",
+    businessId: "businessId",
+    reviewedAt: "reviewedAt",
+  },
 }));
 
 vi.mock("$lib/server/db/schema/expenses.js", () => ({
-  expenses: { _kind: "expenses", id: "id", businessId: "businessId", erstattetAm: "erstattetAm" },
+  expenses: {
+    _kind: "expenses",
+    id: "id",
+    businessId: "businessId",
+    erstattetAm: "erstattetAm",
+  },
 }));
 
 vi.mock("$lib/server/db/schema/members.js", () => ({
@@ -326,7 +356,13 @@ vi.mock("$lib/server/db/schema/members.js", () => ({
 }));
 
 vi.mock("$lib/server/db/schema/kategorien.js", () => ({
-  kategorien: { _kind: "kategorien", id: "id", kind: "kind", name: "name", sphere: "sphere" },
+  kategorien: {
+    _kind: "kategorien",
+    id: "id",
+    kind: "kind",
+    name: "name",
+    sphere: "sphere",
+  },
 }));
 
 vi.mock("drizzle-orm", async () => ({
@@ -344,7 +380,8 @@ vi.mock("$lib/server/events/index.js", () => ({
 }));
 
 vi.mock("$lib/server/domain/id-allocator.js", () => ({
-  allocateBusinessId: async (kind: string, year: number) => `${kind}-${year}-A4`,
+  allocateBusinessId: async (kind: string, year: number) =>
+    `${kind}-${year}-A4`,
 }));
 
 vi.mock("$lib/server/domain/datenschutz.js", () => ({
@@ -356,9 +393,8 @@ vi.mock("$lib/server/domain/auslagen.js", () => ({
 }));
 
 // SUT — import AFTER all vi.mock() declarations
-const { manualImportSubmission, approveSubmission } = await import(
-  "$lib/server/domain/audit-inbox-actions.js"
-);
+const { manualImportSubmission, approveSubmission } =
+  await import("$lib/server/domain/audit-inbox-actions.js");
 
 // ---------------------------------------------------------------------------
 // Setup / teardown

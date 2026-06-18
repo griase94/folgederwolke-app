@@ -12,14 +12,19 @@
  */
 
 import { fail } from "@sveltejs/kit";
+import { z } from "zod";
 import { isNull, isNotNull, desc, eq, and, sql } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { members } from "$lib/server/db/schema/members.js";
-import { validateAuslageInput } from "$lib/server/domain/auslagen.js";
+import { isoCalendarDate } from "$lib/domain/date.js";
+import { composeBezahltVonDisplay } from "$lib/server/domain/auslagen.js";
 import { manualImportSubmission } from "$lib/server/domain/audit-inbox-actions.js";
+import { handleAuslageUpload } from "$lib/server/files/handleAuslageUpload.js";
+import { validateIban, normalizeIban } from "$lib/server/domain/iban.js";
 import type { InboxSubmissionView } from "$lib/domain/inbox.js";
+import type { BezahltVon } from "$lib/server/domain/auslagen.js";
 
 /**
  * Decoded ?status= filter value. Falls back to "Offen" for missing/invalid.
@@ -158,11 +163,58 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 // actions
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Manual-import Zod schema (multipart, admin-only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Validates the flat multipart fields sent by ManualImportSheet (post-C4
+ * rewrite). Intentionally separate from `auslageInputSchema` (public form):
+ *   - No Datenschutz consent field (admin gate replaces it)
+ *   - No beleg_name / beleg_mime_type (Beleg gate runs before Zod)
+ *   - rechnungsdatum is optional (admin may not have the invoice at import time)
+ *   - bezahlt_von parsed from flat fields (bezahlt_von_kind etc.)
+ */
+const manualImportSchema = z.object({
+  bezeichnung: z
+    .string()
+    .min(3, "Bezeichnung muss mindestens 3 Zeichen haben")
+    .max(200, "Bezeichnung zu lang"),
+  betragCents: z.coerce
+    .number()
+    .int("Betrag muss ein ganzzahliger Cent-Betrag sein")
+    .positive("Betrag muss positiv sein")
+    .max(1_000_000_00, "Betrag überschreitet Limit"),
+  currency: z.string().length(3).default("EUR"),
+  rechnungsdatum: isoCalendarDate.nullable().optional(),
+  kommentar: z.string().max(1000, "Kommentar zu lang").nullable().optional(),
+  bezahlt_von_kind: z.enum(["verein", "member", "extern"]),
+  // member arm
+  member_id: z.string().uuid().nullable().optional(),
+  member_display_name: z.string().max(120).nullable().optional(),
+  member_email: z.string().email().max(254).nullable().optional(),
+  // extern arm
+  extern_name: z.string().max(120).nullable().optional(),
+  extern_iban: z
+    .string()
+    .max(34)
+    .nullable()
+    .optional()
+    .transform((v) => (v ? normalizeIban(v) : null)),
+  extern_email: z.string().email().max(254).nullable().optional(),
+  // Verein display name (white-label)
+  verein_display_name: z.string().max(120).nullable().optional(),
+});
+
 export const actions: Actions = {
   /**
    * Manual-import: admin enters a submission on behalf of someone.
-   * Expects the same JSON payload shape as the public form action (`data` field),
-   * but consent_text_version is auto-filled server-side and Drive upload is skipped.
+   *
+   * Accepts multipart FormData (not the old JSON `data` field). Enforces THE
+   * BELEG RULE verbatim from ausgaben/neu:
+   *   ARM A — `beleg` File attached → upload via handleAuslageUpload
+   *   ARM B — `keinBeleg=true` + `begruendung` (≥5 trimmed chars) → persist grund
+   *   NEITHER → fail(422, errors.beleg)
    */
   "manual-import": async ({ request, locals }) => {
     const actorUserId = locals.session!.user.id;
@@ -175,72 +227,124 @@ export const actions: Actions = {
       return fail(400, { error: "Ungültige Anfrage: FormData defekt." });
     }
 
-    const jsonRaw = formData.get("data");
-    if (typeof jsonRaw !== "string") {
-      return fail(400, { error: "Ungültige Anfrage: fehlendes Datenfeld." });
-    }
+    // ── 2. Beleg gate (verbatim from ausgaben/neu §4.1) ───────────────────
+    const belegFormField = formData.get("beleg");
+    const hasBelegFile =
+      belegFormField instanceof File && belegFormField.size > 0;
+    const keinBeleg = formData.get("keinBeleg") === "true";
+    const begruendung = String(formData.get("begruendung") ?? "").trim();
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(jsonRaw);
-    } catch {
-      return fail(400, {
-        error: "Ungültige Anfrage: JSON konnte nicht geparst werden.",
+    if (!hasBelegFile && !(keinBeleg && begruendung.length >= 5)) {
+      return fail(422, {
+        error:
+          "Bitte einen Beleg hochladen oder „Kein Beleg vorhanden“ mit Begründung wählen.",
+        errors: {
+          beleg: ["Beleg-Datei ODER eine Begründung ist erforderlich."],
+        },
       });
     }
 
-    // Admin path: inject synthetic values so the Zod schema passes for the
-    // admin manual-import flow (no Datenschutz checkbox, may have no Beleg
-    // attached at the moment of import — typically pasted from an email).
-    //
-    // C2-TAX: beleg_name/beleg_mime_type/rechnungsdatum are now required for
-    // tax correctness on the public form path. The inbox-manual-import is an
-    // admin-only path where the Beleg is attached later via the Inbox UI;
-    // synthesize placeholder values here so the same schema can validate both
-    // paths. The schema's structural shape is the gate — the inbox row gets
-    // its real values from the admin's later actions.
-    if (typeof parsed === "object" && parsed !== null) {
-      const p = parsed as Record<string, unknown>;
-      if (!p["consent_text_version"]) {
-        // Import from server domain — avoids importing the client-only re-export
-        const { DATENSCHUTZ_VERSION } =
-          await import("$lib/server/domain/datenschutz.js");
-        p["consent_text_version"] = DATENSCHUTZ_VERSION;
+    // ── 3. Validate remaining fields ──────────────────────────────────────
+    const raw = Object.fromEntries(
+      [...formData.entries()]
+        .filter(([, v]) => !(v instanceof File))
+        .map(([k, v]) => [k, v === "" ? null : v]),
+    );
+
+    const parsed = manualImportSchema.safeParse(raw);
+    if (!parsed.success) {
+      const errors: Record<string, string[]> = {};
+      for (const issue of parsed.error.issues) {
+        const key = issue.path.join(".") || "_root";
+        if (!errors[key]) errors[key] = [];
+        errors[key]!.push(issue.message);
       }
-      if (!p["beleg_name"]) p["beleg_name"] = "manual-import.pdf";
-      if (!p["beleg_mime_type"]) p["beleg_mime_type"] = "application/pdf";
-      if (!p["rechnungsdatum"] || typeof p["rechnungsdatum"] !== "string") {
-        // ISO YYYY-MM-DD in Europe/Berlin
-        p["rechnungsdatum"] = new Date().toLocaleDateString("sv-SE", {
-          timeZone: "Europe/Berlin",
+      return fail(422, {
+        error: "Bitte korrigiere die markierten Felder.",
+        errors,
+      });
+    }
+
+    const data = parsed.data;
+
+    // ── 4. Build bezahlt_von discriminated union ──────────────────────────
+    let bezahltVon: BezahltVon;
+    if (data.bezahlt_von_kind === "member") {
+      if (!data.member_id || !data.member_display_name) {
+        return fail(422, {
+          error: "Bitte ein Vereinsmitglied auswählen.",
+          errors: { member: ["Bitte ein Vereinsmitglied auswählen."] },
+        });
+      }
+      bezahltVon = {
+        kind: "member",
+        member_id: data.member_id,
+        display_name: data.member_display_name,
+        email: data.member_email ?? undefined,
+      };
+    } else if (data.bezahlt_von_kind === "extern") {
+      if (!data.extern_name || !data.extern_iban || !data.extern_email) {
+        return fail(422, {
+          error: "Bitte alle Felder für externe Person ausfüllen.",
+          errors: {
+            extern_name: data.extern_name ? [] : ["Name ist erforderlich."],
+            extern_iban: data.extern_iban ? [] : ["IBAN ist erforderlich."],
+            extern_email: data.extern_email ? [] : ["E-Mail ist erforderlich."],
+          },
+        });
+      }
+      if (!validateIban(data.extern_iban)) {
+        return fail(422, {
+          error: "IBAN ist ungültig.",
+          errors: { extern_iban: ["IBAN ungültig"] },
+        });
+      }
+      bezahltVon = {
+        kind: "extern",
+        name: data.extern_name,
+        iban: data.extern_iban,
+        email: data.extern_email,
+      };
+    } else {
+      bezahltVon = {
+        kind: "verein",
+        display_name: data.verein_display_name ?? undefined,
+      };
+    }
+
+    // ── 5. Upload Beleg if ARM A ──────────────────────────────────────────
+    let belegFileId: string | null = null;
+    if (hasBelegFile) {
+      try {
+        const uploadResult = await handleAuslageUpload(belegFormField as File, {
+          actorUserId,
+          sourceKind: "app",
+        });
+        belegFileId = uploadResult.fileId;
+      } catch (uploadErr) {
+        const msg =
+          uploadErr instanceof Error
+            ? uploadErr.message
+            : "Beleg konnte nicht hochgeladen werden.";
+        return fail(422, {
+          error: msg,
+          errors: { beleg: [msg] },
         });
       }
     }
 
-    // ── 2. Validate ───────────────────────────────────────────────────────
-    const validation = validateAuslageInput(parsed);
-    if (!validation.ok) {
-      return fail(422, {
-        error: "Bitte korrigiere die markierten Felder.",
-        errors: validation.errors,
-      });
-    }
-
-    const input = validation.data;
-
-    // ── 3. Insert + emit event ────────────────────────────────────────────
+    // ── 6. Insert + emit event ────────────────────────────────────────────
     let result: { submissionId: string; ausId: string };
     try {
       result = await manualImportSubmission({
-        bezahlt_von: input.bezahlt_von,
-        bezeichnung: input.bezeichnung,
-        kommentar: input.kommentar ?? null,
-        rechnungsdatum: input.rechnungsdatum ?? null,
-        betragCents: input.betragCents,
-        currency: input.currency,
-        wofuer: input.wofuer ?? null,
-        belegDriveFileId: null,
-        belegOriginalName: null,
+        bezahlt_von: bezahltVon,
+        bezeichnung: data.bezeichnung,
+        kommentar: data.kommentar ?? null,
+        rechnungsdatum: data.rechnungsdatum ?? null,
+        betragCents: data.betragCents,
+        currency: data.currency,
+        belegFileId,
+        belegVerzichtGrund: belegFileId ? null : begruendung,
         actorUserId,
       });
     } catch (err) {
@@ -250,7 +354,7 @@ export const actions: Actions = {
       });
     }
 
-    // ── 4. Return success payload ─────────────────────────────────────────
+    // ── 7. Return success payload ─────────────────────────────────────────
     return {
       success: true,
       ausId: result.ausId,
