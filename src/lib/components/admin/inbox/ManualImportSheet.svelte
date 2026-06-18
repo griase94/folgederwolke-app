@@ -139,7 +139,10 @@
 </script>
 
 <Sheet.Root bind:open>
-	<Sheet.Content side="right" class="flex w-full flex-col overflow-hidden sm:max-w-lg">
+	<Sheet.Content
+		side="right"
+		class="flex flex-col overflow-hidden data-[side=right]:w-full data-[side=right]:max-w-full data-[side=right]:sm:max-w-lg"
+	>
 		<!-- type-ausgabe accent strip (C4) -->
 		<div class="h-1 w-full shrink-0 rounded-t-2xl bg-type-ausgabe" aria-hidden="true"></div>
 
@@ -379,7 +382,9 @@
 			</div>
 
 			<!-- ── Pinned footer (C4) ─────────────────────────────────────────────── -->
-			<Sheet.Footer class="shrink-0 flex-col gap-2 border-t border-hairline bg-background px-4 py-3">
+			<Sheet.Footer
+				class="shrink-0 flex-col gap-2 border-t border-hairline bg-background px-4 pt-3 pb-[max(env(safe-area-inset-bottom),0.75rem)]"
+			>
 				<Button type="submit" disabled={loading} class="w-full">
 					{#if loading}
 						<svg class="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">

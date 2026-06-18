@@ -108,6 +108,10 @@ export const actions: Actions = {
     const fd = await request.formData();
 
     const year = parseInt(fd.get("year")?.toString() ?? "", 10);
+    // "create" (new-rate form) vs "update" (inline edit of an existing year).
+    // Only "create" must guard against silently clobbering an existing satz;
+    // "update" is the deliberate edit path and is allowed to overwrite.
+    const mode = fd.get("mode")?.toString() === "update" ? "update" : "create";
     // Betrag arrives as a euro decimal string (e.g. "80.00" or "80,00").
     const betragRaw = (fd.get("betrag")?.toString() ?? "").replace(",", ".");
     const betragEur = Number(betragRaw);
@@ -119,6 +123,24 @@ export const actions: Actions = {
     }
     if (!Number.isFinite(betragEur) || betragEur < 0) {
       return fail(400, { action: "set-rate", error: "Ungültiger Betrag" });
+    }
+
+    // Guard against silent overwrite: when adding a *new* rate, refuse if a
+    // satz for that year already exists. The admin must use the inline-edit
+    // path (mode=update) to change an existing rate.
+    if (mode === "create") {
+      const db = getDb();
+      const [existing] = await db
+        .select({ year: beitragssatzByYear.year })
+        .from(beitragssatzByYear)
+        .where(eq(beitragssatzByYear.year, year))
+        .limit(1);
+      if (existing) {
+        return fail(409, {
+          action: "set-rate",
+          error: `Für ${year} existiert bereits ein Satz — bitte den bestehenden Eintrag bearbeiten.`,
+        });
+      }
     }
 
     const cents = BigInt(Math.round(betragEur * 100));

@@ -11,6 +11,7 @@
 		ProjectView,
 		ProjectFinancials,
 	} from '$lib/server/domain/projects.js';
+	import { SPHERE_LABELS, type Sphere } from '$lib/domain/sphere.js';
 
 	let {
 		project,
@@ -21,6 +22,23 @@
 		// don't break the call signature.
 		financials: ProjectFinancials;
 	} = $props();
+
+	// de-DE TT.MM.JJJJ from an ISO `JJJJ-MM-TT` date (reuses the app-wide
+	// reformat pattern, e.g. rechnungen/[id]/+page.svelte). Falls back to the
+	// raw value if it doesn't match.
+	function fmtDate(iso: string | null): string {
+		if (!iso) return '—';
+		const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+		return m ? `${m[3]}.${m[2]}.${m[1]}` : iso;
+	}
+
+	// project.sphereDefault is `string | null`; resolve the human German label
+	// via the canonical SPHERE_LABELS map.
+	const sphereLabel = $derived(
+		project.sphereDefault
+			? (SPHERE_LABELS[project.sphereDefault as Sphere] ?? project.sphereDefault)
+			: '— (folgt der Kategorie)',
+	);
 </script>
 
 <section class="space-y-4" data-testid="project-overview-tab">
@@ -37,7 +55,7 @@
 	>
 		<h2 class="mb-2 text-sm font-semibold text-foreground">Laufzeit</h2>
 		<p class="text-sm text-muted-foreground tabular-nums">
-			{project.startDate ?? '—'} bis {project.endDate ?? '—'}
+			{fmtDate(project.startDate)} bis {fmtDate(project.endDate)}
 		</p>
 	</div>
 	<div
@@ -45,7 +63,7 @@
 	>
 		<h2 class="mb-2 text-sm font-semibold text-foreground">Standard-Sphäre</h2>
 		<p class="text-sm text-muted-foreground">
-			{project.sphereDefault ?? '— (folgt der Kategorie)'}
+			{sphereLabel}
 		</p>
 	</div>
 </section>

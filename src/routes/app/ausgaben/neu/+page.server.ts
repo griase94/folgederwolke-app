@@ -399,6 +399,23 @@ export const actions = {
       }
     }
 
+    // ── Member-payer guard (mirrors the extern guard above) ─────────────────
+    // The Zod schema leaves bezahltVonMemberId optional for caller parity, but a
+    // member payer needs a member_id downstream — the DB CHECK
+    // expenses_bezahlt_von_union_ck requires member_id NOT NULL for kind
+    // 'member', so a missing one would surface as an opaque 23514 → 500.
+    // Validate here and re-hydrate with a per-field error.
+    if (
+      parsed.data.bezahltVonKind === "member" &&
+      !parsed.data.bezahltVonMemberId
+    ) {
+      return fail(422, {
+        error: "Bitte ein Vereinsmitglied auswählen.",
+        values: valuesFromForm(data),
+        errors: { member: ["Bitte ein Mitglied auswählen."] },
+      });
+    }
+
     try {
       // Upload the Beleg if one was attached (else the kein-Beleg path persists
       // the Verzicht-Begründung instead).

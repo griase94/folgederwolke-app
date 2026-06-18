@@ -17,10 +17,20 @@
 		status: string;
 	};
 
+	import { statusPresentation } from '$lib/domain/transaction-status.js';
+
 	let { rows }: { rows: TxnRow[] } = $props();
 
 	const fmt = (c: number) =>
 		(c / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+
+	// de-DE TT.MM.JJJJ from an ISO `JJJJ-MM-TT` date (reuses the app-wide
+	// reformat pattern, e.g. rechnungen/[id]/+page.svelte).
+	function fmtDate(iso: string | null): string {
+		if (!iso) return '—';
+		const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+		return m ? `${m[3]}.${m[2]}.${m[1]}` : iso;
+	}
 
 	const kindLabel: Record<TxnRow['kind'], string> = {
 		income: 'Einnahme',
@@ -48,11 +58,11 @@
 		<tbody>
 			{#each rows as r (r.id)}
 				<tr class="border-t border-border dark:border-border/60">
-					<td class="px-3 py-2 tabular-nums">{r.datum ?? '—'}</td>
+					<td class="px-3 py-2 tabular-nums">{fmtDate(r.datum)}</td>
 					<td class="px-3 py-2">{r.bezeichnung}</td>
 					<td class="px-3 py-2">{kindLabel[r.kind] ?? r.kind}</td>
 					<td class="px-3 py-2 text-right tabular-nums">{fmt(r.betragCents)}</td>
-					<td class="px-3 py-2">{r.status}</td>
+					<td class="px-3 py-2">{statusPresentation(r.status).label}</td>
 				</tr>
 			{:else}
 				<tr>

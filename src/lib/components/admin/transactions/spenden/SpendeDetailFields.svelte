@@ -26,6 +26,7 @@
   import { applyAction, enhance } from "$app/forms";
   import { toast } from "svelte-sonner";
   import DateField from "$lib/components/ui/date-field/DateField.svelte";
+  import { parseBetragCents } from "$lib/client/parse-betrag.js";
   import type { TransactionDetail } from "$lib/server/domain/transactions.js";
 
   interface Props {
@@ -63,11 +64,21 @@
   let zweckbindungKind = $state<ZweckbindungKind>(initialZweckbindung);
   let zugewendetAm = $state(initialZugewendet);
 
-  // FIX D (review): mirror AusgabeDetailFields/EinnahmeDetailFields — reactive
-  // $derived replaces the fragile document.querySelector betragCents update.
-  let betragEur = $state(untrack(() => detail.betragCents / 100));
+  // Betrag: de-DE editable text (type=text + inputmode=decimal + parseBetragCents),
+  // mirroring AusgabeDetailFields — so the value reads "2.500,00" (comma decimal,
+  // ADR-0003) rather than the period-formatted "2500.00" a type=number forces.
+  // Seeded de-DE; the hidden betragCents is derived via parseBetragCents (NOT
+  // parseFloat, which breaks on the de-DE comma).
+  let betragEur = $state(
+    untrack(() =>
+      (detail.betragCents / 100).toLocaleString("de-DE", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+    ),
+  );
   const betragCentsOut = $derived(
-    Math.round(parseFloat(String(betragEur || "0")) * 100),
+    betragEur ? String(parseBetragCents(betragEur) || "") : "",
   );
 
   const ZWECKBINDUNGEN: readonly [ZweckbindungKind, string][] = [
@@ -210,16 +221,17 @@
         class="text-muted-foreground absolute top-1/2 left-3 -translate-y-1/2 text-sm"
         >€</span
       >
-      <!-- FIX D (review): bind to $state betragEur; $derived betragCentsOut
-           replaces the fragile document.querySelector hidden-input update. -->
+      <!-- de-DE editable text (type=text + inputmode=decimal); $derived
+           betragCentsOut carries the parseBetragCents-derived hidden cents. -->
       <input
         id="detail-betrag"
-        type="number"
-        step="0.01"
-        min="0.01"
+        type="text"
+        inputmode="decimal"
+        required
         bind:value={betragEur}
+        placeholder="0,00"
         oninput={markDirty}
-        class="border-border bg-background focus:ring-primary w-full rounded-md border py-2 pr-3 pl-8 text-sm focus:ring-2 focus:outline-none"
+        class="border-border bg-background focus:ring-primary w-full rounded-md border py-2 pr-3 pl-8 text-sm tabular-nums focus:ring-2 focus:outline-none"
       />
       <input type="hidden" name="betragCents" value={betragCentsOut} />
     </div>

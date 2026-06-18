@@ -37,10 +37,18 @@
 	let saving = $state(false);
 
 	// ── New-rate form ─────────────────────────────────────────────────────────
+	// Default the new-year input to the first year that has NO satz yet:
+	// max(existing years)+1, or the current year if none exist. This avoids
+	// defaulting onto an already-existing year (which would otherwise risk a
+	// silent overwrite). data.rates is sorted desc by year, so rates[0] is max.
+	const firstFreeYear = untrack(() => {
+		const maxYear = data.rates[0]?.year;
+		return maxYear !== undefined ? maxYear + 1 : data.currentYear;
+	});
 	let addingNew = $state(false);
-	let newYear = $state(untrack(() => data.currentYear + 1));
+	let newYear = $state(firstFreeYear);
 	let newBetrag = $state('69.69');
-	let newFaelligkeit = $state(untrack(() => `${data.currentYear + 1}-03-31`));
+	let newFaelligkeit = $state(`${firstFreeYear}-03-31`);
 	let newBeschluss = $state('');
 
 	function startEdit(rate: PageData['rates'][0]) {
@@ -111,6 +119,7 @@
 			}}
 			class="mb-4 rounded-xl border border-border bg-card p-4 dark:border-border/60 dark:bg-card/40"
 		>
+			<input type="hidden" name="mode" value="create" />
 			<h2 class="mb-3 text-sm font-semibold text-foreground">Neuer Beitragssatz</h2>
 			<div class="grid grid-cols-1 gap-3 sm:grid-cols-4">
 				<label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
@@ -223,6 +232,7 @@
 										}}
 										class="flex flex-wrap items-end gap-3"
 									>
+										<input type="hidden" name="mode" value="update" />
 										<input type="hidden" name="year" value={rate.year} />
 										<label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
 											Betrag (€)

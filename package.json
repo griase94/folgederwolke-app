@@ -97,7 +97,7 @@
     "idb": "^8.0.3",
     "jszip": "^3.10.1",
     "marked": "^18.0.3",
-    "nodemailer": "^8.0.7",
+    "nodemailer": "^9.0.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
     "postgres": "^3.4.9",
