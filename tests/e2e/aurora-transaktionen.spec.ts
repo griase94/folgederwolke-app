@@ -48,12 +48,16 @@ test.describe("@phase-aurora-slice5 Transaktionen feed", () => {
 
     await page.getByTestId("filter-chip-einnahmen").click();
     await expect(page).toHaveURL(/typ=einnahmen/);
-    const rows = page.getByTestId("txn-row");
-    const n = await rows.count();
-    expect(n).toBeGreaterThan(0);
-    for (let i = 0; i < n; i++) {
-      await expect(rows.nth(i)).toHaveAttribute("data-kind", "einnahme");
-    }
+    // Race-free: wait for the filtered list to settle (first row is an Einnahme),
+    // then assert ZERO rows of any other kind. Indexing rows.nth(i) after a bare
+    // count() races with the re-render the chip navigation triggers.
+    await expect(page.getByTestId("txn-row").first()).toHaveAttribute(
+      "data-kind",
+      "einnahme",
+    );
+    await expect(
+      page.locator('[data-testid="txn-row"]:not([data-kind="einnahme"])'),
+    ).toHaveCount(0);
 
     await page.getByTestId("filter-chip-alle").click();
     await expect(page).not.toHaveURL(/typ=/);

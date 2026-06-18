@@ -54,7 +54,7 @@ test.describe("@phase-aurora-slice2 Aurora shell — mobile", () => {
     await expect(bar.getByRole("link", { name: "Übersicht" })).toBeVisible();
     const tx = bar.getByRole("link", { name: "Transaktionen" });
     await expect(tx).toBeVisible();
-    await expect(tx).toHaveAttribute("href", "/app/ausgaben"); // slice-5 flips this
+    await expect(tx).toHaveAttribute("href", "/app/transaktionen"); // slice 5 flipped this to the unified feed
     await expect(bar.getByRole("link", { name: /^Prüfung/ })).toBeVisible();
     await expect(
       bar.getByRole("button", { name: "Neu erfassen" }),

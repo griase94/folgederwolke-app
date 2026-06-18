@@ -16,7 +16,9 @@
 
 <section data-month-group>
 	<header class="flex items-baseline justify-between border-b border-hairline pb-1.5 pt-4 first:pt-0">
-		<h3 class="text-xs font-semibold uppercase tracking-wider text-ink-500">{label}</h3>
+		<!-- h2: sits directly under the PageHeader <h1> on every consumer (feed +
+		     the 3 list pages), so the heading order is h1→h2 (no skip — axe). -->
+		<h2 class="text-xs font-semibold uppercase tracking-wider text-ink-500">{label}</h2>
 		{#if subtotalCents !== undefined}
 			<span data-testid="month-subtotal" class="text-xs font-medium tabular-nums text-ink-500"
 				>{formatMoney(subtotalCents, 'always')}</span

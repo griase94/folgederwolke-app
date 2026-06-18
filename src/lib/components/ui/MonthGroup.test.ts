@@ -12,7 +12,7 @@ describe("MonthGroup", () => {
   it("renders the label as a group heading and the children", () => {
     render(MonthGroupHarness, { props: { label: "Mai 2026" } });
     expect(
-      screen.getByRole("heading", { level: 3, name: "Mai 2026" }),
+      screen.getByRole("heading", { level: 2, name: "Mai 2026" }),
     ).toBeTruthy();
     expect(screen.getByTestId("group-row")).toBeTruthy();
   });
