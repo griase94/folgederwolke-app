@@ -54,7 +54,7 @@
 			? {
 					betragCents: data.currentYearBeitrag.betragCents,
 					paidCents: data.currentYearBeitrag.paidCents,
-					isExempt: false,
+					isExempt: data.currentYearBeitrag.isExempt,
 					gezahltAm: null,
 				}
 			: null,

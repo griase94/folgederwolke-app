@@ -82,7 +82,7 @@
 				? {
 						betragCents: row.betragCents,
 						paidCents: row.paidCents,
-						isExempt: false,
+						isExempt: row.isExempt,
 						gezahltAm: row.gezahltAm,
 					}
 				: null,

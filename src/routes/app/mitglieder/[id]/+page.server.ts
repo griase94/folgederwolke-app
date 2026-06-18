@@ -190,6 +190,7 @@ export const load: PageServerLoad = async ({ params }) => {
           id: currentYearBeitrag.id,
           betragCents: Number(currentYearBeitrag.betragCents),
           paidCents: Number(currentYearBeitrag.paidCents),
+          isExempt: currentYearBeitrag.isExempt ?? false,
         }
       : null,
   };

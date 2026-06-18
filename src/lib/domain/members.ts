@@ -14,6 +14,9 @@ export type BeitragCell = {
   betragCents: number;
   paidCents: number;
   gezahltAm: string | null;
+  /** Per-year Beitragsbefreiung — must reach resolveBeitragState so an exempt
+   *  year never renders a false 'Offen' debt on the list/detail surfaces. */
+  isExempt: boolean;
 } | null;
 
 /**

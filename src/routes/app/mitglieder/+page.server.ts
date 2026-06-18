@@ -163,6 +163,7 @@ export const load: PageServerLoad = async ({ url, depends }) => {
                   betragCents: Number(b.betragCents),
                   paidCents: Number(b.paidCents),
                   gezahltAm: b.gezahltAm,
+                  isExempt: b.isExempt ?? false,
                 }
               : null,
           ];

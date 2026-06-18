@@ -110,7 +110,7 @@
 				? {
 						betragCents: row.betragCents,
 						paidCents: row.paidCents,
-						isExempt: false,
+						isExempt: row.isExempt,
 						gezahltAm: row.gezahltAm,
 					}
 				: null,
@@ -203,7 +203,7 @@
 			austrittsJahr: austrittsJahr,
 			beitragExempt: member.beitragExempt,
 			row: row
-				? { betragCents: row.betragCents, paidCents: row.paidCents, isExempt: false, gezahltAm: row.gezahltAm }
+				? { betragCents: row.betragCents, paidCents: row.paidCents, isExempt: row.isExempt, gezahltAm: row.gezahltAm }
 				: null,
 			satzCents: satzByYear[bulkYear] ?? null,
 			festBis: null,
