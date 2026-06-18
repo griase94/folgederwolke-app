@@ -39,6 +39,7 @@ const sampleMember: MemberView = {
       betragCents: 5000,
       paidCents: 5000,
       gezahltAm: "2026-02-01",
+      isExempt: false,
     },
   },
 };

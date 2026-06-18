@@ -44,6 +44,7 @@ function makeMember(overrides: Partial<MemberView> = {}): MemberView {
         betragCents: 6000,
         paidCents: 0,
         gezahltAm: null,
+        isExempt: false,
       },
     },
     ...overrides,
@@ -72,14 +73,22 @@ describe("MemberRow — Package D", () => {
           betragCents: 6000,
           paidCents: 6000,
           gezahltAm: "2024-02-01",
+          isExempt: false,
         },
         2025: {
           id: "b2",
           betragCents: 6000,
           paidCents: 6000,
           gezahltAm: "2025-02-01",
+          isExempt: false,
         },
-        2026: { id: "b3", betragCents: 6000, paidCents: 0, gezahltAm: null },
+        2026: {
+          id: "b3",
+          betragCents: 6000,
+          paidCents: 0,
+          gezahltAm: null,
+          isExempt: false,
+        },
       },
     });
     const { container } = render(MemberRow, {
@@ -105,6 +114,7 @@ describe("MemberRow — Package D", () => {
           betragCents: 6000,
           paidCents: 6000,
           gezahltAm: "2026-02-01",
+          isExempt: false,
         },
       },
     });
@@ -144,6 +154,7 @@ describe("MemberRow — Package D", () => {
           betragCents: 6000,
           paidCents: 3000,
           gezahltAm: "2026-02-01",
+          isExempt: false,
         },
       },
     });
@@ -202,6 +213,7 @@ describe("MemberRow — Package D", () => {
           betragCents: 6000,
           paidCents: 6000,
           gezahltAm: "2026-02-01",
+          isExempt: false,
         },
       },
     });

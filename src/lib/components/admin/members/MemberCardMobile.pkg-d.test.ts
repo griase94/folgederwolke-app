@@ -43,6 +43,7 @@ function makeMember(overrides: Partial<MemberView> = {}): MemberView {
         betragCents: 6000,
         paidCents: 0,
         gezahltAm: null,
+        isExempt: false,
       },
     },
     ...overrides,
@@ -70,6 +71,7 @@ describe("MemberCardMobile — Package D", () => {
           betragCents: 6000,
           paidCents: 6000,
           gezahltAm: "2026-02-01",
+          isExempt: false,
         },
       },
     });
@@ -89,6 +91,7 @@ describe("MemberCardMobile — Package D", () => {
           betragCents: 6000,
           paidCents: 3000,
           gezahltAm: "2026-02-01",
+          isExempt: false,
         },
       },
     });
@@ -130,6 +133,7 @@ describe("MemberCardMobile — Package D", () => {
           betragCents: 6000,
           paidCents: 6000,
           gezahltAm: "2026-02-01",
+          isExempt: false,
         },
       },
     });

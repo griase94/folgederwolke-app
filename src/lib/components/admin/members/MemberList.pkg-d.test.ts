@@ -41,6 +41,7 @@ const sampleMember: MemberView = {
       betragCents: 6000,
       paidCents: 0,
       gezahltAm: null,
+      isExempt: false,
     },
   },
 };
