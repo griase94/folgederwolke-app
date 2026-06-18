@@ -166,7 +166,7 @@ test.describe("@phase-4-ausgaben Ausgaben tab", () => {
       .locator('select[name="bezahltVonMemberId"]')
       .selectOption({ index: 1 });
     await page.getByRole("checkbox", { name: /Kein Beleg vorhanden/i }).check();
-    await page.getByLabel(/Begründung/i).fill("E2E.");
+    await page.getByLabel(/Begründung/i).fill("E2E ohne Beleg.");
     await page.getByRole("button", { name: /Ausgabe anlegen/i }).click();
     await page.waitForURL(/\/app\/ausgaben\/[0-9a-f-]+$/);
 

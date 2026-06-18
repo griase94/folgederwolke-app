@@ -343,13 +343,15 @@ export const actions = {
     const keinBeleg = data.get("keinBeleg") === "true";
     const begruendung = String(data.get("begruendung") ?? "").trim();
 
-    if (!hasBelegFile && !(keinBeleg && begruendung.length > 0)) {
+    if (!hasBelegFile && !(keinBeleg && begruendung.length >= 5)) {
       return fail(422, {
         error:
-          "Bitte einen Beleg hochladen oder „Kein Beleg vorhanden“ mit Begründung wählen.",
+          "Bitte einen Beleg hochladen oder „Kein Beleg vorhanden“ mit Begründung (mind. 5 Zeichen) wählen.",
         values: valuesFromForm(data),
         errors: {
-          beleg: ["Beleg-Datei ODER eine Begründung ist erforderlich."],
+          beleg: [
+            "Beleg-Datei ODER eine Begründung (mind. 5 Zeichen) ist erforderlich.",
+          ],
         },
       });
     }

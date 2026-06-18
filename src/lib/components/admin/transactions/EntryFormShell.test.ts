@@ -63,15 +63,25 @@ describe("EntryFormShell — shared contract", () => {
   });
 
   it("has a sticky header, scrollable body, and a sticky footer", () => {
-    const { container } = render(EntryFormShell, { props: baseProps() });
-    expect(container.querySelector('[data-slot="entry-header"]')).toBeTruthy();
-    expect(container.querySelector('[data-slot="entry-body"]')).toBeTruthy();
-    expect(container.querySelector('[data-slot="entry-footer"]')).toBeTruthy();
+    render(EntryFormShell, { props: baseProps() });
+    // D1: portalled to document.body — use document.body.querySelector, not container
+    expect(
+      document.body.querySelector('[data-slot="entry-header"]'),
+    ).toBeTruthy();
+    expect(
+      document.body.querySelector('[data-slot="entry-body"]'),
+    ).toBeTruthy();
+    expect(
+      document.body.querySelector('[data-slot="entry-footer"]'),
+    ).toBeTruthy();
   });
 
   it("sets enctype=multipart/form-data on the form by default (file uploads transmit)", () => {
-    const { container } = render(EntryFormShell, { props: baseProps() });
-    const form = container.querySelector("form#entry-form") as HTMLFormElement;
+    render(EntryFormShell, { props: baseProps() });
+    // D1: portalled to document.body
+    const form = document.body.querySelector(
+      "form#entry-form",
+    ) as HTMLFormElement;
     expect(form).toBeTruthy();
     // The browser reflects an unknown enctype to the urlencoded default, so we
     // assert the attribute the component wrote rather than the form's enctype
@@ -80,10 +90,13 @@ describe("EntryFormShell — shared contract", () => {
   });
 
   it("honors a custom enctype prop", () => {
-    const { container } = render(EntryFormShell, {
+    render(EntryFormShell, {
       props: baseProps({ enctype: "application/x-www-form-urlencoded" }),
     });
-    const form = container.querySelector("form#entry-form") as HTMLFormElement;
+    // D1: portalled to document.body
+    const form = document.body.querySelector(
+      "form#entry-form",
+    ) as HTMLFormElement;
     expect(form.getAttribute("enctype")).toBe(
       "application/x-www-form-urlencoded",
     );
@@ -125,10 +138,11 @@ describe("EntryFormShell — shared contract", () => {
 
   it("UX-02: pressing Escape on the dialog calls onClose (same guard as × / back)", async () => {
     const onClose = vi.fn();
-    const { container } = render(EntryFormShell, {
+    render(EntryFormShell, {
       props: baseProps({ onClose }),
     });
-    const dialog = container.querySelector('[role="dialog"]');
+    // D1: portalled to document.body
+    const dialog = document.body.querySelector('[role="dialog"]');
     expect(dialog).toBeTruthy();
     await fireEvent.keyDown(dialog!, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -200,5 +214,75 @@ describe("EntryFormShell — shared contract", () => {
     registeredGuard()(navAway(cancel));
     expect(cancel).not.toHaveBeenCalled();
     expect(confirmSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ── Package D1: portal / z-index / accent strip ────────────────────────────
+describe("EntryFormShell — D1 portal + z-index + accent", () => {
+  it("portals the modal to document.body (not inside the render container)", () => {
+    const { container } = render(EntryFormShell, { props: baseProps() });
+    // The backdrop and dialog should be on document.body, NOT inside the
+    // render container (which is just a div inside <body>).
+    const backdropInContainer = container.querySelector(
+      '[data-slot="entry-backdrop"]',
+    );
+    const dialogInContainer = container.querySelector(
+      '[data-slot="entry-form-shell"]',
+    );
+    expect(backdropInContainer).toBeNull();
+    expect(dialogInContainer).toBeNull();
+    // They are accessible from document.body
+    expect(
+      document.body.querySelector('[data-slot="entry-backdrop"]'),
+    ).toBeTruthy();
+    expect(
+      document.body.querySelector('[data-slot="entry-form-shell"]'),
+    ).toBeTruthy();
+  });
+
+  it("backdrop carries z-[60] class so it covers MobileTabBar(z-40)+Topbar(z-30)", () => {
+    render(EntryFormShell, { props: baseProps() });
+    const backdrop = document.body.querySelector(
+      '[data-slot="entry-backdrop"]',
+    );
+    expect(backdrop).toBeTruthy();
+    expect((backdrop as HTMLElement).className).toContain("z-[60]");
+  });
+
+  it("dialog carries z-[70] class so it sits above the backdrop", () => {
+    render(EntryFormShell, { props: baseProps() });
+    const dialog = document.body.querySelector(
+      '[data-slot="entry-form-shell"]',
+    );
+    expect(dialog).toBeTruthy();
+    expect((dialog as HTMLElement).className).toContain("z-[70]");
+  });
+
+  it("renders the per-type accent strip (data-slot=entry-accent)", () => {
+    render(EntryFormShell, { props: baseProps() });
+    const strip = document.body.querySelector('[data-slot="entry-accent"]');
+    expect(strip).toBeTruthy();
+  });
+
+  it("default accent=ausgabe → strip carries bg-type-ausgabe", () => {
+    render(EntryFormShell, { props: baseProps() });
+    const strip = document.body.querySelector('[data-slot="entry-accent"]');
+    expect((strip as HTMLElement).className).toContain("bg-type-ausgabe");
+  });
+
+  it("accent=einnahme → strip carries bg-type-einnahme", () => {
+    render(EntryFormShell, {
+      props: baseProps({ accent: "einnahme" }),
+    });
+    const strip = document.body.querySelector('[data-slot="entry-accent"]');
+    expect((strip as HTMLElement).className).toContain("bg-type-einnahme");
+  });
+
+  it("accent=spende → strip carries bg-type-spende", () => {
+    render(EntryFormShell, {
+      props: baseProps({ accent: "spende" }),
+    });
+    const strip = document.body.querySelector('[data-slot="entry-accent"]');
+    expect((strip as HTMLElement).className).toContain("bg-type-spende");
   });
 });

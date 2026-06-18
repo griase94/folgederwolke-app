@@ -1,20 +1,20 @@
 <script lang="ts">
 	/**
-	 * EinnahmeFields — Phase 5 / Task 3 (Tier C2). The `fields` snippet body the
-	 * EntryFormShell injects into its <form> for the freie-Einnahme entry form.
+	 * EinnahmeFields — Package C2. Aurora redesign.
 	 *
-	 * Fields: Bezeichnung · Betrag (€ input → hidden betragCents) · Geldeingang
-	 * (DateField → geldEingangDatum) · Kategorie (KategoriePicker, drives the
-	 * displayed Sphäre — NO project override, §4.5) · Projekt (optional) · Beleg
-	 * (OPTIONAL — a plain file input, NO "Kein Beleg" → Begründung reveal) ·
-	 * Kommentar.
+	 * Changes from pre-C2:
+	 * - Betrag → type=text inputmode=decimal + parseBetragCents (ADR-0003)
+	 * - BelegUpload `optional` replaces the plain <input type=file>
+	 * - geldEingangDatum seeds today on a fresh form
+	 * - FIELD_CLASS throughout
 	 *
-	 * NO bezahlt-von, NO auto-pay (those are Ausgaben-only). The component owns
-	 * its field state + the kategorie→sphere derivation; it reports edits via
-	 * `onDirty` so the tab can gate the EntryFormShell's Speichern button.
+	 * PRESERVE bind:value local-state pattern (EinnahmeFields bind-regression lesson).
 	 */
 	import KategoriePicker from '$lib/components/admin/transactions/fields/KategoriePicker.svelte';
+	import BelegUpload from '$lib/components/admin/transactions/fields/BelegUpload.svelte';
 	import { DateField } from '$lib/components/ui/date-field/index.js';
+	import { FIELD_CLASS } from '$lib/components/admin/transactions/fields/field-class.js';
+	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 	import type { Sphere } from '$lib/domain/sphere.js';
 
 	interface KategorieOption {
@@ -36,6 +36,8 @@
 		projectId: string;
 		kommentar: string;
 	}
+
+	const today = new Date().toISOString().slice(0, 10);
 
 	const EMPTY_VALUES: EinnahmeValues = {
 		bezeichnung: '',
@@ -87,8 +89,9 @@
 	let bezeichnung = $state(values.bezeichnung);
 	// svelte-ignore state_referenced_locally
 	let betragEur = $state(values.betragEur);
+	// Seed geldEingangDatum to today on a fresh form (C2); re-hydrate keeps echoed value.
 	// svelte-ignore state_referenced_locally
-	let geldEingangDatum = $state(values.geldEingangDatum);
+	let geldEingangDatum = $state(values.geldEingangDatum || today);
 	// svelte-ignore state_referenced_locally
 	let kommentar = $state(values.kommentar);
 	// svelte-ignore state_referenced_locally
@@ -103,9 +106,11 @@
 		kategorien.find((k) => k.name === values.kategorieName)?.sphere ?? ''
 	);
 
-	// € → integer cents (ADR-0003). Empty / NaN → 0 (the schema's positive-int
-	// gate rejects it, surfacing the validation error).
-	const betragCents = $derived(Math.round(parseFloat(betragEur || '0') * 100));
+	// Betrag: type=text + inputmode=decimal + parseBetragCents (C2).
+	// Local $state preserves typed text across re-renders (bind-regression lesson).
+	const betragCents = $derived(
+		betragEur ? String(parseBetragCents(betragEur) || 0) : '0'
+	);
 
 	function markDirty() {
 		onDirty?.();
@@ -120,8 +125,8 @@
 
 	<!-- Bezeichnung -->
 	<div class="flex flex-col gap-1.5">
-		<label for="bezeichnung" class="text-sm font-medium text-foreground">
-			Bezeichnung<span class="text-destructive" aria-hidden="true">&nbsp;*</span>
+		<label for="bezeichnung" class="text-sm font-medium text-ink-900">
+			Bezeichnung<span class="text-severity-critical" aria-hidden="true">&nbsp;*</span>
 		</label>
 		<input
 			id="bezeichnung"
@@ -132,38 +137,40 @@
 			bind:value={bezeichnung}
 			aria-invalid={err('bezeichnung') ? true : undefined}
 			oninput={markDirty}
-			class="h-11 min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+			class={FIELD_CLASS}
 		/>
 		{#if err('bezeichnung')}
-			<p class="text-xs text-destructive">{err('bezeichnung')}</p>
+			<p class="text-xs text-severity-critical">{err('bezeichnung')}</p>
 		{/if}
 	</div>
 
-	<!-- Betrag (€) -->
+	<!-- Betrag (type=text inputmode=decimal → hidden betragCents) -->
 	<div class="flex flex-col gap-1.5">
-		<label for="betragEur" class="text-sm font-medium text-foreground">
-			Betrag (€)<span class="text-destructive" aria-hidden="true">&nbsp;*</span>
+		<label for="betragEur" class="text-sm font-medium text-ink-900">
+			Betrag (€)<span class="text-severity-critical" aria-hidden="true">&nbsp;*</span>
 		</label>
-		<input
-			id="betragEur"
-			type="number"
-			inputmode="decimal"
-			step="0.01"
-			min="0"
-			required
-			bind:value={betragEur}
-			aria-invalid={err('betragCents') ? true : undefined}
-			oninput={markDirty}
-			class="h-11 min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm tabular-nums outline-none focus-visible:ring-1 focus-visible:ring-ring"
-		/>
+		<div class="relative">
+			<span class="absolute top-1/2 left-3 -translate-y-1/2 text-sm text-ink-400" aria-hidden="true">€</span>
+			<input
+				id="betragEur"
+				type="text"
+				inputmode="decimal"
+				required
+				bind:value={betragEur}
+				placeholder="0,00"
+				aria-invalid={err('betragCents') ? true : undefined}
+				oninput={markDirty}
+				class="{FIELD_CLASS} pl-7 tabular-nums"
+			/>
+		</div>
 		{#if err('betragCents')}
-			<p class="text-xs text-destructive">{err('betragCents')}</p>
+			<p class="text-xs text-severity-critical">{err('betragCents')}</p>
 		{/if}
 	</div>
 
 	<!-- Geldeingang (locale-locked DateField → hidden ISO geldEingangDatum) -->
 	<div class="flex flex-col gap-1.5">
-		<label for="geldEingangDatum" class="text-sm font-medium text-foreground">Geldeingang</label>
+		<label for="geldEingangDatum" class="text-sm font-medium text-ink-900">Geldeingang</label>
 		<DateField
 			id="geldEingangDatum"
 			name="geldEingangDatum"
@@ -174,7 +181,7 @@
 			}}
 		/>
 		{#if err('geldEingangDatum')}
-			<p class="text-xs text-destructive">{err('geldEingangDatum')}</p>
+			<p class="text-xs text-severity-critical">{err('geldEingangDatum')}</p>
 		{/if}
 	</div>
 
@@ -194,20 +201,20 @@
 			onSphere={(s) => (sphere = s)}
 		/>
 		{#if err('kategorieNameSnapshot')}
-			<p class="text-xs text-destructive">{err('kategorieNameSnapshot')}</p>
+			<p class="text-xs text-severity-critical">{err('kategorieNameSnapshot')}</p>
 		{/if}
 	</div>
 
 	<!-- Projekt (optional) -->
 	<div class="flex flex-col gap-1.5">
-		<label for="projectId" class="text-sm font-medium text-foreground">Projekt (optional)</label>
+		<label for="projectId" class="text-sm font-medium text-ink-900">Projekt (optional)</label>
 		<select
 			id="projectId"
 			name="projectId"
 			bind:value={projectId}
 			onchange={markDirty}
 			data-testid="transaction-project-picker"
-			class="h-11 min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+			class={FIELD_CLASS}
 		>
 			<option value="">— kein Projekt —</option>
 			{#each projects as p (p.id)}
@@ -216,26 +223,12 @@
 		</select>
 	</div>
 
-	<!-- Beleg (OPTIONAL — plain file input, NO Kein-Beleg → Begründung reveal) -->
-	<div class="flex flex-col gap-1.5">
-		<label for="beleg" class="text-sm font-medium text-foreground">Beleg (optional)</label>
-		<input
-			id="beleg"
-			name="beleg"
-			type="file"
-			accept="image/*,application/pdf"
-			aria-invalid={err('beleg') ? true : undefined}
-			onchange={markDirty}
-			class="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-accent"
-		/>
-		{#if err('beleg')}
-			<p class="text-xs text-destructive">{err('beleg')}</p>
-		{/if}
-	</div>
+	<!-- Beleg (OPTIONAL — BelegUpload with optional=true, no keinBeleg arm) -->
+	<BelegUpload optional error={err('beleg') ?? undefined} />
 
 	<!-- Kommentar -->
 	<div class="flex flex-col gap-1.5">
-		<label for="kommentar" class="text-sm font-medium text-foreground">Kommentar</label>
+		<label for="kommentar" class="text-sm font-medium text-ink-900">Kommentar</label>
 		<textarea
 			id="kommentar"
 			name="kommentar"
@@ -243,7 +236,7 @@
 			maxlength="2000"
 			bind:value={kommentar}
 			oninput={markDirty}
-			class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+			class="w-full rounded-[10px] border border-hairline bg-white px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
 		></textarea>
 	</div>
 </div>

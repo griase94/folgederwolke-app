@@ -56,6 +56,46 @@ function baseProps() {
   };
 }
 
+describe("AusgabeFields — C1 Aurora section layout", () => {
+  it("Betrag field is type=text with inputmode=decimal (not type=number)", () => {
+    render(AusgabeFields, { props: baseProps() });
+    const betragInput = document.querySelector('input[name="betragCents"]');
+    // The display input (not the hidden cents input) should be text + inputmode=decimal
+    const displayInput = document.querySelector(
+      'input[inputmode="decimal"]',
+    ) as HTMLInputElement | null;
+    expect(displayInput).not.toBeNull();
+    expect(displayInput?.type).toBe("text");
+    if (betragInput)
+      expect((betragInput as HTMLInputElement).type).toBe("hidden");
+  });
+
+  it("renders 3 section cards with Aurora card classes (data-slot=section)", () => {
+    render(AusgabeFields, { props: baseProps() });
+    const sections = document.querySelectorAll('[data-slot="ausgabe-section"]');
+    expect(sections.length).toBe(3);
+  });
+
+  it("Beleg section (position 2) comes before Bezahlt-von section (position 3)", () => {
+    render(AusgabeFields, { props: baseProps() });
+    const sections = Array.from(
+      document.querySelectorAll('[data-slot="ausgabe-section"]'),
+    );
+    const headings = sections.map(
+      (s) => s.querySelector("h3")?.textContent?.trim() ?? "",
+    );
+    expect(headings[0]).toMatch(/Grunddaten/);
+    expect(headings[1]).toMatch(/Beleg/);
+    expect(headings[2]).toMatch(/Bezahlt/);
+  });
+
+  it("bezahlt-von buttons are arranged in grid-cols-3 (data-slot=bezahlt-von-grid)", () => {
+    render(AusgabeFields, { props: baseProps() });
+    const grid = document.querySelector('[data-slot="bezahlt-von-grid"]');
+    expect(grid).not.toBeNull();
+  });
+});
+
 describe("AusgabeFields — Extern data survives a recipient-mode toggle (UX-07)", () => {
   it("keeps a typed Extern Name across Extern → Mitglied → Extern", async () => {
     render(AusgabeFields, { props: baseProps() });

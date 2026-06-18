@@ -84,6 +84,31 @@ describe("DateField (de-DE primitive)", () => {
     expect(input.getAttribute("inputmode")).toBe("decimal");
   });
 
+  // B3: Aurora FIELD_CLASS height + radius contract
+  it("carries h-11 class for Aurora 44px control height", () => {
+    const { getByTestId } = render(DateField, {
+      props: { value: "", name: "test_date" },
+    });
+    const input = getByTestId("datefield-input") as HTMLInputElement;
+    expect(input.className).toContain("h-11");
+  });
+
+  it("carries rounded-[10px] for Aurora control radius", () => {
+    const { getByTestId } = render(DateField, {
+      props: { value: "", name: "test_date" },
+    });
+    const input = getByTestId("datefield-input") as HTMLInputElement;
+    expect(input.className).toContain("rounded-[10px]");
+  });
+
+  it("carries border-hairline for Aurora hairline border", () => {
+    const { getByTestId } = render(DateField, {
+      props: { value: "", name: "test_date" },
+    });
+    const input = getByTestId("datefield-input") as HTMLInputElement;
+    expect(input.className).toContain("border-hairline");
+  });
+
   it("accepts single-digit day and month (1.5.2026 -> 2026-05-01)", async () => {
     const { getByTestId, container } = render(DateField, {
       props: { value: "", name: "test_date" },

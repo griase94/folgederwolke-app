@@ -86,6 +86,17 @@ export const auslagenSubmissions = pgTable(
       onDelete: "restrict",
     }),
 
+    /**
+     * Beleg-Verzicht arm (THE BELEG RULE — Plan §A1).
+     * Set when an admin/submitter explicitly acknowledges they have no Beleg and
+     * provides a documented reason (min 5 chars). Either `beleg_file_id` or this
+     * column must be non-NULL: enforced by the DB CHECK
+     * `auslagen_submissions_beleg_or_grund_ck` (migration after this column add).
+     * The public form always uploads a real file → this is NULL for all
+     * existing form submissions. Admin manual-import sets one arm or the other.
+     */
+    belegVerzichtGrund: text("beleg_verzicht_grund"),
+
     // --- Audit-inbox state ---
     /** NULL = open in inbox, set when approved or rejected. */
     decidedAt: timestamp("decided_at", { withTimezone: true }),

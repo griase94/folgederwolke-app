@@ -1,0 +1,1 @@
+ALTER TABLE "auslagen_submissions" ADD COLUMN "beleg_verzicht_grund" text;

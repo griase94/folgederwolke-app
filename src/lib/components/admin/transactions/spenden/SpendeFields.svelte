@@ -1,5 +1,12 @@
 <!--
-  SpendeFields — the Spenden entry-form fields snippet (spec §9.2).
+  SpendeFields — Package C3. Aurora redesign.
+
+  Changes from pre-C3:
+  - Betrag → type=text inputmode=decimal + parseBetragCents (ADR-0003)
+  - BelegUpload `optional` for main Beleg (Geldspende) + Herkunftsbeleg (Sachspende)
+  - zugewendetAm seeds today on a fresh form
+  - Spendenart/Spender equal-width grid (grid-cols-2 wrapping)
+  - FIELD_CLASS throughout
 
   The 3-picker derived form rendered inside EntryFormShell's scrollable body:
     1. Spendenart*   — Geldspende / Sachspende / Aufwand (disabled — Phase 2)
@@ -11,18 +18,20 @@
   Gegenstands* · optional Herkunftsbeleg · "aus Betriebsvermögen" flag); the
   optional main Beleg/Kontoauszug (Geldspende, encouraged not enforced); and the
   read-only DerivedKategorieBadge (NO Kategorie picker — it is derived server-side).
-
-  Betrag → hidden `betragCents` (native number step=0.01, the established `neu`
-  pattern). Date via the ui/date-field primitive (hidden ISO mirror).
 -->
 <script lang="ts">
 	import DateField from '$lib/components/ui/date-field/DateField.svelte';
+	import BelegUpload from '$lib/components/admin/transactions/fields/BelegUpload.svelte';
 	import DerivedKategorieBadge from './DerivedKategorieBadge.svelte';
+	import { FIELD_CLASS } from '$lib/components/admin/transactions/fields/field-class.js';
+	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 	import {
 		deriveDonationKategorieName,
 		type SpendeKind,
 		type ZweckbindungKind
 	} from '$lib/domain/spenden-kategorie.js';
+
+	const today = new Date().toISOString().slice(0, 10);
 
 	interface MemberOpt {
 		id: string;
@@ -67,7 +76,8 @@
 	);
 	let spenderMode = $state<'member' | 'extern'>(v('member_id') ? 'member' : 'extern');
 	let selectedMemberId = $state(v('member_id'));
-	let zugewendetAm = $state(v('zugewendet_am'));
+	// Seed zugewendetAm to today on a fresh form (C3); re-hydrate keeps echoed value.
+	let zugewendetAm = $state(v('zugewendet_am') || today);
 
 	// Extern Spender fields backed by local $state + bind:value (mirror
 	// selectedMemberId) so typed data SURVIVES a Spender mode toggle (UX-07 §7.2).
@@ -77,13 +87,12 @@
 	let spenderAdresse = $state(v('spender_adresse'));
 	let spenderEmail = $state(v('spender_email'));
 
-	// Betrag is entered as euros in a display input; the canonical integer-cents
-	// value is mirrored into a hidden field the server validates. Reactive
-	// $state/$derived (mirrors AusgabeFields + the already-fixed SpendeDetailFields)
-	// replaces the fragile document.querySelector hidden-input write — a Svelte
-	// re-render can no longer clobber the imperatively-set hidden value.
+	// Betrag: type=text + inputmode=decimal + parseBetragCents (C3).
+	// Local $state preserves typed text across re-renders (bind-regression lesson).
 	let betragEur = $state(v('betragCents') ? String(Number(v('betragCents')) / 100) : '');
-	const betragCentsOut = $derived(Math.round(parseFloat(betragEur || '0') * 100));
+	const betragCentsOut = $derived(
+		betragEur ? (parseBetragCents(betragEur) || 0) : 0
+	);
 
 	const isSach = $derived(spendeKind === 'sachspende');
 	const isZweckgebunden = $derived(zweckbindungKind === 'zweckgebunden');
@@ -109,10 +118,11 @@
 <div class="flex flex-col gap-5">
 	<!-- 1. Spendenart -->
 	<fieldset>
-		<legend class="mb-1.5 block text-sm font-medium text-foreground">
-			Spendenart <span class="text-red-500" aria-hidden="true">*</span>
+		<legend class="mb-1.5 block text-sm font-medium text-ink-900">
+			Spendenart <span class="text-severity-critical" aria-hidden="true">*</span>
 		</legend>
-		<div class="flex flex-wrap gap-2">
+		<!-- Equal-width grid for Spendenart buttons (C3) -->
+		<div class="grid grid-cols-3 gap-2">
 			{#each [['geldspende', 'Geldspende'], ['sachspende', 'Sachspende']] as [k, l] (k)}
 				<button
 					type="button"
@@ -121,10 +131,10 @@
 						markDirty();
 					}}
 					class={[
-						'inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+						'inline-flex min-h-11 items-center justify-center rounded-[10px] px-3 py-1.5 text-sm font-medium transition-colors',
 						spendeKind === k
 							? 'bg-primary-strong text-primary-foreground'
-							: 'bg-muted text-muted-foreground hover:text-foreground'
+							: 'border border-hairline bg-white text-ink-700 hover:bg-muted/50'
 					].join(' ')}
 					data-testid={`spendeart-${k}`}
 				>
@@ -136,7 +146,7 @@
 				type="button"
 				disabled
 				title="Aufwandsspende-Workflow folgt in Phase 2"
-				class="inline-flex min-h-11 cursor-not-allowed items-center justify-center rounded-md bg-muted px-3 py-1.5 text-sm font-medium text-muted-foreground/50"
+				class="inline-flex min-h-11 cursor-not-allowed items-center justify-center rounded-[10px] border border-hairline bg-muted px-3 py-1.5 text-sm font-medium text-muted-foreground/50"
 				data-testid="spendeart-aufwand-disabled"
 			>
 				Aufwand
@@ -147,10 +157,10 @@
 
 	<!-- 2. Zweckbindung -->
 	<fieldset>
-		<legend class="mb-1.5 block text-sm font-medium text-foreground">
-			Zweckbindung <span class="text-red-500" aria-hidden="true">*</span>
+		<legend class="mb-1.5 block text-sm font-medium text-ink-900">
+			Zweckbindung <span class="text-severity-critical" aria-hidden="true">*</span>
 		</legend>
-		<div class="flex flex-wrap gap-2">
+		<div class="grid grid-cols-2 gap-2">
 			{#each [['zweckfrei', 'Zweckfrei'], ['zweckgebunden', 'Zweckgebunden']] as [k, l] (k)}
 				<button
 					type="button"
@@ -159,10 +169,10 @@
 						markDirty();
 					}}
 					class={[
-						'inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+						'inline-flex min-h-11 items-center justify-center rounded-[10px] px-3 py-1.5 text-sm font-medium transition-colors',
 						zweckbindungKind === k
 							? 'bg-primary-strong text-primary-foreground'
-							: 'bg-muted text-muted-foreground hover:text-foreground'
+							: 'border border-hairline bg-white text-ink-700 hover:bg-muted/50'
 					].join(' ')}
 					data-testid={`zweckbindung-${k}`}
 				>
@@ -174,8 +184,8 @@
 
 		{#if isZweckgebunden}
 			<div class="mt-2 space-y-1">
-				<label for="zweckbindung_text" class="block text-sm font-medium text-foreground">
-					Zweckbindungs-Text <span class="text-red-500" aria-hidden="true">*</span>
+				<label for="zweckbindung_text" class="block text-sm font-medium text-ink-900">
+					Zweckbindungs-Text <span class="text-severity-critical" aria-hidden="true">*</span>
 				</label>
 				<p class="text-xs text-muted-foreground">
 					§ 55 AO — der vom Spender benannte Verwendungszweck.
@@ -188,43 +198,42 @@
 					oninput={markDirty}
 					required
 					data-testid="zweckbindung-text"
-					class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+					class={FIELD_CLASS}
 				/>
 				{#if err('zweckbindung_text')}
-					<p class="text-xs text-red-600">{err('zweckbindung_text')}</p>
+					<p class="text-xs text-severity-critical">{err('zweckbindung_text')}</p>
 				{/if}
 			</div>
 		{/if}
 	</fieldset>
 
-	<!-- Betrag (Sachspende: gemeiner Wert, §9 BewG) -->
+	<!-- Betrag (Sachspende: gemeiner Wert, §9 BewG) — type=text inputmode=decimal -->
 	<div>
-		<label for="betrag-display" class="mb-1 block text-sm font-medium text-foreground">
+		<label for="betrag-display" class="mb-1.5 block text-sm font-medium text-ink-900">
 			{isSach ? 'Gemeiner Wert (€, § 9 BewG)' : 'Betrag (€)'}
-			<span class="text-red-500" aria-hidden="true">*</span>
+			<span class="text-severity-critical" aria-hidden="true">*</span>
 		</label>
 		<div class="relative">
-			<span class="absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted-foreground">€</span>
+			<span class="absolute top-1/2 left-3 -translate-y-1/2 text-sm text-ink-400" aria-hidden="true">€</span>
 			<input
 				id="betrag-display"
-				type="number"
-				step="0.01"
-				min="0.01"
+				type="text"
+				inputmode="decimal"
 				required
 				placeholder="0,00"
 				bind:value={betragEur}
 				oninput={markDirty}
 				data-testid="betrag-eur-input"
-				class="w-full rounded-md border border-border bg-background py-2 pr-3 pl-8 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+				class="{FIELD_CLASS} pl-7 tabular-nums"
 			/>
 			<input type="hidden" name="betragCents" value={betragCentsOut} />
 		</div>
 	</div>
 
-	<!-- Zuwendungsdatum -->
+	<!-- Zuwendungsdatum (seeds today on a fresh form) -->
 	<div class="space-y-1.5">
-		<label for="zugewendet_am" class="block text-sm font-medium text-foreground">
-			Zuwendungsdatum <span class="text-red-500" aria-hidden="true">*</span>
+		<label for="zugewendet_am" class="block text-sm font-medium text-ink-900">
+			Zuwendungsdatum <span class="text-severity-critical" aria-hidden="true">*</span>
 		</label>
 		<DateField
 			id="zugewendet_am"
@@ -241,7 +250,7 @@
 	<!-- Projekt (optional, Mittelverwendung) -->
 	{#if projects.length}
 		<div>
-			<label for="project_id" class="mb-1 block text-sm font-medium text-foreground">
+			<label for="project_id" class="mb-1.5 block text-sm font-medium text-ink-900">
 				Projekt <span class="text-xs font-normal text-muted-foreground">(optional)</span>
 			</label>
 			<select
@@ -249,7 +258,7 @@
 				name="project_id"
 				value={v('project_id')}
 				onchange={markDirty}
-				class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+				class={FIELD_CLASS}
 			>
 				<option value="">— kein Projekt —</option>
 				{#each projects as p (p.id)}
@@ -262,14 +271,14 @@
 	<!-- Sachspende Wertermittlung reveal -->
 	{#if isSach}
 		<fieldset
-			class="space-y-3 rounded-md border border-border bg-muted/30 p-3"
+			class="space-y-3 rounded-xl border border-hairline bg-white/60 p-4"
 			data-testid="sachspende-reveal"
 		>
-			<legend class="px-1 text-sm font-medium text-foreground">Sachspende — Wertermittlung</legend>
+			<legend class="px-1 text-sm font-medium text-ink-900">Sachspende — Wertermittlung</legend>
 
-			<div class="space-y-1">
-				<label for="wertermittlung_methode" class="block text-sm font-medium text-foreground">
-					Wertermittlungsmethode <span class="text-red-500" aria-hidden="true">*</span>
+			<div class="space-y-1.5">
+				<label for="wertermittlung_methode" class="block text-sm font-medium text-ink-900">
+					Wertermittlungsmethode <span class="text-severity-critical" aria-hidden="true">*</span>
 				</label>
 				<select
 					id="wertermittlung_methode"
@@ -277,7 +286,7 @@
 					value={v('wertermittlung_methode')}
 					onchange={markDirty}
 					data-testid="wertermittlung-methode"
-					class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+					class={FIELD_CLASS}
 				>
 					<option value="">— wählen —</option>
 					<option value="marktpreis">Marktpreis</option>
@@ -286,14 +295,14 @@
 					<option value="buchwert">Buchwert</option>
 				</select>
 				{#if err('wertermittlung_methode')}
-					<p class="text-xs text-red-600">{err('wertermittlung_methode')}</p>
+					<p class="text-xs text-severity-critical">{err('wertermittlung_methode')}</p>
 				{/if}
 			</div>
 
-			<div class="space-y-1">
-				<label for="zustand_beschreibung" class="block text-sm font-medium text-foreground">
+			<div class="space-y-1.5">
+				<label for="zustand_beschreibung" class="block text-sm font-medium text-ink-900">
 					Beschreibung des Gegenstands (Art, Zustand)
-					<span class="text-red-500" aria-hidden="true">*</span>
+					<span class="text-severity-critical" aria-hidden="true">*</span>
 				</label>
 				<textarea
 					id="zustand_beschreibung"
@@ -302,28 +311,22 @@
 					value={v('zustand_beschreibung')}
 					oninput={markDirty}
 					data-testid="zustand-beschreibung"
-					class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+					class="w-full rounded-[10px] border border-hairline bg-white px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
 				></textarea>
 				{#if err('zustand_beschreibung')}
-					<p class="text-xs text-red-600">{err('zustand_beschreibung')}</p>
+					<p class="text-xs text-severity-critical">{err('zustand_beschreibung')}</p>
 				{/if}
 			</div>
 
-			<div class="space-y-1">
-				<label for="herkunftsbeleg" class="block text-sm font-medium text-foreground">
-					Herkunftsbeleg <span class="text-xs font-normal text-muted-foreground">(optional)</span>
-				</label>
-				<input
-					id="herkunftsbeleg"
-					name="herkunftsbeleg"
-					type="file"
-					accept=".pdf,image/jpeg,image/png,image/heic,image/heif,image/webp"
-					onchange={markDirty}
-					class="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-accent"
-				/>
-			</div>
+			<!-- Herkunftsbeleg (Sachspende) — BelegUpload optional (C3) -->
+			<BelegUpload
+				name="herkunftsbeleg"
+				label="Herkunftsbeleg"
+				accept=".pdf,image/jpeg,image/png,image/heic,image/heif,image/webp"
+				optional
+			/>
 
-			<label class="flex items-center gap-2 text-sm text-foreground">
+			<label class="flex items-center gap-2 text-sm text-ink-900">
 				<input
 					type="checkbox"
 					name="betriebsvermoegen"
@@ -331,34 +334,27 @@
 					checked={v('betriebsvermoegen') === 'true'}
 					onchange={markDirty}
 					data-testid="betriebsvermoegen"
-					class="size-4 rounded border-input"
+					class="size-4 rounded border-hairline accent-primary"
 				/>
 				Sachspende aus Betriebsvermögen
 			</label>
 		</fieldset>
 	{:else}
-		<!-- Geldspende: optional main Beleg / Kontoauszug (§4.3 — encouraged). -->
-		<div class="space-y-1">
-			<label for="beleg" class="block text-sm font-medium text-foreground">
-				Beleg / Kontoauszug <span class="text-xs font-normal text-muted-foreground">(optional)</span>
-			</label>
-			<input
-				id="beleg"
-				name="beleg"
-				type="file"
-				accept=".pdf,image/jpeg,image/png,image/heic,image/heif,image/webp"
-				onchange={markDirty}
-				class="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-2 file:text-sm file:font-medium hover:file:bg-accent"
-			/>
-		</div>
+		<!-- Geldspende: optional main Beleg / Kontoauszug (§4.3 — encouraged). BelegUpload optional (C3) -->
+		<BelegUpload
+			label="Beleg / Kontoauszug"
+			accept=".pdf,image/jpeg,image/png,image/heic,image/heif,image/webp"
+			optional
+			error={err('beleg') ?? undefined}
+		/>
 	{/if}
 
-	<!-- 3. Spender -->
+	<!-- 3. Spender — equal-width grid for mode buttons (C3) -->
 	<fieldset>
-		<legend class="mb-1.5 block text-sm font-medium text-foreground">
-			Spender <span class="text-red-500" aria-hidden="true">*</span>
+		<legend class="mb-1.5 block text-sm font-medium text-ink-900">
+			Spender <span class="text-severity-critical" aria-hidden="true">*</span>
 		</legend>
-		<div class="mb-2 flex flex-wrap gap-2">
+		<div class="mb-2 grid grid-cols-2 gap-2">
 			{#each [['member', 'Mitglied'], ['extern', 'Externe Person']] as [k, l] (k)}
 				<button
 					type="button"
@@ -368,10 +364,10 @@
 						markDirty();
 					}}
 					class={[
-						'inline-flex min-h-11 items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+						'inline-flex min-h-11 items-center justify-center rounded-[10px] px-3 py-1.5 text-sm font-medium transition-colors',
 						spenderMode === k
 							? 'bg-primary-strong text-primary-foreground'
-							: 'bg-muted text-muted-foreground hover:text-foreground'
+							: 'border border-hairline bg-white text-ink-700 hover:bg-muted/50'
 					].join(' ')}
 					data-testid={`spender-mode-${k}`}
 				>
@@ -386,7 +382,7 @@
 				bind:value={selectedMemberId}
 				onchange={markDirty}
 				data-testid="spender-member-select"
-				class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+				class={FIELD_CLASS}
 			>
 				<option value="">Mitglied auswählen…</option>
 				{#each members as m (m.id)}
@@ -409,10 +405,10 @@
 					oninput={markDirty}
 					required
 					data-testid="spender-name-input"
-					class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+					class={FIELD_CLASS}
 				/>
 				{#if err('spender_name')}
-					<p class="text-xs text-red-600">{err('spender_name')}</p>
+					<p class="text-xs text-severity-critical">{err('spender_name')}</p>
 				{/if}
 				<input
 					name="spender_adresse"
@@ -422,10 +418,10 @@
 					oninput={markDirty}
 					required
 					data-testid="spender-adresse-input"
-					class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+					class={FIELD_CLASS}
 				/>
 				{#if err('spender_adresse')}
-					<p class="text-xs text-red-600">{err('spender_adresse')}</p>
+					<p class="text-xs text-severity-critical">{err('spender_adresse')}</p>
 				{/if}
 				<input
 					name="spender_email"
@@ -433,7 +429,7 @@
 					placeholder="E-Mail (optional)"
 					bind:value={spenderEmail}
 					oninput={markDirty}
-					class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:outline-none"
+					class={FIELD_CLASS}
 				/>
 			</div>
 		{/if}

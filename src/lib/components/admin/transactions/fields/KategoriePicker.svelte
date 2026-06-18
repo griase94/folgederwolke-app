@@ -22,6 +22,7 @@
 	 */
 	import { kategorieSphere, type Sphere } from '$lib/domain/sphere.js';
 	import SphereBadge from './SphereBadge.svelte';
+	import { FIELD_CLASS } from './field-class.js';
 
 	/** A kategorie option; `eurZeile` is forward-compatible + NULL pre-launch (P44-04). */
 	export interface KategorieOption {
@@ -102,19 +103,16 @@
 	>
 		Kategorie{#if required}<span class="text-destructive" aria-hidden="true">&nbsp;*</span>{/if}
 	</label>
-	<!-- The inbox DecisionBand reuses this picker with Aurora styling (rounded-[10px]
-	     + hairline + ring-2) so it shares edges with the Freigeben/Ablehnen row;
-	     transaction forms keep the legacy field tokens until slice 5 harmonises them. -->
+	<!-- Aurora FIELD_CLASS on the select — unified h-11/rounded-[10px]/border-hairline.
+	     The inbox DecisionBand variant (hideLabel=true) previously used a different style
+	     but now shares the same FIELD_CLASS baseline. -->
 	<select
 		{id}
 		{name}
 		{required}
 		{value}
 		onchange={onSelect}
-		class={'h-11 min-h-11 w-full px-3 text-sm outline-none ' +
-			(hideLabel
-				? 'rounded-[10px] border border-hairline bg-white text-ink-900 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
-				: 'rounded-md border border-input bg-background focus-visible:ring-1 focus-visible:ring-ring')}
+		class={FIELD_CLASS}
 	>
 		<option value="">Kategorie wählen…</option>
 		{#each options as opt (opt.name)}
@@ -123,8 +121,9 @@
 	</select>
 
 	{#if derivedSphere && !hideSphere}
-		<!-- Derived Sphäre (§13 palette); the EÜR-Zeile hint only when a Zeile exists. -->
-		<div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+		<!-- Derived Sphäre (§13 palette) — "Sphäre:" caption prefix (B4); the EÜR-Zeile hint only when a Zeile exists. -->
+		<div class="flex flex-wrap items-center gap-2 text-xs text-ink-500">
+			<span class="font-medium text-ink-700">Sphäre:</span>
 			<SphereBadge sphere={derivedSphere} />
 			{#if eurZeile != null}
 				<span data-slot="euer-hint">Anlage EÜR Zeile {eurZeile}</span>

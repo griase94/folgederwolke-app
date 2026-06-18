@@ -74,6 +74,7 @@
 	title="Neue Ausgabe"
 	action="?/create"
 	submitLabel="Ausgabe anlegen"
+	accent="ausgabe"
 	bind:submitting
 	{dirty}
 	{fields}

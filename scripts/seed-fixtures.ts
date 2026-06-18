@@ -743,6 +743,9 @@ export async function seedTransactionCorpus(db: Db): Promise<void> {
         externName: "Helfer:in extern",
         bezahltVonDisplay: "Extern: Helfer:in",
         consentTextVersion: DATENSCHUTZ_VERSION,
+        // auslagen_submissions_beleg_or_grund_ck (migration 0036): no blob
+        // uploaded in fixtures, so use the Verzicht arm.
+        belegVerzichtGrund: "Quittung nicht mehr auffindbar (Fixture-Eintrag)",
         // decidedAt NULL → open/pending in the inbox.
       },
       {
@@ -754,6 +757,8 @@ export async function seedTransactionCorpus(db: Db): Promise<void> {
         externName: "Gast",
         bezahltVonDisplay: "Extern: Gast",
         consentTextVersion: DATENSCHUTZ_VERSION,
+        // auslagen_submissions_beleg_or_grund_ck: Verzicht arm for fixtures.
+        belegVerzichtGrund: "Kein Beleg vorhanden (Fixture-Eintrag)",
         decidedAt: new Date(T2026),
         decision: "rejected",
         decisionReason: "Kein vereinsbezogener Beleg.",

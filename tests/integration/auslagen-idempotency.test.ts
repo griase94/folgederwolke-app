@@ -322,9 +322,11 @@ describe("Auslagen submission idempotency (submission_nonce)", () => {
       await admin`
         INSERT INTO auslagen_submissions
           (business_id, submission_nonce, bezeichnung, betrag_cents,
-           bezahlt_von_kind, bezahlt_von_display, consent_text_version)
+           bezahlt_von_kind, bezahlt_von_display, consent_text_version,
+           beleg_verzicht_grund)
         VALUES (${winnerBiz}, ${nonce}::uuid, 'race winner', 1250,
-                'verein', 'Verein', ${DATENSCHUTZ_VERSION})`;
+                'verein', 'Verein', ${DATENSCHUTZ_VERSION},
+                'race-seed fixture')`;
     });
 
     const res = await submit(storage, { nonce, ip: "203.0.113.40" });
@@ -354,9 +356,11 @@ describe("Auslagen submission idempotency (submission_nonce)", () => {
       await admin`
         INSERT INTO auslagen_submissions
           (business_id, submission_nonce, bezeichnung, betrag_cents,
-           bezahlt_von_kind, bezahlt_von_display, consent_text_version)
+           bezahlt_von_kind, bezahlt_von_display, consent_text_version,
+           beleg_verzicht_grund)
         VALUES (${collidingBiz}, ${crypto.randomUUID()}::uuid, 'biz collision', 1250,
-                'verein', 'Verein', ${DATENSCHUTZ_VERSION})`;
+                'verein', 'Verein', ${DATENSCHUTZ_VERSION},
+                'race-seed fixture')`;
     });
 
     const res = await submit(storage, { nonce, ip: "203.0.113.50" });

@@ -43,9 +43,13 @@
 <script lang="ts">
 	import { CalendarDate, parseDate } from "@internationalized/date";
 	import { cn } from "$lib/utils.js";
+	import { FIELD_CLASS } from '$lib/components/admin/transactions/fields/field-class.js';
 
+	// Aurora FIELD_CLASS + extras: tabular-nums for date digits, aria-invalid
+	// ring, disabled state. Replaces the old h-8/rounded-lg/border-input tokens.
 	const baseInputClass =
-		"dark:bg-input/30 border-input focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 disabled:bg-input/50 dark:disabled:bg-input/80 h-8 rounded-lg border bg-transparent px-2.5 py-1 text-base transition-colors focus-visible:ring-3 aria-invalid:ring-3 md:text-sm placeholder:text-muted-foreground w-full min-w-0 outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50";
+		FIELD_CLASS +
+		' tabular-nums aria-invalid:border-severity-critical aria-invalid:ring-2 aria-invalid:ring-severity-critical/20 disabled:cursor-not-allowed disabled:opacity-50';
 	// HTML pattern for single-or-double digit day/month + 4-digit year.
 	// Assigned to a variable to avoid Svelte misreading the curly-brace
 	// quantifier syntax ({1,2}) as a template expression.
