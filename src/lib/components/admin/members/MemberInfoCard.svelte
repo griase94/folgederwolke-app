@@ -2,12 +2,26 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import EditMemberDialog from './EditMemberDialog.svelte';
+	import BeitragStatusPill from './BeitragStatusPill.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
+	import type { ResolveBeitragStateResult } from '$lib/domain/beitrag-state.js';
+	import type { CellState } from '$lib/domain/beitrag-cell.js';
+	import { projectForList } from '$lib/domain/beitrag-state.js';
 
 	// We receive a subset matching MemberView; EditMemberDialog wants MemberView
 	// (beitrags not needed here — pass an empty record).
 	let {
-		member
+		member,
+		/**
+		 * Package D: current Buchungsjahr for the compact status pill (ADR-0001).
+		 * Passed from the detail page server load.
+		 */
+		currentYear = null,
+		/**
+		 * Package D: resolved state for currentYear (from resolveBeitragState).
+		 * null when not yet computed or year has no data/satz.
+		 */
+		currentYearState = null,
 	}: {
 		member: {
 			id: string;
@@ -24,9 +38,12 @@
 			/** Night-2 C5-MEM-full */
 			beitragExempt: boolean;
 			beitragExemptReason: string | null;
-			isFixture: boolean;
+			/** isFixture retained in type for callers that pass full member data */
+			isFixture?: boolean;
 			createdAt: string;
 		};
+		currentYear?: number | null;
+		currentYearState?: ResolveBeitragStateResult | null;
 	} = $props();
 
 	let editOpen = $state(false);
@@ -34,7 +51,8 @@
 	// Cast to MemberView for EditMemberDialog (beitrags field is unused there)
 	const memberView = $derived<MemberView>({
 		...member,
-		beitrags: {}
+		isFixture: member.isFixture ?? false,
+		beitrags: {},
 	});
 
 	function roleLabel(role: string): string {
@@ -43,10 +61,9 @@
 			vorstand: 'Vorstand',
 			kassenwart: 'Kassenwart',
 			schriftfuehrer: 'Schriftführer',
-			'fördermitglied': 'Fördermitglied',
-			// Night-2 C5-MEM-full additions
+			fördermitglied: 'Fördermitglied',
 			extern: 'Extern',
-			helfer: 'Helfer'
+			helfer: 'Helfer',
 		};
 		return map[role] ?? role;
 	}
@@ -60,7 +77,6 @@
 		return Math.abs(h);
 	}
 
-	// -200 bg / -800 text can be borderline 4:1 (WCAG AA); bump to -100/-900 to clear it cleanly.
 	const avatarColors = [
 		'bg-rose-100 text-rose-900',
 		'bg-pink-100 text-pink-900',
@@ -71,15 +87,15 @@
 		'bg-sky-100 text-sky-900',
 		'bg-teal-100 text-teal-900',
 		'bg-emerald-100 text-emerald-900',
-		'bg-amber-100 text-amber-900'
+		'bg-amber-100 text-amber-900',
 	];
 
 	const avatarColor = $derived(
 		avatarColors[nameHash(member.vorname + member.nachname) % avatarColors.length] ??
-			avatarColors[0]!
+			avatarColors[0]!,
 	);
 	const initials = $derived(
-		(member.vorname.charAt(0) ?? '') + (member.nachname.charAt(0) ?? '')
+		(member.vorname.charAt(0) ?? '') + (member.nachname.charAt(0) ?? ''),
 	);
 
 	function formatDate(d: string | null): string {
@@ -87,11 +103,16 @@
 		return new Date(d).toLocaleDateString('de-DE', {
 			year: 'numeric',
 			month: 'long',
-			day: 'numeric'
+			day: 'numeric',
 		});
 	}
 
 	const isActive = $derived(!member.austrittsDatum);
+
+	// Package D: projected display state for the pill (overdue→open).
+	const pillDisplayState = $derived<CellState | null>(
+		currentYearState !== null ? projectForList(currentYearState.state) : null,
+	);
 </script>
 
 <Card.Root class="overflow-hidden">
@@ -116,7 +137,7 @@
 					<span
 						class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium
 						{isActive
-							? 'border-green-200 bg-green-100 text-green-800'
+							? 'border-emerald-200 bg-emerald-50 text-emerald-800'
 							: 'border-red-200 bg-red-100 text-red-700'}"
 					>
 						{isActive ? 'aktiv' : 'ausgetreten'}
@@ -126,13 +147,8 @@
 					>
 						{roleLabel(member.role)}
 					</span>
-					{#if member.isFixture}
-						<span
-							class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700"
-						>
-							Fixture
-						</span>
-					{/if}
+					<!-- Package D: Fixture badge REMOVED (pre-launch data is disposable;
+					     fixture indicator adds noise to real admins). -->
 					{#if member.beitragExempt}
 						<span
 							data-testid="member-exempt-badge"
@@ -147,6 +163,21 @@
 					<p class="mt-2 text-xs italic text-amber-700" data-testid="member-exempt-reason">
 						{member.beitragExemptReason}
 					</p>
+				{/if}
+
+				<!-- Package D: compact BeitragStatusPill for current year. -->
+				{#if currentYear !== null && pillDisplayState !== null && currentYearState !== null}
+					<div class="mt-3">
+						<p class="mb-1 text-xs text-muted-foreground">Beitrag {currentYear}</p>
+						<BeitragStatusPill
+							state={pillDisplayState}
+							year={currentYear}
+							paidCents={currentYearState.paidCents}
+							betragCents={currentYearState.betragCents}
+							compact
+							exemptReason={member.beitragExemptReason}
+						/>
+					</div>
 				{/if}
 			</div>
 		</div>
@@ -343,7 +374,7 @@
 				</div>
 			{/if}
 
-			<!-- Mitglied seit -->
+			<!-- Angelegt -->
 			<div class="flex items-start gap-3">
 				<dt class="flex w-32 shrink-0 items-center gap-1.5 text-sm text-muted-foreground">
 					<svg
