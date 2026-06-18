@@ -260,8 +260,64 @@ describe("@phase-2 matrix loader — year-header totals", () => {
   });
 });
 
+describe("@phase-2 matrix loader — partial payer", () => {
+  it("renders partial for a row with 0 < paidCents < betragCents", async () => {
+    await ensureSatz(TEST_YEAR);
+    const m = await seedMember({ name: "PartialPayerMatrix" });
+    const db = getDb();
+    await db
+      .insert(memberBeitrags)
+      .values({
+        memberId: m.id,
+        year: TEST_YEAR,
+        betragCents: 6969n,
+        paidCents: 3000n,
+        gezahltAm: "2026-02-01",
+        source: "app",
+      })
+      .onConflictDoNothing();
+
+    const data = await loadMatrix({ years: [TEST_YEAR] });
+    const cell = data.cells.find(
+      (c) => c.memberId === m.id && c.year === TEST_YEAR,
+    );
+    // Must show the real partial state, not open (no false debt).
+    expect(cell?.state).toBe("partial");
+    expect(cell?.paidCents).toBe(3000);
+    expect(cell?.betragCents).toBe(6969);
+    expect(cell?.isLocked).toBe(false);
+  });
+
+  it("partial cell is included in totalDueCount but not paidCount", async () => {
+    await ensureSatz(TEST_YEAR);
+    const m = await seedMember({ name: "PartialHeaderCheck" });
+    const db = getDb();
+    await db
+      .insert(memberBeitrags)
+      .values({
+        memberId: m.id,
+        year: TEST_YEAR,
+        betragCents: 6969n,
+        paidCents: 2000n,
+        gezahltAm: "2026-03-01",
+        source: "app",
+      })
+      .onConflictDoNothing();
+
+    const data = await loadMatrix({ years: [TEST_YEAR] });
+    const header = data.headers.find((h) => h.year === TEST_YEAR)!;
+    // totalDueCount includes partial (member still owes something)
+    const allForYear = data.cells.filter((c) => c.year === TEST_YEAR);
+    const partialForYear = allForYear.filter((c) => c.state === "partial");
+    expect(partialForYear.length).toBeGreaterThanOrEqual(1);
+    // partial cells are NOT in paidCount
+    const paidForYear = allForYear.filter((c) => c.state === "paid");
+    expect(header.paidCount).toBe(paidForYear.length);
+  });
+});
+
 describe("@phase-2 matrix loader — locked year", () => {
-  it("renders locked_year when year <= festgeschriebenBis", async () => {
+  it("renders underlying state + isLocked=true (not dead locked_year) when year <= festgeschriebenBis", async () => {
     await ensureSatz(2023);
     const db = getDb();
     // The monotonic trigger forbids lowering festgeschrieben_bis, so we only
@@ -277,17 +333,20 @@ describe("@phase-2 matrix loader — locked year", () => {
 
     const data = await loadMatrix({ years: [2021] });
     const cell = data.cells.find((c) => c.memberId === m.id && c.year === 2021);
-    expect(cell?.state).toBe("locked_year");
+    // Loader no longer emits "locked_year" — it emits the honest state + isLocked.
+    expect(cell?.state).not.toBe("locked_year");
+    expect(cell?.isLocked).toBe(true);
+    // An unpaid open beitrag in a locked year still shows as open/overdue.
+    expect(["open", "overdue"]).toContain(cell?.state);
     // Do NOT reset festgeschrieben_bis — the monotonic trigger prevents lowering it.
     // The test DB is reset before each full test run so this is safe.
   });
 
-  it("year-header counts a fully-paid locked_year cell as paid (not as 0/N)", async () => {
-    // FIX 3 regression guard: a locked_year cell whose underlying beitrag is
-    // paid (paidCents >= betragCents) must appear in paidCount and paidSumCents.
-    // Before the fix, locked_year cells were excluded from applicableCells (the
-    // denominator) so a fully-paid closed year showed "0/0 bezahlt" instead of
-    // "1/1 bezahlt".
+  it("locked-but-paid year: state=paid + isLocked=true, header counts it as paid", async () => {
+    // Regression guard: a locked year with a fully-paid beitrag must show
+    // state="paid" + isLocked=true, and paidCount/paidSumCents must include it.
+    // Before the redesign fix, locked_year cells hid the paid state so a
+    // fully-paid closed year showed "0/0 bezahlt" instead of "1/1 bezahlt".
     await ensureSatz(2021);
     const db = getDb();
     await db.execute(
@@ -295,7 +354,6 @@ describe("@phase-2 matrix loader — locked year", () => {
     );
 
     const m = await seedMember({ name: "LockedPaidMember" });
-    // Seed a paid beitrag for the locked year.
     await db
       .insert(memberBeitrags)
       .values({
@@ -310,14 +368,14 @@ describe("@phase-2 matrix loader — locked year", () => {
 
     const data = await loadMatrix({ years: [2021] });
     const cell = data.cells.find((c) => c.memberId === m.id && c.year === 2021);
-    // Cell state is still locked_year (festschreibung takes priority in state derivation).
-    expect(cell?.state).toBe("locked_year");
+    // Honest state: paid (not the dead "locked_year").
+    expect(cell?.state).toBe("paid");
+    expect(cell?.isLocked).toBe(true);
 
     const header = data.headers.find((h) => h.year === 2021)!;
     // The paid cell must count in the header totals — NOT show 0/N.
     expect(header.paidCount).toBeGreaterThanOrEqual(1);
     expect(header.paidSumCents).toBeGreaterThanOrEqual(6969);
-    // And the denominator must include the locked cell.
     expect(header.totalDueCount).toBeGreaterThanOrEqual(1);
   });
 });

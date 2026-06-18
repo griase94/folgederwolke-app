@@ -160,7 +160,7 @@
 		// Search forward from the cell after the one we just acted on.
 		for (let i = startIdx + 1; i < cells.length; i++) {
 			const s = cells[i]?.dataset.state;
-			if (s === 'open' || s === 'overdue') {
+			if (s === 'open' || s === 'overdue' || s === 'partial') {
 				cells[i]?.focus();
 				return;
 			}
@@ -168,7 +168,7 @@
 		// Wrap to the beginning if nothing after.
 		for (let i = 0; i <= startIdx && i < cells.length; i++) {
 			const s = cells[i]?.dataset.state;
-			if (s === 'open' || s === 'overdue') {
+			if (s === 'open' || s === 'overdue' || s === 'partial') {
 				cells[i]?.focus();
 				return;
 			}
@@ -272,6 +272,7 @@
 			memberId: detail.memberId,
 			year: detail.year,
 			state: 'paid',
+			isLocked: false,
 			betragCents,
 			paidCents: betragCents,
 			gezahltAm: detail.gezahltAm,
@@ -353,6 +354,7 @@
 			memberId: detail.memberId,
 			year: detail.year,
 			state: 'exempt',
+			isLocked: false,
 			betragCents: prior?.betragCents ?? 0,
 			paidCents: 0,
 			gezahltAm: null,
@@ -408,6 +410,7 @@
 			memberId: detail.memberId,
 			year: detail.year,
 			state: 'open',
+			isLocked: false,
 			betragCents: prior?.betragCents ?? 0,
 			paidCents: 0,
 			gezahltAm: null,
@@ -449,6 +452,7 @@
 			memberId: detail.memberId,
 			year: detail.year,
 			state: 'open',
+			isLocked: false,
 			betragCents: prior?.betragCents ?? 0,
 			paidCents: 0,
 			gezahltAm: null,
@@ -533,7 +537,7 @@
 	// Highlight class for the ?filter view.
 	function filterHighlight(state: string): boolean {
 		if (filter === 'ueberfaellig') return state === 'overdue';
-		if (filter === 'offen') return state === 'open' || state === 'overdue';
+		if (filter === 'offen') return state === 'open' || state === 'overdue' || state === 'partial';
 		return false;
 	}
 </script>
@@ -670,7 +674,7 @@
 					{#each matrix.years as year (year)}
 						{@const cell = cellFor(member.id, year)}
 						{@const state = cell?.state ?? 'open'}
-						{@const canCtx = state === 'open' || state === 'overdue'}
+						{@const canCtx = state === 'open' || state === 'overdue' || state === 'partial'}
 						<div
 							class="flex min-w-[120px] items-center justify-center px-4 py-2.5 {filterHighlight(
 								state
@@ -683,6 +687,7 @@
 									<ContextMenu.Trigger>
 										<MatrixCell
 											{state}
+											isLocked={cell?.isLocked ?? false}
 											memberId={member.id}
 											{year}
 											memberName={`${member.vorname} ${member.nachname}`}
@@ -736,6 +741,7 @@
 							{:else}
 								<MatrixCell
 									{state}
+									isLocked={cell?.isLocked ?? false}
 									memberId={member.id}
 									{year}
 									memberName={`${member.vorname} ${member.nachname}`}

@@ -21,6 +21,7 @@
 
 	let {
 		state,
+		isLocked = false,
 		betragCents = 0,
 		paidCents = 0,
 		gezahltAm = null,
@@ -30,6 +31,8 @@
 		compact = false
 	}: {
 		state: CellState;
+		/** When true, renders a lock corner decoration on top of the underlying state. */
+		isLocked?: boolean;
 		betragCents?: number;
 		paidCents?: number;
 		gezahltAm?: string | null;
@@ -46,6 +49,8 @@
 		switch (state) {
 			case 'paid':
 				return `Bezahlt am ${gezahltAm ?? '—'} · ${eur(paidCents)}`;
+			case 'partial':
+				return `Teilweise bezahlt — ${eur(paidCents)} von ${eur(betragCents)}`;
 			case 'open':
 				return `Offen — ${eur(betragCents)} fällig`;
 			case 'overdue':
@@ -98,12 +103,40 @@
 		{#if !compact && gezahltAm}
 			<span class="tabular-nums">{shortDate(gezahltAm)}</span>
 		{/if}
-		<!-- hover affordance: Info (read-only) -->
-		<Info
-			size={12}
-			class="absolute right-0.5 top-0.5 opacity-0 transition-opacity group-hover:opacity-60"
-			aria-hidden="true"
-		/>
+		{#if isLocked}
+			<Lock size={12} class="absolute right-0.5 top-0.5 text-muted-foreground" aria-hidden="true" />
+		{:else}
+			<!-- hover affordance: Info (read-only) -->
+			<Info
+				size={12}
+				class="absolute right-0.5 top-0.5 opacity-0 transition-opacity group-hover:opacity-60"
+				aria-hidden="true"
+			/>
+		{/if}
+	</span>
+{:else if state === 'partial'}
+	<span
+		class="group relative inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 transition-colors dark:border-amber-700/50 dark:bg-amber-950/30 dark:text-amber-300"
+		aria-label={ariaLabel()}
+		data-state={state}
+		title={ariaLabel()}
+	>
+		<Circle size={14} class="shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+		{#if !compact && betragCents > 0}
+			<span class="tabular-nums text-[10px]"
+				>{Math.round((paidCents / betragCents) * 100)}%</span
+			>
+		{/if}
+		{#if isLocked}
+			<Lock size={12} class="absolute right-0.5 top-0.5 text-muted-foreground" aria-hidden="true" />
+		{:else}
+			<!-- hover affordance: Pencil (write) -->
+			<Pencil
+				size={12}
+				class="absolute right-0.5 top-0.5 opacity-0 transition-opacity group-hover:opacity-60"
+				aria-hidden="true"
+			/>
+		{/if}
 	</span>
 {:else if state === 'open'}
 	<span
@@ -113,12 +146,16 @@
 		title={ariaLabel()}
 	>
 		<Circle size={14} class="shrink-0 text-muted-foreground" aria-hidden="true" />
-		<!-- hover affordance: Pencil (write) -->
-		<Pencil
-			size={12}
-			class="absolute right-0.5 top-0.5 opacity-0 transition-opacity group-hover:opacity-60"
-			aria-hidden="true"
-		/>
+		{#if isLocked}
+			<Lock size={12} class="absolute right-0.5 top-0.5 text-muted-foreground" aria-hidden="true" />
+		{:else}
+			<!-- hover affordance: Pencil (write) -->
+			<Pencil
+				size={12}
+				class="absolute right-0.5 top-0.5 opacity-0 transition-opacity group-hover:opacity-60"
+				aria-hidden="true"
+			/>
+		{/if}
 	</span>
 {:else if state === 'overdue'}
 	<span
@@ -131,12 +168,16 @@
 		{#if daysOverdue !== null}
 			<span class="tabular-nums text-[10px]">+{daysOverdue}d</span>
 		{/if}
-		<!-- hover affordance: Pencil (write) -->
-		<Pencil
-			size={12}
-			class="absolute right-0.5 top-0.5 opacity-0 transition-opacity group-hover:opacity-60"
-			aria-hidden="true"
-		/>
+		{#if isLocked}
+			<Lock size={12} class="absolute right-0.5 top-0.5 text-muted-foreground" aria-hidden="true" />
+		{:else}
+			<!-- hover affordance: Pencil (write) -->
+			<Pencil
+				size={12}
+				class="absolute right-0.5 top-0.5 opacity-0 transition-opacity group-hover:opacity-60"
+				aria-hidden="true"
+			/>
+		{/if}
 	</span>
 {:else if state === 'exempt'}
 	<span
