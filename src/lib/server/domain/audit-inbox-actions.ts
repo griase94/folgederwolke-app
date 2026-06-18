@@ -51,6 +51,19 @@ export interface ManualImportInput {
   /** Set when admin uploads a Beleg via Drive before calling this helper. */
   belegDriveFileId?: string | null;
   belegOriginalName?: string | null;
+  /**
+   * UUID of the normalized `files` row when the admin uploads a Beleg via
+   * handleAuslageUpload (ARM A of THE BELEG RULE). Mutually exclusive with
+   * belegVerzichtGrund — exactly one arm must be set (enforced by the DB
+   * CHECK `auslagen_submissions_beleg_or_grund_ck`, migration 0036).
+   */
+  belegFileId?: string | null;
+  /**
+   * ARM B of THE BELEG RULE: the admin's documented reason for having no Beleg
+   * (min 5 trimmed chars). Persisted when keinBeleg is toggled with a valid
+   * Begründung. Mutually exclusive with belegFileId.
+   */
+  belegVerzichtGrund?: string | null;
   /** UUID of the admin user performing the import (for audit log). */
   actorUserId: string;
   /**
@@ -108,6 +121,8 @@ export async function manualImportSubmission(
       bezahltVonDisplay: composeBezahltVonDisplay(bv),
       belegDriveFileId: input.belegDriveFileId ?? null,
       belegOriginalName: input.belegOriginalName ?? null,
+      belegFileId: input.belegFileId ?? null,
+      belegVerzichtGrund: input.belegVerzichtGrund ?? null,
       // Admin-entry: no submitter fingerprint (the admin is the actor)
       submitterIpPrefix: null,
       submitterUaHash: null,
@@ -369,112 +384,142 @@ export async function approveSubmission(
     | { kind: "created"; id: string; businessId: string }
     | { kind: "existed"; id: string; businessId: string };
 
-  const result = await db.transaction(async (tx): Promise<ApproveTxResult> => {
-    try {
-      const [insertedExpense] = await tx
-        .insert(expenses)
-        .values({
-          businessId: expenseBusinessId,
-          source: "form",
-          sourceRef: submission.businessId,
-          // gebuchtAm defaults to now(); the year_for_booking() generated
-          // column derives year_of_buchung from it.
-          rechnungsdatum: submission.rechnungsdatum ?? null,
-          betragCents: submission.betragCents,
-          currency: submission.currency,
-          bezeichnung: submission.bezeichnung,
-          kommentar: submission.kommentar ?? null,
-          // Spec §4.6/§4.5: stamp the treasurer-chosen Kategorie + derive
-          // sphere strictly from it (gate is live — no more Import sentinel,
-          // no more hardcoded "ideeller").
-          kategorieId: kat.id,
-          kategorieNameSnapshot: kat.name,
-          sphereSnapshot: kat.sphere,
-          // ADR-0007: copy discriminator + extern fields verbatim.
-          bezahltVonKind: bezahltVonKind,
-          bezahltVonMemberId: submission.bezahltVonMemberId,
-          externName: submission.externName,
-          externIban: submission.externIban,
-          externEmail: submission.externEmail,
-          bezahltVonDisplay: submission.bezahltVonDisplay,
-          belegFileId: submission.belegFileId,
-          belegDriveFileId: submission.belegDriveFileId,
-          belegOriginalName: submission.belegOriginalName,
-          status: "geprueft",
-          approvedAt: new Date(),
-          approvedByUserId: actorUserId,
-          createdByUserId: actorUserId,
-        })
-        .returning({ id: expenses.id, businessId: expenses.businessId });
+  let result: ApproveTxResult;
+  try {
+    result = await db.transaction(async (tx): Promise<ApproveTxResult> => {
+      try {
+        const [insertedExpense] = await tx
+          .insert(expenses)
+          .values({
+            businessId: expenseBusinessId,
+            source: "form",
+            sourceRef: submission.businessId,
+            // gebuchtAm defaults to now(); the year_for_booking() generated
+            // column derives year_of_buchung from it.
+            rechnungsdatum: submission.rechnungsdatum ?? null,
+            betragCents: submission.betragCents,
+            currency: submission.currency,
+            bezeichnung: submission.bezeichnung,
+            kommentar: submission.kommentar ?? null,
+            // Spec §4.6/§4.5: stamp the treasurer-chosen Kategorie + derive
+            // sphere strictly from it (gate is live — no more Import sentinel,
+            // no more hardcoded "ideeller").
+            kategorieId: kat.id,
+            kategorieNameSnapshot: kat.name,
+            sphereSnapshot: kat.sphere,
+            // ADR-0007: copy discriminator + extern fields verbatim.
+            bezahltVonKind: bezahltVonKind,
+            bezahltVonMemberId: submission.bezahltVonMemberId,
+            externName: submission.externName,
+            externIban: submission.externIban,
+            externEmail: submission.externEmail,
+            bezahltVonDisplay: submission.bezahltVonDisplay,
+            belegFileId: submission.belegFileId,
+            belegDriveFileId: submission.belegDriveFileId,
+            belegOriginalName: submission.belegOriginalName,
+            belegVerzichtGrund: submission.belegVerzichtGrund ?? null,
+            status: "geprueft",
+            approvedAt: new Date(),
+            approvedByUserId: actorUserId,
+            createdByUserId: actorUserId,
+          })
+          .returning({ id: expenses.id, businessId: expenses.businessId });
 
-      if (!insertedExpense) {
-        throw new Error(
-          `[approveSubmission] INSERT expenses returned no row for ${expenseBusinessId}`,
-        );
-      }
+        if (!insertedExpense) {
+          throw new Error(
+            `[approveSubmission] INSERT expenses returned no row for ${expenseBusinessId}`,
+          );
+        }
 
-      // A4: also bump reviewed_at if not already set, so the audit invariant
-      // "reviewed before decided" never breaks (e.g. when approve happens
-      // without the load() ever firing — direct POST, automated tooling).
-      await tx
-        .update(auslagenSubmissions)
-        .set({
-          decidedAt: new Date(),
-          decision: "approved",
-          decidedByUserId: actorUserId,
-          approvedExpenseId: insertedExpense.id,
-          reviewedAt: sql`COALESCE(${auslagenSubmissions.reviewedAt}, now())`,
-        })
-        .where(eq(auslagenSubmissions.id, submissionId));
+        // A4: also bump reviewed_at if not already set, so the audit invariant
+        // "reviewed before decided" never breaks (e.g. when approve happens
+        // without the load() ever firing — direct POST, automated tooling).
+        await tx
+          .update(auslagenSubmissions)
+          .set({
+            decidedAt: new Date(),
+            decision: "approved",
+            decidedByUserId: actorUserId,
+            approvedExpenseId: insertedExpense.id,
+            reviewedAt: sql`COALESCE(${auslagenSubmissions.reviewedAt}, now())`,
+          })
+          .where(eq(auslagenSubmissions.id, submissionId));
 
-      return {
-        kind: "created",
-        id: insertedExpense.id,
-        businessId: insertedExpense.businessId,
-      };
-    } catch (insertErr) {
-      // Postgres unique-violation: another concurrent call won the race.
-      if (isUniqueViolation(insertErr)) {
-        const subRow = await tx
-          .select({ approvedExpenseId: auslagenSubmissions.approvedExpenseId })
-          .from(auslagenSubmissions)
-          .where(eq(auslagenSubmissions.id, submissionId))
-          .limit(1);
-        const approvedExpenseId = subRow[0]?.approvedExpenseId ?? null;
-        if (approvedExpenseId) {
-          const expRow = await tx
+        return {
+          kind: "created",
+          id: insertedExpense.id,
+          businessId: insertedExpense.businessId,
+        };
+      } catch (insertErr) {
+        // Postgres unique-violation: another concurrent call won the race.
+        if (isUniqueViolation(insertErr)) {
+          const subRow = await tx
+            .select({
+              approvedExpenseId: auslagenSubmissions.approvedExpenseId,
+            })
+            .from(auslagenSubmissions)
+            .where(eq(auslagenSubmissions.id, submissionId))
+            .limit(1);
+          const approvedExpenseId = subRow[0]?.approvedExpenseId ?? null;
+          if (approvedExpenseId) {
+            const expRow = await tx
+              .select({ id: expenses.id, businessId: expenses.businessId })
+              .from(expenses)
+              .where(eq(expenses.id, approvedExpenseId))
+              .limit(1);
+            const existing = expRow[0];
+            if (existing) {
+              return {
+                kind: "existed",
+                id: existing.id,
+                businessId: existing.businessId,
+              };
+            }
+          }
+          // Fallback: the winner inserted by business_id but submission UPDATE
+          // hasn't landed yet (rare with READ COMMITTED). Look up by businessId.
+          const expByBiz = await tx
             .select({ id: expenses.id, businessId: expenses.businessId })
             .from(expenses)
-            .where(eq(expenses.id, approvedExpenseId))
+            .where(eq(expenses.businessId, expenseBusinessId))
             .limit(1);
-          const existing = expRow[0];
-          if (existing) {
+          const winner = expByBiz[0];
+          if (winner) {
             return {
               kind: "existed",
-              id: existing.id,
-              businessId: existing.businessId,
+              id: winner.id,
+              businessId: winner.businessId,
             };
           }
         }
-        // Fallback: the winner inserted by business_id but submission UPDATE
-        // hasn't landed yet (rare with READ COMMITTED). Look up by businessId.
-        const expByBiz = await tx
-          .select({ id: expenses.id, businessId: expenses.businessId })
-          .from(expenses)
-          .where(eq(expenses.businessId, expenseBusinessId))
-          .limit(1);
-        const winner = expByBiz[0];
-        if (winner) {
-          return {
-            kind: "existed",
-            id: winner.id,
-            businessId: winner.businessId,
-          };
+        // Postgres check-violation (SQLSTATE 23514): a NULL/NULL row slipped
+        // through the app gate (e.g. a pre-constraint legacy row being approved).
+        // Map to 409 so the caller surfaces a clean error, not a 500.
+        if (isCheckViolation(insertErr)) {
+          throw Object.assign(
+            new Error(
+              "Beleg fehlt — bitte Beleg anhängen oder Verzicht begründen",
+            ),
+            { _checkViolation: true },
+          );
         }
+        throw insertErr;
       }
-      throw insertErr;
+    });
+  } catch (txErr) {
+    if (
+      txErr instanceof Error &&
+      "_checkViolation" in txErr &&
+      (txErr as { _checkViolation?: boolean })._checkViolation
+    ) {
+      return {
+        ok: false,
+        status: 409,
+        error: "Beleg fehlt — bitte Beleg anhängen oder Verzicht begründen",
+      };
     }
-  });
+    throw txErr;
+  }
 
   // ── 4. Emit events (audit log written by handler) ────────────────────────
   // A6: do NOT swallow handler errors here. The audit handler MUST surface
