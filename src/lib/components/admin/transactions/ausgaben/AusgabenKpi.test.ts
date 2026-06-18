@@ -42,16 +42,20 @@ describe("AusgabenKpi", () => {
     expect(screen.getByText(/18/)).toBeTruthy();
   });
 
-  it("renders the tab title 'Ausgaben'", () => {
-    render(AusgabenKpi, {
+  it("renders the meta line (no own <h1> — PageHeader owns the title)", () => {
+    const { container } = render(AusgabenKpi, {
       props: {
-        totalCents: 0,
-        count: 0,
+        totalCents: 84200,
+        count: 3,
         offenCount: 0,
         oldestOpenAgeDays: null,
         year: 2026,
       },
     });
-    expect(screen.getByText("Ausgaben")).toBeTruthy();
+    // The KPI strip is rendered inside the PageHeader meta slot, so it must NOT
+    // render its own <h1> (that caused a duplicate title). It renders the quiet
+    // meta line instead.
+    expect(container.querySelector("h1")).toBeNull();
+    expect(screen.getByText(/Summe/)).toBeTruthy();
   });
 });

@@ -245,7 +245,9 @@ describe("computePreFlight", () => {
       totalExpenseRows: 100,
       totalDonationRows: 5,
       totalBeitragRows: 3,
-      currentBuchungsjahr: 2025,
+      // Happy path closes a PAST year (2025) while 2026 is the running year — the
+      // current/in-progress year is no longer closeable (mid-year close blocked).
+      currentBuchungsjahr: 2026,
     };
   }
 
@@ -348,11 +350,23 @@ describe("computePreFlight", () => {
     expect(out.canFestschreiben).toBe(false);
   });
 
-  // C1-H5 — current year is allowed (year === currentBuchungsjahr)
-  it("input.year === currentBuchungsjahr → yearNotFuture passes", () => {
+  // C1-H5 — the CURRENT (in-progress) year cannot be closed mid-year (blocks)
+  it("input.year === currentBuchungsjahr → yearNotFuture blocks (no mid-year close)", () => {
     const out = computePreFlight({
       ...happyInput(),
       year: 2026,
+      currentBuchungsjahr: 2026,
+    });
+    const item = out.items.find((i) => i.id === "yearNotFuture")!;
+    expect(item.status).toBe("block");
+    expect(out.canFestschreiben).toBe(false);
+  });
+
+  // C1-H5 — a PAST year (year < currentBuchungsjahr) is closeable
+  it("input.year < currentBuchungsjahr → yearNotFuture passes", () => {
+    const out = computePreFlight({
+      ...happyInput(),
+      year: 2025,
       currentBuchungsjahr: 2026,
     });
     const item = out.items.find((i) => i.id === "yearNotFuture")!;

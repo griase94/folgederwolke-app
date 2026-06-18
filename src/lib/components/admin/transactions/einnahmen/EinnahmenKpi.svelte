@@ -40,8 +40,8 @@
 <div data-testid="kpi-strip" class="flex flex-col gap-3">
 	<!-- ── Quiet anchor: Jahr · Summe · N (no offen-pill) ─────────────────── -->
 	<div>
-		<h1 class="text-2xl font-bold tracking-tight text-foreground">Einnahmen</h1>
-		<p class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground">
+		<!-- No <h1>: PageHeader owns the page title; render only the meta line. -->
+		<p class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-muted-foreground">
 			<span>{yearLabel}</span>
 			<span aria-hidden="true">·</span>
 			<span class="font-medium tabular-nums text-foreground">{totalLabel}</span>

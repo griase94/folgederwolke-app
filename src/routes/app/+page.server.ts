@@ -45,6 +45,7 @@ export const load: PageServerLoad = async ({ url, parent }) => {
     open_count: string;
     open_cents: string;
     overdue_count: string;
+    exempt_count: string;
     last_payment: string | null;
     prior_years_unpaid: string;
   }>(sql`
@@ -63,6 +64,12 @@ export const load: PageServerLoad = async ({ url, parent }) => {
          AND current_date > (COALESCE(bs.faelligkeit_at, (${beitragsYear}::text || '-03-31')::date)
               + (COALESCE((SELECT days FROM grace), 60) || ' days')::interval)
         THEN mb.member_id END)::text                                                      AS overdue_count,
+      (SELECT COUNT(*) FROM members m
+         WHERE m.austritts_datum IS NULL
+           AND (m.beitrag_exempt
+                OR EXISTS (SELECT 1 FROM member_beitrags mbx
+                           WHERE mbx.member_id = m.id AND mbx.year = ${beitragsYear} AND mbx.is_exempt))
+      )::text                                                                            AS exempt_count,
       (SELECT MAX(gezahlt_am)::text FROM member_beitrags WHERE year = ${beitragsYear})    AS last_payment,
       (SELECT COUNT(DISTINCT year) FROM member_beitrags
         WHERE year < ${beitragsYear} AND paid_cents < betrag_cents AND is_exempt = false)::text AS prior_years_unpaid
@@ -91,6 +98,7 @@ export const load: PageServerLoad = async ({ url, parent }) => {
       open_count: string;
       open_cents: string;
       overdue_count: string;
+      exempt_count: string;
       last_payment: string | null;
       prior_years_unpaid: string;
     }>
@@ -101,6 +109,7 @@ export const load: PageServerLoad = async ({ url, parent }) => {
     open_count: "0",
     open_cents: "0",
     overdue_count: "0",
+    exempt_count: "0",
     last_payment: null,
     prior_years_unpaid: "0",
   };
@@ -112,6 +121,7 @@ export const load: PageServerLoad = async ({ url, parent }) => {
     openMemberCount: Number(br.open_count),
     offenCents: Number(br.open_cents),
     overdueCount: Number(br.overdue_count),
+    exemptMemberCount: Number(br.exempt_count),
     lastPaymentDate: br.last_payment,
     priorYearsUnpaidCount: Number(br.prior_years_unpaid),
   };

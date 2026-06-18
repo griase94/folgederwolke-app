@@ -8,6 +8,7 @@
 
 import { sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
+import { berlinYear } from "$lib/domain/year.js";
 
 export interface FestschreibungResult {
   year: number;
@@ -19,21 +20,48 @@ export interface FestschreibungResult {
  * Festschreibung: atomically marks all expense/income/donation/invoice rows
  * for the given year as festgeschrieben. Returns row counts per table.
  *
- * @param year    Buchungsjahr to close (2020 ≤ year ≤ current year)
+ * @param year    Buchungsjahr to close — must be a PAST year (2020 ≤ year <
+ *                current Berlin year). The in-progress (current) year cannot be
+ *                closed mid-year; the Jahresabschluss is only possible once the
+ *                year has fully ended.
  * @param actorId UUID of the user performing the action (for audit trail)
  */
 export async function closeBuchhaltungsjahr(
   year: number,
   actorId: string,
 ): Promise<FestschreibungResult> {
+  // Guardrail (authoritative): never close the current/in-progress year — or a
+  // future one. Only past years are closeable. Any caller is protected here.
+  const currentYear = berlinYear();
+  if (year >= currentYear) {
+    throw new Error(
+      `Das Jahr ${year} läuft noch — der Jahresabschluss ist erst nach Jahresende (ab ${currentYear === year ? year + 1 : currentYear}) möglich.`,
+    );
+  }
+
   const db = getDb();
 
-  const rows = await db.execute<{
-    table_name: string;
-    rows_festgeschrieben: string;
-  }>(
-    sql`SELECT table_name, rows_festgeschrieben FROM close_buchhaltungsjahr(${year}, ${actorId}::uuid)`,
-  );
+  // Mark the year's rows festgeschrieben AND advance the canonical close signal
+  // `settings.festgeschrieben_bis` in ONE transaction. Without the second step
+  // isYearClosed() / the EÜR alreadyClosed guard / the files write-lock all key
+  // off festgeschrieben_bis and would NEVER see the year as closed — the index
+  // and per-year pages disagreed and the post-close write-lock never armed
+  // (deep-verification HIGH). `festgeschrieben_bis` is stored as a jsonb YEAR
+  // integer; only ever advance it (never regress a later close).
+  const rows = await db.transaction(async (tx) => {
+    const r = await tx.execute<{
+      table_name: string;
+      rows_festgeschrieben: string;
+    }>(
+      sql`SELECT table_name, rows_festgeschrieben FROM close_buchhaltungsjahr(${year}, ${actorId}::uuid)`,
+    );
+    await tx.execute(sql`
+      INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', to_jsonb(${year}::int))
+      ON CONFLICT (key) DO UPDATE SET value = to_jsonb(${year}::int)
+      WHERE settings.value IS NULL OR (settings.value #>> '{}')::int < ${year}
+    `);
+    return r;
+  });
 
   const rowsByTable: Record<string, number> = {};
   let totalRows = 0;
