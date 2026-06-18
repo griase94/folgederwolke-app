@@ -133,6 +133,7 @@ function makeMatrix(): MatrixData {
         memberId: MEMBER_ID,
         year: YEAR,
         state: "open",
+        isLocked: false,
         betragCents: 6969,
         paidCents: 0,
         gezahltAm: null,

@@ -25,6 +25,7 @@
 
 	let {
 		state,
+		isLocked = false,
 		memberId,
 		year,
 		memberName = '',
@@ -38,6 +39,8 @@
 		onLocked
 	}: {
 		state: CellState;
+		/** True when the year is covered by festgeschriebenBis — renders a lock decoration. */
+		isLocked?: boolean;
 		memberId: string;
 		year: number;
 		memberName?: string;
@@ -57,15 +60,18 @@
 	/** Full aria-label per spec §7.2 (more descriptive than the badge's). */
 	const ariaLabel = $derived.by(() => {
 		const who = memberName ? `${memberName} ${year}` : `${year}`;
+		const lockSuffix = isLocked ? ' (festgeschrieben)' : '';
 		switch (state) {
 			case 'paid':
-				return `Bezahlt — ${who} — ${eur(paidCents)}${gezahltAm ? `, bezahlt am ${gezahltAm}` : ''}`;
+				return `Bezahlt — ${who} — ${eur(paidCents)}${gezahltAm ? `, bezahlt am ${gezahltAm}` : ''}${lockSuffix}`;
+			case 'partial':
+				return `Teilweise bezahlt — ${who} — ${eur(paidCents)} von ${eur(betragCents)}${lockSuffix}`;
 			case 'open':
-				return `Offen — ${who} — ${eur(betragCents)} fällig`;
+				return `Offen — ${who} — ${eur(betragCents)} fällig${lockSuffix}`;
 			case 'overdue':
-				return `Überfällig — ${who} — ${eur(betragCents)} seit ${daysOverdue ?? 0} Tagen offen`;
+				return `Überfällig — ${who} — ${eur(betragCents)} seit ${daysOverdue ?? 0} Tagen offen${lockSuffix}`;
 			case 'exempt':
-				return `Befreit — ${who} — ${exemptReason ?? ''}`;
+				return `Befreit — ${who} — ${exemptReason ?? ''}${lockSuffix}`;
 			case 'permanently_exempt':
 				return `Dauerhaft befreit (Ehrenmitglied) — ${who} — ${exemptReason ?? ''}`;
 			case 'not_applicable_pre_join':
@@ -85,8 +91,24 @@
 
 	function trigger(el: HTMLElement) {
 		if (!interactive) return;
+		// Legacy locked_year state (e.g. from an optimistic overlay) → toast.
 		if (state === 'locked_year') {
 			onLocked?.({ year });
+			return;
+		}
+		// Cells with isLocked=true carry the real underlying state; locked open/partial
+		// cells fire onLocked so the parent can surface a "festgeschrieben" toast.
+		// Locked paid/exempt cells still open the read-only info popover.
+		if (isLocked) {
+			const kind = popoverKindForState(state);
+			if (kind === 'mark-paid') {
+				// Open/partial/overdue locked → inform the user it's read-only.
+				onLocked?.({ year });
+				return;
+			}
+			if (kind !== null) {
+				onOpenPopover?.({ kind, memberId, year, triggerEl: el });
+			}
 			return;
 		}
 		const kind = popoverKindForState(state);
@@ -124,6 +146,7 @@
 >
 	<BeitragsBadge
 		{state}
+		{isLocked}
 		{year}
 		{betragCents}
 		{paidCents}

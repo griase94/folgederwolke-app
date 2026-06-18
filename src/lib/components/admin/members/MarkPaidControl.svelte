@@ -34,6 +34,7 @@
 		year,
 		memberName,
 		betragCents,
+		paidCents = 0,
 		isOverdue = false,
 		isLocked = false,
 		allowExempt = true,
@@ -47,6 +48,8 @@
 		year: number;
 		memberName: string;
 		betragCents: number;
+		/** Already-paid cents — forwarded to MarkPaidPopover so it can prefill the open remainder. */
+		paidCents?: number;
 		isOverdue?: boolean;
 		isLocked?: boolean;
 		/**
@@ -154,16 +157,25 @@
 		await invalidateAll();
 	}
 
-	async function handlePaid(detail: { memberId: string; year: number; gezahltAm: string }) {
+	async function handlePaid(detail: {
+		memberId: string;
+		year: number;
+		gezahltAm: string;
+		paidCents: number;
+		notes: string | null;
+	}) {
 		if (submitting) return;
 		submitting = true;
 		open = false;
 		try {
-			const result = await post('mark-beitrag-paid', {
+			const fields: Record<string, string> = {
 				memberId: detail.memberId,
 				year: String(detail.year),
-				gezahltAm: detail.gezahltAm
-			});
+				gezahltAm: detail.gezahltAm,
+				paidCents: String(detail.paidCents),
+				notes: detail.notes ?? ''
+			};
+			const result = await post('mark-beitrag-paid', fields);
 			if (!result.ok) {
 				hapticError();
 				toast.error(result.error ?? 'Fehler — Zahlung nicht gespeichert.');
@@ -229,6 +241,7 @@
 		{year}
 		{memberName}
 		{betragCents}
+		{paidCents}
 		{isOverdue}
 		{isLocked}
 		{allowExempt}

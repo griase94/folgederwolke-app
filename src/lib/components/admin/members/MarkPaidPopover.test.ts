@@ -39,11 +39,13 @@ describe("MarkPaidPopover — mark-paid mode", () => {
     const dateInput = screen.getByLabelText("Bezahlt am") as HTMLInputElement;
     await fireEvent.input(dateInput, { target: { value: "2026-05-15" } });
     await fireEvent.click(screen.getByRole("button", { name: /Bezahlt/ }));
-    expect(onPaid).toHaveBeenCalledWith({
-      memberId: "m1",
-      year: 2025,
-      gezahltAm: "2026-05-15",
-    });
+    expect(onPaid).toHaveBeenCalledWith(
+      expect.objectContaining({
+        memberId: "m1",
+        year: 2025,
+        gezahltAm: "2026-05-15",
+      }),
+    );
   });
 
   it("shows the reminder button only for overdue cells", () => {
@@ -113,5 +115,133 @@ describe("MarkPaidPopover — befreien transform", () => {
   it("can open directly in befreien-mode via initialMode", () => {
     render(MarkPaidPopover, { props: { ...base, initialMode: "befreien" } });
     expect(screen.getByLabelText("Grund (erforderlich)")).toBeTruthy();
+  });
+});
+
+// ── Package E: Betrag field + Notiz + edit mode ────────────────────────────
+
+describe("MarkPaidPopover — Betrag field (Package E)", () => {
+  it("renders a Betrag input prefilled to the open remainder (betrag - paid)", () => {
+    // betragCents=6900, paidCents=3000 → remainder = 3900 → "39,00"
+    render(MarkPaidPopover, {
+      props: { ...base, betragCents: 6900, paidCents: 3000 },
+    });
+    const betragInput = screen.getByLabelText("Betrag (€)") as HTMLInputElement;
+    expect(betragInput.value).toBe("39,00");
+  });
+
+  it("renders Betrag prefilled to full betrag when paidCents = 0", () => {
+    render(MarkPaidPopover, {
+      props: { ...base, betragCents: 6969, paidCents: 0 },
+    });
+    const betragInput = screen.getByLabelText("Betrag (€)") as HTMLInputElement;
+    expect(betragInput.value).toBe("69,69");
+  });
+
+  it("renders the 'Voller Betrag' chip showing the full betrag", () => {
+    render(MarkPaidPopover, {
+      props: { ...base, betragCents: 6969, paidCents: 0 },
+    });
+    expect(screen.getByRole("button", { name: /Voller Betrag/ })).toBeTruthy();
+  });
+
+  it("clicking 'Voller Betrag' chip fills Betrag input with the full betrag", async () => {
+    render(MarkPaidPopover, {
+      props: { ...base, betragCents: 6969, paidCents: 3000 },
+    });
+    await fireEvent.click(
+      screen.getByRole("button", { name: /Voller Betrag/ }),
+    );
+    const betragInput = screen.getByLabelText("Betrag (€)") as HTMLInputElement;
+    expect(betragInput.value).toBe("69,69");
+  });
+
+  it("fires onPaid with parsed paidCents from the Betrag input", async () => {
+    const onPaid = vi.fn();
+    render(MarkPaidPopover, {
+      props: { ...base, betragCents: 6969, paidCents: 0, onPaid },
+    });
+    const betragInput = screen.getByLabelText("Betrag (€)") as HTMLInputElement;
+    // Simulate user typing a partial amount
+    await fireEvent.input(betragInput, { target: { value: "30,00" } });
+    await fireEvent.click(screen.getByRole("button", { name: /Bezahlt/ }));
+    expect(onPaid).toHaveBeenCalledWith(
+      expect.objectContaining({ memberId: "m1", year: 2025, paidCents: 3000 }),
+    );
+  });
+
+  it("includes notes in the onPaid payload when a Notiz is entered", async () => {
+    const onPaid = vi.fn();
+    render(MarkPaidPopover, {
+      props: { ...base, betragCents: 6969, paidCents: 0, onPaid },
+    });
+    const notizInput = screen.getByLabelText(
+      "Notiz (optional)",
+    ) as HTMLInputElement;
+    await fireEvent.input(notizInput, { target: { value: "Bar bezahlt" } });
+    await fireEvent.click(screen.getByRole("button", { name: /Bezahlt/ }));
+    expect(onPaid).toHaveBeenCalledWith(
+      expect.objectContaining({ notes: "Bar bezahlt" }),
+    );
+  });
+
+  it("passes notes: null when Notiz is empty", async () => {
+    const onPaid = vi.fn();
+    render(MarkPaidPopover, {
+      props: { ...base, betragCents: 6969, paidCents: 0, onPaid },
+    });
+    await fireEvent.click(screen.getByRole("button", { name: /Bezahlt/ }));
+    expect(onPaid).toHaveBeenCalledWith(
+      expect.objectContaining({ notes: null }),
+    );
+  });
+});
+
+describe("MarkPaidPopover — edit mode (Package E)", () => {
+  const editBase = {
+    ...base,
+    betragCents: 6969,
+    paidCents: 6969,
+    initialMode: "edit" as const,
+    initialGezahltAm: "2026-03-15",
+    initialNotes: "Überweisung",
+  };
+
+  it("renders in edit mode with Speichern button", () => {
+    render(MarkPaidPopover, { props: editBase });
+    expect(screen.getByRole("button", { name: /Speichern/ })).toBeTruthy();
+  });
+
+  it("prefills Betrag input with the full betragCents in edit mode", () => {
+    render(MarkPaidPopover, { props: editBase });
+    const betragInput = screen.getByLabelText("Betrag (€)") as HTMLInputElement;
+    expect(betragInput.value).toBe("69,69");
+  });
+
+  it("prefills gezahltAm from initialGezahltAm in edit mode", () => {
+    render(MarkPaidPopover, { props: editBase });
+    const dateInput = screen.getByLabelText("Bezahlt am") as HTMLInputElement;
+    expect(dateInput.value).toBe("2026-03-15");
+  });
+
+  it("prefills Notiz from initialNotes in edit mode", () => {
+    render(MarkPaidPopover, { props: editBase });
+    const notizInput = screen.getByLabelText(
+      "Notiz (optional)",
+    ) as HTMLInputElement;
+    expect(notizInput.value).toBe("Überweisung");
+  });
+
+  it("fires onPaid with updated values from edit mode", async () => {
+    const onPaid = vi.fn();
+    render(MarkPaidPopover, { props: { ...editBase, onPaid } });
+    const notizInput = screen.getByLabelText(
+      "Notiz (optional)",
+    ) as HTMLInputElement;
+    await fireEvent.input(notizInput, { target: { value: "Karte" } });
+    await fireEvent.click(screen.getByRole("button", { name: /Speichern/ }));
+    expect(onPaid).toHaveBeenCalledWith(
+      expect.objectContaining({ notes: "Karte", paidCents: 6969 }),
+    );
   });
 });

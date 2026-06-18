@@ -71,6 +71,9 @@ describe("CI e2e grep coverage (F3)", () => {
     expect(grepTags).toContain("@phase-aurora-slice4");
     // Aurora inbox redesign:
     expect(grepTags).toContain("@phase-aurora-inbox");
+    // Member Beiträge-Zahlung redesign (Package F boundary — member-detail +
+    // mitglieder specs, tag @phase-member-zahlung):
+    expect(grepTags).toContain("@phase-member-zahlung");
   });
 
   it("PWA share_target spec is covered by the CI grep (F3)", () => {

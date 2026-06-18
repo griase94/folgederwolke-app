@@ -9,11 +9,21 @@
 	import MemberMatrix from '$lib/components/admin/members/MemberMatrix.svelte';
 	import AddMemberDialog from '$lib/components/admin/members/AddMemberDialog.svelte';
 	import EditMemberDialog from '$lib/components/admin/members/EditMemberDialog.svelte';
-	import { beitragStatusFor, type MemberView } from '$lib/domain/members.js';
+	import type { MemberView } from '$lib/domain/members.js';
 	import { berlinYmd, currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
+
+	// Package A: beitragStatusFor removed; inline cents check until Package D
+	// migrates this page to resolveBeitragState.
+	function simpleBeitragStatus(b: { betragCents: number; paidCents: number }): 'paid' | 'open' | 'waived' {
+		const betrag = BigInt(b.betragCents);
+		const paid = BigInt(b.paidCents);
+		if (betrag === 0n) return 'waived';
+		if (paid >= betrag) return 'paid';
+		return 'open';
+	}
 
 	let addOpen = $state(false);
 	let editOpen = $state(false);
@@ -62,7 +72,7 @@
 			: filteredMembers.filter((m) => {
 					if (m.beitragExempt || m.austrittsDatum) return false;
 					const b = m.beitrags[bulkYear];
-					return (b ? beitragStatusFor(b) : 'open') === 'open';
+					return (b ? simpleBeitragStatus(b) : 'open') === 'open';
 				})
 	);
 	const allSelectableSelected = $derived(

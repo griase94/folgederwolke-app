@@ -74,7 +74,7 @@ test.describe("@phase-9 C5-MEM-full — exempt + new roles", () => {
     expect(optionValues).toContain("helfer");
   });
 
-  test("Add → mark exempt → MemberRow shows 'befreit' badge", async ({
+  test("Add → mark exempt → MemberRow shows 'Befreit' status pill", async ({
     page,
   }) => {
     await signIn(page);
@@ -94,7 +94,9 @@ test.describe("@phase-9 C5-MEM-full — exempt + new roles", () => {
     );
     await page.click('button[type="submit"]:has-text("Mitglied anlegen")');
 
-    // Dialog closes, member appears in the list with the befreit badge
+    // Dialog closes, member appears in the list with the canonical status pill
+    // reading "Befreit" (BeitragStatusPill state=permanently_exempt).
+    // The old standalone "befreit badge" is gone — the pill IS the indicator.
     await expect(page.locator('[role="dialog"]')).not.toBeVisible({
       timeout: 5_000,
     });
@@ -102,9 +104,13 @@ test.describe("@phase-9 C5-MEM-full — exempt + new roles", () => {
       hasText: nachname,
     });
     await expect(row).toBeVisible({ timeout: 5_000 });
+    // The status pill inside the row renders "Befreit" for permanently_exempt state.
     await expect(
-      row.locator('[data-testid="member-row-befreit-badge"]'),
+      row.locator('[data-testid="beitrag-status-pill"]'),
     ).toBeVisible();
+    await expect(
+      row.locator('[data-testid="beitrag-status-pill"]'),
+    ).toContainText("Befreit");
 
     // Cleanup: hard-delete the test member to avoid the soft-delete-blocked
     // check for unpaid Beiträge polluting the next run.
@@ -159,11 +165,11 @@ test.describe("@phase-9 C5-MEM-full — exempt + new roles", () => {
     }
   });
 
-  test("Detail page reminder CTA is disabled for an exempt member", async ({
+  test("Detail page: exempt member shows 'Befreit' status and NO reminder CTA (no-false-debt rule)", async ({
     page,
   }) => {
-    // Insert an exempt member with an email so the only reason the CTA
-    // could be disabled is the exempt flag (not "no email").
+    // Insert an exempt member with an email so we can confirm the reminder is
+    // absent for reasons of exemption, not "no email".
     const { default: postgres } = await import("postgres");
     const client = postgres(process.env["DATABASE_URL"] ?? "", {
       prepare: false,
@@ -187,13 +193,24 @@ test.describe("@phase-9 C5-MEM-full — exempt + new roles", () => {
     await signIn(page);
     await page.goto(`/app/mitglieder/${memberId}`);
 
-    // aria-label is the accessible name; visible button text is just
-    // "Erinnerung senden" but we match the more-specific label here.
-    const cta = page.getByRole("button", {
-      name: /Erinnerungs-Mail vorbereiten/,
-    });
-    await expect(cta).toBeVisible();
-    await expect(cta).toBeDisabled();
+    // The redesign's no-false-debt rule: for an exempt member, canSendReminder
+    // is false → stickyMode = 'none' → the sticky bar (including the reminder
+    // button) is hidden entirely. Assert the button is not present at all.
+    const stickyBar = page.getByTestId("member-detail-sticky-bar");
+    await expect(stickyBar).toHaveCount(0);
+    const reminderBtn = page.getByTestId("sticky-bar-reminder");
+    await expect(reminderBtn).toHaveCount(0);
+
+    // The Beitrag hero shows the canonical "Befreit" status pill.
+    await expect(page.getByTestId("beitrags-hero")).toBeVisible();
+    await expect(
+      page
+        .getByTestId("beitrags-hero")
+        .locator('[data-testid="beitrag-status-pill"]'),
+    ).toContainText("Befreit");
+
+    // No pay CTA in the hero (exempt → heroCTAMode = null).
+    await expect(page.getByTestId("beitrags-hero-cta")).toHaveCount(0);
 
     // Beitragsverlauf shows the exempt banner.
     await expect(

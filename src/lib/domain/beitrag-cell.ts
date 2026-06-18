@@ -14,6 +14,7 @@
 
 export type CellState =
   | "paid"
+  | "partial"
   | "open"
   | "overdue"
   | "exempt"
@@ -26,6 +27,12 @@ export type MatrixCell = {
   memberId: string;
   year: number;
   state: CellState;
+  /**
+   * True when the year is covered by festgeschriebenBis (archive / read-only).
+   * The `state` always reflects the honest underlying status (paid/partial/open/…),
+   * never a dead "locked_year". Use `isLocked` to render the lock decoration.
+   */
+  isLocked: boolean;
   /** Year's Beitragssatz in cents (0 if no row and no Satz for year). */
   betragCents: number;
   paidCents: number;
@@ -79,6 +86,7 @@ export function popoverKindForState(state: CellState): PopoverKind {
   switch (state) {
     case "open":
     case "overdue":
+    case "partial":
       return "mark-paid";
     case "paid":
       return "paid";

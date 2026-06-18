@@ -13,7 +13,7 @@
  */
 
 import { fail } from "@sveltejs/kit";
-import { and, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
@@ -32,6 +32,7 @@ import {
   markBeitragPaidBulk,
   markBeitragUnpaid,
   setBeitragExempt,
+  checkReminderAllowed,
 } from "$lib/server/domain/members-actions.js";
 import { loadMatrix } from "$lib/server/domain/matrix-loader.js";
 import {
@@ -60,9 +61,14 @@ export const load: PageServerLoad = async ({ url, depends }) => {
   const anchorYear = selectYearFromUrl(url.searchParams, currentBuchungsjahr());
   const years = beitragYearsRange(anchorYear);
 
+  // Package B: in production, hide fixture/seed members from the live list
+  // so test data doesn't pollute a real Vereinsverwaltung view. In dev/test
+  // fixtures are visible (useful for local exploration and CI scenarios).
+  const isProd = (process.env["NODE_ENV"] ?? "").toLowerCase() === "production";
   const allMembers = await db
     .select()
     .from(members)
+    .where(isProd ? eq(members.isFixture, false) : undefined)
     .orderBy(members.nachname, members.vorname);
 
   const memberIds = allMembers.map((m) => m.id);
@@ -157,6 +163,7 @@ export const load: PageServerLoad = async ({ url, depends }) => {
                   betragCents: Number(b.betragCents),
                   paidCents: Number(b.paidCents),
                   gezahltAm: b.gezahltAm,
+                  isExempt: b.isExempt ?? false,
                 }
               : null,
           ];
@@ -258,6 +265,11 @@ export const actions: Actions = {
       formData.get("gezahlt_am")?.toString() ||
       berlinYmd();
 
+    // Package B: optional partial paidCents (integer cents) and notes
+    const paidCentsStr = formData.get("paidCents")?.toString();
+    const paidCents = paidCentsStr ? parseInt(paidCentsStr, 10) : undefined;
+    const notes = formData.get("notes")?.toString() ?? null;
+
     if (!memberId || !Number.isFinite(year)) {
       return fail(400, {
         action: "mark-beitrag-paid",
@@ -269,6 +281,11 @@ export const actions: Actions = {
       memberId,
       year,
       gezahltAm,
+      paidCents:
+        paidCents !== undefined && Number.isFinite(paidCents)
+          ? paidCents
+          : undefined,
+      notes,
       actorUserId: userId,
       actorRole: userRole,
     });
@@ -394,7 +411,10 @@ export const actions: Actions = {
     return { action: "set-beitrag-exempt", success: true };
   },
 
-  // ── Task 2.8: Send Beitrag reminder ──────────────────────────────────────────
+  // ── Send Beitrag reminder ─────────────────────────────────────────────────
+  // Package B: uses checkReminderAllowed to refuse 422 when the member owes
+  // nothing for the year (CARDINAL RULE — no false debt). VEREIN_BEITRAG_DEFAULT_CENTS
+  // fabrication removed; the guard resolves betragCents from the canonical state.
   "send-reminder": async ({ request, locals }) => {
     const userRole = locals.session?.user.role ?? null;
     // Admin-only gate
@@ -413,55 +433,26 @@ export const actions: Actions = {
       });
     }
 
-    // Delegate to the member-detail send-reminder logic (same implementation)
-    // by calling the action on [id]/+page.server.ts would require a request —
-    // instead inline the minimal path here.
-    const db = getDb();
-    const { env } = await import("$lib/server/env.js");
-    const { sendMail } = await import("$lib/server/mail/index.js");
-    const { members: membersTable, memberBeitrags: memberBeitragsTable } =
-      await import("$lib/server/db/schema/members.js");
-    const { eq, and } = await import("drizzle-orm");
-
-    const [member] = await db
-      .select()
-      .from(membersTable)
-      .where(eq(membersTable.id, memberId))
-      .limit(1);
-
-    if (!member) {
-      return fail(404, {
+    // False-debt guard: refuse when member owes nothing for the year.
+    const guard = await checkReminderAllowed({ memberId, year });
+    if (!guard.allowed) {
+      return fail(guard.status, {
         action: "send-reminder",
-        error: "Mitglied nicht gefunden",
+        error: guard.error,
       });
     }
+
+    const { member, betragCents } = guard;
+
     if (!member.email) {
       return fail(422, {
         action: "send-reminder",
         error: "Keine E-Mail-Adresse hinterlegt",
       });
     }
-    if (member.beitragExempt) {
-      return fail(422, {
-        action: "send-reminder",
-        error: "Mitglied ist von der Beitragspflicht befreit",
-      });
-    }
 
-    const [beitragRow] = await db
-      .select()
-      .from(memberBeitragsTable)
-      .where(
-        and(
-          eq(memberBeitragsTable.memberId, memberId),
-          eq(memberBeitragsTable.year, year),
-        ),
-      )
-      .limit(1);
-
-    const betragCents = beitragRow
-      ? Number(beitragRow.betragCents)
-      : env.VEREIN_BEITRAG_DEFAULT_CENTS;
+    const { env } = await import("$lib/server/env.js");
+    const { sendMail } = await import("$lib/server/mail/index.js");
 
     const iban = env.VEREIN_IBAN;
     const bic = env.VEREIN_BIC;

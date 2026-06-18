@@ -4,6 +4,7 @@
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { toast } from 'svelte-sonner';
+	import { berlinYear } from '$lib/domain/year.js';
 
 	let {
 		open = $bindable(false),
@@ -11,6 +12,7 @@
 		defaultYear,
 		defaultBetragCents,
 		reminderSentRecently,
+		openYears = [],
 		onSuccess
 	}: {
 		open: boolean;
@@ -23,6 +25,13 @@
 		defaultYear: number;
 		defaultBetragCents: number;
 		reminderSentRecently: boolean;
+		/**
+		 * Package E: open beitrag years from the server (paidCents < betragCents,
+		 * not exempt). When provided, the dropdown shows exactly these years.
+		 * Falls back to [defaultYear] when empty so the sheet is never year-less.
+		 * Replaces the old computed 5-year range that used new Date().getFullYear().
+		 */
+		openYears?: { year: number; betragCents: number; paidCents: number }[];
 		onSuccess?: () => void;
 	} = $props();
 
@@ -36,9 +45,13 @@
 		selectedYear = defaultYear;
 	});
 
-	const currentYear = new Date().getFullYear();
+	// Package E: derive year options from openYears (ADR-0001 — berlinYear() not
+	// new Date().getFullYear()). Falls back to [defaultYear] so the select is never
+	// empty. The old computed 5-year range is replaced entirely.
 	const yearOptions = $derived(
-		Array.from({ length: 5 }, (_, i) => currentYear - i)
+		openYears.length > 0
+			? openYears.map((o) => o.year)
+			: [defaultYear !== 0 ? defaultYear : berlinYear()]
 	);
 
 	const betragFmt = $derived(

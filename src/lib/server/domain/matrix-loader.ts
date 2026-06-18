@@ -16,6 +16,7 @@ import { getDb } from "$lib/server/db/index.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
 import { berlinYmd } from "$lib/domain/year.js";
+import { resolveBeitragState } from "$lib/domain/beitrag-state.js";
 import type {
   CellState,
   MatrixCell,
@@ -37,12 +38,9 @@ function daysBetween(from: Date, to: Date): number {
   return Math.floor((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-/** Add N calendar days to a Date, return new Date. */
-function addDays(d: Date, n: number): Date {
-  const result = new Date(d);
-  result.setUTCDate(result.getUTCDate() + n);
-  return result;
-}
+// daysBetween is used below only for the daysOverdue annotation on overdue
+// cells (resolveBeitragState returns the state; we compute the numeric gap
+// separately so it can be surfaced in the UI)..
 
 async function fetchFestgeschriebenBis(): Promise<number | null> {
   const db = getDb();
@@ -135,10 +133,13 @@ export async function loadMatrix(opts: {
   }
 
   // ── Derive per-(member, year) cells ────────────────────────────────────────
+  // Uses the canonical resolveBeitragState resolver (single source of truth).
+  // The loader never emits a dead "locked_year" state; instead it passes
+  // isLocked=true on the cell and the UI renders a lock decoration on top of
+  // the honest underlying state (paid/partial/open/…).
   const cells: MatrixCell[] = [];
 
   for (const m of memberRows) {
-    // Parse eintrittsDatum and austrittsDatum
     const eintrittsJahr = m.eintrittsDatum
       ? parseInt(m.eintrittsDatum.slice(0, 4), 10)
       : 0;
@@ -147,70 +148,50 @@ export async function loadMatrix(opts: {
       : null;
 
     for (const y of opts.years) {
-      const row = beitragByMemberYear.get(`${m.id}:${y}`);
+      const dbRow = beitragByMemberYear.get(`${m.id}:${y}`);
       const satz = satzByYear.get(y);
-      const betragCents = row
-        ? Number(row.betragCents)
-        : satz
-          ? Number(satz.cents)
-          : 0;
 
-      let state: CellState;
+      // Shape the DB row into the BeitragRow the resolver expects.
+      const beitragRow = dbRow
+        ? {
+            betragCents: Number(dbRow.betragCents),
+            paidCents: Number(dbRow.paidCents),
+            isExempt: dbRow.isExempt ?? false,
+            gezahltAm: dbRow.gezahltAm ?? null,
+          }
+        : null;
+
+      const resolved = resolveBeitragState({
+        year: y,
+        eintrittsJahr,
+        austrittsJahr,
+        beitragExempt: m.beitragExempt,
+        row: beitragRow,
+        satzCents: satz ? Number(satz.cents) : null,
+        festBis,
+        faelligkeit: satz?.faelligkeitAt ?? undefined,
+        graceDays,
+      });
+
+      // Compute daysOverdue for the UI annotation (only when state=overdue).
       let daysOverdue: number | null = null;
-
-      // State derivation priority (spec §7.2):
-      // 1. Pre-join years
-      if (y < eintrittsJahr) {
-        state = "not_applicable_pre_join";
-      }
-      // 2. Post-Austritt years
-      else if (austrittsJahr !== null && y > austrittsJahr) {
-        state = "not_applicable_post_austritt";
-      }
-      // 3. Permanent exemption (overrides per-year)
-      else if (m.beitragExempt) {
-        state = "permanently_exempt";
-      }
-      // 4. Per-year exemption
-      else if (row?.isExempt) {
-        state = "exempt";
-      }
-      // 5. Locked year (festgeschrieben)
-      else if (festBis !== null && y <= festBis) {
-        state = "locked_year";
-      }
-      // 6. Paid
-      else if (
-        row &&
-        Number(row.paidCents) >= Number(row.betragCents) &&
-        Number(row.betragCents) > 0
-      ) {
-        state = "paid";
-      }
-      // 7. Open or overdue
-      else {
+      if (resolved.state === "overdue") {
         const faelligkeitStr = satz?.faelligkeitAt ?? `${y}-03-31`;
         const faelligkeitDate = new Date(`${faelligkeitStr}T00:00:00Z`);
-        const overdueThreshold = addDays(faelligkeitDate, graceDays);
-
-        if (todayDate > overdueThreshold) {
-          state = "overdue";
-          daysOverdue = daysBetween(faelligkeitDate, todayDate);
-        } else {
-          state = "open";
-        }
+        daysOverdue = daysBetween(faelligkeitDate, todayDate);
       }
 
       cells.push({
         memberId: m.id,
         year: y,
-        state,
-        betragCents,
-        paidCents: row ? Number(row.paidCents) : 0,
-        gezahltAm: row?.gezahltAm ?? null,
+        state: resolved.state,
+        isLocked: resolved.isLocked,
+        betragCents: resolved.betragCents,
+        paidCents: resolved.paidCents,
+        gezahltAm: dbRow?.gezahltAm ?? null,
         exemptReason: m.beitragExempt
           ? (m.beitragExemptReason ?? null)
-          : (row?.exemptReason ?? null),
+          : (dbRow?.exemptReason ?? null),
         daysOverdue,
       });
     }
@@ -218,6 +199,10 @@ export async function loadMatrix(opts: {
 
   // ── Year-header totals ─────────────────────────────────────────────────────
   // Spec §7.3: exempt members excluded from denominator; shown separately as +N befreit.
+  // Since resolveBeitragState now produces the honest underlying state (never
+  // "locked_year"), paidCount simply counts state==="paid" cells — a locked-but-paid
+  // year correctly shows "1/1 bezahlt" because the cell carries state="paid" + isLocked=true.
+  // partial cells are included in totalDueCount (they are still due) but not in paidCount.
   const headers: YearHeader[] = opts.years.map((y) => {
     const yearCells = cells.filter((c) => c.year === y);
 
@@ -231,16 +216,7 @@ export async function loadMatrix(opts: {
         c.state !== "exempt" &&
         c.state !== "permanently_exempt",
     );
-    // For locked_year cells, state derivation stops at the lock check (step 5),
-    // so state never reaches "paid" even when the underlying beitrag IS paid.
-    // Count a locked_year cell as paid when paidCents >= betragCents > 0.
-    const paidCells = applicableCells.filter(
-      (c) =>
-        c.state === "paid" ||
-        (c.state === "locked_year" &&
-          c.betragCents > 0 &&
-          c.paidCents >= c.betragCents),
-    );
+    const paidCells = applicableCells.filter((c) => c.state === "paid");
 
     return {
       year: y,

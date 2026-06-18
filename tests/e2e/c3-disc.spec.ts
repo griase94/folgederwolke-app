@@ -175,7 +175,9 @@ test.describe("@phase-9 C3-DISC kebab discoverability", () => {
     ).toHaveCount(0);
   });
 
-  test("MemberRow kebab → Löschen → row removed", async ({ page }) => {
+  test("MemberRow kebab → Löschen → member is soft-deleted (row stays, pay CTA hidden)", async ({
+    page,
+  }) => {
     await cleanupSeededMembers();
     const { id } = await seedMemberNoOpenBeitrags();
     await signIn(page);
@@ -194,14 +196,14 @@ test.describe("@phase-9 C3-DISC kebab discoverability", () => {
     await row.locator('[aria-label*="Aktionen"]').first().click();
     await page.getByTestId("member-row-loeschen").click();
 
-    // The row should disappear from the matrix (soft-delete sets austritts_datum
-    // → MemberRow re-renders with (ausgetreten) tag OR the row is removed
-    // depending on the list filter; we assert the literal "(ausgetreten)"
-    // label appears on the row OR the row is gone — both indicate success).
-    await expect(async () => {
-      const stillVisible = await row.isVisible().catch(() => false);
-      if (!stillVisible) return;
-      await expect(row).toContainText(/ausgetreten/i);
-    }).toPass({ timeout: 5_000 });
+    // After soft-delete the list reloads (invalidateAll). The member list does
+    // NOT filter out ausgetreten members — the row stays visible. The redesign
+    // has no standalone "ausgetreten" text badge; instead the soft-delete sets
+    // austrittsDatum which gates the one-tap pay trigger (showPayTrigger requires
+    // !member.austrittsDatum). Assert:
+    //   1. The row is still visible (member stays in the list).
+    //   2. The one-tap pay button is NOT present on the row (no false-debt CTA).
+    await expect(row).toBeVisible({ timeout: 5_000 });
+    await expect(row.locator('[data-testid="member-row-pay"]')).toHaveCount(0);
   });
 });

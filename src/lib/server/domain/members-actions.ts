@@ -30,6 +30,7 @@ import { bus } from "$lib/server/events/index.js";
 import { berlinYmd } from "$lib/domain/year.js";
 import { requireAdmin } from "$lib/server/domain/require-role.js";
 import { findBeitragssatz } from "$lib/server/domain/beitragssatz.js";
+import { resolveBeitragState } from "$lib/domain/beitrag-state.js";
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -326,13 +327,16 @@ async function fetchFestgeschriebenBis(): Promise<number | null> {
 }
 
 /**
- * Mark a Beitrag year as fully paid for a member.
+ * Mark a Beitrag year as paid (full or partial) for a member.
  *
- * Refactored for Phase 1 (Task 1.6):
- * - Named-args signature (no positional args)
- * - Reads year's Beitragssatz from beitragssatz_by_year (no DEFAULT_BEITRAG_CENTS)
- * - gezahltAm is explicit — never defaulted server-side (caller passes Berlin-local date)
- * - Upserts the row: creates it if missing, updates paidCents if it exists
+ * Refactored for Package B (member-zahlung redesign):
+ * - Accepts optional `paidCents` (integer cents) — if omitted, pays the full
+ *   recorded obligation (betragCents). Clamped to [0, betragCents].
+ * - Accepts optional `notes` (free text, stored on the row).
+ * - `betragCents` resolution order (NEVER clobber on update):
+ *     1. Existing row's betragCents (preserve recorded amount).
+ *     2. Current Satz from beitragssatz_by_year (for new rows only).
+ *     3. No Satz found → friendly 422.
  *
  * ADR-0006: rejects mutations on festgeschriebene Jahre.
  * ADR-0009: admin-only.
@@ -341,10 +345,22 @@ export async function markBeitragPaid(args: {
   memberId: string;
   year: number;
   gezahltAm: string;
+  /** Optional partial amount in integer cents. Omit to pay the full obligation. */
+  paidCents?: number;
+  /** Optional free-text note stored on the member_beitrags row. */
+  notes?: string | null;
   actorUserId: string | null;
   actorRole?: string | null;
 }): Promise<MarkBeitragPaidResult> {
-  const { memberId, year, gezahltAm, actorUserId, actorRole } = args;
+  const {
+    memberId,
+    year,
+    gezahltAm,
+    paidCents,
+    notes,
+    actorUserId,
+    actorRole,
+  } = args;
 
   // ADR-0009: admin-only gate.
   const denial = requireAdmin(actorRole);
@@ -360,45 +376,82 @@ export async function markBeitragPaid(args: {
     return { ok: false, status: 409, error: "Jahr ist festgeschrieben" };
   }
 
-  // Phase 1: read Satz from beitragssatz_by_year (no hardcoded default).
-  // A missing Satz is a configuration gap, not a server error → friendly 422.
-  const cents = await findBeitragssatz(year);
-  if (cents === null) {
-    return noBeitragssatzFailure(year);
-  }
-
   const db = getDb();
 
-  // Upsert: insert a new row (betragCents = current Satz) if none exists; on
-  // conflict mark it paid for the FULL existing betragCents WITHOUT clobbering
-  // betragCents. A previously-recorded amount (e.g. a partial Satz from a year
-  // whose Satz later changed, or a manually-adjusted dues row) must survive —
-  // overwriting betragCents here would silently rewrite a member's recorded
-  // obligation to whatever the current Satz happens to be (ADR-0006 spirit).
-  await db
-    .insert(memberBeitrags)
-    .values({
+  // Fetch existing row — betragCents from an existing row MUST be preserved.
+  const [existingRow] = await db
+    .select()
+    .from(memberBeitrags)
+    .where(
+      and(eq(memberBeitrags.memberId, memberId), eq(memberBeitrags.year, year)),
+    )
+    .limit(1);
+
+  // Resolve the obligation amount:
+  //   - Existing row → use its betragCents (no clobber).
+  //   - No row → look up current Satz (config gap → friendly 422).
+  let betragCentsForInsert: bigint;
+  let betragCentsForClamp: bigint;
+
+  if (existingRow) {
+    betragCentsForInsert = existingRow.betragCents;
+    betragCentsForClamp = existingRow.betragCents;
+  } else {
+    const satz = await findBeitragssatz(year);
+    if (satz === null) {
+      return noBeitragssatzFailure(year);
+    }
+    betragCentsForInsert = satz;
+    betragCentsForClamp = satz;
+  }
+
+  // Compute effectivePaid: clamp caller-supplied paidCents to [0, betragCents].
+  // If paidCents is omitted, pay the full obligation.
+  const rawPaid =
+    paidCents !== undefined ? BigInt(paidCents) : betragCentsForClamp;
+  const effectivePaid =
+    rawPaid < 0n
+      ? 0n
+      : rawPaid > betragCentsForClamp
+        ? betragCentsForClamp
+        : rawPaid;
+
+  const notesValue = notes ?? null;
+
+  if (existingRow) {
+    // Update existing row: set paidCents + gezahltAm + notes.
+    // NEVER touch betragCents (no clobber invariant).
+    await db
+      .update(memberBeitrags)
+      .set({
+        paidCents: effectivePaid,
+        gezahltAm,
+        notes: notesValue,
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(
+          eq(memberBeitrags.memberId, memberId),
+          eq(memberBeitrags.year, year),
+        ),
+      );
+  } else {
+    // Insert new row with Satz as betragCents.
+    await db.insert(memberBeitrags).values({
       memberId,
       year,
-      betragCents: cents,
-      paidCents: cents,
+      betragCents: betragCentsForInsert,
+      paidCents: effectivePaid,
       gezahltAm,
+      notes: notesValue,
       source: "app",
-    })
-    .onConflictDoUpdate({
-      target: [memberBeitrags.memberId, memberBeitrags.year],
-      set: {
-        // Pay the recorded obligation in full; do NOT touch betragCents.
-        paidCents: sql`${memberBeitrags.betragCents}`,
-        gezahltAm,
-        updatedAt: sql`now()`,
-      },
     });
+  }
 
   await bus.emit("member.beitrag_paid", {
     memberId,
     actorUserId,
-    payload: { year, gezahltAm },
+    payload: { year, gezahltAm, paidCents: Number(effectivePaid) },
   });
 
   return { ok: true };
@@ -622,4 +675,140 @@ export async function setBeitragExempt(args: {
   });
 
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// checkReminderAllowed — false-debt guard for ?/send-reminder (both routes)
+// ---------------------------------------------------------------------------
+
+/**
+ * Result type for the false-debt reminder guard.
+ * Routes call this before sending mail: if allowed=false, fail(status, error).
+ */
+export type CheckReminderAllowedResult =
+  | { allowed: true; member: typeof members.$inferSelect; betragCents: number }
+  | { allowed: false; status: number; error: string };
+
+/**
+ * CARDINAL RULE: no surface may assert a debt that doesn't exist.
+ *
+ * Resolves the canonical beitrag state for (memberId, year) and refuses
+ * with 422 when the member owes nothing:
+ *   - not_applicable_pre_join / not_applicable_post_austritt / permanently_exempt / exempt → 422
+ *   - paid (paidCents >= betragCents) → 422
+ *   - open / partial / overdue → allowed (reminder is appropriate)
+ *   - member not found → 404
+ *
+ * Replaces the previous VEREIN_BEITRAG_DEFAULT_CENTS fabrication that invented
+ * a debt for settled years. The default Satz is still used to derive betragCents
+ * for genuinely-open no-row years — it is ONLY removed from the path that
+ * constructs a reminder for an already-paid year.
+ *
+ * Package B — member-zahlung redesign.
+ */
+export async function checkReminderAllowed(args: {
+  memberId: string;
+  year: number;
+}): Promise<CheckReminderAllowedResult> {
+  const { memberId, year } = args;
+  const db = getDb();
+
+  // Fetch member
+  const [member] = await db
+    .select()
+    .from(members)
+    .where(eq(members.id, memberId))
+    .limit(1);
+
+  if (!member) {
+    return { allowed: false, status: 404, error: "Mitglied nicht gefunden" };
+  }
+
+  // Fetch beitrag row (may be null for no-row members)
+  const [beitragRow] = await db
+    .select()
+    .from(memberBeitrags)
+    .where(
+      and(eq(memberBeitrags.memberId, memberId), eq(memberBeitrags.year, year)),
+    )
+    .limit(1);
+
+  // Fetch satz for this year (may be null — no-satz no-row is open with hint)
+  const satzBigint = await findBeitragssatz(year);
+  const satzCents = satzBigint !== null ? Number(satzBigint) : null;
+
+  // Parse eintrittsJahr + austrittsJahr from stored date strings (YYYY-MM-DD)
+  const eintrittsJahr = parseInt(
+    (member.eintrittsDatum ?? `${year}-01-01`).slice(0, 4),
+    10,
+  );
+  const austrittsJahr =
+    member.austrittsDatum != null
+      ? parseInt(member.austrittsDatum.slice(0, 4), 10)
+      : null;
+
+  // Fetch festgeschrieben_bis for the resolver
+  const festBis = await fetchFestgeschriebenBis();
+
+  // Build the BeitragRow shape for the resolver
+  const row = beitragRow
+    ? {
+        betragCents: Number(beitragRow.betragCents),
+        paidCents: Number(beitragRow.paidCents),
+        isExempt: beitragRow.isExempt ?? false,
+        gezahltAm: beitragRow.gezahltAm ?? null,
+      }
+    : null;
+
+  const resolved = resolveBeitragState({
+    year,
+    eintrittsJahr,
+    austrittsJahr,
+    beitragExempt: member.beitragExempt ?? false,
+    row,
+    satzCents,
+    festBis,
+  });
+
+  // States that mean "owes nothing" → refuse the reminder
+  const owesNothing = (
+    [
+      "paid",
+      "permanently_exempt",
+      "exempt",
+      "not_applicable_pre_join",
+      "not_applicable_post_austritt",
+    ] as const
+  ).includes(
+    resolved.state as
+      | "paid"
+      | "permanently_exempt"
+      | "exempt"
+      | "not_applicable_pre_join"
+      | "not_applicable_post_austritt",
+  );
+
+  if (owesNothing) {
+    const stateMessages: Record<string, string> = {
+      paid: `Mitglied hat den Beitrag ${year} bereits bezahlt`,
+      permanently_exempt:
+        "Mitglied ist dauerhaft von der Beitragspflicht befreit",
+      exempt: `Mitglied ist für ${year} von der Beitragspflicht befreit`,
+      not_applicable_pre_join: `Mitglied war ${year} noch nicht im Verein`,
+      not_applicable_post_austritt: `Mitglied ist ${year} bereits ausgetreten`,
+    };
+    return {
+      allowed: false,
+      status: 422,
+      error:
+        stateMessages[resolved.state] ??
+        "Mitglied schuldet für dieses Jahr nichts",
+    };
+  }
+
+  return {
+    allowed: true,
+    member,
+    betragCents: resolved.betragCents,
+  };
 }

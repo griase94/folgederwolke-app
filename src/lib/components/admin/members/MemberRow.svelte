@@ -3,10 +3,15 @@
 	import { toast } from 'svelte-sonner';
 	import { invalidateAll } from '$app/navigation';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
-	import BeitragsBadge from './BeitragsBadge.svelte';
+	import BeitragStatusPill from './BeitragStatusPill.svelte';
 	import MarkPaidControl from './MarkPaidControl.svelte';
-	import { beitragStatusFor, type MemberView } from '$lib/domain/members.js';
-	import { currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
+	import type { MemberView } from '$lib/domain/members.js';
+	import { currentBuchungsjahr, clampYearToAvailable, berlinYear } from '$lib/domain/year.js';
+	import {
+		resolveBeitragState,
+		projectForList,
+	} from '$lib/domain/beitrag-state.js';
+	import type { CellState } from '$lib/domain/beitrag-cell.js';
 
 	let {
 		member,
@@ -73,55 +78,91 @@
 	// opens it unmounts when the menu closes, so we can't anchor to the item).
 	let rowEl = $state<HTMLElement | null>(null);
 
-	// Controlled MarkPaidControl: the kebab "Beitrag {year} bezahlt" items open
-	// the SAME rich popover the matrix uses (date + live EÜR line + undo toast)
-	// instead of the old fire-and-forget hidden form with no date field
-	// (markpaid-no-date-undo-toast-list-detail finding).
+	// Controlled MarkPaidControl: the one-tap pay pill opens the rich popover
+	// (date + live EÜR line + undo toast) instead of a hidden form.
 	let markPaidOpen = $state(false);
 	let markPaidYear = $state<number | null>(null);
 	let markPaidBetragCents = $state(0);
-	let markPaidOverdue = $state(false);
+	let markPaidPaidCents = $state(0);
+
+	// Package D: canonical current-year resolver via resolveBeitragState.
+	// Single source of truth — replaces simpleBeitragStatus inline checks.
+	const currentYear = $derived(
+		years.length > 0 ? clampYearToAvailable(currentBuchungsjahr(), years) : null,
+	);
+
+	const eintrittsJahr = $derived(
+		member.eintrittsDatum ? Number(member.eintrittsDatum.slice(0, 4)) : berlinYear(),
+	);
+	const austrittsJahr = $derived(
+		member.austrittsDatum ? Number(member.austrittsDatum.slice(0, 4)) : null,
+	);
+
+	const currentYearState = $derived.by(() => {
+		if (currentYear === null) return null;
+		const row = member.beitrags[currentYear] ?? null;
+		const result = resolveBeitragState({
+			year: currentYear,
+			eintrittsJahr: eintrittsJahr,
+			austrittsJahr: austrittsJahr,
+			beitragExempt: member.beitragExempt,
+			row: row
+				? {
+						betragCents: row.betragCents,
+						paidCents: row.paidCents,
+						isExempt: row.isExempt,
+						gezahltAm: row.gezahltAm,
+					}
+				: null,
+			satzCents: satzByYear[currentYear] ?? null,
+			festBis: null,
+		});
+		return result;
+	});
+
+	// Projected state for the list: overdue→open (list shows single "Offen")
+	const currentYearDisplayState = $derived<CellState | null>(
+		currentYearState !== null ? projectForList(currentYearState.state) : null,
+	);
+
+	// One-tap pay: show for open or partial states on non-exempt, active members
+	const showPayTrigger = $derived(
+		currentYear !== null &&
+			currentYearDisplayState !== null &&
+			(currentYearDisplayState === 'open' || currentYearDisplayState === 'partial') &&
+			!member.beitragExempt &&
+			!member.austrittsDatum,
+	);
 
 	function openMarkPaid(year: number) {
 		const b = member.beitrags[year];
 		markPaidYear = year;
-		// Seed with the recorded amount if a row exists, else the configured
-		// Beitragssatz for the year — so the confirm heading matches the amount the
-		// server books (never a misleading "0,00 €" for a row that doesn't exist yet).
 		markPaidBetragCents = b?.betragCents ?? satzByYear[year] ?? 0;
-		// Overdue isn't tracked per-year on MemberView; the matrix derives it from
-		// dates. The popover only uses it to surface the "Erinnerung" shortcut, so
-		// treating list rows as non-overdue here is safe.
-		markPaidOverdue = false;
+		markPaidPaidCents = b?.paidCents ?? 0;
 		dropdownOpen = false;
-		// Open after the menu has closed so focus management doesn't fight.
 		queueMicrotask(() => (markPaidOpen = true));
 	}
 
-	// Reminder target = current Buchungsjahr (ADR-0001), clamped to the visible
-	// window. Only meaningful for an unpaid, non-exempt member with an email.
-	const reminderYear = $derived(
-		years.length > 0 ? clampYearToAvailable(currentBuchungsjahr(), years) : null,
-	);
-	const reminderStatus = $derived.by(() => {
-		if (reminderYear === null) return 'open';
-		const b = member.beitrags[reminderYear];
-		return b ? beitragStatusFor(b) : 'open';
-	});
+	// Reminder: current Buchungsjahr clamped to visible window.
+	// Only for unpaid, non-exempt members with email. Use the resolver.
 	const canRemind = $derived(
-		reminderYear !== null &&
+		currentYear !== null &&
 			!!member.email &&
 			!member.beitragExempt &&
-			reminderStatus !== 'paid' &&
-			reminderStatus !== 'waived',
+			currentYearDisplayState !== null &&
+			currentYearDisplayState !== 'paid' &&
+			currentYearDisplayState !== 'exempt' &&
+			currentYearDisplayState !== 'permanently_exempt' &&
+			currentYearDisplayState !== 'not_applicable_pre_join' &&
+			currentYearDisplayState !== 'not_applicable_post_austritt',
 	);
 
 	async function sendReminder() {
 		dropdownOpen = false;
-		if (!canRemind || reminderYear === null) return;
+		if (!canRemind || currentYear === null) return;
 		const fd = new FormData();
 		fd.set('memberId', member.id);
-		fd.set('year', String(reminderYear));
+		fd.set('year', String(currentYear));
 		try {
 			const res = await fetch('?/send-reminder', { method: 'POST', body: fd });
 			const result = deserialize(await res.text());
@@ -140,9 +181,7 @@
 	}
 
 	// C3-DISC: the soft-delete form lives OUTSIDE the DropdownMenu.Content so
-	// it survives the menu's unmount-on-close. The menu item just confirms +
-	// flips this flag; an $effect submits the form right after the menu
-	// closes (and the form is still mounted).
+	// it survives the menu's unmount-on-close.
 	let deleteFormEl = $state<HTMLFormElement | null>(null);
 	function confirmDelete() {
 		dropdownOpen = false;
@@ -152,27 +191,37 @@
 		if (!ok) return;
 		queueMicrotask(() => deleteFormEl?.requestSubmit());
 	}
+
+	// Bulk-select helper: mirror the gate logic without simpleBeitragStatus
+	function isSelectDisabledForBulk(): boolean {
+		if (bulkYear === null) return true;
+		if (member.beitragExempt || !!member.austrittsDatum) return true;
+		const row = member.beitrags[bulkYear] ?? null;
+		const result = resolveBeitragState({
+			year: bulkYear,
+			eintrittsJahr: eintrittsJahr,
+			austrittsJahr: austrittsJahr,
+			beitragExempt: member.beitragExempt,
+			row: row
+				? { betragCents: row.betragCents, paidCents: row.paidCents, isExempt: row.isExempt, gezahltAm: row.gezahltAm }
+				: null,
+			satzCents: satzByYear[bulkYear] ?? null,
+			festBis: null,
+		});
+		const projected = projectForList(result.state);
+		return projected !== 'open';
+	}
 </script>
 
 <div
 	bind:this={rowEl}
-	class="group flex items-center gap-4 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md"
+	class="group flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-shadow hover:shadow-md"
 	data-testid="member-row"
 	data-member-id={member.id}
 >
-	<!-- Bulk-select checkbox (only in select mode). Disabled for members the
-	     bulk "Als bezahlt" can't sensibly touch in the bulk year: befreite,
-	     ausgetretene, OR already-not-open (paid/waived) for that year — mirrors
-	     +page.svelte's selectableMembers gate so an already-paid member can't be
-	     ticked and re-paid. -->
+	<!-- Bulk-select checkbox (only in select mode) -->
 	{#if selectable}
-		{@const bulkBeitrag = bulkYear !== null ? member.beitrags[bulkYear] : null}
-		{@const bulkStatus = bulkBeitrag ? beitragStatusFor(bulkBeitrag) : 'open'}
-		{@const selectDisabled =
-			bulkYear === null ||
-			member.beitragExempt ||
-			!!member.austrittsDatum ||
-			bulkStatus !== 'open'}
+		{@const selectDisabled = isSelectDisabledForBulk()}
 		<label
 			class="flex shrink-0 items-center {selectDisabled ? 'opacity-40' : ''}"
 			aria-label="{member.vorname} {member.nachname} auswählen"
@@ -203,172 +252,145 @@
 		{#if member.email}
 			<span class="truncate text-xs text-muted-foreground">{member.email}</span>
 		{/if}
-		{#if member.austrittsDatum}
-			<span class="ml-1 text-xs text-destructive">(ausgetreten)</span>
-		{/if}
-		{#if member.beitragExempt}
-			<!-- Night-2 C5-MEM-full: amber `befreit` badge surfaces the exempt
-			     flag inline; the reason (if any) shows on hover via `title`. -->
-			<span
-				class="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900 dark:text-amber-100"
-				title={member.beitragExemptReason ?? ''}
-				data-testid="member-row-befreit-badge"
-			>befreit</span>
-		{/if}
 	</div>
 
-	<!-- Beitrag year chips -->
-	<div class="hidden items-center gap-1.5 sm:flex">
-		{#each years as year (year)}
-			{@const b = member.beitrags[year]}
-			{@const status = b ? beitragStatusFor(b) : 'open'}
-			{@const cellState = status === 'waived' ? 'exempt' : status}
-			<BeitragsBadge
-				{year}
-				state={cellState}
-				betragCents={b?.betragCents ?? 0}
-				paidCents={b?.paidCents ?? 0}
-				gezahltAm={b?.gezahltAm ?? null}
-				exemptReason={member.beitragExemptReason}
+	<!-- Single current-year BeitragStatusPill (Package D: one pill, not N year chips).
+	     Hidden in bulk-select mode where the checkbox drives the whole row. -->
+	{#if !selectable && currentYear !== null && currentYearState !== null && currentYearDisplayState !== null}
+		<div class="hidden sm:flex items-center">
+			<BeitragStatusPill
+				state={currentYearDisplayState}
+				year={currentYear}
+				paidCents={currentYearState.paidCents}
+				betragCents={currentYearState.betragCents}
 				compact
+				exemptReason={member.beitragExemptReason}
 			/>
-		{/each}
-	</div>
-
-	<!-- Actions kebab — shadcn DropdownMenu (focus trap + Esc + arrow nav built-in).
-	     Hidden in bulk-select mode where the only interaction is the checkbox. -->
-	{#if !selectable}
-	<DropdownMenu.Root bind:open={dropdownOpen}>
-		<DropdownMenu.Trigger
-			aria-label="Aktionen für {member.vorname} {member.nachname}"
-			class="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-		>
-			<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-				<circle cx="12" cy="5" r="1.5" />
-				<circle cx="12" cy="12" r="1.5" />
-				<circle cx="12" cy="19" r="1.5" />
-			</svg>
-		</DropdownMenu.Trigger>
-
-		<DropdownMenu.Content align="end" class="w-52">
-			<!-- Edit -->
-			<DropdownMenu.Item
-				onSelect={() => {
-					dropdownOpen = false;
-					onEdit(member);
-				}}
-			>
-				<svg
-					class="h-4 w-4 text-muted-foreground"
-					fill="none"
-					viewBox="0 0 24 24"
-					stroke="currentColor"
-					stroke-width="2"
-					aria-hidden="true"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-					/>
-				</svg>
-				Bearbeiten
-			</DropdownMenu.Item>
-
-			<!-- Mark beitrag paid (one item per unpaid year). Opens the shared
-			     MarkPaidControl popover (date + live EÜR line + undo toast) rather
-			     than firing a hidden form with no date field. -->
-			{#each years as year (year)}
-				{@const b = member.beitrags[year]}
-				{@const status = b ? beitragStatusFor(b) : 'open'}
-				{#if status !== 'paid' && status !== 'waived' && !member.beitragExempt}
-					<DropdownMenu.Item
-						onSelect={(e) => {
-							e.preventDefault();
-							openMarkPaid(year);
-						}}
-					>
-						<svg
-							class="h-4 w-4 text-green-600"
-							fill="none"
-							viewBox="0 0 24 24"
-							stroke="currentColor"
-							stroke-width="2"
-							aria-hidden="true"
-						>
-							<path
-								stroke-linecap="round"
-								stroke-linejoin="round"
-								d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-							/>
-						</svg>
-						Beitrag {year} bezahlt…
-					</DropdownMenu.Item>
-				{/if}
-			{/each}
-
-			<DropdownMenu.Separator />
-
-			<!-- Send reminder — wired to the real ?/send-reminder action (mirrors the
-			     matrix path). Disabled when there's nothing to remind about. -->
-			<DropdownMenu.Item
-				data-testid="member-row-erinnerung"
-				disabled={!canRemind}
-				onSelect={(e) => {
-					e.preventDefault();
-					sendReminder();
-				}}
-			>
-				<svg
-					class="h-4 w-4 text-muted-foreground"
-					fill="none"
-					viewBox="0 0 24 24"
-					stroke="currentColor"
-					stroke-width="2"
-					aria-hidden="true"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-					/>
-				</svg>
-				Erinnerung senden
-			</DropdownMenu.Item>
-
-			<!-- C3-DISC: Löschen confirms via native dialog and submits the
-				 sibling form (kept outside Content so menu close doesn't unmount
-				 the form before the submission fires). -->
-			<DropdownMenu.Item
-				data-testid="member-row-loeschen"
-				class="text-destructive focus:text-destructive"
-				onSelect={(e) => {
-					e.preventDefault();
-					confirmDelete();
-				}}
-			>
-				<svg
-					class="h-4 w-4 text-destructive"
-					fill="none"
-					viewBox="0 0 24 24"
-					stroke="currentColor"
-					stroke-width="2"
-					aria-hidden="true"
-				>
-					<path
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
-					/>
-				</svg>
-				Löschen
-			</DropdownMenu.Item>
-		</DropdownMenu.Content>
-	</DropdownMenu.Root>
+		</div>
 	{/if}
 
-	<!-- Soft-delete form lives outside DropdownMenu.Content so the menu's
-		 unmount-on-close doesn't tear the form out of the DOM mid-submit. -->
+	<!-- One-tap pay trigger: appears for open/partial state only.
+	     Opens the MarkPaidControl directly (no kebab intermediary).
+	     min-h-11 (44px) for mobile touch target. -->
+	{#if showPayTrigger && currentYear !== null && !selectable}
+		<button
+			type="button"
+			data-testid="member-row-pay"
+			aria-label="Beitrag {currentYear} erfassen für {member.vorname} {member.nachname}"
+			onclick={() => openMarkPaid(currentYear!)}
+			class="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/8 text-primary-text transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+		>
+			<svg
+				class="h-5 w-5"
+				fill="none"
+				viewBox="0 0 24 24"
+				stroke="currentColor"
+				stroke-width="2"
+				aria-hidden="true"
+			>
+				<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+			</svg>
+		</button>
+	{/if}
+
+	<!-- Actions kebab — secondary overflow (edit, reminder, delete).
+	     Hidden in bulk-select mode. -->
+	{#if !selectable}
+		<DropdownMenu.Root bind:open={dropdownOpen}>
+			<DropdownMenu.Trigger
+				aria-label="Aktionen für {member.vorname} {member.nachname}"
+				class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+			>
+				<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+					<circle cx="12" cy="5" r="1.5" />
+					<circle cx="12" cy="12" r="1.5" />
+					<circle cx="12" cy="19" r="1.5" />
+				</svg>
+			</DropdownMenu.Trigger>
+
+			<DropdownMenu.Content align="end" class="w-52">
+				<!-- Edit -->
+				<DropdownMenu.Item
+					onSelect={() => {
+						dropdownOpen = false;
+						onEdit(member);
+					}}
+				>
+					<svg
+						class="h-4 w-4 text-muted-foreground"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke="currentColor"
+						stroke-width="2"
+						aria-hidden="true"
+					>
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+						/>
+					</svg>
+					Bearbeiten
+				</DropdownMenu.Item>
+
+				<!-- Send reminder — only when a real open balance exists. -->
+				<DropdownMenu.Item
+					data-testid="member-row-erinnerung"
+					disabled={!canRemind}
+					onSelect={(e) => {
+						e.preventDefault();
+						sendReminder();
+					}}
+				>
+					<svg
+						class="h-4 w-4 text-muted-foreground"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke="currentColor"
+						stroke-width="2"
+						aria-hidden="true"
+					>
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+						/>
+					</svg>
+					Erinnerung senden
+				</DropdownMenu.Item>
+
+				<DropdownMenu.Separator />
+
+				<!-- Delete -->
+				<DropdownMenu.Item
+					data-testid="member-row-loeschen"
+					class="text-destructive focus:text-destructive"
+					onSelect={(e) => {
+						e.preventDefault();
+						confirmDelete();
+					}}
+				>
+					<svg
+						class="h-4 w-4 text-destructive"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke="currentColor"
+						stroke-width="2"
+						aria-hidden="true"
+					>
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
+						/>
+					</svg>
+					Löschen
+				</DropdownMenu.Item>
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
+	{/if}
+
+	<!-- Soft-delete form lives outside DropdownMenu.Content. -->
 	<form
 		bind:this={deleteFormEl}
 		method="POST"
@@ -404,9 +426,8 @@
 		<input type="hidden" name="id" value={member.id} />
 	</form>
 
-	<!-- Shared mark-paid surface, anchored to the row. Controlled (no trigger
-	     snippet) because the kebab item that opens it unmounts on menu close.
-	     Re-keyed by year so the popover's internal date/EÜR state resets per year. -->
+	<!-- Shared mark-paid surface, anchored to the row. Re-keyed by year so
+	     the popover's internal state resets per year. -->
 	{#if markPaidYear !== null}
 		{#key markPaidYear}
 			<MarkPaidControl
@@ -416,7 +437,8 @@
 				year={markPaidYear}
 				memberName="{member.vorname} {member.nachname}"
 				betragCents={markPaidBetragCents}
-				isOverdue={markPaidOverdue}
+				paidCents={markPaidPaidCents}
+				isOverdue={false}
 				allowExempt={false}
 			/>
 		{/key}
