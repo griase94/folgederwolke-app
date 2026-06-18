@@ -254,14 +254,16 @@
                 <!-- eslint-enable svelte/no-navigation-without-resolve -->
               {/if}
             </div>
+            <!-- "Als erstattet markieren" stays enabled even without an IBAN: it
+                 only records that the reimbursement happened (which may have been
+                 paid by cash / another channel), it does NOT require a SEPA
+                 transfer. The missing-IBAN signal is already surfaced by the
+                 disabled copy-IBAN control + the "IBAN fehlt" chip above. -->
             <button
               type="button"
               data-testid="mark-erstattet"
-              disabled={posting || !iban}
+              disabled={posting}
               onclick={() => markErstattet([claim.id])}
-              title={iban
-                ? undefined
-                : 'Ohne IBAN nicht möglich — bitte zuerst eine IBAN hinterlegen'}
               class="inline-flex h-11 w-full items-center justify-center rounded-full bg-primary-strong px-4 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:ml-auto md:h-9 md:w-auto md:justify-start"
             >
               Als erstattet markieren
