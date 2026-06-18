@@ -293,4 +293,5 @@
 	defaultYear={data.defaultReminderYear}
 	defaultBetragCents={data.defaultReminderBetragCents}
 	reminderSentRecently={data.reminderSentRecently}
+	openYears={data.openYears}
 />

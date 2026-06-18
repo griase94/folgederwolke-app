@@ -30,49 +30,44 @@ const base = {
   actionBase: "",
 };
 
+/** Capture the FormData sent to fetch and return a SvelteKit success response. */
+function mockFetch(): { getBody: () => FormData } {
+  let body: FormData | undefined;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      body = init?.body as FormData;
+      return new Response(
+        JSON.stringify({ type: "success", status: 200, data: {} }),
+        { status: 200, headers: { "content-type": "text/plain" } },
+      );
+    }),
+  );
+  return {
+    getBody: () => {
+      if (!body) throw new Error("fetch was not called");
+      return body;
+    },
+  };
+}
+
 describe("MarkPaidControl — forwards paidCents and notes (Package E)", () => {
   it("POSTs paidCents from the popover Betrag input", async () => {
-    // Capture the FormData that fetch receives
-    let capturedBody: FormData | null = null;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: string, init?: RequestInit) => {
-        capturedBody = init?.body as FormData;
-        // Return a valid SvelteKit action success response
-        return new Response(
-          JSON.stringify({ type: "success", status: 200, data: {} }),
-          { status: 200, headers: { "content-type": "text/plain" } },
-        );
-      }),
-    );
+    const { getBody } = mockFetch();
 
     render(MarkPaidControl, { props: { ...base, open: true } });
 
-    // The control renders the popover content directly when open=true on desktop
     // Fill Betrag with a partial amount
     const betragInput = screen.getByLabelText("Betrag (€)") as HTMLInputElement;
     await fireEvent.input(betragInput, { target: { value: "30,00" } });
-
-    // Click Bezahlt
     await fireEvent.click(screen.getByRole("button", { name: /Bezahlt/ }));
 
-    // fetch should have been called
     expect(fetch).toHaveBeenCalled();
-    expect(capturedBody?.get("paidCents")).toBe("3000");
+    expect(getBody().get("paidCents")).toBe("3000");
   });
 
   it("POSTs notes from the popover Notiz input", async () => {
-    let capturedBody: FormData | null = null;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: string, init?: RequestInit) => {
-        capturedBody = init?.body as FormData;
-        return new Response(
-          JSON.stringify({ type: "success", status: 200, data: {} }),
-          { status: 200, headers: { "content-type": "text/plain" } },
-        );
-      }),
-    );
+    const { getBody } = mockFetch();
 
     render(MarkPaidControl, { props: { ...base, open: true } });
 
@@ -80,25 +75,14 @@ describe("MarkPaidControl — forwards paidCents and notes (Package E)", () => {
       "Notiz (optional)",
     ) as HTMLInputElement;
     await fireEvent.input(notizInput, { target: { value: "Überweisung" } });
-
     await fireEvent.click(screen.getByRole("button", { name: /Bezahlt/ }));
 
     expect(fetch).toHaveBeenCalled();
-    expect(capturedBody?.get("notes")).toBe("Überweisung");
+    expect(getBody().get("notes")).toBe("Überweisung");
   });
 
   it("POSTs notes as empty string when Notiz is blank", async () => {
-    let capturedBody: FormData | null = null;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (_url: string, init?: RequestInit) => {
-        capturedBody = init?.body as FormData;
-        return new Response(
-          JSON.stringify({ type: "success", status: 200, data: {} }),
-          { status: 200, headers: { "content-type": "text/plain" } },
-        );
-      }),
-    );
+    const { getBody } = mockFetch();
 
     render(MarkPaidControl, { props: { ...base, open: true } });
 
@@ -106,7 +90,7 @@ describe("MarkPaidControl — forwards paidCents and notes (Package E)", () => {
     await fireEvent.click(screen.getByRole("button", { name: /Bezahlt/ }));
 
     expect(fetch).toHaveBeenCalled();
-    // notes should be present (empty string when null)
-    expect(capturedBody?.has("notes")).toBe(true);
+    // notes field must be present (empty string when nothing entered)
+    expect(getBody().has("notes")).toBe(true);
   });
 });
