@@ -15,6 +15,7 @@
   import { toast } from "svelte-sonner";
   import DateField from "$lib/components/ui/date-field/DateField.svelte";
   import KategoriePicker from "$lib/components/admin/transactions/fields/KategoriePicker.svelte";
+  import { parseBetragCents } from "$lib/client/parse-betrag.js";
   import type { Sphere } from "$lib/domain/sphere.js";
   import type { TransactionDetail } from "$lib/server/domain/transactions.js";
 
@@ -56,8 +57,20 @@
     return errors[field]?.[0] ?? null;
   }
 
+  // Betrag: de-DE editable text (type=text + inputmode=decimal + parseBetragCents),
+  // mirroring the entry form (AusgabeFields) — so the value reads "2.500,00"
+  // (comma decimal, ADR-0003) rather than the period-formatted "2500.00" that a
+  // type=number input forces. Seeded de-DE; the hidden betragCents is derived.
   // svelte-ignore state_referenced_locally
-  let betragCents = $state(String(detail.betragCents));
+  let betragEur = $state(
+    (detail.betragCents / 100).toLocaleString("de-DE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }),
+  );
+  const betragCents = $derived(
+    betragEur ? String(parseBetragCents(betragEur) || "") : "",
+  );
   // svelte-ignore state_referenced_locally
   let kategorieName = $state(detail.kategorieNameSnapshot);
   // svelte-ignore state_referenced_locally
@@ -66,8 +79,6 @@
   let rechnungsdatum = $state(detail.rechnungsdatum ?? "");
   // svelte-ignore state_referenced_locally
   let projectId = $state(detail.projectId ?? "");
-
-  const betragEuros = $derived((detail.betragCents / 100).toFixed(2));
 
   function markDirty() {
     onDirty?.();
@@ -137,18 +148,13 @@
       >
       <input
         id="d-betrag"
-        type="number"
-        step="0.01"
-        min="0.01"
+        type="text"
+        inputmode="decimal"
         required
-        value={betragEuros}
-        oninput={(e) => {
-          const v =
-            parseFloat((e.currentTarget as HTMLInputElement).value) || 0;
-          betragCents = String(Math.round(v * 100));
-        }}
+        bind:value={betragEur}
+        placeholder="0,00"
         aria-invalid={err("betragCents") ? true : undefined}
-        class="border-border bg-background focus:ring-primary w-full rounded-md border py-2 pr-3 pl-8 text-sm focus:ring-2 focus:outline-none"
+        class="border-border bg-background focus:ring-primary w-full rounded-md border py-2 pr-3 pl-8 text-sm tabular-nums focus:ring-2 focus:outline-none"
       />
       <input type="hidden" name="betragCents" value={betragCents} />
     </div>

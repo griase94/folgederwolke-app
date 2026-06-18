@@ -19,10 +19,6 @@ const FILES = [
   "src/lib/components/admin/projects/AddProjectDialog.svelte",
   "src/lib/components/admin/projects/EditProjectDialog.svelte",
   "src/lib/components/admin/transactions/TransactionEditForm.svelte",
-  // Aurora slice 4: Überweisungsliste absorbed the bulk/SEPA flow; the old
-  // PostSepaMarkErstattetModal + BulkActionsBar are deleted. The new route
-  // ships a native date picker for the Erstattungs-Datum.
-  "src/routes/app/ausgaben/ueberweisungen/+page.svelte",
   "src/lib/components/admin/members/AddMemberDialog.svelte",
   // Phase 8 T6: src/routes/app/transactions/neu/+page.svelte deleted.
   // The per-tab routes (ausgaben/neu, einnahmen/neu, spenden/neu) have their
@@ -38,6 +34,10 @@ const MIGRATED_FILES = [
   // Entry-modals redesign migrated ManualImportSheet's native date input to
   // the DateField primitive (TT.MM.JJJJ) — no native `type="date"` remains.
   "src/lib/components/admin/inbox/ManualImportSheet.svelte",
+  // final-polish: the Überweisungsliste Erstattungs-Datum migrated from a
+  // native date picker (which showed US MM/DD/YYYY) to the DateField primitive
+  // (TT.MM.JJJJ) — no native `type="date"` remains.
+  "src/routes/app/ausgaben/ueberweisungen/+page.svelte",
   "src/lib/components/forms/AuslagenForm.svelte",
   "src/lib/components/admin/invoices/InvoiceForm.svelte",
   "src/lib/components/admin/members/EditMemberDialog.svelte",

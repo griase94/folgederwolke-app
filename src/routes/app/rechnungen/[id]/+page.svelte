@@ -255,7 +255,7 @@
 			{/if}
 			{#if faelligFmt}
 				<div>
-					<dt class="text-xs uppercase tracking-wide text-muted-foreground">Faellig bis</dt>
+					<dt class="text-xs uppercase tracking-wide text-muted-foreground">Fällig bis</dt>
 					<dd class="mt-0.5 font-medium">{faelligFmt}</dd>
 				</div>
 			{/if}
@@ -270,7 +270,7 @@
 				<dd class="mt-0.5 font-medium">{inv.kategorieNameSnapshot}</dd>
 			</div>
 			<div>
-				<dt class="text-xs uppercase tracking-wide text-muted-foreground">Sphaere</dt>
+				<dt class="text-xs uppercase tracking-wide text-muted-foreground">Sphäre</dt>
 				<dd class="mt-0.5 font-medium capitalize">{inv.sphereSnapshot}</dd>
 			</div>
 			{#if inv.projectName}

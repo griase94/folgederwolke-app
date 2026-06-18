@@ -52,8 +52,8 @@
 		</a>
 		<h1 class="mt-2 text-2xl font-bold tracking-tight text-foreground">Neue Rechnung</h1>
 		<p class="mt-0.5 text-sm text-muted-foreground">
-			Die Vorschau aktualisiert sich automatisch. Mit „PDF generieren" wird die
-			Rechnung gespeichert und das PDF im Hintergrund erstellt.
+			Die Vorschau aktualisiert sich automatisch. Beim Speichern wird die
+			Rechnung als PDF erzeugt und im Hintergrund erstellt.
 		</p>
 	</div>
 

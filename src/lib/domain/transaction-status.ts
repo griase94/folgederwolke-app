@@ -49,6 +49,13 @@ export const TRANSACTION_STATUS: Record<string, StatusPresentation> = {
     tone: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200",
   },
   importiert: { label: "Importiert", tone: NEUTRAL_TONE },
+  // Synthesized status for booked income + project-linked donation rows
+  // (project detail Transaktionen tab). Not a DB enum value — these rows are
+  // simply "booked".
+  gebucht: {
+    label: "Gebucht",
+    tone: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-200",
+  },
 };
 
 /**

@@ -10,6 +10,7 @@
   import { page } from '$app/state';
   import PageShell from '$lib/components/layout/PageShell.svelte';
   import PageHeader from '$lib/components/layout/PageHeader.svelte';
+  import DateField from '$lib/components/ui/date-field/DateField.svelte';
   import { formatMoney } from '$lib/components/ui/money/money.svelte';
   import {
     COPY_FIELD_ORDER,
@@ -171,12 +172,13 @@
     {#snippet toolbar()}
       <div class="flex flex-wrap items-center gap-2">
         <label class="text-sm text-ink-500" for="ueberweisung-datum">Datum</label>
-        <input
+        <DateField
           id="ueberweisung-datum"
-          type="date"
-          lang="de"
-          bind:value={chosenDate}
-          class="h-11 rounded-[10px] border border-(--hairline) bg-white px-2 text-sm md:h-10"
+          name="chosenDate"
+          value={chosenDate}
+          onchange={(iso) => (chosenDate = iso)}
+          required
+          class="h-11 md:h-10"
         />
         <label class="text-sm text-ink-500" for="ueberweisung-zahlungsart">Zahlungsart</label>
         <select
@@ -255,9 +257,12 @@
             <button
               type="button"
               data-testid="mark-erstattet"
-              disabled={posting}
+              disabled={posting || !iban}
               onclick={() => markErstattet([claim.id])}
-              class="inline-flex h-11 w-full items-center justify-center rounded-full bg-primary-strong px-4 text-[13px] font-semibold text-white disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:ml-auto md:h-9 md:w-auto md:justify-start"
+              title={iban
+                ? undefined
+                : 'Ohne IBAN nicht möglich — bitte zuerst eine IBAN hinterlegen'}
+              class="inline-flex h-11 w-full items-center justify-center rounded-full bg-primary-strong px-4 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:ml-auto md:h-9 md:w-auto md:justify-start"
             >
               Als erstattet markieren
             </button>
