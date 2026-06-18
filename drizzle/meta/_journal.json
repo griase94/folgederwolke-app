@@ -246,6 +246,20 @@
       "when": 1781035606505,
       "tag": "0034_booking_year_from_cashflow",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1781766990893,
+      "tag": "0035_acoustic_the_santerians",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1781767005551,
+      "tag": "0036_auslagen_submissions_beleg_or_grund",
+      "breakpoints": true
     }
   ]
 }
