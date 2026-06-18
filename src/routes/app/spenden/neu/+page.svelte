@@ -48,6 +48,7 @@
 	title="Neue Spende"
 	action="?/create"
 	submitLabel="Speichern"
+	accent="spende"
 	bind:submitting
 	{dirty}
 	{fields}

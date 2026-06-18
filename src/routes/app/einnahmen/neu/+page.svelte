@@ -65,6 +65,7 @@
 	title="Neue Einnahme"
 	action="?/create"
 	submitLabel="Speichern"
+	accent="einnahme"
 	bind:submitting
 	{dirty}
 	{fields}
