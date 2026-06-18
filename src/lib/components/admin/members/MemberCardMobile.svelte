@@ -164,6 +164,7 @@
 			year={currentYear}
 			memberName="{member.vorname} {member.nachname}"
 			betragCents={currentBetragCents}
+			paidCents={currentYearState?.paidCents ?? 0}
 			allowExempt={false}
 		>
 			{#snippet trigger({ props })}

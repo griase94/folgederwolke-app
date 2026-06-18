@@ -51,6 +51,29 @@ function mockFetch(): { getBody: () => FormData } {
   };
 }
 
+// ── Package E review regression: paidCents wiring at callsites ────────────
+
+describe("MarkPaidControl — partial-member prefill regression (Package E review)", () => {
+  it("prefills Betrag input with the open remainder (betrag - paid) for a partial member", () => {
+    // betragCents=6000, paidCents=3000 → remainder = 3000 → "30,00"
+    // This guards the callsite wiring: passing paidCents correctly makes the
+    // popover show the remaining balance instead of the full betrag.
+    render(MarkPaidControl, {
+      props: { ...base, betragCents: 6000, paidCents: 3000, open: true },
+    });
+    const betragInput = screen.getByLabelText("Betrag (€)") as HTMLInputElement;
+    expect(betragInput.value).toBe("30,00");
+  });
+
+  it("prefills Betrag with the full betrag when paidCents is 0 (no prior payment)", () => {
+    render(MarkPaidControl, {
+      props: { ...base, betragCents: 6000, paidCents: 0, open: true },
+    });
+    const betragInput = screen.getByLabelText("Betrag (€)") as HTMLInputElement;
+    expect(betragInput.value).toBe("60,00");
+  });
+});
+
 describe("MarkPaidControl — forwards paidCents and notes (Package E)", () => {
   it("POSTs paidCents from the popover Betrag input", async () => {
     const { getBody } = mockFetch();

@@ -226,6 +226,7 @@
 							year={data.currentYear}
 							memberName={fullName}
 							betragCents={currentYearState.betragCents}
+							paidCents={currentYearState.paidCents}
 							actionBase="/app/mitglieder"
 							allowExempt={false}
 						>

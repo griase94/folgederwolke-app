@@ -83,6 +83,7 @@
 	let markPaidOpen = $state(false);
 	let markPaidYear = $state<number | null>(null);
 	let markPaidBetragCents = $state(0);
+	let markPaidPaidCents = $state(0);
 
 	// Package D: canonical current-year resolver via resolveBeitragState.
 	// Single source of truth — replaces simpleBeitragStatus inline checks.
@@ -137,6 +138,7 @@
 		const b = member.beitrags[year];
 		markPaidYear = year;
 		markPaidBetragCents = b?.betragCents ?? satzByYear[year] ?? 0;
+		markPaidPaidCents = b?.paidCents ?? 0;
 		dropdownOpen = false;
 		queueMicrotask(() => (markPaidOpen = true));
 	}
@@ -435,6 +437,7 @@
 				year={markPaidYear}
 				memberName="{member.vorname} {member.nachname}"
 				betragCents={markPaidBetragCents}
+				paidCents={markPaidPaidCents}
 				isOverdue={false}
 				allowExempt={false}
 			/>

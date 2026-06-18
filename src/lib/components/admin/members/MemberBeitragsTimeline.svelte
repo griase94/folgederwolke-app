@@ -237,6 +237,7 @@
 				year={heroYear}
 				memberName={displayName}
 				betragCents={heroState.betragCents}
+				paidCents={heroState.paidCents}
 				actionBase="/app/mitglieder"
 				allowExempt={false}
 			>
@@ -431,6 +432,7 @@
 								year={b.year}
 								memberName={displayName}
 								betragCents={b.betragCents}
+								paidCents={b.paidCents}
 								actionBase="/app/mitglieder"
 								allowExempt={false}
 							>
