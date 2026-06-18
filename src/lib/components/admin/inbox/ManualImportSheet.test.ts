@@ -85,3 +85,41 @@ describe("ManualImportSheet — C4 redesign", () => {
     expect(dataInput).toBeNull();
   });
 });
+
+// ── Package D3: Sheet overlay z-index verification ─────────────────────────
+// D3: verify the bits-ui Sheet overlay covers Topbar(z-30) + MobileTabBar(z-40).
+// bits-ui Sheet portals to document.body — check data-slot="sheet-overlay" class.
+describe("ManualImportSheet — D3 sheet overlay z-index", () => {
+  it("sheet-overlay z-index class is above z-40 (covers MobileTabBar)", () => {
+    render(ManualImportSheet, {
+      props: { open: true, members: [] },
+    });
+    const overlay = document.querySelector('[data-slot="sheet-overlay"]');
+    expect(overlay).not.toBeNull();
+    // The overlay must carry a Tailwind z-index class above z-40 (currently
+    // z-50 via sheet-overlay.svelte) so it covers Topbar(z-30)+MobileTabBar(z-40).
+    // If this ever fails, raise the class in sheet-overlay.svelte.
+    const cls = (overlay as HTMLElement).className;
+    const hasHighZ =
+      cls.includes("z-50") ||
+      cls.includes("z-[60]") ||
+      cls.includes("z-[70]") ||
+      cls.includes("z-[80]");
+    expect(hasHighZ).toBe(true);
+  });
+
+  it("sheet-content z-index class is above z-40 (modal panel visible over chrome)", () => {
+    render(ManualImportSheet, {
+      props: { open: true, members: [] },
+    });
+    const content = document.querySelector('[data-slot="sheet-content"]');
+    expect(content).not.toBeNull();
+    const cls = (content as HTMLElement).className;
+    const hasHighZ =
+      cls.includes("z-50") ||
+      cls.includes("z-[60]") ||
+      cls.includes("z-[70]") ||
+      cls.includes("z-[80]");
+    expect(hasHighZ).toBe(true);
+  });
+});
