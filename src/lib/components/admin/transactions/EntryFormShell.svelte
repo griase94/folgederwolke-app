@@ -38,6 +38,12 @@
 		fields: Snippet;
 		/** × / backdrop → navigate to the parent list; guarded if dirty (UX-02). */
 		onClose: () => void;
+		/**
+		 * Per-type accent colour for the slim top gradient strip.
+		 * ausgabe = rose/plum, einnahme = green, spende = violet.
+		 * Defaults to `'ausgabe'`.
+		 */
+		accent?: 'ausgabe' | 'einnahme' | 'spende';
 	}
 </script>
 
@@ -45,10 +51,15 @@
 	/**
 	 * EntryFormShell — the shared sticky-footer modal shell for transaction entry.
 	 *
-	 *   sticky header : `title` (+ optional `statusHint`) + a × close control
-	 *   scroll body   : `{@render fields()}` — the per-tab fields
-	 *   sticky footer : unified — a single Speichern button reflecting `submitLabel`,
-	 *                   disabled unless `dirty` (and not `submitting`). NO Verwerfen.
+	 *   accent strip : slim per-type gradient at the very top of the dialog
+	 *   sticky header: `title` (+ optional `statusHint`) + a × close control
+	 *   scroll body  : `{@render fields()}` — the per-tab fields
+	 *   sticky footer: unified — a single Speichern button reflecting `submitLabel`,
+	 *                  disabled unless `dirty` (and not `submitting`). NO Verwerfen.
+	 *
+	 * D1: portals to document.body via bits-ui <Portal> so the modal escapes
+	 * AdminShell's stacking context. Backdrop z-[60] covers Topbar(z-30) and
+	 * MobileTabBar(z-40); dialog z-[70] sits above the backdrop.
 	 *
 	 * UX-02: the × (and the backdrop) call `onClose`, which the tab wires to navigate
 	 * to the parent list — behaviorally identical to browser-back. The SAME
@@ -58,6 +69,7 @@
 	 */
 	import { beforeNavigate } from '$app/navigation';
 	import { focusTrap } from '$lib/actions/focus-trap.js';
+	import { Portal } from 'bits-ui';
 
 	let {
 		title,
@@ -69,7 +81,17 @@
 		dirty,
 		fields,
 		onClose,
+		accent = 'ausgabe',
 	}: EntryFormShellProps = $props();
+
+	// Accent strip CSS class derived from prop (no hardcoded hex — Aurora token).
+	const accentClass = $derived(
+		accent === 'einnahme'
+			? 'bg-type-einnahme'
+			: accent === 'spende'
+				? 'bg-type-spende'
+				: 'bg-type-ausgabe',
+	);
 
 	// ── beforeNavigate dirty-guard (P1-B1 convention) ─────────────────────────
 	// Fires on EVERY navigation away (× → onClose → goto AND browser-back) while
@@ -93,91 +115,105 @@
 	});
 </script>
 
-<!-- Backdrop — clicking it exits via the same onClose path as the × (UX-02). -->
-<div
-	class="fixed inset-0 z-40 bg-black/40"
-	data-slot="entry-backdrop"
-	onclick={onClose}
-	role="presentation"
-></div>
-
 <!--
-	Escape lives on the dialog (which contains the focusable content), NOT the
-	backdrop — the backdrop is a sibling, so a keydown while focus is inside the
-	dialog never bubbles to it. Escape → onClose → same beforeNavigate dirty-guard
-	as the × and browser-back (UX-02).
+	D1: Portal to document.body so the modal escapes AdminShell's stacking context.
+	Backdrop z-[60] covers Topbar(z-30) + MobileTabBar(z-40).
+	Dialog z-[70] sits above the backdrop.
 -->
-<div
-	class="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[92dvh] w-full max-w-2xl flex-col rounded-t-xl border border-border bg-background shadow-xl sm:inset-y-8 sm:rounded-xl"
-	data-slot="entry-form-shell"
-	role="dialog"
-	aria-modal="true"
-	aria-labelledby="entry-form-title"
-	tabindex="-1"
-	use:focusTrap
-	onkeydown={(e) => {
-		if (e.key === 'Escape') {
-			e.preventDefault();
-			onClose();
-		}
-	}}
->
-	<!-- ── Sticky header ──────────────────────────────────────────────────── -->
-	<header
-		data-slot="entry-header"
-		class="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-border bg-background px-5 py-4"
-	>
-		<div class="min-w-0">
-			<h2 id="entry-form-title" class="truncate text-lg font-semibold text-foreground">{title}</h2>
-			{#if statusHint}
-				<p class="mt-0.5 truncate text-sm text-muted-foreground">{statusHint}</p>
-			{/if}
-		</div>
-		<button
-			type="button"
-			onclick={onClose}
-			aria-label="Schließen"
-			class="inline-flex size-9 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-		>
-			<span aria-hidden="true" class="text-xl leading-none">×</span>
-		</button>
-	</header>
+<Portal>
+	<!-- Backdrop — clicking it exits via the same onClose path as the × (UX-02). -->
+	<div
+		class="fixed inset-0 z-[60] bg-black/40"
+		data-slot="entry-backdrop"
+		onclick={onClose}
+		role="presentation"
+	></div>
 
-	<!-- ── Scrollable body: per-tab fields ────────────────────────────────── -->
 	<!--
-		Double-submit guard (robust, no onMount listener): flip `submitting` on the
-		native `submit` event so the Speichern button below disables in the SAME tick
-		the POST begins (`disabled={!dirty || submitting}`). A second Enter/click can't
-		re-fire the submit. We do NOT preventDefault — the native POST proceeds. The
-		page binds `submitting`, so its beforeNavigate dirty-guard also skips on the
-		successful create-redirect.
+		Escape lives on the dialog (which contains the focusable content), NOT the
+		backdrop — the backdrop is a sibling, so a keydown while focus is inside the
+		dialog never bubbles to it. Escape → onClose → same beforeNavigate dirty-guard
+		as the × and browser-back (UX-02).
 	-->
-	<form
-		id="entry-form"
-		method="POST"
-		{action}
-		{enctype}
-		class="flex min-h-0 flex-1 flex-col"
-		onsubmit={() => {
-			submitting = true;
+	<div
+		class="fixed inset-x-0 bottom-0 z-[70] mx-auto flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-hairline bg-background shadow-glow-brand-soft sm:inset-y-8 sm:rounded-2xl"
+		data-slot="entry-form-shell"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="entry-form-title"
+		tabindex="-1"
+		use:focusTrap
+		onkeydown={(e) => {
+			if (e.key === 'Escape') {
+				e.preventDefault();
+				onClose();
+			}
 		}}
 	>
-		<div data-slot="entry-body" class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-			{@render fields()}
-		</div>
+		<!-- ── Per-type accent strip (D1: slim gradient at top) ───────────────── -->
+		<div
+			data-slot="entry-accent"
+			class="h-1 w-full shrink-0 {accentClass}"
+			aria-hidden="true"
+		></div>
 
-		<!-- ── Unified sticky footer: Speichern only (no Verwerfen) ──────────── -->
-		<footer
-			data-slot="entry-footer"
-			class="sticky bottom-0 z-10 flex items-center justify-end gap-3 border-t border-border bg-background px-5 pt-4 pb-[max(env(safe-area-inset-bottom),1rem)]"
+		<!-- ── Sticky header ──────────────────────────────────────────────────── -->
+		<header
+			data-slot="entry-header"
+			class="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-hairline bg-background px-5 py-4"
 		>
+			<div class="min-w-0">
+				<h2 id="entry-form-title" class="truncate text-lg font-semibold text-foreground">{title}</h2>
+				{#if statusHint}
+					<p class="mt-0.5 truncate text-sm text-muted-foreground">{statusHint}</p>
+				{/if}
+			</div>
 			<button
-				type="submit"
-				disabled={!dirty || submitting}
-				class="inline-flex h-11 min-h-11 items-center justify-center rounded-md bg-primary-strong px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-strong/90 disabled:cursor-not-allowed disabled:opacity-50"
+				type="button"
+				onclick={onClose}
+				aria-label="Schließen"
+				class="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
 			>
-				{submitLabel}
+				<span aria-hidden="true" class="text-xl leading-none">×</span>
 			</button>
-		</footer>
-	</form>
-</div>
+		</header>
+
+		<!-- ── Scrollable body: per-tab fields ────────────────────────────────── -->
+		<!--
+			Double-submit guard (robust, no onMount listener): flip `submitting` on the
+			native `submit` event so the Speichern button below disables in the SAME tick
+			the POST begins (`disabled={!dirty || submitting}`). A second Enter/click can't
+			re-fire the submit. We do NOT preventDefault — the native POST proceeds. The
+			page binds `submitting`, so its beforeNavigate dirty-guard also skips on the
+			successful create-redirect.
+		-->
+		<form
+			id="entry-form"
+			method="POST"
+			{action}
+			{enctype}
+			class="flex min-h-0 flex-1 flex-col"
+			onsubmit={() => {
+				submitting = true;
+			}}
+		>
+			<div data-slot="entry-body" class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+				{@render fields()}
+			</div>
+
+			<!-- ── Unified sticky footer: Speichern only (no Verwerfen) ──────────── -->
+			<footer
+				data-slot="entry-footer"
+				class="sticky bottom-0 z-10 flex items-center justify-end gap-3 border-t border-hairline bg-background px-5 pt-4 pb-[max(env(safe-area-inset-bottom),1rem)]"
+			>
+				<button
+					type="submit"
+					disabled={!dirty || submitting}
+					class="inline-flex h-11 min-h-11 items-center justify-center rounded-md bg-primary-strong px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-strong/90 disabled:cursor-not-allowed disabled:opacity-50"
+				>
+					{submitLabel}
+				</button>
+			</footer>
+		</form>
+	</div>
+</Portal>
