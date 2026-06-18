@@ -136,7 +136,7 @@
 		as the × and browser-back (UX-02).
 	-->
 	<div
-		class="fixed inset-x-0 bottom-0 z-[70] mx-auto flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-hairline bg-background shadow-glow-brand-soft sm:inset-y-8 sm:rounded-2xl"
+		class="fixed inset-x-0 bottom-0 z-[70] mx-auto flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-hairline bg-background shadow-card sm:inset-y-8 sm:rounded-2xl"
 		data-slot="entry-form-shell"
 		role="dialog"
 		aria-modal="true"
@@ -172,7 +172,7 @@
 				type="button"
 				onclick={onClose}
 				aria-label="Schließen"
-				class="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+				class="inline-flex size-9 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
 			>
 				<span aria-hidden="true" class="text-xl leading-none">×</span>
 			</button>
