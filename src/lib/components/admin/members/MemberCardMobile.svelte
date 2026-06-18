@@ -1,18 +1,19 @@
 <!--
   MemberCardMobile — compact card variant of MemberRow for use below the md
-  breakpoint (PM-009). The desktop row hides year beitrag chips already at
-  sm; on a 390px screen we want a dedicated card that:
+  breakpoint (PM-009). Package D: uses resolveBeitragState + BeitragStatusPill
+  (single canonical resolver) instead of the old simpleBeitragStatus inline.
 
-  - shows a single "Beitrag YYYY" summary instead of N year chips
+  - shows a single BeitragStatusPill for the current Buchungsjahr
   - card body is a tap-target → /app/mitglieder/{id}
-  - open (unpaid, non-exempt) rows get a trailing ≥44px "Bezahlt" affordance
-    that opens the SAME MarkPaidControl flow the matrix/list use (bottom-sheet
-    on mobile) — previously the only way to mark paid on a phone was to drill
-    into the detail page (members-list-no-pay-action finding).
+  - open/partial (unpaid) rows get a trailing ≥44px pay affordance that opens
+    MarkPaidControl (bottom-sheet on mobile).
 -->
 <script lang="ts">
 	import type { MemberView } from '$lib/domain/members.js';
-	import { currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
+	import { currentBuchungsjahr, clampYearToAvailable, berlinYear } from '$lib/domain/year.js';
+	import { resolveBeitragState, projectForList } from '$lib/domain/beitrag-state.js';
+	import type { CellState } from '$lib/domain/beitrag-cell.js';
+	import BeitragStatusPill from './BeitragStatusPill.svelte';
 	import MarkPaidControl from './MarkPaidControl.svelte';
 
 	let {
@@ -55,60 +56,64 @@
 		return (vorname.charAt(0) ?? '') + (nachname.charAt(0) ?? '');
 	}
 
-	// Badge year = the actual current Buchungsjahr (ADR-0001 — never
-	// new Date().getFullYear()), clamped into the supplied window so the badge
-	// always references a year we have data for. Previously this used
-	// Math.max(...years), which surfaced the FUTURE edge of the ±1 window
-	// (anchorYear+1) rather than the year the treasurer actually cares about
-	// (mobile-badge-max-year-not-current finding).
+	// Package D: badge year = the actual current Buchungsjahr (ADR-0001),
+	// clamped into the supplied window.
 	const currentYear = $derived(
 		years.length > 0 ? clampYearToAvailable(currentBuchungsjahr(), years) : null,
 	);
-	const currentBeitrag = $derived(currentYear !== null ? member.beitrags[currentYear] : null);
 
-	// Package A: beitragStatusFor removed; inline cents check until Package D
-	// migrates this component to resolveBeitragState.
-	function simpleBeitragStatus(b: { betragCents: number; paidCents: number }): 'paid' | 'open' | 'waived' {
-		const betrag = BigInt(b.betragCents);
-		const paid = BigInt(b.paidCents);
-		if (betrag === 0n) return 'waived';
-		if (paid >= betrag) return 'paid';
-		return 'open';
-	}
-
-	const currentStatus = $derived(
-		currentBeitrag ? simpleBeitragStatus(currentBeitrag) : 'open',
+	const eintrittsJahr = $derived(
+		member.eintrittsDatum ? Number(member.eintrittsDatum.slice(0, 4)) : berlinYear(),
 	);
-	const statusLabel: Record<string, string> = {
-		paid: 'Bezahlt',
-		open: 'Offen',
-		waived: 'Erlassen',
-	};
-	const statusColor: Record<string, string> = {
-		paid: 'bg-green-50 text-green-700',
-		open: 'bg-amber-50 text-amber-700',
-		waived: 'bg-muted text-muted-foreground',
-	};
+	const austrittsJahr = $derived(
+		member.austrittsDatum ? Number(member.austrittsDatum.slice(0, 4)) : null,
+	);
 
-	// Show the mark-paid affordance only for an open year on a non-exempt,
-	// active member — mirrors the matrix's "open/overdue cell only" rule.
+	// Canonical resolver — single source of truth (Package D).
+	const currentYearState = $derived.by(() => {
+		if (currentYear === null) return null;
+		const row = member.beitrags[currentYear] ?? null;
+		return resolveBeitragState({
+			year: currentYear,
+			eintrittsJahr: eintrittsJahr,
+			austrittsJahr: austrittsJahr,
+			beitragExempt: member.beitragExempt,
+			row: row
+				? {
+						betragCents: row.betragCents,
+						paidCents: row.paidCents,
+						isExempt: false,
+						gezahltAm: row.gezahltAm,
+					}
+				: null,
+			satzCents: satzByYear[currentYear] ?? null,
+			festBis: null,
+		});
+	});
+
+	// Projected state: overdue→open for list display
+	const displayState = $derived<CellState | null>(
+		currentYearState !== null ? projectForList(currentYearState.state) : null,
+	);
+
+	// Show pay trigger only for open or partial, non-exempt, active members.
 	const canMarkPaid = $derived(
 		currentYear !== null &&
-			currentStatus === 'open' &&
+			displayState !== null &&
+			(displayState === 'open' || displayState === 'partial') &&
 			!member.beitragExempt &&
 			!member.austrittsDatum,
 	);
-	// Seed betrag for the popover: the row's recorded amount if present, else the
-	// configured Beitragssatz for the year so the confirm heading matches what the
-	// server books (never a misleading "0,00 €" when no row exists yet).
+
+	// Seed betrag for the popover: the row's recorded amount if present, else satz.
 	const currentBetragCents = $derived(
-		currentBeitrag?.betragCents ?? (currentYear !== null ? (satzByYear[currentYear] ?? 0) : 0),
+		currentYearState?.betragCents ?? 0,
 	);
 </script>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -->
 <!--
-  The card body is a link to the detail page; the trailing "Bezahlt" button is
+  The card body is a link to the detail page; the trailing "pay" button is
   a SIBLING (not nested) so we never put an interactive control inside an <a>.
 -->
 <div
@@ -136,28 +141,23 @@
 			{#if member.austrittsDatum}
 				<p class="text-xs text-destructive">(ausgetreten)</p>
 			{/if}
-			{#if member.beitragExempt}
-				<span
-					class="mt-1 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-900 dark:bg-amber-900 dark:text-amber-100"
-					title={member.beitragExemptReason ?? ''}
-					data-testid="member-card-befreit-badge"
-				>befreit</span>
-			{/if}
 		</div>
 
-		{#if currentYear !== null}
-			<span
-				class={[
-					'inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium',
-					statusColor[currentStatus],
-				].join(' ')}
-				aria-label="Beitrag {currentYear}: {statusLabel[currentStatus]}"
-			>
-				{currentYear} · {statusLabel[currentStatus]}
-			</span>
+		<!-- Single BeitragStatusPill for the current year (Package D). -->
+		{#if currentYear !== null && currentYearState !== null && displayState !== null}
+			<BeitragStatusPill
+				state={displayState}
+				year={currentYear}
+				paidCents={currentYearState.paidCents}
+				betragCents={currentYearState.betragCents}
+				compact
+				exemptReason={member.beitragExemptReason}
+			/>
 		{/if}
 	</a>
 
+	<!-- One-tap pay affordance (open/partial only). MarkPaidControl renders a
+	     bottom Sheet on mobile (< sm). Not nested inside the <a>. -->
 	{#if canMarkPaid && currentYear !== null}
 		<MarkPaidControl
 			memberId={member.id}
@@ -171,8 +171,8 @@
 					{...props}
 					type="button"
 					data-testid="member-card-pay"
-					aria-label="Beitrag {currentYear} als bezahlt markieren für {member.vorname} {member.nachname}"
-					class="flex h-11 min-h-11 w-11 shrink-0 items-center justify-center rounded-full border border-green-300 bg-green-50 text-green-700 transition-colors hover:bg-green-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:border-green-800 dark:bg-green-950/40 dark:text-green-300"
+					aria-label="Beitrag {currentYear} erfassen für {member.vorname} {member.nachname}"
+					class="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/8 text-primary-text transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 				>
 					<svg
 						class="h-5 w-5"
@@ -182,7 +182,7 @@
 						stroke-width="2.5"
 						aria-hidden="true"
 					>
-						<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+						<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
 					</svg>
 				</button>
 			{/snippet}
