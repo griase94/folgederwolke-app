@@ -56,6 +56,7 @@ const MOCK_BEITRAGS_ROW = {
   open_count: "3",
   open_cents: "12000",
   overdue_count: "1",
+  exempt_count: "1",
   last_payment: "2026-03-15",
   prior_years_unpaid: "0",
 };
@@ -148,6 +149,7 @@ describe("@phase-6 dashboard +page.server load() — PR1 characterisation", () =
       openMemberCount: 3,
       offenCents: 12000,
       overdueCount: 1,
+      exemptMemberCount: 1,
       lastPaymentDate: "2026-03-15",
       priorYearsUnpaidCount: 0,
     });
