@@ -30,6 +30,7 @@ import { bus } from "$lib/server/events/index.js";
 import { berlinYmd } from "$lib/domain/year.js";
 import { requireAdmin } from "$lib/server/domain/require-role.js";
 import { findBeitragssatz } from "$lib/server/domain/beitragssatz.js";
+import { resolveBeitragState } from "$lib/domain/beitrag-state.js";
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -674,4 +675,140 @@ export async function setBeitragExempt(args: {
   });
 
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// checkReminderAllowed — false-debt guard for ?/send-reminder (both routes)
+// ---------------------------------------------------------------------------
+
+/**
+ * Result type for the false-debt reminder guard.
+ * Routes call this before sending mail: if allowed=false, fail(status, error).
+ */
+export type CheckReminderAllowedResult =
+  | { allowed: true; member: typeof members.$inferSelect; betragCents: number }
+  | { allowed: false; status: number; error: string };
+
+/**
+ * CARDINAL RULE: no surface may assert a debt that doesn't exist.
+ *
+ * Resolves the canonical beitrag state for (memberId, year) and refuses
+ * with 422 when the member owes nothing:
+ *   - not_applicable_pre_join / not_applicable_post_austritt / permanently_exempt / exempt → 422
+ *   - paid (paidCents >= betragCents) → 422
+ *   - open / partial / overdue → allowed (reminder is appropriate)
+ *   - member not found → 404
+ *
+ * Replaces the previous VEREIN_BEITRAG_DEFAULT_CENTS fabrication that invented
+ * a debt for settled years. The default Satz is still used to derive betragCents
+ * for genuinely-open no-row years — it is ONLY removed from the path that
+ * constructs a reminder for an already-paid year.
+ *
+ * Package B — member-zahlung redesign.
+ */
+export async function checkReminderAllowed(args: {
+  memberId: string;
+  year: number;
+}): Promise<CheckReminderAllowedResult> {
+  const { memberId, year } = args;
+  const db = getDb();
+
+  // Fetch member
+  const [member] = await db
+    .select()
+    .from(members)
+    .where(eq(members.id, memberId))
+    .limit(1);
+
+  if (!member) {
+    return { allowed: false, status: 404, error: "Mitglied nicht gefunden" };
+  }
+
+  // Fetch beitrag row (may be null for no-row members)
+  const [beitragRow] = await db
+    .select()
+    .from(memberBeitrags)
+    .where(
+      and(eq(memberBeitrags.memberId, memberId), eq(memberBeitrags.year, year)),
+    )
+    .limit(1);
+
+  // Fetch satz for this year (may be null — no-satz no-row is open with hint)
+  const satzBigint = await findBeitragssatz(year);
+  const satzCents = satzBigint !== null ? Number(satzBigint) : null;
+
+  // Parse eintrittsJahr + austrittsJahr from stored date strings (YYYY-MM-DD)
+  const eintrittsJahr = parseInt(
+    (member.eintrittsDatum ?? `${year}-01-01`).slice(0, 4),
+    10,
+  );
+  const austrittsJahr =
+    member.austrittsDatum != null
+      ? parseInt(member.austrittsDatum.slice(0, 4), 10)
+      : null;
+
+  // Fetch festgeschrieben_bis for the resolver
+  const festBis = await fetchFestgeschriebenBis();
+
+  // Build the BeitragRow shape for the resolver
+  const row = beitragRow
+    ? {
+        betragCents: Number(beitragRow.betragCents),
+        paidCents: Number(beitragRow.paidCents),
+        isExempt: beitragRow.isExempt ?? false,
+        gezahltAm: beitragRow.gezahltAm ?? null,
+      }
+    : null;
+
+  const resolved = resolveBeitragState({
+    year,
+    eintrittsJahr,
+    austrittsJahr,
+    beitragExempt: member.beitragExempt ?? false,
+    row,
+    satzCents,
+    festBis,
+  });
+
+  // States that mean "owes nothing" → refuse the reminder
+  const owesNothing = (
+    [
+      "paid",
+      "permanently_exempt",
+      "exempt",
+      "not_applicable_pre_join",
+      "not_applicable_post_austritt",
+    ] as const
+  ).includes(
+    resolved.state as
+      | "paid"
+      | "permanently_exempt"
+      | "exempt"
+      | "not_applicable_pre_join"
+      | "not_applicable_post_austritt",
+  );
+
+  if (owesNothing) {
+    const stateMessages: Record<string, string> = {
+      paid: `Mitglied hat den Beitrag ${year} bereits bezahlt`,
+      permanently_exempt:
+        "Mitglied ist dauerhaft von der Beitragspflicht befreit",
+      exempt: `Mitglied ist für ${year} von der Beitragspflicht befreit`,
+      not_applicable_pre_join: `Mitglied war ${year} noch nicht im Verein`,
+      not_applicable_post_austritt: `Mitglied ist ${year} bereits ausgetreten`,
+    };
+    return {
+      allowed: false,
+      status: 422,
+      error:
+        stateMessages[resolved.state] ??
+        "Mitglied schuldet für dieses Jahr nichts",
+    };
+  }
+
+  return {
+    allowed: true,
+    member,
+    betragCents: resolved.betragCents,
+  };
 }
