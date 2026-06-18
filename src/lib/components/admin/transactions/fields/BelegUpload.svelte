@@ -10,12 +10,18 @@
 	 * an amber "Verzicht ist die dokumentierte Ausnahme" note.
 	 *
 	 * Form field names are FIXED (server gate reads them verbatim):
-	 *   beleg         — file input(s)
+	 *   beleg         — file input
 	 *   keinBeleg     — checkbox
 	 *   begruendung   — Begründung textarea
 	 *
 	 * `optional` prop: when true (Einnahme/Spende), suppresses the keinBeleg toggle
 	 * and the required asterisk. `name`/`label` props allow Sachspende reuse.
+	 *
+	 * Single-input design: one hidden <input type="file"> carries name=beleg.
+	 * "Foto aufnehmen" temporarily sets capture="environment" before .click();
+	 * "Datei wählen" removes it before .click(). Drag-drop syncs the dropped
+	 * File into that same input via DataTransfer so exactly one non-empty beleg
+	 * part ever reaches the server (fixes the dual-input silent-fail + drop bug).
 	 */
 	interface Props {
 		/** Override the file input name (defaults to 'beleg'). */
@@ -51,8 +57,7 @@
 	// Drag-over highlight state
 	let dragOver = $state(false);
 
-	// Hidden file input refs (one for camera, one for file picker)
-	let cameraInputEl: HTMLInputElement | undefined = $state();
+	// Single hidden file input — the only beleg field submitted with the form.
 	let fileInputEl: HTMLInputElement | undefined = $state();
 
 	function handleFiles(files: FileList | null) {
@@ -77,8 +82,19 @@
 		if (previewUrl) URL.revokeObjectURL(previewUrl);
 		previewUrl = null;
 		previewName = null;
-		if (cameraInputEl) cameraInputEl.value = '';
 		if (fileInputEl) fileInputEl.value = '';
+	}
+
+	function openCamera() {
+		if (!fileInputEl) return;
+		fileInputEl.setAttribute('capture', 'environment');
+		fileInputEl.click();
+	}
+
+	function openFilePicker() {
+		if (!fileInputEl) return;
+		fileInputEl.removeAttribute('capture');
+		fileInputEl.click();
 	}
 
 	function onDragOver(e: DragEvent) {
@@ -93,9 +109,16 @@
 	function onDrop(e: DragEvent) {
 		e.preventDefault();
 		dragOver = false;
-		handleFiles(e.dataTransfer?.files ?? null);
-		// Sync the dropped file into the file input
-		// (Cannot assign FileList to input directly — server reads multipart)
+		const files = e.dataTransfer?.files ?? null;
+		if (!files || files.length === 0) return;
+		// Sync the dropped file into the real file input so the form submits it.
+		// DataTransfer assignment to input.files is supported in all target browsers.
+		if (fileInputEl) {
+			const dt = new DataTransfer();
+			dt.items.add(files[0]!);
+			fileInputEl.files = dt.files;
+		}
+		handleFiles(files);
 	}
 </script>
 
@@ -149,7 +172,7 @@
 					<!-- Foto aufnehmen (camera capture — mobile primary action) -->
 					<button
 						type="button"
-						onclick={() => cameraInputEl?.click()}
+						onclick={openCamera}
 						class="inline-flex h-9 items-center gap-1.5 rounded-[10px] border border-hairline bg-white px-3 text-sm font-medium text-ink-700 shadow-sm hover:bg-muted/50 active:scale-95"
 					>
 						<span aria-hidden="true">📷</span>
@@ -158,7 +181,7 @@
 					<!-- Datei wählen -->
 					<button
 						type="button"
-						onclick={() => fileInputEl?.click()}
+						onclick={openFilePicker}
 						class="inline-flex h-9 items-center gap-1.5 rounded-[10px] border border-hairline bg-white px-3 text-sm font-medium text-ink-700 shadow-sm hover:bg-muted/50 active:scale-95"
 					>
 						Datei wählen
@@ -167,18 +190,10 @@
 			{/if}
 		</div>
 
-		<!-- Hidden file inputs (mounted always so form picks them up; both carry name=beleg) -->
-		<input
-			bind:this={cameraInputEl}
-			type="file"
-			{name}
-			{accept}
-			capture="environment"
-			onchange={onFileChange}
-			class="hidden"
-			aria-hidden="true"
-			tabindex="-1"
-		/>
+		<!-- Single hidden file input — the canonical beleg form field.
+		     openCamera() sets capture="environment" before .click();
+		     openFilePicker() removes it before .click().
+		     Drag-drop syncs via DataTransfer (see onDrop above). -->
 		<input
 			bind:this={fileInputEl}
 			type="file"

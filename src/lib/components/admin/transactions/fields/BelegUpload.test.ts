@@ -18,12 +18,10 @@ describe("BelegUpload (Aurora dropzone)", () => {
 
   it("uses the fixed form field names beleg / keinBeleg / begruendung", () => {
     const { container } = render(BelegUpload, { props: {} });
-    // Main file inputs carry name="beleg" (one for camera, one for file picker)
+    // Single file input carries name="beleg" (single-input design — see component comment)
     const fileInputs = container.querySelectorAll('input[type="file"]');
-    expect(fileInputs.length).toBeGreaterThanOrEqual(1);
-    fileInputs.forEach((input) => {
-      expect((input as HTMLInputElement).name).toBe("beleg");
-    });
+    expect(fileInputs.length).toBe(1);
+    expect((fileInputs[0] as HTMLInputElement).name).toBe("beleg");
     // keinBeleg checkbox
     const keinBelegCb = container.querySelector(
       'input[type="checkbox"][name="keinBeleg"]',
@@ -54,13 +52,15 @@ describe("BelegUpload (Aurora dropzone)", () => {
     expect(screen.queryByLabelText(/Begründung/i)).toBeNull();
   });
 
-  it("renders the 'Foto aufnehmen' button (capture=environment) by default", () => {
+  it("renders the 'Foto aufnehmen' button (single input, capture set dynamically)", () => {
     const { container } = render(BelegUpload, { props: {} });
-    // Camera input has capture attribute
-    const cameraInput = container.querySelector(
-      'input[type="file"][capture="environment"]',
-    );
-    expect(cameraInput).toBeTruthy();
+    // Single file input exists (capture="environment" is set dynamically on click,
+    // not as a static attribute, so that exactly one non-empty beleg part reaches
+    // the server regardless of which button was used).
+    const fileInput = container.querySelector('input[type="file"]');
+    expect(fileInput).toBeTruthy();
+    // The "Foto aufnehmen" button is present in the DOM
+    expect(screen.getByText(/Foto aufnehmen/i)).toBeTruthy();
   });
 
   // ── kein-Beleg path ─────────────────────────────────────────────────────
