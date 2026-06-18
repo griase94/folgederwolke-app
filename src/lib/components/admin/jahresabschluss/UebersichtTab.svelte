@@ -53,7 +53,7 @@
 <!-- Quick-action row: PDF + CSV directly under header (UI-002 fix) -->
 <div
 	data-testid="uebersicht-quick-actions"
-	class="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-5 py-4 shadow-sm"
+	class="mb-6 flex flex-col gap-3 rounded-xl border border-border bg-card px-5 py-4 shadow-sm md:flex-row md:flex-wrap md:items-center"
 >
 	<div class="flex-1 min-w-0">
 		<h2 class="text-sm font-semibold text-foreground">Schnell-Aktionen</h2>
@@ -61,12 +61,12 @@
 			Prüfungs-relevante Ausgabe für Steuerberater und Vorstand.
 		</p>
 	</div>
-	<div class="flex flex-wrap gap-2">
+	<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
 		<Button
 			href={`/app/jahresabschluss/${data.year}/eur.pdf`}
 			data-testid="quick-action-pdf"
 			variant="default"
-			class="bg-primary-strong text-primary-foreground hover:bg-primary-strong/90"
+			class="w-full bg-primary-strong text-primary-foreground hover:bg-primary-strong/90 sm:w-auto"
 		>
 			PDF drucken (EÜR)
 		</Button>
@@ -74,6 +74,7 @@
 			href={`/app/jahresabschluss/${data.year}/transactions.csv`}
 			data-testid="quick-action-csv"
 			variant="outline"
+			class="w-full sm:w-auto"
 		>
 			CSV exportieren
 		</Button>

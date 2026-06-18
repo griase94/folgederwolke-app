@@ -49,6 +49,17 @@
 	const paidPct = $derived(total === 0 ? 0 : (beitraege.paidMemberCount / total) * 100);
 	const overduePct = $derived(total === 0 ? 0 : (beitraege.overdueCount / total) * 100);
 
+	// "Nothing materialized" — no member_beitrags rows exist for this year, so
+	// every aggregate is zero. Distinct from "all paid" (which has paidCents > 0)
+	// and from "all open" (offenCents > 0). Showing "0/N bezahlt · 0,00 offen"
+	// here reads like a debt that doesn't exist, so we render a CTA instead.
+	const noBeitraege = $derived(
+		beitraege.paidMemberCount === 0 &&
+			beitraege.overdueCount === 0 &&
+			beitraege.paidCents === 0 &&
+			beitraege.offenCents === 0
+	);
+
 	const wgbPct = $derived(
 		Math.min((wgb.einnahmenCents / wgb.freigrenzeCents) * 100, 100)
 	);
@@ -80,35 +91,52 @@
 				<span class="text-xs text-ink-500" data-testid="lage-heute-label">Heute</span>
 			{/if}
 		</div>
-		<p class="mt-2 text-sm font-medium text-ink-900">
-			{beitraege.paidMemberCount}/{total} bezahlt{#if beitraege.exemptMemberCount > 0}<span
-					class="font-normal text-ink-500"
-				>
-					· {beitraege.exemptMemberCount} befreit</span
-				>{/if}
-		</p>
-		<div
-			class="mt-2 flex h-2 overflow-hidden rounded-full bg-dataviz-track"
-			role="img"
-			aria-label={`${beitraege.paidMemberCount} von ${total} Beiträgen bezahlt, ${beitraege.overdueCount} überfällig${beitraege.exemptMemberCount > 0 ? `, ${beitraege.exemptMemberCount} befreit` : ''}`}
-		>
-			<div class="bg-dataviz-paid" style={`width:${paidPct}%`}></div>
-			<div class="bg-severity-warn" style={`width:${overduePct}%`}></div>
-		</div>
-		<div class="mt-1.5 flex items-center gap-3 text-xs text-ink-500">
-			<span class="inline-flex items-center gap-1">
-				<span class="size-1.5 rounded-full bg-dataviz-paid" aria-hidden="true"></span> bezahlt
-			</span>
-			<span class="inline-flex items-center gap-1">
-				<span class="size-1.5 rounded-full bg-severity-warn" aria-hidden="true"></span> überfällig
-			</span>
-			<span class="inline-flex items-center gap-1">
-				<span class="size-1.5 rounded-full bg-dataviz-track" aria-hidden="true"></span> offen
-			</span>
-		</div>
-		<p class="mt-1.5 text-sm tabular-nums text-ink-700" data-testid="lage-beitraege-sums">
-			{formatMoney(beitraege.paidCents)} eingegangen · {formatMoney(beitraege.offenCents)} offen
-		</p>
+		{#if noBeitraege}
+			<!-- No member_beitrags rows for this year — friendly CTA instead of a
+			     misleading "0 bezahlt / 0,00 offen" debt-like read. -->
+			<p class="mt-2 text-sm text-ink-700" data-testid="lage-beitraege-empty">
+				Noch keine Beiträge für {beitraege.year} erfasst.
+			</p>
+			<!-- eslint-disable svelte/no-navigation-without-resolve -->
+			<a
+				href="/app/einstellungen/beitraege"
+				class="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				data-testid="lage-beitraege-cta"
+			>
+				Beiträge einrichten →
+			</a>
+			<!-- eslint-enable svelte/no-navigation-without-resolve -->
+		{:else}
+			<p class="mt-2 text-sm font-medium text-ink-900">
+				{beitraege.paidMemberCount}/{total} bezahlt{#if beitraege.exemptMemberCount > 0}<span
+						class="font-normal text-ink-500"
+					>
+						· {beitraege.exemptMemberCount} befreit</span
+					>{/if}
+			</p>
+			<div
+				class="mt-2 flex h-2 overflow-hidden rounded-full bg-dataviz-track"
+				role="img"
+				aria-label={`${beitraege.paidMemberCount} von ${total} Beiträgen bezahlt, ${beitraege.overdueCount} überfällig${beitraege.exemptMemberCount > 0 ? `, ${beitraege.exemptMemberCount} befreit` : ''}`}
+			>
+				<div class="bg-dataviz-paid" style={`width:${paidPct}%`}></div>
+				<div class="bg-severity-warn" style={`width:${overduePct}%`}></div>
+			</div>
+			<div class="mt-1.5 flex items-center gap-3 text-xs text-ink-500">
+				<span class="inline-flex items-center gap-1">
+					<span class="size-1.5 rounded-full bg-dataviz-paid" aria-hidden="true"></span> bezahlt
+				</span>
+				<span class="inline-flex items-center gap-1">
+					<span class="size-1.5 rounded-full bg-severity-warn" aria-hidden="true"></span> überfällig
+				</span>
+				<span class="inline-flex items-center gap-1">
+					<span class="size-1.5 rounded-full bg-dataviz-track" aria-hidden="true"></span> offen
+				</span>
+			</div>
+			<p class="mt-1.5 text-sm tabular-nums text-ink-700" data-testid="lage-beitraege-sums">
+				{formatMoney(beitraege.paidCents)} eingegangen · {formatMoney(beitraege.offenCents)} offen
+			</p>
+		{/if}
 	</div>
 
 	<hr class="my-4 border-(--hairline)" />

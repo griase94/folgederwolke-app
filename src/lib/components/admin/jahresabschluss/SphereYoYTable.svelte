@@ -120,10 +120,10 @@
 							</div>
 						</td>
 						<td class="px-3 py-3 text-right tabular-nums text-foreground">
-							<Money valueInCents={r.einnahmenCents} />
+							{formatMoney(r.einnahmenCents)}
 						</td>
 						<td class="px-3 py-3 text-right tabular-nums text-foreground">
-							<Money valueInCents={r.ausgabenCents} />
+							{formatMoney(r.ausgabenCents)}
 						</td>
 						<td
 							class="px-3 py-3 text-right tabular-nums font-medium"
@@ -149,10 +149,10 @@
 				<tr class="border-t-2 border-border bg-muted/40">
 					<td class="px-5 py-3.5 font-bold text-foreground">Gesamt</td>
 					<td class="px-3 py-3.5 text-right tabular-nums font-bold text-foreground">
-						<Money valueInCents={totalEinnahmenCents} />
+						{formatMoney(totalEinnahmenCents)}
 					</td>
 					<td class="px-3 py-3.5 text-right tabular-nums font-bold text-foreground">
-						<Money valueInCents={totalAusgabenCents} />
+						{formatMoney(totalAusgabenCents)}
 					</td>
 					<td
 						class="px-3 py-3.5 text-right tabular-nums font-bold"

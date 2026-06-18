@@ -61,7 +61,7 @@
 	aria-label={a11yName}
 	data-testid="task-row"
 	data-rail={railKind}
-	class="group grid h-13 grid-cols-[3px_26px_minmax(0,1fr)_auto_auto] items-center gap-x-2.5 rounded-[10px] px-1 hover:bg-(--surface-glass) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:h-11"
+	class="group grid min-h-13 grid-cols-[3px_26px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1 rounded-[10px] px-1 py-1.5 hover:bg-(--surface-glass) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:h-11 md:grid-cols-[3px_26px_minmax(0,1fr)_auto_auto] md:py-0"
 >
 	<span aria-hidden="true" class={'h-7 w-[3px] rounded-full ' + railClass}></span>
 	<span class="flex size-[26px] items-center justify-center" aria-hidden="true">
@@ -69,7 +69,10 @@
 	</span>
 	<span class={'truncate text-[15px] font-medium md:text-sm ' + titleClass}>{title}</span>
 	<span class="pl-3 text-right text-sm font-medium tabular-nums text-ink-700">{amountLabel}</span>
-	<span class="ml-3 flex w-36 items-center justify-end" data-testid="task-cta-slot">
+	<span
+		class="col-start-3 col-end-[-1] flex items-center justify-start md:col-auto md:ml-3 md:w-36 md:justify-end"
+		data-testid="task-cta-slot"
+	>
 		{#if railKind === 'critical'}
 			<span
 				data-testid="task-cta"

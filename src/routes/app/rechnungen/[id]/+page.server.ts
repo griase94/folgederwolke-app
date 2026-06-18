@@ -32,6 +32,7 @@ import { auditLog } from "$lib/server/db/schema/audit_log.js";
 import { users } from "$lib/server/db/schema/users.js";
 import {
   markInvoiceAsPaid,
+  retryInvoicePdf,
   supersedeInvoice,
   undoPayment,
 } from "$lib/server/domain/invoices.js";
@@ -134,6 +135,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
     customerAddressSnapshot: inv.customerAddressSnapshot ?? null,
     bezeichnung: inv.bezeichnung,
     leistungsBeschreibung: inv.leistungsBeschreibung ?? null,
+    leistungszeitraum: inv.leistungszeitraum,
     nettoCents: Number(inv.nettoCents),
     bruttoCents: Number(inv.bruttoCents),
     currency: inv.currency,
@@ -201,6 +203,18 @@ export const actions: Actions = {
       303,
       `/app/rechnungen/${result.newInvoiceId}?job=${result.jobId}`,
     );
+  },
+
+  // Recover a missing/failed PDF — re-enqueue generation for THIS invoice.
+  // Redirect with ?job=<id> so the page's existing poll machinery picks up
+  // the new job and refreshes when it finishes.
+  "retry-pdf": async ({ params, locals }) => {
+    const actorUserId = locals.session?.user.id ?? null;
+    const result = await retryInvoicePdf(params.id, actorUserId);
+    if (!result.ok) {
+      return fail(result.status, { action: "retry-pdf", error: result.error });
+    }
+    throw redirect(303, `/app/rechnungen/${params.id}?job=${result.jobId}`);
   },
 
   // Mark unpaid → paid. Auto-creates the matching income row in one tx

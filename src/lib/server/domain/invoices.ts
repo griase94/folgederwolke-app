@@ -97,6 +97,10 @@ export type MarkPaidResult =
     }
   | { ok: false; status: number; error: string };
 
+export type RetryPdfResult =
+  | { ok: true; jobId: string }
+  | { ok: false; status: number; error: string };
+
 export type UndoPaymentResult =
   | { ok: true }
   | { ok: false; status: number; error: string };
@@ -997,6 +1001,96 @@ export async function editInvoice(
   });
 
   return { ok: true, jobId: txResult.jobId };
+}
+
+// ---------------------------------------------------------------------------
+// retryInvoicePdf — recover an invoice whose PDF generation never succeeded.
+// ---------------------------------------------------------------------------
+
+/**
+ * Re-trigger PDF generation for an invoice whose `pdf_file_id` is still NULL
+ * (status 'failed' or 'not_generated'). An invoice can be legally issued and
+ * even marked paid while its PDF render failed in the background — this is the
+ * only user-reachable recovery path now that `?/regenerate` is gone.
+ *
+ * Enqueues a fresh `invoice_jobs` row + resets `pdf_status` to 'queued', then
+ * fires `runInvoiceJob` fire-and-forget (same pattern as createInvoice /
+ * editInvoice). The detail page polls the job to surface the result.
+ *
+ * No Festschreibung gate: this re-renders the existing invoice's content into a
+ * new versioned `files` row + audit anchor — it does NOT mutate any invoice
+ * business field, so it is safe even for festgeschriebene Rechnungen whose PDF
+ * is missing. Guarded to refuse when a usable PDF already exists so a stray
+ * click can't churn a fresh version of an already-good invoice.
+ */
+export async function retryInvoicePdf(
+  invoiceId: string,
+  actorUserId: string | null,
+): Promise<RetryPdfResult> {
+  if (!invoiceId) {
+    return { ok: false, status: 400, error: "Fehlende Rechnungs-ID" };
+  }
+  const db = getDb();
+
+  const [inv] = await db
+    .select({
+      id: invoices.id,
+      pdfFileId: invoices.pdfFileId,
+      pdfStatus: invoices.pdfStatus,
+    })
+    .from(invoices)
+    .where(eq(invoices.id, invoiceId))
+    .limit(1);
+  if (!inv) {
+    return { ok: false, status: 404, error: "Rechnung nicht gefunden" };
+  }
+
+  // Already has a usable PDF — nothing to recover. Editing is the path to a
+  // fresh PDF for a content change; this action is only for missing/failed.
+  if (inv.pdfFileId) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Diese Rechnung hat bereits ein PDF",
+    };
+  }
+
+  // In-flight render — don't stack a second job on top of a queued/running one.
+  if (inv.pdfStatus === "queued" || inv.pdfStatus === "running") {
+    return {
+      ok: false,
+      status: 409,
+      error: "PDF wird bereits erstellt",
+    };
+  }
+
+  const idempotencyKey = `invoice:${invoiceId}:retry-${Date.now()}`;
+  const jobId = await db.transaction(async (tx) => {
+    await tx
+      .update(invoices)
+      .set({ pdfStatus: "queued", pdfStatusError: null, updatedAt: new Date() })
+      .where(eq(invoices.id, invoiceId));
+
+    const [job] = await tx
+      .insert(invoiceJobs)
+      .values({ invoiceId, idempotencyKey, status: "queued" })
+      .returning({ id: invoiceJobs.id });
+    if (!job) {
+      throw new Error("retryInvoicePdf: invoice_jobs insert returned no row");
+    }
+    return job.id;
+  });
+
+  // Fire-and-forget, same as createInvoice/editInvoice. The job row is the
+  // source of truth; the detail page polls it to refresh.
+  void runInvoiceJob(jobId, actorUserId).catch((err) => {
+    console.error(
+      `[invoice.retryInvoicePdf] background job ${jobId} failed:`,
+      err,
+    );
+  });
+
+  return { ok: true, jobId };
 }
 
 // ---------------------------------------------------------------------------

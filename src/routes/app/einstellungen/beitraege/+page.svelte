@@ -183,7 +183,10 @@
 						<th class="px-4 py-2.5 font-semibold text-foreground" scope="col">Jahr</th>
 						<th class="px-4 py-2.5 font-semibold text-foreground" scope="col">Betrag</th>
 						<th class="px-4 py-2.5 font-semibold text-foreground" scope="col">Fällig bis</th>
-						<th class="px-4 py-2.5 font-semibold text-foreground" scope="col">Beschluss</th>
+						<th
+							class="hidden px-4 py-2.5 font-semibold text-foreground sm:table-cell"
+							scope="col">Beschluss</th
+						>
 						<th class="px-4 py-2.5" scope="col"><span class="sr-only">Aktionen</span></th>
 					</tr>
 				</thead>
@@ -272,7 +275,9 @@
 								</td>
 								<td class="px-4 py-2.5 tabular-nums">{eur(rate.cents)}</td>
 								<td class="px-4 py-2.5 tabular-nums">{fmtDateDe(rate.faelligkeitAt)}</td>
-								<td class="px-4 py-2.5 text-muted-foreground">{rate.decisionNote ?? '—'}</td>
+								<td class="hidden px-4 py-2.5 text-muted-foreground sm:table-cell"
+									>{rate.decisionNote ?? '—'}</td
+								>
 								<td class="px-4 py-2.5 text-right">
 									{#if rate.isLocked}
 										<span

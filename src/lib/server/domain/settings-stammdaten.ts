@@ -76,9 +76,18 @@ const KEYS = {
   vorstandIds: "verein.meta.vorstand_ids",
 } as const;
 
+/**
+ * Convert literal two-character `\n` sequences (as they appear in single-line
+ * env vars / JSON-encoded settings rows) into real newlines. Idempotent:
+ * already-correct newlines contain no backslash and are left untouched.
+ */
+function normaliseNewlines(value: string): string {
+  return value.replace(/\\n/g, "\n");
+}
+
 const ENV_FALLBACKS = {
   name: () => env.VEREIN_NAME ?? "",
-  adresse: () => env.VEREIN_ADRESSE ?? "",
+  adresse: () => normaliseNewlines(env.VEREIN_ADRESSE ?? ""),
   iban: () => env.VEREIN_IBAN ?? "",
   bic: () => env.VEREIN_BIC ?? "",
   steuernummer: () => env.VEREIN_STEUERNUMMER ?? "",
@@ -172,7 +181,12 @@ export async function readStammdaten(): Promise<StammdatenView> {
   };
 
   const name = get("name");
+  // Adresse is multi-line. Normalise literal `\n` (from env or an older
+  // settings row that stored the escaped sequence) to real newlines so the
+  // form textarea / einstellungen display renders proper line breaks rather
+  // than a visible `c/o ...\nWesterm...`. Idempotent on already-correct values.
   const adresse = get("adresse");
+  adresse.value = normaliseNewlines(adresse.value);
   const iban = get("iban");
   const bic = get("bic");
   const steuernummer = get("steuernummer");

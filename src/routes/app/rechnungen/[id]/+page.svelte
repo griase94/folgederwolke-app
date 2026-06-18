@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { onMount, onDestroy } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
+	import { enhance } from '$app/forms';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import InvoicePdfStatusBadge from '$lib/components/admin/invoices/InvoicePdfStatusBadge.svelte';
@@ -32,9 +33,29 @@
 		return m ? `${m[3]}.${m[2]}.${m[1]}` : inv.bezahltAm;
 	});
 
+	const leistungsFmt = $derived.by(() => {
+		if (!inv.leistungsDatum) return null;
+		const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(inv.leistungsDatum);
+		return m ? `${m[3]}.${m[2]}.${m[1]}` : inv.leistungsDatum;
+	});
+
+	const faelligFmt = $derived.by(() => {
+		if (!inv.faelligkeitsDatum) return null;
+		const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(inv.faelligkeitsDatum);
+		return m ? `${m[3]}.${m[2]}.${m[1]}` : inv.faelligkeitsDatum;
+	});
+
 	let pollTimer: ReturnType<typeof setInterval> | null = $state(null);
 	let polling = $state(false);
 	let markPaidOpen = $state(false);
+	let retryingPdf = $state(false);
+
+	// The legally-issued invoice has no usable PDF: generation failed or never
+	// ran AND no file was persisted. Offer a recovery action. While a render is
+	// in flight (queued/running) we hide the button and let the poll spinner show.
+	const pdfMissing = $derived(
+		inv.pdfFileId === null && (inv.pdfStatus === 'failed' || inv.pdfStatus === 'not_generated')
+	);
 
 	const isFestgeschrieben = $derived(inv.festgeschriebenAt !== null);
 	const isSuperseded = $derived(inv.supersededByBusinessId !== null);
@@ -226,16 +247,22 @@
 				<dt class="text-xs uppercase tracking-wide text-muted-foreground">Rechnungsdatum</dt>
 				<dd class="mt-0.5 font-medium">{datumFmt}</dd>
 			</div>
-			{#if inv.leistungsDatum}
+			{#if leistungsFmt}
 				<div>
 					<dt class="text-xs uppercase tracking-wide text-muted-foreground">Leistungsdatum</dt>
-					<dd class="mt-0.5 font-medium">{inv.leistungsDatum}</dd>
+					<dd class="mt-0.5 font-medium">{leistungsFmt}</dd>
 				</div>
 			{/if}
-			{#if inv.faelligkeitsDatum}
+			{#if faelligFmt}
 				<div>
 					<dt class="text-xs uppercase tracking-wide text-muted-foreground">Faellig bis</dt>
-					<dd class="mt-0.5 font-medium">{inv.faelligkeitsDatum}</dd>
+					<dd class="mt-0.5 font-medium">{faelligFmt}</dd>
+				</div>
+			{/if}
+			{#if inv.leistungszeitraum}
+				<div>
+					<dt class="text-xs uppercase tracking-wide text-muted-foreground">Leistungszeitraum</dt>
+					<dd class="mt-0.5 font-medium">{inv.leistungszeitraum}</dd>
 				</div>
 			{/if}
 			<div>
@@ -273,6 +300,38 @@
 				</svg>
 				PDF herunterladen
 			</Button>
+		{/if}
+
+		{#if pdfMissing}
+			<form
+				method="POST"
+				action="?/retry-pdf"
+				use:enhance={() => {
+					retryingPdf = true;
+					return async ({ update }) => {
+						await update();
+						retryingPdf = false;
+					};
+				}}
+			>
+				<Button type="submit" variant="outline" disabled={retryingPdf} data-testid="invoice-retry-pdf">
+					<svg
+						class="mr-2 h-4 w-4"
+						class:animate-spin={retryingPdf}
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke="currentColor"
+						stroke-width="2"
+					>
+						<path
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+						/>
+					</svg>
+					{inv.pdfStatus === 'failed' ? 'PDF neu erzeugen' : 'PDF jetzt erstellen'}
+				</Button>
+			</form>
 		{/if}
 
 		{#if editable}

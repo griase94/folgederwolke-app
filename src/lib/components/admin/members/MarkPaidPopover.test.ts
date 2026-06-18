@@ -36,8 +36,11 @@ describe("MarkPaidPopover — mark-paid mode", () => {
   it("fires onPaid with the chosen date when Bezahlt clicked", async () => {
     const onPaid = vi.fn();
     render(MarkPaidPopover, { props: { ...base, onPaid } });
+    // DateField renders a de-DE (TT.MM.JJJJ) text input and commits the
+    // canonical ISO value on blur — type German, blur, then submit.
     const dateInput = screen.getByLabelText("Bezahlt am") as HTMLInputElement;
-    await fireEvent.input(dateInput, { target: { value: "2026-05-15" } });
+    await fireEvent.input(dateInput, { target: { value: "15.05.2026" } });
+    await fireEvent.blur(dateInput);
     await fireEvent.click(screen.getByRole("button", { name: /Bezahlt/ }));
     expect(onPaid).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -220,8 +223,10 @@ describe("MarkPaidPopover — edit mode (Package E)", () => {
 
   it("prefills gezahltAm from initialGezahltAm in edit mode", () => {
     render(MarkPaidPopover, { props: editBase });
+    // DateField shows the de-DE display value; the ISO mirror lives in the
+    // sibling hidden input that carries the canonical YYYY-MM-DD.
     const dateInput = screen.getByLabelText("Bezahlt am") as HTMLInputElement;
-    expect(dateInput.value).toBe("2026-03-15");
+    expect(dateInput.value).toBe("15.03.2026");
   });
 
   it("prefills Notiz from initialNotes in edit mode", () => {

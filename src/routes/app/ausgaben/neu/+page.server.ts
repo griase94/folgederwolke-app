@@ -50,6 +50,7 @@ import { projects } from "$lib/server/db/schema/projects.js";
 import { asc, isNull } from "drizzle-orm";
 import { handleAuslageUpload } from "$lib/server/files/handleAuslageUpload.js";
 import { bookingYearFromCashDate } from "$lib/domain/year.js";
+import { validateIban } from "$lib/server/domain/iban.js";
 
 function berlinYear(): number {
   return parseInt(
@@ -367,6 +368,36 @@ export const actions = {
     const gateYear = bookingYearFromCashDate(parsed.data.abfluss_datum);
     const gate = await checkFestschreibungGate(gateYear);
     if (!gate.ok) return fail(gate.status, { error: gate.error });
+
+    // ── Extern-payer guard (mirrors the inbox manual-import action) ─────────
+    // The Zod schema leaves extern_* optional for caller parity, but an extern
+    // payer needs name + IBAN + email downstream (createExpense → SEPA payout);
+    // a missing field would otherwise surface as an opaque 500. Validate here
+    // and re-hydrate with per-field errors only for the actually-missing ones.
+    if (parsed.data.bezahltVonKind === "extern") {
+      // Name + IBAN are required to reimburse an external person via SEPA;
+      // E-Mail is optional (only used for the confirmation mail) — the entry
+      // form labels it "(optional)", so the server must not reject a blank one.
+      const externName = parsed.data.externName ?? null;
+      const externIban = parsed.data.externIban ?? null;
+      if (!externName || !externIban) {
+        return fail(422, {
+          error: "Bitte Name und IBAN für die externe Person ausfüllen.",
+          values: valuesFromForm(data),
+          errors: {
+            extern_name: externName ? [] : ["Name ist erforderlich."],
+            extern_iban: externIban ? [] : ["IBAN ist erforderlich."],
+          },
+        });
+      }
+      if (!validateIban(externIban)) {
+        return fail(422, {
+          error: "IBAN ist ungültig.",
+          values: valuesFromForm(data),
+          errors: { extern_iban: ["IBAN ungültig"] },
+        });
+      }
+    }
 
     try {
       // Upload the Beleg if one was attached (else the kein-Beleg path persists

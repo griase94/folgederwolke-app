@@ -187,7 +187,9 @@ export async function batchProjectFinancials(
   // (the values are validated UUIDs upstream, so no SQL-injection risk).
   const idsLiteral = `{${projectIds.join(",")}}`;
 
-  // Query 1: einnahmen + ausgaben sums per project.
+  // Query 1: einnahmen + ausgaben sums per project. Donations are project
+  // income (positive) — folded into einnahmen_cents so the saldo includes
+  // zweckgebundene Spenden für das Projekt.
   const sums = (await db.execute<{
     project_id: string;
     einnahmen_cents: string;
@@ -196,9 +198,11 @@ export async function batchProjectFinancials(
     WITH ids AS (SELECT unnest(${idsLiteral}::uuid[]) AS pid)
     SELECT
       ids.pid::text AS project_id,
-      COALESCE((
+      (COALESCE((
         SELECT SUM(betrag_cents) FROM income WHERE project_id = ids.pid
-      ), 0)::text AS einnahmen_cents,
+      ), 0) + COALESCE((
+        SELECT SUM(betrag_cents) FROM donations WHERE project_id = ids.pid
+      ), 0))::text AS einnahmen_cents,
       COALESCE((
         SELECT SUM(betrag_cents) FROM expenses WHERE project_id = ids.pid
       ), 0)::text AS ausgaben_cents
@@ -216,6 +220,7 @@ export async function batchProjectFinancials(
     auslagen_zu_pruefen: string;
     einnahmen_buchungen: string;
     ausgaben_buchungen: string;
+    spenden_buchungen: string;
   }>(sql`
     WITH ids AS (SELECT unnest(${idsLiteral}::uuid[]) AS pid)
     SELECT
@@ -233,7 +238,10 @@ export async function batchProjectFinancials(
       ), 0)::text AS einnahmen_buchungen,
       COALESCE((
         SELECT COUNT(*) FROM expenses WHERE project_id = ids.pid
-      ), 0)::text AS ausgaben_buchungen
+      ), 0)::text AS ausgaben_buchungen,
+      COALESCE((
+        SELECT COUNT(*) FROM donations WHERE project_id = ids.pid
+      ), 0)::text AS spenden_buchungen
     FROM ids
   `)) as Array<{
     project_id: string;
@@ -241,6 +249,7 @@ export async function batchProjectFinancials(
     auslagen_zu_pruefen: string;
     einnahmen_buchungen: string;
     ausgaben_buchungen: string;
+    spenden_buchungen: string;
   }>;
 
   const sumMap = new Map(sums.map((r) => [r.project_id, r]));
@@ -257,11 +266,12 @@ export async function batchProjectFinancials(
       saldoCents: einnahmenCents - ausgabenCents,
       offeneRechnungen: Number(c?.offene_rechnungen ?? 0),
       auslagenZuPruefen: Number(c?.auslagen_zu_pruefen ?? 0),
-      // Aurora: Buchungen-count = income + expense rows — the SAME set that
-      // produced saldoCents above, so count and saldo never disagree.
+      // Aurora: Buchungen-count = income + expense + donation rows — the SAME
+      // set that produced saldoCents above, so count and saldo never disagree.
       buchungenCount:
         Number(c?.einnahmen_buchungen ?? 0) +
-        Number(c?.ausgaben_buchungen ?? 0),
+        Number(c?.ausgaben_buchungen ?? 0) +
+        Number(c?.spenden_buchungen ?? 0),
     };
   }
   return out;
