@@ -12,7 +12,6 @@ import { describe, it, expect } from "vitest";
 import { getDb } from "$lib/server/db/index.js";
 import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
 import { memberBeitrags } from "$lib/server/db/schema/members.js";
-import { and, eq } from "drizzle-orm";
 import { seedMember, seedOpenBeitrag } from "../helpers/db-seed.js";
 import { getMemberBeitrag } from "../helpers/queries.js";
 import { markBeitragPaid } from "$lib/server/domain/members-actions.js";

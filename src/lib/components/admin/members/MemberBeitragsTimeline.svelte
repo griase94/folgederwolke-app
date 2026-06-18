@@ -341,7 +341,6 @@
 
 			{#each sorted as b (b.id)}
 				{@const st = rowDisplayState(b)}
-				{@const resolved = rowResolve(b)}
 				<div
 					class="relative flex items-start gap-4 pb-4"
 					data-testid="beitragsverlauf-row"
