@@ -18,6 +18,7 @@
 	 */
 	import { untrack } from 'svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 	import { berlinYmd, berlinYear } from '$lib/domain/year.js';
 
 	type Mode = 'mark-paid' | 'edit' | 'befreien';
@@ -177,13 +178,6 @@
 		}
 	}
 
-	function handleDateKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter') {
-			e.preventDefault();
-			submitPaid();
-		}
-	}
-
 	function handleBetragKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
 			e.preventDefault();
@@ -237,15 +231,16 @@
 				for={`gezahlt-am-${memberId}-${year}`}>Bezahlt am</label
 			>
 			<div class="flex items-center gap-2">
-				<input
-					id={`gezahlt-am-${memberId}-${year}`}
-					type="date"
-					lang="de"
-					bind:value={gezahltAm}
-					onkeydown={handleDateKeydown}
-					disabled={isLocked || submitting}
-					class="min-h-[44px] flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 dark:bg-input/30"
-				/>
+				<div class="min-h-[44px] flex-1">
+					<DateField
+						id={`gezahlt-am-${memberId}-${year}`}
+						name={`gezahlt-am-${memberId}-${year}`}
+						value={gezahltAm}
+						disabled={isLocked || submitting}
+						onchange={(iso) => (gezahltAm = iso)}
+						class="min-h-[44px] w-full"
+					/>
+				</div>
 				<button
 					type="button"
 					onclick={() => (gezahltAm = berlinYmd())}

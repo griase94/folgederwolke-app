@@ -259,10 +259,8 @@ test.describe("@phase-9 Files — happy", () => {
 
     // Change year filter via the <select> and assert URL updates.
     // The page has another <select> in the header (year-switcher) — scope to
-    // the "Jahr:" label that wraps the Dateien filter.
-    const select = page
-      .locator("label", { hasText: "Jahr:" })
-      .locator("select");
+    // the Dateien filter by its stable id (label "Jahr" is associated via for=).
+    const select = page.locator("select#year-filter");
     const options = await select.locator("option").allTextContents();
     const yearChoice = options.find((o) => /^\d{4}$/.test(o.trim()));
     if (yearChoice) {

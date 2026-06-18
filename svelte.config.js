@@ -37,6 +37,13 @@ const config = {
         "style-src": ["self", "unsafe-inline"],
         "script-src": ["self"],
         "connect-src": ["self"],
+        // The invoice live-PDF preview renders into an <iframe> whose src is a
+        // `blob:` URL (URL.createObjectURL — InvoicePdfPreview.svelte). frame-src
+        // governs iframe sources; without it, the iframe falls back to
+        // default-src ('self') and the blob: preview is blocked. child-src is the
+        // pre-CSP3 fallback for older browsers.
+        "frame-src": ["self", "blob:"],
+        "child-src": ["self", "blob:"],
         "frame-ancestors": ["none"],
         "base-uri": ["self"],
         "object-src": ["none"],

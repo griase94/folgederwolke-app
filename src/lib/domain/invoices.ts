@@ -119,6 +119,8 @@ export interface InvoiceDetail extends InvoiceRow {
   projectId: string | null;
   projectName: string | null;
   leistungsBeschreibung: string | null;
+  /** Leistungszeitraum per § 14 Abs. 4 Nr. 6 UStG. Always non-empty (DB NOT NULL). */
+  leistungszeitraum: string;
   pdfStatusError: string | null;
   /** Business id of the linked income row (E-YYYY-NNN), populated on join. */
   paidByIncomeBusinessId: string | null;

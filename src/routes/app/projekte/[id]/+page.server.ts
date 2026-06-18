@@ -86,11 +86,13 @@ export const load: PageServerLoad = async ({ params, url }) => {
   ]);
 
   // Up to 50 most-recent transactions linked to the project. Income
-  // sorts on geld_eingang_datum, expenses on rechnungsdatum. NULL dates
-  // sort last so they don't crowd out dated rows.
+  // sorts on geld_eingang_datum, expenses on rechnungsdatum, donations on
+  // zugewendet_am (Zuwendungsdatum per §11 EStG, fallback gebucht_am). NULL
+  // dates sort last so they don't crowd out dated rows. Donations count as
+  // income (positive) for the project — see batchProjectFinancials.
   const txnRows = (await db.execute<{
     id: string;
-    kind: "income" | "expense";
+    kind: "income" | "expense" | "donation";
     bezeichnung: string;
     betrag_cents: string;
     datum: string | null;
@@ -109,11 +111,19 @@ export const load: PageServerLoad = async ({ params, url }) => {
            'gebucht'::text
       FROM income
      WHERE project_id = ${p.id}::uuid
+    UNION ALL
+    SELECT id::text, 'donation'::text,
+           COALESCE(NULLIF(zweckbindung_text, ''), NULLIF(spender_name, ''), 'Spende'),
+           betrag_cents::text,
+           COALESCE(zugewendet_am::text, gebucht_am::date::text),
+           'gebucht'::text
+      FROM donations
+     WHERE project_id = ${p.id}::uuid
     ORDER BY datum DESC NULLS LAST
     LIMIT 50
   `)) as Array<{
     id: string;
-    kind: "income" | "expense";
+    kind: "income" | "expense" | "donation";
     bezeichnung: string;
     betrag_cents: string;
     datum: string | null;

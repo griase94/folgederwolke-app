@@ -10,7 +10,7 @@
 	 * is absent entirely — no "0 offen" nag. The age suffix ("· älteste X Tage")
 	 * appears only when an age is known (`oldestOpenAgeDays != null`).
 	 */
-	import Money from '$lib/components/ui/money/money.svelte';
+	import { formatMoney } from '$lib/components/ui/money/money.svelte';
 	import { yearScopeLabel, type YearScope } from '$lib/domain/year.js';
 	import { buchungenLabel as fmtBuchungen } from '$lib/domain/transaction-kpi.js';
 
@@ -36,7 +36,7 @@
 		<span aria-hidden="true">·</span>
 		<span>{buchungenLabel}</span>
 		<span aria-hidden="true">·</span>
-		<span>Summe <Money valueInCents={totalCents} /></span>
+		<span>Summe {formatMoney(totalCents)}</span>
 	</div>
 
 	{#if offenCount > 0}

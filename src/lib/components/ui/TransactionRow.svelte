@@ -65,7 +65,7 @@
 	>
 	<span class="flex min-w-0 flex-col">
 		<span class="truncate text-[15px] font-medium text-ink-900 md:text-sm">{title}</span>
-		<span class="flex min-w-0 items-center gap-1.5">
+		<span class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 md:flex-nowrap">
 			<span class="truncate text-xs text-ink-500">{metaLine}</span>
 			{#each statusChips as chip (chip.label)}
 				<span

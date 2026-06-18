@@ -14,7 +14,6 @@
   import { applyAction, enhance } from "$app/forms";
   import { toast } from "svelte-sonner";
   import DateField from "$lib/components/ui/date-field/DateField.svelte";
-  import SphereBadge from "$lib/components/admin/transactions/fields/SphereBadge.svelte";
   import KategoriePicker from "$lib/components/admin/transactions/fields/KategoriePicker.svelte";
   import type { Sphere } from "$lib/domain/sphere.js";
   import type { TransactionDetail } from "$lib/server/domain/transactions.js";
@@ -192,9 +191,6 @@
       onSphere={(s) => (kategorieSphere = s)}
     />
     <input type="hidden" name="sphereSnapshot" value={kategorieSphere} />
-    <div class="mt-1">
-      <SphereBadge sphere={kategorieSphere} />
-    </div>
     {#if err("kategorieNameSnapshot")}
       <p class="text-destructive text-xs">{err("kategorieNameSnapshot")}</p>
     {/if}
