@@ -67,11 +67,14 @@ describe("@phase-0 send-reminder false-debt guard (Package B)", () => {
       memberId: m.id,
       year: TEST_YEAR,
     });
-    expect(result.allowed).toBe(false);
-    expect(result.status).toBe(422);
-    expect(result.error).toMatch(
-      /bereits bezahlt|owes nothing|nichts schuldet|schon bezahlt/i,
-    );
+    if (!result.allowed) {
+      expect(result.status).toBe(422);
+      expect(result.error).toMatch(
+        /bereits bezahlt|owes nothing|nichts schuldet|schon bezahlt/i,
+      );
+    } else {
+      expect.fail("Expected allowed=false");
+    }
   });
 
   it("refuses 422 when member is permanently beitrag-exempt", async () => {
@@ -86,8 +89,11 @@ describe("@phase-0 send-reminder false-debt guard (Package B)", () => {
       memberId: m.id,
       year: TEST_YEAR,
     });
-    expect(result.allowed).toBe(false);
-    expect(result.status).toBe(422);
+    if (!result.allowed) {
+      expect(result.status).toBe(422);
+    } else {
+      expect.fail("Expected allowed=false");
+    }
   });
 
   it("refuses 422 when member has a per-year exempt row", async () => {
@@ -118,8 +124,11 @@ describe("@phase-0 send-reminder false-debt guard (Package B)", () => {
       memberId: m.id,
       year: TEST_YEAR,
     });
-    expect(result.allowed).toBe(false);
-    expect(result.status).toBe(422);
+    if (!result.allowed) {
+      expect(result.status).toBe(422);
+    } else {
+      expect.fail("Expected allowed=false");
+    }
   });
 
   it("refuses 422 when member has exited before the beitrag year", async () => {
@@ -135,8 +144,11 @@ describe("@phase-0 send-reminder false-debt guard (Package B)", () => {
       memberId: m.id,
       year: TEST_YEAR,
     });
-    expect(result.allowed).toBe(false);
-    expect(result.status).toBe(422);
+    if (!result.allowed) {
+      expect(result.status).toBe(422);
+    } else {
+      expect.fail("Expected allowed=false");
+    }
   });
 
   it("refuses 422 when year is before member's Eintritt", async () => {
@@ -151,8 +163,11 @@ describe("@phase-0 send-reminder false-debt guard (Package B)", () => {
       memberId: m.id,
       year: TEST_YEAR,
     });
-    expect(result.allowed).toBe(false);
-    expect(result.status).toBe(422);
+    if (!result.allowed) {
+      expect(result.status).toBe(422);
+    } else {
+      expect.fail("Expected allowed=false");
+    }
   });
 
   it("allows reminder when member is partially paid (still owes a balance)", async () => {
@@ -189,12 +204,15 @@ describe("@phase-0 send-reminder false-debt guard (Package B)", () => {
     expect(result.allowed).toBe(true);
   });
 
-  it("refuses 422 when member is NOT FOUND", async () => {
+  it("refuses 404 when member is NOT FOUND", async () => {
     const result = await checkReminderAllowed({
       memberId: "00000000-0000-4000-8000-000000000000",
       year: TEST_YEAR,
     });
-    expect(result.allowed).toBe(false);
-    expect(result.status).toBe(404);
+    if (!result.allowed) {
+      expect(result.status).toBe(404);
+    } else {
+      expect.fail("Expected allowed=false");
+    }
   });
 });

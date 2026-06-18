@@ -14,16 +14,18 @@
  */
 
 import { error, fail } from "@sveltejs/kit";
-import { and, eq, gt, count, desc } from "drizzle-orm";
+import { and, eq, gt, count, desc, inArray } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
+import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
 import { sentMails } from "$lib/server/db/schema/mails.js";
 import {
   editMember,
   softDeleteMember,
   markBeitragPaid,
+  checkReminderAllowed,
 } from "$lib/server/domain/members-actions.js";
 import { sendMail } from "$lib/server/mail/index.js";
 import { env } from "$lib/server/env.js";
@@ -85,21 +87,48 @@ export const load: PageServerLoad = async ({ params }) => {
 
   const reminderSentRecently = (recentReminderRows[0]?.cnt ?? 0) > 0;
 
-  // ── Compute current year for default reminder target (ADR-0001) ──────────
+  // ── Compute current year for hero + reminder defaults (ADR-0001) ─────────
   const currentYear = berlinYear();
 
   // ── Org constants for mail preview ───────────────────────────────────────
   const mailFrom = env.MAIL_FROM;
 
-  // ── Find open beitrag for current year (for reminder defaults) ───────────
+  // ── Package B: satzByYear — load Satz for all years member has a row in
+  //    plus the current year (so UI can show betragCents for no-row years) ─
+  const beitragYears = [
+    ...new Set([...beitragRows.map((b) => b.year), currentYear]),
+  ];
+  let satzRows: { year: number; cents: bigint }[] = [];
+  if (beitragYears.length > 0) {
+    satzRows = await db
+      .select({
+        year: beitragssatzByYear.year,
+        cents: beitragssatzByYear.cents,
+      })
+      .from(beitragssatzByYear)
+      .where(inArray(beitragssatzByYear.year, beitragYears));
+  }
+  const satzByYear: Record<number, number> = {};
+  for (const s of satzRows) satzByYear[s.year] = Number(s.cents);
+
+  // ── Find open beitrags (paidCents < betragCents, not exempt) ─────────────
+  // Package B: openYears uses row data only — no VEREIN_BEITRAG_DEFAULT_CENTS
+  // fabrication. A no-row year is handled by the canonical state resolver.
   const currentYearBeitrag = beitragRows.find((b) => b.year === currentYear);
-  const openYears = beitragRows.filter(
-    (b) => Number(b.paidCents) < Number(b.betragCents),
-  );
+  const openYears = beitragRows
+    .filter((b) => !b.isExempt && Number(b.paidCents) < Number(b.betragCents))
+    .map((b) => ({
+      year: b.year,
+      betragCents: Number(b.betragCents),
+      paidCents: Number(b.paidCents),
+    }));
+
   const defaultReminderYear = openYears[0]?.year ?? currentYear;
-  const defaultReminderBetragCents = openYears[0]
-    ? Number(openYears[0].betragCents)
-    : env.VEREIN_BEITRAG_DEFAULT_CENTS; // fallback default Satz when no open year row exists
+  // betragCents for the reminder: use the open row's recorded amount (no fallback
+  // to VEREIN_BEITRAG_DEFAULT_CENTS — that was the false-debt fabrication removed
+  // in Package B). If there is no open row, fall back to satz or 0.
+  const defaultReminderBetragCents =
+    openYears[0]?.betragCents ?? satzByYear[currentYear] ?? 0;
 
   return {
     member: {
@@ -127,6 +156,8 @@ export const load: PageServerLoad = async ({ params }) => {
       paidCents: Number(b.paidCents),
       gezahltAm: b.gezahltAm,
       notes: b.notes,
+      isExempt: b.isExempt ?? false,
+      exemptReason: b.exemptReason ?? null,
       createdAt: b.createdAt.toISOString(),
       updatedAt: b.updatedAt.toISOString(),
     })),
@@ -152,6 +183,8 @@ export const load: PageServerLoad = async ({ params }) => {
     defaultReminderBetragCents,
     mailFrom,
     currentYear,
+    satzByYear,
+    openYears,
     currentYearBeitrag: currentYearBeitrag
       ? {
           id: currentYearBeitrag.id,
@@ -201,6 +234,7 @@ export const actions: Actions = {
   },
 
   // ── Mark Beitrag paid ─────────────────────────────────────────────────────
+  // Package B: accepts optional paidCents (partial) + notes fields.
   "mark-beitrag-paid": async ({ request, locals, params }) => {
     const userId = locals.session?.user.id ?? null;
     const userRole = locals.session?.user.role ?? null;
@@ -209,11 +243,26 @@ export const actions: Actions = {
     const yearStr = formData.get("year")?.toString() ?? "";
     const year = parseInt(yearStr, 10);
 
-    const gezahltAm = formData.get("gezahlt_am")?.toString() || berlinYmd();
+    // Accept "gezahltAm" (new popover) or "gezahlt_am" (legacy) field names
+    const gezahltAm =
+      formData.get("gezahltAm")?.toString() ||
+      formData.get("gezahlt_am")?.toString() ||
+      berlinYmd();
+
+    // Package B: optional partial paidCents (integer cents) and notes
+    const paidCentsStr = formData.get("paidCents")?.toString();
+    const paidCents = paidCentsStr ? parseInt(paidCentsStr, 10) : undefined;
+    const notes = formData.get("notes")?.toString() ?? null;
+
     const result = await markBeitragPaid({
       memberId,
       year,
       gezahltAm,
+      paidCents:
+        paidCents !== undefined && Number.isFinite(paidCents)
+          ? paidCents
+          : undefined,
+      notes,
       actorUserId: userId,
       actorRole: userRole,
     });
@@ -228,6 +277,9 @@ export const actions: Actions = {
   },
 
   // ── Send BeitragsReminder ─────────────────────────────────────────────────
+  // Package B: uses checkReminderAllowed to refuse 422 when the member owes
+  // nothing for the year (CARDINAL RULE — no false debt). VEREIN_BEITRAG_DEFAULT_CENTS
+  // fabrication removed; betragCents comes from the canonical state resolver.
   "send-reminder": async ({ request, params }) => {
     const memberId = params.id;
     const formData = await request.formData();
@@ -241,23 +293,16 @@ export const actions: Actions = {
       });
     }
 
-    const db = getDb();
-
-    // Fetch member
-    const memberRows = await db
-      .select()
-      .from(members)
-      .where(eq(members.id, memberId))
-      .limit(1);
-
-    if (!memberRows[0]) {
-      return fail(404, {
+    // False-debt guard: refuse when member owes nothing for the year.
+    const guard = await checkReminderAllowed({ memberId, year });
+    if (!guard.allowed) {
+      return fail(guard.status, {
         action: "send-reminder",
-        error: "Mitglied nicht gefunden",
+        error: guard.error,
       });
     }
 
-    const member = memberRows[0];
+    const { member, betragCents } = guard;
 
     if (!member.email) {
       return fail(422, {
@@ -266,36 +311,7 @@ export const actions: Actions = {
       });
     }
 
-    // Night-2 C5-MEM-full: refuse to remind exempt members — they don't
-    // owe anything, so a "you owe €X" mail would be wrong.
-    if (member.beitragExempt) {
-      return fail(422, {
-        action: "send-reminder",
-        error: "Mitglied ist von der Beitragspflicht befreit",
-      });
-    }
-
-    // Fetch beitrag for year (to get betrag_cents)
-    const beitragRows = await db
-      .select()
-      .from(memberBeitrags)
-      .where(
-        and(
-          eq(memberBeitrags.memberId, memberId),
-          eq(memberBeitrags.year, year),
-        ),
-      )
-      .limit(1);
-
-    const betragCents = beitragRows[0]
-      ? Number(beitragRows[0].betragCents)
-      : env.VEREIN_BEITRAG_DEFAULT_CENTS; // fallback default Satz when no beitrag row exists yet
-
-    // Org bank details — env.VEREIN_* is the only source of truth. No
-    // string-literal fallbacks: mismatched IBAN/BIC fallbacks were the
-    // pre-existing bug surfaced by cycle-2 review F2. If the env is
-    // unset, refuse the action and report it to the admin — silently
-    // sending wrong bank data is worse than failing loudly.
+    // Org bank details — env.VEREIN_* is the only source of truth.
     const iban = env.VEREIN_IBAN;
     const bic = env.VEREIN_BIC;
     const bank = env.VEREIN_BANK;
