@@ -328,8 +328,13 @@
 							aria-required="true"
 							aria-invalid={!!fieldErrors['betrag']}
 						/>
-						<!-- Hidden betragCents for the server Zod schema -->
-						<input type="hidden" name="betragCents" value={parseBetragCents(betrag) ?? 0} />
+						<!-- Hidden betragCents for the server Zod schema (NaN-safe: parseBetragCents
+						     returns NaN, not null, on invalid input — don't post the string "NaN"). -->
+						<input
+							type="hidden"
+							name="betragCents"
+							value={Number.isFinite(parseBetragCents(betrag)) ? parseBetragCents(betrag) : 0}
+						/>
 					</div>
 					{#if fieldErrors['betrag']}
 						<p class="text-destructive text-xs">{fieldErrors['betrag']}</p>

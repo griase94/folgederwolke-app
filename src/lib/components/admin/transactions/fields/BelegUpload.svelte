@@ -43,7 +43,7 @@
 	let {
 		name = 'beleg',
 		label = 'Beleg',
-		accept = 'image/*,application/pdf',
+		accept = 'image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf',
 		optional = false,
 		keinBeleg = $bindable(false),
 		begruendung = $bindable(''),
@@ -173,7 +173,7 @@
 					<button
 						type="button"
 						onclick={openCamera}
-						class="inline-flex h-9 items-center gap-1.5 rounded-[10px] border border-hairline bg-white px-3 text-sm font-medium text-ink-700 shadow-sm hover:bg-muted/50 active:scale-95"
+						class="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] border border-hairline bg-white px-3 text-sm font-medium text-ink-700 shadow-sm hover:bg-muted/50 active:scale-95"
 					>
 						<span aria-hidden="true">📷</span>
 						Foto aufnehmen
@@ -182,7 +182,7 @@
 					<button
 						type="button"
 						onclick={openFilePicker}
-						class="inline-flex h-9 items-center gap-1.5 rounded-[10px] border border-hairline bg-white px-3 text-sm font-medium text-ink-700 shadow-sm hover:bg-muted/50 active:scale-95"
+						class="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] border border-hairline bg-white px-3 text-sm font-medium text-ink-700 shadow-sm hover:bg-muted/50 active:scale-95"
 					>
 						Datei wählen
 					</button>
