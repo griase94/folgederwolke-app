@@ -190,9 +190,11 @@
 			<!-- Scrollable body -->
 			<div class="flex-1 space-y-6 overflow-y-auto px-1 py-6">
 
-				<!-- Hidden fields for member display name + email (for the server's bezahlt_von) -->
-				<input type="hidden" name="bezahlt_von_display" value={bezahltVonKind === 'verein' ? vereinName : bezahltVonKind === 'member' ? memberDisplayName : externName} />
-				{#if bezahltVonKind === 'member'}
+				<!-- Hidden fields for arm-specific display names (server contract: manualImportSchema) -->
+				{#if bezahltVonKind === 'verein'}
+					<input type="hidden" name="verein_display_name" value={vereinName} />
+				{:else if bezahltVonKind === 'member'}
+					<input type="hidden" name="member_display_name" value={memberDisplayName} />
 					<input type="hidden" name="member_email" value={memberEmail} />
 				{/if}
 
