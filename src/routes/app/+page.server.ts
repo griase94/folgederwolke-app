@@ -64,7 +64,12 @@ export const load: PageServerLoad = async ({ url, parent }) => {
          AND current_date > (COALESCE(bs.faelligkeit_at, (${beitragsYear}::text || '-03-31')::date)
               + (COALESCE((SELECT days FROM grace), 60) || ' days')::interval)
         THEN mb.member_id END)::text                                                      AS overdue_count,
-      COUNT(DISTINCT CASE WHEN mb.is_exempt THEN mb.member_id END)::text                  AS exempt_count,
+      (SELECT COUNT(*) FROM members m
+         WHERE m.austritts_datum IS NULL
+           AND (m.beitrag_exempt
+                OR EXISTS (SELECT 1 FROM member_beitrags mbx
+                           WHERE mbx.member_id = m.id AND mbx.year = ${beitragsYear} AND mbx.is_exempt))
+      )::text                                                                            AS exempt_count,
       (SELECT MAX(gezahlt_am)::text FROM member_beitrags WHERE year = ${beitragsYear})    AS last_payment,
       (SELECT COUNT(DISTINCT year) FROM member_beitrags
         WHERE year < ${beitragsYear} AND paid_cents < betrag_cents AND is_exempt = false)::text AS prior_years_unpaid

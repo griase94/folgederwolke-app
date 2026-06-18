@@ -418,23 +418,33 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
     });
   }
 
-  // 8. Year not in future (C1-H5) — block when input.year > current
-  //    Buchungsjahr. Callers that don't supply currentBuchungsjahr default
-  //    to input.year so the gate is a no-op (backwards compatible).
+  // 8. Year fully ended (C1-H5) — block the CURRENT (in-progress) year AND any
+  //    future year: the Jahresabschluss is only possible once the year has fully
+  //    elapsed (Europe/Berlin). Only enforced when the caller supplies the anchor
+  //    (input.currentBuchungsjahr); legacy callers that omit it stay a no-op
+  //    (backwards compatible). The real festschreibung path always supplies it
+  //    via year_for_booking() (eur/load.ts), so the close button is disabled for
+  //    the running year — matching the server guard in closeBuchhaltungsjahr.
   const currentBuchungsjahr = input.currentBuchungsjahr ?? input.year;
-  if (input.year > currentBuchungsjahr) {
+  if (
+    input.currentBuchungsjahr != null &&
+    input.year >= input.currentBuchungsjahr
+  ) {
     items.push({
       id: "yearNotFuture",
-      label: "Jahr liegt nicht in der Zukunft",
+      label: "Jahr ist abgeschlossen",
       status: "block",
-      detail: `Buchungsjahr ${input.year} liegt in der Zukunft (aktuelles Buchungsjahr: ${currentBuchungsjahr}). Festschreibung erst möglich, wenn das Jahr abgeschlossen ist.`,
+      detail:
+        input.year === currentBuchungsjahr
+          ? `Das Buchungsjahr ${input.year} läuft noch — der Jahresabschluss ist erst nach Jahresende möglich.`
+          : `Buchungsjahr ${input.year} liegt in der Zukunft (aktuelles Buchungsjahr: ${currentBuchungsjahr}). Festschreibung erst nach Jahresende möglich.`,
     });
   } else {
     items.push({
       id: "yearNotFuture",
-      label: "Jahr liegt nicht in der Zukunft",
+      label: "Jahr ist abgeschlossen",
       status: "pass",
-      detail: `Buchungsjahr ${input.year} ist bereits begonnen.`,
+      detail: `Buchungsjahr ${input.year} ist vollständig abgelaufen.`,
     });
   }
 
