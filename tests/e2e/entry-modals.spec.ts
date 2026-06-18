@@ -80,9 +80,13 @@ test.describe("@phase-entry-modals Beleg enforcement + modal isolation", () => {
     });
 
     // A beleg-related error is surfaced — check for the error text or aria-invalid.
-    // The server echoes errors.beleg; BelegUpload surfaces the first error.
+    // The server echoes errors.beleg (BelegUpload field error) AND a top-level
+    // form.error banner; either mentioning Beleg + erforderlich/hochladen counts.
     const hasErrorText = await page
-      .getByText(/Beleg-Datei ODER eine Begründung ist erforderlich/i)
+      .getByText(
+        /Beleg.*(erforderlich|hochladen)|Begründung.*(erforderlich|wählen)/i,
+      )
+      .first()
       .isVisible()
       .catch(() => false);
     const hasAriaInvalid = await page

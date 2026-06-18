@@ -220,6 +220,14 @@ export async function cleanupFilesViaAdmin(prefix?: string): Promise<void> {
   await a`UPDATE donations             SET beleg_file_id = NULL, bescheinigung_file_id = NULL
                                          WHERE beleg_file_id::text LIKE ${idPattern}
                                             OR bescheinigung_file_id::text LIKE ${idPattern}`;
+  // auslagen_submissions carries the same beleg-or-grund CHECK (migration
+  // 0036). DELETE submission rows that have ONLY beleg_file_id (no grund) —
+  // nulling beleg_file_id on them would violate
+  // auslagen_submissions_beleg_or_grund_ck. Rows with a grund survive the
+  // null-out (the grund keeps the CHECK satisfied).
+  await a`DELETE FROM auslagen_submissions
+            WHERE beleg_file_id::text LIKE ${idPattern}
+              AND beleg_verzicht_grund IS NULL`;
   await a`UPDATE auslagen_submissions  SET beleg_file_id = NULL WHERE beleg_file_id::text LIKE ${idPattern}`;
   await a`UPDATE invoices              SET pdf_file_id   = NULL WHERE pdf_file_id::text   LIKE ${idPattern}`;
   await a`DELETE FROM files WHERE id::text LIKE ${idPattern}`;

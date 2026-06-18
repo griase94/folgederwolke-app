@@ -135,11 +135,14 @@
 			class="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-6 transition-colors
 				{dragOver
 				? 'border-primary bg-primary/5'
-				: 'border-hairline bg-white/60 hover:border-primary/40 hover:bg-primary/5'}"
+				: error
+					? 'border-severity-critical bg-severity-critical/5'
+					: 'border-hairline bg-white/60 hover:border-primary/40 hover:bg-primary/5'}"
 			ondragover={onDragOver}
 			ondragleave={onDragLeave}
 			ondrop={onDrop}
 			data-slot="beleg-dropzone"
+			aria-invalid={error ? "true" : undefined}
 		>
 			{#if previewName}
 				<!-- Thumbnail + filename + remove -->
@@ -245,6 +248,6 @@
 
 	<!-- Per-field error (Beleg gate / upload failure) -->
 	{#if error}
-		<p class="text-xs text-severity-critical">{error}</p>
+		<p class="text-xs text-severity-critical" role="alert">{error}</p>
 	{/if}
 </div>

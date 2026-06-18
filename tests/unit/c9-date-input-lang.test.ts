@@ -16,7 +16,6 @@ import { describe, expect, it } from "vitest";
 // (transactions/{neu}'s donation + income branches, project dialogs, and a
 // handful of admin-only utilities that aren't on the consumer-migration list).
 const FILES = [
-  "src/lib/components/admin/inbox/ManualImportSheet.svelte",
   "src/lib/components/admin/projects/AddProjectDialog.svelte",
   "src/lib/components/admin/projects/EditProjectDialog.svelte",
   "src/lib/components/admin/transactions/TransactionEditForm.svelte",
@@ -36,6 +35,9 @@ const FILES = [
 // Phase 6 (Tier C3) retired AddSpendeDialog/EditSpendeDialog with the old
 // /app/transactions/spenden route, so they are no longer in this guard.
 const MIGRATED_FILES = [
+  // Entry-modals redesign migrated ManualImportSheet's native date input to
+  // the DateField primitive (TT.MM.JJJJ) — no native `type="date"` remains.
+  "src/lib/components/admin/inbox/ManualImportSheet.svelte",
   "src/lib/components/forms/AuslagenForm.svelte",
   "src/lib/components/admin/invoices/InvoiceForm.svelte",
   "src/lib/components/admin/members/EditMemberDialog.svelte",

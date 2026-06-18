@@ -70,7 +70,7 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     await expect(submit).toBeDisabled();
   });
 
-  test("/transactions/neu kind=ausgabe submit blocked without Beleg (native required)", async ({
+  test("ausgaben/neu submit blocked without Beleg (client+server gate, not native required)", async ({
     page,
   }) => {
     await signIn(page);
@@ -93,11 +93,20 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     await abfluss.blur();
     // Beleg deliberately left empty.
 
-    // Native HTML5 required attribute on the file input prevents submission
-    // and the form stays on the same page. We verify the file input is
-    // marked required.
-    const belegInput = page.locator('input[name="beleg"][type="file"]');
-    await expect(belegInput).toHaveAttribute("required", "");
+    // The Beleg redesign replaced the native `required` (a hidden custom-dropzone
+    // file input can't surface a focusable validation bubble — it would silently
+    // block submit with no message) with a client+server gate: submitting without
+    // a Beleg arm keeps the form on the same page and shows a Beleg-required
+    // error (server 422 → BelegUpload field error + form.error banner).
+    await page.getByRole("button", { name: /Ausgabe anlegen/i }).click();
+    await expect(page).toHaveURL(/\/app\/ausgaben\/neu/);
+    await expect(
+      page
+        .getByText(
+          /Beleg.*(erforderlich|hochladen)|Begründung.*(erforderlich|wählen)/i,
+        )
+        .first(),
+    ).toBeVisible({ timeout: 8_000 });
   });
 
   test("/transactions/neu kind=ausgabe Abfluss-Datum is required", async ({

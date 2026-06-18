@@ -154,11 +154,11 @@ async function seedDecidedSubmission(
     const subRows = await client<{ id: string }[]>`
       INSERT INTO auslagen_submissions (
         business_id, bezeichnung, betrag_cents, bezahlt_von_kind,
-        bezahlt_von_display, consent_text_version,
+        bezahlt_von_display, consent_text_version, beleg_verzicht_grund,
         decided_at, decision, reviewed_at
       ) VALUES (
         ${businessId}, ${bezeichnung}, ${4250}, ${"verein"},
-        ${"Verein"}, ${"v1"},
+        ${"Verein"}, ${"v1"}, ${"Seed: Beleg verzichtet"},
         now(), ${"approved"}, now()
       )
       RETURNING id
@@ -170,11 +170,11 @@ async function seedDecidedSubmission(
   const rows = await client<{ id: string }[]>`
     INSERT INTO auslagen_submissions (
       business_id, bezeichnung, betrag_cents, bezahlt_von_kind,
-      bezahlt_von_display, consent_text_version,
+      bezahlt_von_display, consent_text_version, beleg_verzicht_grund,
       decided_at, decision, decision_reason, reviewed_at
     ) VALUES (
       ${businessId}, ${bezeichnung}, ${4250}, ${"verein"},
-      ${"Verein"}, ${"v1"},
+      ${"Verein"}, ${"v1"}, ${"Seed: Beleg verzichtet"},
       now(), ${"rejected"}, ${"Test seed"}, now()
     )
     RETURNING id
