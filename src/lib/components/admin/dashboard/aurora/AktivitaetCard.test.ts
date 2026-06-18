@@ -49,6 +49,27 @@ describe("AktivitaetCard", () => {
     ).toBeNull();
   });
 
+  it("'Weniger anzeigen' collapses back to the capped view", async () => {
+    const { container } = render(AktivitaetCard, {
+      props: { entries: entries(12) },
+    });
+    await fireEvent.click(
+      screen.getByRole("button", { name: /Alle Aktivitäten/ }),
+    );
+    // While expanded, a collapse control is offered.
+    const collapse = screen.getByRole("button", { name: /Weniger anzeigen/ });
+    await fireEvent.click(collapse);
+    // Back to capped view: rows 9+ hidden again, expander returns.
+    const rows = container.querySelectorAll("[data-testid='aktivitaet-row']");
+    expect(rows[8]!.className).toContain("hidden");
+    expect(
+      screen.getByRole("button", { name: /Alle Aktivitäten/ }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: /Weniger anzeigen/ }),
+    ).toBeNull();
+  });
+
   it("expander is mobile-only at 7-8 entries (desktop shows all 8, nothing to reveal)", () => {
     render(AktivitaetCard, { props: { entries: entries(8) } });
     const btn = screen.getByRole("button", { name: /Alle Aktivitäten/ });

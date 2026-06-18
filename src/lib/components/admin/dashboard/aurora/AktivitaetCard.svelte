@@ -86,6 +86,17 @@
 			>
 				Alle Aktivitäten →
 			</button>
+		{:else if expanded && entries.length > MOBILE_CAP}
+			<!-- Collapse back to the capped view (mirror the expander's viewport gating). -->
+			<button
+				type="button"
+				data-testid="aktivitaet-collapse"
+				class={'mt-1 w-full rounded-[10px] py-2 text-left text-[13px] font-medium text-primary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) ' +
+					(entries.length > DESKTOP_CAP ? '' : 'md:hidden')}
+				onclick={() => (expanded = false)}
+			>
+				Weniger anzeigen ↑
+			</button>
 		{/if}
 	</section>
 {/if}
