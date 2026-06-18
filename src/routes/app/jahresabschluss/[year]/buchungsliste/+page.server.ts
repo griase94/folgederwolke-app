@@ -1,14 +1,16 @@
 /**
  * /app/jahresabschluss/[year]/buchungsliste — sortable + filterable transactions.
  *
- * Fetches all year-scoped transactions via listTransactions(year), then applies
- * sphere / kind / kategorie / project filters and sort in-process. Pure
- * filter/sort logic is tested via `c1-buchungsliste-filters.test.ts`.
+ * Fetches all year-scoped transactions via listTransaktionenFeedPage (the Aurora
+ * UNION-ALL feed), then applies sphere / kind / kategorie / project filters and
+ * sort in-process. Pure filter/sort logic is tested via
+ * `c1-buchungsliste-filters.test.ts`.
  */
 
 import { error } from "@sveltejs/kit";
 import type { PageServerLoad } from "./$types.js";
-import { listTransactions } from "$lib/server/domain/transactions.js";
+import { listTransaktionenFeedPage } from "$lib/server/domain/transactions.js";
+import { parseFilterState } from "$lib/domain/transaction-filters.js";
 import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { getDb } from "$lib/server/db/index.js";
@@ -26,13 +28,18 @@ export const load: PageServerLoad = async ({ params, url }) => {
 
   const filters = parseBuchungslisteFilters(url.searchParams);
 
-  // Pull all year transactions in one shot — limit high enough for typical
-  // Verein year. listTransactions caps at 1000 by default; bump to 2000 for
-  // headroom but still bounded so a runaway year doesn't OOM the server.
-  const { rows } = await listTransactions({ year, limit: 2000 });
+  // Pull all year transactions in one shot via the Aurora UNION-ALL feed query
+  // (replaces the deleted in-memory listTransactions). Bounded at 2000 so a
+  // runaway year doesn't OOM the server; rows arrive ordered by the cash date.
+  const { rows } = await listTransaktionenFeedPage({
+    state: parseFilterState("transaktionen", new URLSearchParams()),
+    year,
+    limit: 2000,
+    offset: 0,
+  });
 
-  // Map TransactionRow → BuchungslisteRow (subset we display).
-  // Note: TransactionRow.kategorieId isn't exposed in the shared shape today;
+  // Map FeedRow → BuchungslisteRow (subset we display).
+  // Note: FeedRow.kategorieId isn't exposed in the shared shape today;
   // we use kategorieNameSnapshot as the display string and synthesize the
   // kategorieId/projectId from the detail query only when filtering is on.
   // For c1's minimum viable cut, we filter against the name snapshot as a
@@ -46,8 +53,9 @@ export const load: PageServerLoad = async ({ params, url }) => {
     // The Buchungsliste sorts + displays the booking date. Post-0034 a row's
     // fiscal year derives from the cash date, so the date shown must be the
     // cash-relevant date (relevanz_datum) too — else a row filtered into year Y
-    // could display a date in Y±1. Fall back to gebucht_am when no cash date.
-    gebuchtAm: r.relevanzDatum ?? r.gebuchtAm,
+    // could display a date in Y±1. FeedRow.relevanzDatum is never null
+    // (SQL COALESCE), so no fallback is needed.
+    gebuchtAm: r.relevanzDatum,
     sphereSnapshot: r.sphereSnapshot,
     kategorieId: null,
     kategorieNameSnapshot: r.kategorieNameSnapshot,

@@ -10,7 +10,8 @@
 
 import { error } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types.js";
-import { listTransactions } from "$lib/server/domain/transactions.js";
+import { listTransaktionenFeedPage } from "$lib/server/domain/transactions.js";
+import { parseFilterState } from "$lib/domain/transaction-filters.js";
 // NOTE: `csvCell` here is the GUARDED shared primitive — output is
 // byte-identical to this route's old inline copy EXCEPT injection-trigger
 // cells are now neutralized (a leading `'` is prepended to fields starting
@@ -36,7 +37,12 @@ export const GET: RequestHandler = async ({ params }) => {
   // Match Buchungsliste loader's limit so the CSV mirrors what the user
   // sees in the table. Bounded at 2000 — typical Verein years are well
   // under that.
-  const { rows } = await listTransactions({ year, limit: 2000 });
+  const { rows } = await listTransaktionenFeedPage({
+    state: parseFilterState("transaktionen", new URLSearchParams()),
+    year,
+    limit: 2000,
+    offset: 0,
+  });
 
   const lines: string[] = [];
 
@@ -62,10 +68,11 @@ export const GET: RequestHandler = async ({ params }) => {
     lines.push(
       csvRow([
         // Datum = cash-relevant date (relevanz_datum) the row booked under
-        // (migration 0034). listTransactions threads it as COALESCE(<cash>,
-        // Berlin gebucht_am date) — always a bare YYYY-MM-DD inside
-        // [year-01-01, year-12-31]. `?? gebuchtAm` is a defensive belt only.
-        r.relevanzDatum ?? r.gebuchtAm,
+        // (migration 0034). listTransaktionenFeedPage threads it as
+        // COALESCE(<cash>, Berlin gebucht_am date) — always a bare YYYY-MM-DD
+        // inside [year-01-01, year-12-31]. FeedRow.relevanzDatum is never null
+        // (SQL COALESCE), so no fallback is needed.
+        r.relevanzDatum,
         r.businessId,
         r.bezeichnung,
         KIND_LABEL[r.kind] ?? r.kind,

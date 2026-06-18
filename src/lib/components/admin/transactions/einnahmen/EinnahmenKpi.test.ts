@@ -9,8 +9,10 @@
 //    (the split must always show all four for the gemeinnützigkeit reading)
 //  - the ALL_YEARS anchor reads "Alle Jahre" (item 6 — was bare "Alle";
 //    now matches the sibling tabs + the list empty state via yearScopeLabel)
-//  - the 🔗 Rechnung badge (BezeichnungCell) shows ONLY when rechnungBusinessId
-//    is set, and carries the "aus Rechnung {id}" accessible name
+//
+// Note: the BezeichnungCell describe block was removed in Aurora slice 5 when
+// BezeichnungCell.svelte was deleted (the Aurora einnahmen list uses
+// TransactionRow directly; the 🔗 badge logic is now part of the row's metaLine).
 //
 // Reset lane (renders Svelte components) → `pnpm test --run <file>`.
 // Uses render/screen (project convention; never userEvent).
@@ -18,7 +20,6 @@ import { render, screen, cleanup } from "@testing-library/svelte";
 import { describe, it, expect, afterEach } from "vitest";
 import { ALL_YEARS } from "$lib/domain/year.js";
 import EinnahmenKpi from "./EinnahmenKpi.svelte";
-import BezeichnungCell from "./BezeichnungCell.svelte";
 
 afterEach(() => cleanup());
 
@@ -80,27 +81,5 @@ describe("EinnahmenKpi — anchor + Sphären-Split chips", () => {
     // overflow-x-auto strip carries one chip per sphere (all four present).
     const chips = container.querySelectorAll("[data-sphere-chip]");
     expect(chips.length).toBe(4);
-  });
-});
-
-describe("Einnahmen BezeichnungCell — 🔗 Rechnung badge", () => {
-  it("shows the 🔗 badge only when rechnungBusinessId is set", () => {
-    const { container } = render(BezeichnungCell, {
-      props: { bezeichnung: "Beitrag", rechnungBusinessId: "FDW-2026-014" },
-    });
-    expect(screen.getByText("Beitrag")).toBeTruthy();
-    const badge = container.querySelector('[data-slot="rechnung-badge"]');
-    expect(badge).toBeTruthy();
-    // accessible name surfaces the linked Rechnung id.
-    expect(badge!.getAttribute("aria-label")).toContain("FDW-2026-014");
-    expect(badge!.getAttribute("title")).toContain("FDW-2026-014");
-  });
-
-  it("renders NO 🔗 badge for a free income row (rechnungBusinessId null)", () => {
-    const { container } = render(BezeichnungCell, {
-      props: { bezeichnung: "Spende bar", rechnungBusinessId: null },
-    });
-    expect(screen.getByText("Spende bar")).toBeTruthy();
-    expect(container.querySelector('[data-slot="rechnung-badge"]')).toBeNull();
   });
 });

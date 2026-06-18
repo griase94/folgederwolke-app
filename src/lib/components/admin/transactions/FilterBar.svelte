@@ -72,11 +72,12 @@
 
   // German display labels for the tab key (the raw key is lowercase + reads off
   // in UI copy).
-  const TAB_LABEL = {
+  const TAB_LABEL: Record<import("$lib/domain/transaction-filters.js").TabKey, string> = {
     ausgaben: "Ausgaben",
     einnahmen: "Einnahmen",
     spenden: "Spenden",
-  } as const;
+    transaktionen: "Transaktionen",
+  };
 
   // Registry fields for the active tab, with runtime options injected for the
   // kategorie field (the registry leaves its `options` undefined — P2-04).

@@ -1,11 +1,11 @@
 /**
  * @phase-9
  *
- * E2E for C3-DISC — kebab discoverability on TransactionRow + MemberRow.
+ * E2E for C3-DISC — discoverability on TransactionRow + MemberRow.
  *
  * Covers:
- *   1. TransactionRow kebab → "Bezahlt markieren" → row flips to Erstattet
- *      and the audit_log records the change (single source of truth check).
+ *   1. Detail "Als bezahlt markieren" flips the Auslage to Erstattet (the
+ *      Aurora list row is one link — the quick action lives on the detail page).
  *   2. MemberRow kebab → "Löschen" with native confirm → row disappears
  *      (the matrix re-renders without the soft-deleted member).
  *
@@ -137,46 +137,26 @@ test.beforeEach(async () => {
 });
 
 test.describe("@phase-9 C3-DISC kebab discoverability", () => {
-  test("TransactionRow kebab → Bezahlt markieren flips row to Erstattet", async ({
+  // Aurora slice 5: the list kebab is retired — the Aurora row contract is ONE
+  // link with no nested controls (spec §5). The mark-paid quick action lives on
+  // the detail page; these tests pin that flow + its Festschreibung gate.
+  test("detail → Als bezahlt markieren flips the Auslage to Erstattet", async ({
     page,
   }) => {
     await cleanupEligibleExpenses();
     const { id } = await seedEligibleExpense();
     await signIn(page);
-    await page.goto("/app/ausgaben"); // Phase 8 T6: /app/transactions retired
+    await page.goto(`/app/ausgaben/${id}`);
 
-    const row = page.locator(`tr[data-row-id="${id}"]`).first();
-    await expect(row).toBeVisible({ timeout: 5_000 });
-
-    // Status starts as "Genehmigt".
-    await expect(row.getByTestId("txn-row-status")).toContainText(/genehmigt/i);
-
-    // Open kebab and pick "Bezahlt markieren".
-    await row.getByTestId("txn-row-kebab").click();
-    await page.getByTestId("txn-row-mark-paid").click();
-
-    // Inline dialog appears under the row.
-    const dialog = page.locator(
-      `tr[data-testid="mark-paid-dialog"][data-row-id="${id}"]`,
-    );
-    await expect(dialog).toBeVisible();
-
-    // Date field is pre-filled; submit.
-    await dialog.getByTestId("mark-paid-submit").click();
-
-    // Row now reflects Erstattet status.
-    const updatedRow = page.locator(`tr[data-row-id="${id}"]`).first();
-    await expect(updatedRow.getByTestId("txn-row-status")).toContainText(
-      /erstattet/i,
-      { timeout: 5_000 },
-    );
+    await page.getByRole("button", { name: /Als bezahlt markieren/i }).click();
+    await expect(page.getByText(/Erstattet/i).first()).toBeVisible({
+      timeout: 5_000,
+    });
   });
 
-  test("kebab is hidden for festgeschriebene rows", async ({ page }) => {
-    // Seed a fresh expense, then immediately festschreibe it via SQL so the
-    // server-rendered TransactionRow sees festgeschriebenAt != null and the
-    // kebab gate is closed. This catches a regression where the kebab leaks
-    // past the festschreibung guard.
+  test("festgeschriebene Auslage offers no Als-bezahlt-markieren action", async ({
+    page,
+  }) => {
     await cleanupEligibleExpenses();
     const { id } = await seedEligibleExpense();
     const { default: postgres } = await import("postgres");
@@ -188,10 +168,11 @@ test.describe("@phase-9 C3-DISC kebab discoverability", () => {
     await client.end();
 
     await signIn(page);
-    await page.goto("/app/ausgaben"); // Phase 8 T6: /app/transactions retired
-    const row = page.locator(`tr[data-row-id="${id}"]`).first();
-    await expect(row).toBeVisible({ timeout: 5_000 });
-    await expect(row.getByTestId("txn-row-kebab")).toHaveCount(0);
+    await page.goto(`/app/ausgaben/${id}`);
+    await expect(page.getByText(/A-|AUS-/).first()).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /Als bezahlt markieren/i }),
+    ).toHaveCount(0);
   });
 
   test("MemberRow kebab → Löschen → row removed", async ({ page }) => {

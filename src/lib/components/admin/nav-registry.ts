@@ -91,13 +91,15 @@ export const moreNavItems = navItems.filter((item) => item.group === "more");
 
 /**
  * Mobile "Transaktionen" cell active-predicate (spec §5 active-state
- * rules): the single mobile cell stands in for all three flat transaction
- * routes (+ their details), so it must light up on any of them. Slice 5
- * adds /app/transaktionen to the cell href; this predicate then ALSO gains
- * that route (one line, slice-5 scope).
+ * rules): spans the unified feed + the three flat transaction routes
+ * (+ their details) — the single mobile cell stands in for all of them.
+ * Aurora slice 5 flipped the cell's href to /app/transaktionen.
  */
 export function mobileTransaktionenActive(path: string): boolean {
-  return ["/app/ausgaben", "/app/einnahmen", "/app/spenden"].some(
-    (h) => path === h || path.startsWith(h + "/"),
-  );
+  return [
+    "/app/transaktionen",
+    "/app/ausgaben",
+    "/app/einnahmen",
+    "/app/spenden",
+  ].some((h) => path === h || path.startsWith(h + "/"));
 }

@@ -195,12 +195,12 @@ describe.skipIf(!dbConfigured)("per-tab paginated queries", () => {
     expect(rows.some((r) => r.bescheinigungNr === "B-2024-901")).toBe(true);
   });
 
-  // ── kind discriminant (mobile-card contract) ───────────────────────────────
-  // TransactionCardMobile (the shared <md card the scaffold renders for every
-  // tab) reads `row.kind` to negate expense amounts (outflow minus sign) and to
-  // label the kind pill. The per-tab projections must therefore carry a `kind`
-  // discriminant — without it the mobile card shows expenses as positive/green
-  // with a blank pill. These assert each query stamps the right constant.
+  // ── kind discriminant (Aurora list page contract) ─────────────────────────
+  // The Aurora list pages read `row.kind` to negate expense amounts (outflow
+  // minus sign) and to label the kind pill. The per-tab projections must
+  // therefore carry a `kind` discriminant — without it pages show expenses as
+  // positive/green with a blank pill. These assert each query stamps the right
+  // constant.
   it("every per-tab row carries its `kind` discriminant (expense/income/donation)", async () => {
     const noFilter = (tab: "ausgaben" | "einnahmen" | "spenden") =>
       parseFilterState(tab, new URLSearchParams(""));

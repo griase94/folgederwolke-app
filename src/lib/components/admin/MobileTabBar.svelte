@@ -4,8 +4,8 @@
 
   The five cells are SPEC-FIXED and hardcoded here — nav-registry carries
   desktop IA only. mobileTransaktionenActive() (registry) is the shared
-  Transaktionen active-predicate. Slice phasing: the Transaktionen href
-  stays /app/ausgaben until slice 5 flips it to /app/transaktionen.
+  Transaktionen active-predicate. Aurora slice 5: the Transaktionen cell
+  targets the unified feed /app/transaktionen (spec §5 phasing complete).
 
   Active-state rules (spec §5): Transaktionen spans the feed + three type
   routes + details · Prüfung spans inbox + details · Mehr is active on all
@@ -72,7 +72,7 @@
 	}
 
 	// Speculative prefetch — on idle, preload the top 2 non-active tab routes.
-	const PREFETCH_HREFS = ['/app', '/app/ausgaben', '/app/inbox'];
+	const PREFETCH_HREFS = ['/app', '/app/transaktionen', '/app/inbox'];
 
 	onMount(() => {
 		const schedule = (cb: () => void) => {
@@ -138,12 +138,12 @@
 		<span class="whitespace-nowrap leading-tight">Übersicht</span>
 	</a>
 
-	<!-- 2 · Transaktionen (href stays /app/ausgaben until slice 5) -->
+	<!-- 2 · Transaktionen — unified feed (flipped in slice 5, spec §5 phasing) -->
 	<a
-		href="/app/ausgaben"
+		href="/app/transaktionen"
 		class={cellClass(transaktionenActive)}
 		aria-current={transaktionenActive ? 'page' : undefined}
-		onclick={(e) => onTabClick(e, '/app/ausgaben')}
+		onclick={(e) => onTabClick(e, '/app/transaktionen')}
 	>
 		<svg
 			xmlns="http://www.w3.org/2000/svg"

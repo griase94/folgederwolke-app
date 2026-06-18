@@ -111,15 +111,16 @@ test.describe("@phase-5-einnahmen Einnahmen tab", () => {
       page.getByRole("button", { name: "Speichern" }).click(),
     ]);
 
-    // Back on the list, the new row is present with its Sphäre left-rule and
-    // NO 🔗 Rechnung badge (it is a freie Einnahme).
     await page.goto("/app/einnahmen");
     const row = page
-      .locator('[data-testid="scaffold-row"]', { hasText: bezeichnung })
+      .getByTestId("txn-row")
+      .filter({ hasText: bezeichnung })
       .first();
     await expect(row).toBeVisible();
-    await expect(row.locator('[data-slot="sphere-rule"]')).toBeVisible();
-    await expect(row.locator('[data-slot="rechnung-badge"]')).toHaveCount(0);
+    // freie Einnahme → no "aus Rechnung" chip on the row.
+    await expect(
+      row.getByTestId("row-chip").filter({ hasText: /aus Rechnung/ }),
+    ).toHaveCount(0);
   });
 
   test("a Rechnung-linked income shows the 🔗 badge in the list + the read-only context line on its detail", async ({
@@ -130,15 +131,12 @@ test.describe("@phase-5-einnahmen Einnahmen tab", () => {
     await signIn(page);
     await page.goto("/app/einnahmen");
 
-    const linkedBadge = page.locator('[data-slot="rechnung-badge"]').first();
-    await expect(linkedBadge).toBeVisible();
-
-    // Open that linked row's detail and assert the read-only "aus Rechnung FDW-…"
-    // context line (NOT an action button).
+    // Aurora rows surface the link as an "aus Rechnung FDW-…" chip.
     const linkedRow = page
-      .locator('[data-testid="scaffold-row"]')
-      .filter({ has: page.locator('[data-slot="rechnung-badge"]') })
+      .getByTestId("txn-row")
+      .filter({ hasText: /aus Rechnung/ })
       .first();
+    await expect(linkedRow).toBeVisible();
     await linkedRow.click();
     await expect(page.locator('[data-slot="aus-rechnung"]')).toBeVisible();
     await expect(page.locator('[data-slot="aus-rechnung"]')).toContainText(
@@ -153,7 +151,7 @@ test.describe("@phase-5-einnahmen Einnahmen tab", () => {
     // Navigate into a festgeschriebene income detail (seeded). The shell shows
     // the Festschreibung notice and HIDES the Speichern button.
     await page.goto("/app/einnahmen");
-    const firstRow = page.locator('[data-testid="scaffold-row"]').first();
+    const firstRow = page.getByTestId("txn-row").first();
     await firstRow.click();
 
     // If the row is festgeschrieben the notice is shown + Speichern is absent.

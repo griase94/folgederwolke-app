@@ -21,7 +21,7 @@ import { loginAs } from "./helpers/sign-in.js";
 const ROUTES = [
   "/app", // dashboard
   "/app/mitglieder",
-  "/app/transactions",
+  "/app/transaktionen",
   "/app/rechnungen",
   "/app/inbox",
   "/app/projekte",

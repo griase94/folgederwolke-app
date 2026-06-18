@@ -73,10 +73,10 @@ test.describe("@phase-8 Axe a11y scans — per-tab transaction routes", () => {
       page,
     }) => {
       await page.goto(tab.path);
-      // Wait for the scaffold to hydrate — export CTA (rows present) or
-      // one of the two real empty-state testids must be visible before scan.
+      // Wait for the Aurora list pages to hydrate — export CTA (rows present)
+      // or one of the two real empty-state testids must be visible before scan.
       // `empty-no-matches` = active filter with no hits; `empty-year` = year
-      // with no bookings. Both live in TransactionListScaffold.svelte.
+      // with no bookings. Both live in the Aurora list pages.
       await page.waitForSelector(
         '[data-testid="export-cta"], [data-testid="empty-no-matches"], [data-testid="empty-year"]',
         { timeout: 10_000 },

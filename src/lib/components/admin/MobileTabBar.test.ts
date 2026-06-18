@@ -1,8 +1,8 @@
 /**
  * Aurora slice 2 — mobile tab bar (spec §5, option B):
  * Übersicht · Transaktionen · ⊕ · Prüfung · Mehr.
- *  - Transaktionen href stays /app/ausgaben (slice-5 flips it), active state
- *    spans all three type routes via mobileTransaktionenActive()
+ *  - Transaktionen href targets /app/transaktionen (flipped in slice 5);
+ *    active state spans feed + type routes via mobileTransaktionenActive()
  *  - ⊕ / Mehr open their sheets via pushState (history-entry contract)
  *  - Prüfung badge from page.data.openAuslagenCount, capped "9+"
  */
@@ -46,7 +46,7 @@ describe("MobileTabBar — Aurora five-cell bar", () => {
     ]);
     expect(links.map((a) => a.getAttribute("href"))).toEqual([
       "/app",
-      "/app/ausgaben", // slice phasing: slice 5 flips this to /app/transaktionen
+      "/app/transaktionen", // flipped from /app/ausgaben in slice 5 (spec §5 phasing)
       "/app/inbox",
     ]);
     expect(screen.getByRole("button", { name: /^Mehr/ })).toBeTruthy();
@@ -87,7 +87,7 @@ describe("MobileTabBar — Aurora five-cell bar", () => {
     mockPage.url = new URL("http://localhost/app/spenden/abc-123");
     const { container } = render(MobileTabBar);
     const tx = container.querySelector<HTMLAnchorElement>(
-      'a[href="/app/ausgaben"]',
+      'a[href="/app/transaktionen"]',
     );
     expect(tx!.getAttribute("aria-current")).toBe("page");
     expect(tx!.className).toContain("text-primary-text");

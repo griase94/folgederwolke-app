@@ -1,287 +1,210 @@
 <script lang="ts">
-  /**
-   * /app/ausgaben — Ausgaben list page (Phase 4, Tier C1).
-   *
-   * Binds the shared (generic) `TransactionListScaffold` to the Ausgaben row type
-   * (`AusgabenRow`) with: an `AusgabenKpi` header pill snippet, the Ausgaben
-   * `columns` (Datum, ID mono, Bezeichnung + Bezahlt-von subtitle, Bezahlt von,
-   * Kategorie, the §13 Sphäre LEFT COLOR-RULE — a thin tone bar, not a filled
-   * badge —, Betrag right via Money, Status badge, chevron). Bulk Erstattung
-   * moved to /app/ausgaben/ueberweisungen (Aurora slice 4).
-   */
-  import { page } from "$app/stores";
-  import TransactionListScaffold from "$lib/components/admin/transactions/TransactionListScaffold.svelte";
-  import AusgabenKpi from "$lib/components/admin/transactions/ausgaben/AusgabenKpi.svelte";
-  import { ausgabenColumns } from "$lib/components/admin/transactions/ausgaben/columns.js";
-  import Money from "$lib/components/ui/money/money.svelte";
-  import type { Sphere } from "$lib/domain/sphere.js";
-  import { SPHERE_LABELS } from "$lib/domain/sphere.js";
-  import { statusPresentation } from "$lib/domain/transaction-status.js";
-  import type { AusgabenRow } from "$lib/server/domain/transactions.js";
-  import { enhance } from "$app/forms";
-  import { invalidateAll } from "$app/navigation";
-  import { toast } from "svelte-sonner";
-  import type { PageData } from "./$types.js";
+	/**
+	 * /app/ausgaben — Ausgaben list (Aurora slice 5 restyle).
+	 *
+	 * PageShell + PageHeader single-row toolbar (FilterBar with search ·
+	 * Überweisungsliste link · CSV export · Neu) + month-grouped TransactionRow
+	 * list. Presentation-only rewrite: the route server (filters, pagination,
+	 * ?/mark-paid action) is unchanged. Bulk Erstattung lives on
+	 * /app/ausgaben/ueberweisungen (Aurora slice 4); the single-row mark-paid
+	 * quick action lives on the detail page (Aurora rows are ONE link).
+	 */
+	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
+	import PageShell from '$lib/components/layout/PageShell.svelte';
+	import PageHeader from '$lib/components/layout/PageHeader.svelte';
+	import StaleYearBanner from '$lib/components/admin/StaleYearBanner.svelte';
+	import FilterBar from '$lib/components/admin/transactions/FilterBar.svelte';
+	import AusgabenKpi from '$lib/components/admin/transactions/ausgaben/AusgabenKpi.svelte';
+	import TransactionRow from '$lib/components/ui/TransactionRow.svelte';
+	import MonthGroup from '$lib/components/ui/MonthGroup.svelte';
+	import { Pagination } from '$lib/components/ui/pagination/index.js';
+	import { groupByMonth } from '$lib/domain/month-group.js';
+	import { SPHERE_LABELS, type Sphere } from '$lib/domain/sphere.js';
+	import { statusPresentation } from '$lib/domain/transaction-status.js';
+	import { yearScopeLabel } from '$lib/domain/year.js';
+	import type { AusgabenRow } from '$lib/server/domain/transactions.js';
+	import type { PageData } from './$types.js';
 
-  let { data }: { data: PageData } = $props();
+	let { data }: { data: PageData } = $props();
 
-  // ── C3-DISC: single-row "Bezahlt markieren" kebab state ──────────────────
-  // `markPaidRowId` tracks which row (if any) has the inline mark-paid dialog
-  // open. Only one row can have it open at a time. Set to null to close.
-  let markPaidRowId = $state<string | null>(null);
-  const today = new Date().toISOString().slice(0, 10);
-  let markPaidDatum = $state(today);
+	function formatDatum(iso: string): string {
+		return new Date(iso).toLocaleDateString('de-DE');
+	}
+	function sphereLabel(s: string): string {
+		return SPHERE_LABELS[s as Sphere] ?? s;
+	}
+	function metaLine(row: AusgabenRow): string {
+		const parts = [formatDatum(row.gebuchtAm), sphereLabel(row.sphereEffective)];
+		if (row.bezahltVonDisplay) parts.push(row.bezahltVonDisplay);
+		return parts.join(' · ');
+	}
+	function chips(row: AusgabenRow): { label: string; kind?: 'warn' | 'neutral' }[] {
+		// master §2.4: the Ausgabe status (Geprüft/Genehmigt/Erstattet/…) is a
+		// neutral chip — not an incompleteness warning.
+		return [{ label: statusPresentation(row.status).label, kind: 'neutral' }];
+	}
 
-  // ── Sphäre LEFT color-rule (§13) ──────────────────────────────────────────
-  // A thin vertical tone bar keyed on the row's sphere — NOT the filled
-  // SphereBadge (that lives on the detail page). Mirrors the §13 palette (the
-  // solid tone of each Sphäre) so the list stays calm (a quiet left edge) while
-  // the four Sphären stay legible.
-  const SPHERE_RULE: Record<Sphere, string> = {
-    ideeller: "bg-pink-400 dark:bg-pink-500",
-    vermoegen: "bg-blue-400 dark:bg-blue-500",
-    zweckbetrieb: "bg-violet-400 dark:bg-violet-500",
-    wirtschaftlich: "bg-amber-400 dark:bg-amber-500",
-  };
+	// Month grouping follows the default order (gebucht_am DESC). An explicit
+	// ?sort= deep link would interleave months → render flat then.
+	const sortOverride = $derived($page.url.searchParams.has('sort'));
+	const groups = $derived(
+		groupByMonth(
+			data.rows,
+			(r) => r.gebuchtAm,
+			(r) => -r.betragCents,
+		),
+	);
 
-  function ruleFor(sphere: string): string {
-    return SPHERE_RULE[sphere as Sphere] ?? "bg-border";
-  }
+	const hasActiveFilters = $derived(
+		!!data.filterState.search ||
+			Object.values(data.filterState.enums).some((v) => v.length > 0) ||
+			Object.keys(data.filterState.members).length > 0 ||
+			data.filterState.amount.betragMin != null ||
+			data.filterState.amount.betragMax != null ||
+			Object.values(data.filterState.booleans).some(Boolean),
+	);
+	const yearLabel = $derived(yearScopeLabel(data.yearScope));
 
-  function sphereLabel(sphere: string): string {
-    return SPHERE_LABELS[sphere as Sphere] ?? sphere;
-  }
+	const exportHref = $derived(
+		(() => {
+			const qs = $page.url.searchParams.toString();
+			return `/app/ausgaben/export${qs ? `?${qs}` : ''}`;
+		})(),
+	);
+	const resetHref = $derived(
+		(() => {
+			const year = $page.url.searchParams.get('year');
+			return `${$page.url.pathname}${year ? `?year=${year}` : ''}`;
+		})(),
+	);
 
-  // ── Status badge ─────────────────────────────────────────────────────────
-  // Label + tone come from the SHARED transaction-status map so the desktop
-  // column and the mobile card never drift (item 7).
-
-  function formatDatum(iso: string): string {
-    return new Date(iso).toLocaleDateString("de-DE");
-  }
-
-  const columns = ausgabenColumns({
-    datum: datumCell,
-    id: idCell,
-    bezeichnung: bezeichnungCell,
-    bezahltVon: bezahltVonCell,
-    kategorie: kategorieCell,
-    sphaere: sphaereCell,
-    betrag: betragCell,
-    status: statusCell,
-    kebab: kebabCell,
-    chevron: chevronCell,
-  });
+	function onPageChange(p: number) {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local URL builder
+		const url = new URLSearchParams($page.url.search);
+		if (p <= 1) url.delete('page');
+		else url.set('page', String(p));
+		const search = url.toString();
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- same-origin query string
+		goto(`${$page.url.pathname}${search ? `?${search}` : ''}`, {
+			keepFocus: true,
+			noScroll: true,
+		});
+	}
 </script>
 
 <svelte:head>
-  <title>Ausgaben – {$page.data.vereinName}</title>
+	<title>Ausgaben – {$page.data.vereinName}</title>
 </svelte:head>
 
-<!-- ── KPI header strip ────────────────────────────────────────────────────── -->
-{#snippet kpi()}
-  <AusgabenKpi
-    totalCents={data.kpi.totalCents}
-    count={data.kpi.count}
-    offenCount={data.kpi.offenCount}
-    oldestOpenAgeDays={data.kpi.oldestOpenAgeDays}
-    year={data.yearScope}
-  />
+{#snippet rowsFor(rows: AusgabenRow[])}
+	{#each rows as row (row.id)}
+		<TransactionRow
+			type="ausgabe"
+			title={row.bezeichnung}
+			metaLine={metaLine(row)}
+			statusChips={chips(row)}
+			amountCents={-row.betragCents}
+			signed={true}
+			href={`/app/ausgaben/${row.id}`}
+		/>
+	{/each}
 {/snippet}
 
-<!-- ── Column cells (typed on AusgabenRow — no casts) ──────────────────────── -->
-{#snippet sphaereCell(row: AusgabenRow)}
-  <span
-    role="img"
-    data-testid="sphaere-rule"
-    data-sphere={row.sphereSnapshot}
-    aria-label={sphereLabel(row.sphereSnapshot)}
-    title={sphereLabel(row.sphereSnapshot)}
-    class={["block h-6 w-1 rounded-full", ruleFor(row.sphereSnapshot)].join(
-      " ",
-    )}
-  ></span>
-{/snippet}
+<PageShell width="list">
+	<PageHeader title="Ausgaben">
+		{#snippet meta()}
+			<AusgabenKpi
+				totalCents={data.kpi.totalCents}
+				count={data.kpi.count}
+				offenCount={data.kpi.offenCount}
+				oldestOpenAgeDays={data.kpi.oldestOpenAgeDays}
+				year={data.yearScope}
+			/>
+		{/snippet}
+		{#snippet toolbar()}
+			<div class="flex w-full flex-wrap items-center gap-2">
+				<div class="min-w-0 flex-1">
+					<FilterBar
+						tab="ausgaben"
+						state={data.filterState}
+						kategorieOptions={data.kategorieOptions}
+						memberOptions={data.memberOptions}
+						resultCount={data.total}
+					/>
+				</div>
+				<!-- eslint-disable svelte/no-navigation-without-resolve -->
+				<a
+					href="/app/ausgaben/ueberweisungen"
+					class="inline-flex h-11 items-center rounded-[10px] px-3 text-sm font-medium text-primary-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
+					>Überweisungsliste</a
+				>
+				<a
+					href={exportHref}
+					data-testid="export-cta"
+					title="Gefilterte und sortierte Liste vollständig herunterladen (alle Seiten)"
+					class="inline-flex h-11 items-center rounded-[10px] border border-(--hairline) bg-white px-3 text-sm font-medium text-ink-700 hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
+					>CSV</a
+				>
+				<a
+					href="/app/ausgaben/neu"
+					data-slot="new-cta"
+					class="inline-flex h-11 items-center rounded-full bg-primary-strong px-4 text-sm font-semibold text-white shadow-(--glow-brand) transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:h-10"
+					>Neue Ausgabe</a
+				>
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
+			</div>
+		{/snippet}
+	</PageHeader>
 
-{#snippet datumCell(row: AusgabenRow)}
-  <span class="whitespace-nowrap text-muted-foreground"
-    >{formatDatum(row.gebuchtAm)}</span
-  >
-{/snippet}
+	<StaleYearBanner selectedYear={data.yearScope} currentYear={data.currentYear} />
 
-{#snippet idCell(row: AusgabenRow)}
-  <span class="font-mono text-xs text-muted-foreground">{row.businessId}</span>
-{/snippet}
-
-{#snippet bezeichnungCell(row: AusgabenRow)}
-  <!-- FIX A (review): primary discoverable link so desktop Julia can open a booking. -->
-  <!-- eslint-disable svelte/no-navigation-without-resolve -->
-  <a
-    href={`/app/ausgaben/${row.id}`}
-    class="font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-    >{row.bezeichnung}</a
-  >
-  <!-- eslint-enable svelte/no-navigation-without-resolve -->
-  {#if row.bezahltVonDisplay}
-    <span class="mt-0.5 block text-xs text-muted-foreground"
-      >{row.bezahltVonDisplay}</span
-    >
-  {/if}
-{/snippet}
-
-{#snippet bezahltVonCell(row: AusgabenRow)}
-  <span class="text-muted-foreground">{row.bezahltVonDisplay}</span>
-{/snippet}
-
-{#snippet kategorieCell(row: AusgabenRow)}
-  <span class="text-muted-foreground">{row.kategorieNameSnapshot}</span>
-{/snippet}
-
-{#snippet betragCell(row: AusgabenRow)}
-  <Money
-    valueInCents={-row.betragCents}
-    class="whitespace-nowrap font-medium"
-  />
-{/snippet}
-
-{#snippet statusCell(row: AusgabenRow)}
-  <span
-    data-testid="txn-row-status"
-    class={[
-      "inline-flex w-fit items-center rounded-full px-2 py-0.5 text-xs font-medium",
-      statusPresentation(row.status).tone,
-    ].join(" ")}
-  >
-    {statusPresentation(row.status).label}
-  </span>
-{/snippet}
-
-<!-- C3-DISC: row-level kebab — "Bezahlt markieren" (geprueft/not-yet-erstattet). -->
-{#snippet kebabCell(row: AusgabenRow)}
-  {#if !row.festgeschriebenAt && row.status === 'geprueft'}
-    <div class="relative flex justify-end">
-      <button
-        type="button"
-        aria-label="Aktionen für Auslage"
-        data-testid="txn-row-kebab"
-        onclick={() => {
-          markPaidRowId = markPaidRowId === row.id ? null : row.id;
-          markPaidDatum = today;
-        }}
-        class="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-          <circle cx="12" cy="5" r="1.5" />
-          <circle cx="12" cy="12" r="1.5" />
-          <circle cx="12" cy="19" r="1.5" />
-        </svg>
-      </button>
-      {#if markPaidRowId === row.id}
-        <div
-          class="absolute right-0 top-8 z-10 w-44 rounded-md border border-border bg-background shadow-md"
-        >
-          <button
-            type="button"
-            data-testid="txn-row-mark-paid"
-            onclick={() => { /* dialog already opens via markPaidRowId */ }}
-            class="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-          >
-            Bezahlt markieren
-          </button>
-        </div>
-      {/if}
-    </div>
-  {/if}
-{/snippet}
-
-<!-- C3-DISC: inline mark-paid dialog row (rendered via rowAfter). -->
-{#snippet rowAfterSnippet(row: AusgabenRow)}
-  {#if markPaidRowId === row.id}
-    <tr data-testid="mark-paid-dialog" data-row-id={row.id}>
-      <td colspan="10" class="border-b border-border bg-muted/30 px-4 py-3">
-        <form
-          method="POST"
-          action="?/mark-paid"
-          use:enhance={() => {
-            return async ({ result }) => {
-              if (result.type === 'success') {
-                toast.success('Als bezahlt markiert');
-                markPaidRowId = null;
-                await invalidateAll();
-              } else if (result.type === 'failure') {
-                const err = (result.data as { error?: string } | undefined)?.error;
-                toast.error(err ?? 'Als bezahlt markieren fehlgeschlagen');
-              }
-            };
-          }}
-          class="flex flex-wrap items-center gap-2"
-        >
-          <input type="hidden" name="expenseId" value={row.id} />
-          <input
-            type="date"
-            name="datum"
-            lang="de"
-            bind:value={markPaidDatum}
-            required
-            class="h-9 rounded-md border border-border bg-background px-2 text-sm"
-          />
-          <button
-            type="submit"
-            data-testid="mark-paid-submit"
-            class="inline-flex h-9 items-center rounded-md bg-primary-strong px-3 text-sm font-medium text-primary-foreground hover:bg-primary-strong/90"
-          >
-            Speichern
-          </button>
-          <button
-            type="button"
-            onclick={() => (markPaidRowId = null)}
-            class="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm hover:bg-muted"
-          >
-            Abbrechen
-          </button>
-        </form>
-      </td>
-    </tr>
-  {/if}
-{/snippet}
-
-{#snippet chevronCell(row: AusgabenRow)}
-  <!-- FIX A (review): real <a> so chevron is keyboard-focusable on desktop. -->
-  <!-- eslint-disable svelte/no-navigation-without-resolve -->
-  <a
-    href={`/app/ausgaben/${row.id}`}
-    aria-label="Detail öffnen"
-    class="inline-flex h-11 min-h-11 w-11 min-w-11 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-    ><span aria-hidden="true">›</span></a
-  >
-  <!-- eslint-enable svelte/no-navigation-without-resolve -->
-{/snippet}
-
-<div class="container mx-auto max-w-6xl px-4 py-8 sm:px-6">
-  <div class="mb-3 flex justify-end">
-    <!-- eslint-disable svelte/no-navigation-without-resolve -->
-    <a
-      href="/app/ausgaben/ueberweisungen"
-      class="text-sm font-medium text-primary-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) rounded"
-    >Zur Überweisungsliste →</a>
-    <!-- eslint-enable svelte/no-navigation-without-resolve -->
-  </div>
-  <TransactionListScaffold
-    tab="ausgaben"
-    rows={data.rows}
-    total={data.total}
-    page={data.page}
-    pageSize={data.pageSize}
-    selectedYear={data.yearScope}
-    currentYear={data.currentYear}
-    filterState={data.filterState}
-    kategorieOptions={data.kategorieOptions}
-    memberOptions={data.memberOptions}
-    {columns}
-    {kpi}
-    detailHrefBase="/app/ausgaben"
-    newLabel="Neue Ausgabe"
-    newHref="/app/ausgaben/neu"
-    rowAfter={rowAfterSnippet}
-  />
-</div>
+	{#if data.rows.length === 0}
+		{#if hasActiveFilters}
+			<div
+				data-testid="empty-no-matches"
+				class="flex flex-col items-center gap-3 rounded-[16px] border border-dashed border-(--hairline) bg-white/60 px-6 py-12 text-center"
+			>
+				<p class="text-sm font-medium text-ink-700">Keine Treffer für die aktuellen Filter</p>
+				<!-- eslint-disable svelte/no-navigation-without-resolve -->
+				<a
+					href={resetHref}
+					class="rounded text-sm font-medium text-primary-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
+					>Filter zurücksetzen</a
+				>
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
+			</div>
+		{:else}
+			<div
+				data-testid="empty-year"
+				class="flex flex-col items-center gap-2 rounded-[16px] border border-dashed border-(--hairline) bg-white/60 px-6 py-12 text-center"
+			>
+				<p class="text-sm font-medium text-ink-700">Keine Buchungen in {yearLabel}</p>
+			</div>
+		{/if}
+	{:else if sortOverride}
+		<div class="flex flex-col">
+			{@render rowsFor(data.rows)}
+		</div>
+		<Pagination
+			page={data.page}
+			pageSize={data.pageSize}
+			total={data.total}
+			{onPageChange}
+			class="justify-center"
+		/>
+	{:else}
+		{#each groups as g (g.key)}
+			<MonthGroup label={g.label} subtotalCents={g.subtotalCents}>
+				{@render rowsFor(g.rows)}
+			</MonthGroup>
+		{/each}
+		<Pagination
+			page={data.page}
+			pageSize={data.pageSize}
+			total={data.total}
+			{onPageChange}
+			class="justify-center"
+		/>
+	{/if}
+</PageShell>

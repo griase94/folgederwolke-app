@@ -1,111 +1,193 @@
 <script lang="ts">
-  import { page } from "$app/stores";
-  import TransactionListScaffold from "$lib/components/admin/transactions/TransactionListScaffold.svelte";
-  import SpendenKpi from "$lib/components/admin/transactions/spenden/SpendenKpi.svelte";
-  import {
-    spendenColumns,
-    spendeArtLabel,
-    zweckbindungLabel,
-  } from "$lib/components/admin/transactions/spenden/columns.js";
-  import Money from "$lib/components/ui/money/money.svelte";
-  import type { SpendenRow } from "$lib/server/domain/transactions.js";
-  import type { PageData } from "./$types.js";
+	/**
+	 * /app/spenden — Spenden list (Aurora slice 5 restyle).
+	 * PageShell + PageHeader single-row toolbar + month-grouped TransactionRow
+	 * list. Presentation-only; the route server is unchanged. Bescheinigungs-Nr
+	 * (or "Bescheinigung ausstehend") surfaces as a row chip.
+	 */
+	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
+	import PageShell from '$lib/components/layout/PageShell.svelte';
+	import PageHeader from '$lib/components/layout/PageHeader.svelte';
+	import StaleYearBanner from '$lib/components/admin/StaleYearBanner.svelte';
+	import FilterBar from '$lib/components/admin/transactions/FilterBar.svelte';
+	import SpendenKpi from '$lib/components/admin/transactions/spenden/SpendenKpi.svelte';
+	import TransactionRow from '$lib/components/ui/TransactionRow.svelte';
+	import MonthGroup from '$lib/components/ui/MonthGroup.svelte';
+	import { Pagination } from '$lib/components/ui/pagination/index.js';
+	import { groupByMonth } from '$lib/domain/month-group.js';
+	import { spendeArtLabel, zweckbindungLabel } from '$lib/domain/spenden-labels.js';
+	import { yearScopeLabel } from '$lib/domain/year.js';
+	import type { SpendenRow } from '$lib/server/domain/transactions.js';
+	import type { PageData } from './$types.js';
 
-  let { data }: { data: PageData } = $props();
+	let { data }: { data: PageData } = $props();
 
-  // §9.1 columns — declared against SpendenRow so each cell reads the per-tab
-  // fields (spenderName / spendeKind / zweckbindungKind / bescheinigungNr)
-  // directly, no casts. Markup lives in the auto-escaped {#snippet} blocks below.
-  const columns = spendenColumns({
-    datum: datumCell,
-    id: idCell,
-    spender: spenderCell,
-    art: artCell,
-    zweckbindung: zweckbindungCell,
-    betrag: betragCell,
-    bescheinigung: bescheinigungCell,
-  });
+	function formatDatum(iso: string): string {
+		return new Date(iso).toLocaleDateString('de-DE');
+	}
+	function metaLine(row: SpendenRow): string {
+		return `${formatDatum(row.gebuchtAm)} · ${spendeArtLabel(row.spendeKind)} · ${zweckbindungLabel(row.zweckbindungKind)}`;
+	}
+	function chips(row: SpendenRow): { label: string; kind?: 'warn' | 'neutral' }[] {
+		// master §2.4: the Bescheinigungs-Nr (or "Bescheinigung ausstehend") is a
+		// status indicator, not an incompleteness warning → neutral.
+		return [{ label: row.bescheinigungNr ?? 'Bescheinigung ausstehend', kind: 'neutral' }];
+	}
 
-  function formatDatum(iso: string): string {
-    return new Date(iso).toLocaleDateString("de-DE");
-  }
+	const sortOverride = $derived($page.url.searchParams.has('sort'));
+	const groups = $derived(
+		groupByMonth(
+			data.rows,
+			(r) => r.gebuchtAm,
+			(r) => r.betragCents,
+		),
+	);
+
+	const hasActiveFilters = $derived(
+		!!data.filterState.search ||
+			Object.values(data.filterState.enums).some((v) => v.length > 0) ||
+			Object.keys(data.filterState.members).length > 0 ||
+			data.filterState.amount.betragMin != null ||
+			data.filterState.amount.betragMax != null ||
+			Object.values(data.filterState.booleans).some(Boolean),
+	);
+	const yearLabel = $derived(yearScopeLabel(data.yearScope));
+
+	const exportHref = $derived(
+		(() => {
+			const qs = $page.url.searchParams.toString();
+			return `/app/spenden/export${qs ? `?${qs}` : ''}`;
+		})(),
+	);
+	const resetHref = $derived(
+		(() => {
+			const year = $page.url.searchParams.get('year');
+			return `${$page.url.pathname}${year ? `?year=${year}` : ''}`;
+		})(),
+	);
+
+	function onPageChange(p: number) {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local URL builder
+		const url = new URLSearchParams($page.url.search);
+		if (p <= 1) url.delete('page');
+		else url.set('page', String(p));
+		const search = url.toString();
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- same-origin query string
+		goto(`${$page.url.pathname}${search ? `?${search}` : ''}`, {
+			keepFocus: true,
+			noScroll: true,
+		});
+	}
 </script>
 
 <svelte:head>
-  <title>Spenden – {$page.data.vereinName}</title>
+	<title>Spenden – {$page.data.vereinName}</title>
 </svelte:head>
 
-{#snippet kpi()}
-  <SpendenKpi
-    totalCents={data.kpi.totalCents}
-    count={data.kpi.count}
-    ohneBescheinigungCount={data.kpi.ohneBescheinigungCount}
-    versandtCount={data.kpi.versandtCount}
-    year={data.yearScope}
-  />
+{#snippet rowsFor(rows: SpendenRow[])}
+	{#each rows as row (row.id)}
+		<TransactionRow
+			type="spende"
+			title={row.bezeichnung}
+			metaLine={metaLine(row)}
+			statusChips={chips(row)}
+			amountCents={row.betragCents}
+			signed={true}
+			href={`/app/spenden/${row.id}`}
+		/>
+	{/each}
 {/snippet}
 
-{#snippet datumCell(row: SpendenRow)}
-  <span class="text-muted-foreground">{formatDatum(row.gebuchtAm)}</span>
-{/snippet}
+<PageShell width="list">
+	<PageHeader title="Spenden">
+		{#snippet meta()}
+			<SpendenKpi
+				totalCents={data.kpi.totalCents}
+				count={data.kpi.count}
+				ohneBescheinigungCount={data.kpi.ohneBescheinigungCount}
+				versandtCount={data.kpi.versandtCount}
+				year={data.yearScope}
+			/>
+		{/snippet}
+		{#snippet toolbar()}
+			<div class="flex w-full flex-wrap items-center gap-2">
+				<div class="min-w-0 flex-1">
+					<FilterBar
+						tab="spenden"
+						state={data.filterState}
+						kategorieOptions={data.kategorieOptions}
+						memberOptions={data.memberOptions}
+						resultCount={data.total}
+					/>
+				</div>
+				<!-- eslint-disable svelte/no-navigation-without-resolve -->
+				<a
+					href={exportHref}
+					data-testid="export-cta"
+					title="Gefilterte und sortierte Liste vollständig herunterladen (alle Seiten)"
+					class="inline-flex h-11 items-center rounded-[10px] border border-(--hairline) bg-white px-3 text-sm font-medium text-ink-700 hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
+					>CSV</a
+				>
+				<a
+					href="/app/spenden/neu"
+					data-slot="new-cta"
+					class="inline-flex h-11 items-center rounded-full bg-primary-strong px-4 text-sm font-semibold text-white shadow-(--glow-brand) transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:h-10"
+					>Neue Spende</a
+				>
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
+			</div>
+		{/snippet}
+	</PageHeader>
 
-{#snippet idCell(row: SpendenRow)}
-  <span class="font-mono text-xs text-muted-foreground">{row.businessId}</span>
-{/snippet}
+	<StaleYearBanner selectedYear={data.yearScope} currentYear={data.currentYear} />
 
-{#snippet spenderCell(row: SpendenRow)}
-  <!-- FIX A (review): primary discoverable link so desktop Julia can open a booking. -->
-  <!-- eslint-disable svelte/no-navigation-without-resolve -->
-  <a
-    href={`/app/spenden/${row.id}`}
-    class="font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-    >{row.spenderName ?? "—"}</a
-  >
-  <!-- eslint-enable svelte/no-navigation-without-resolve -->
-{/snippet}
-
-{#snippet artCell(row: SpendenRow)}
-  <span
-    class="inline-flex items-center rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs font-medium text-muted-foreground"
-  >
-    {spendeArtLabel(row.spendeKind)}
-  </span>
-{/snippet}
-
-{#snippet zweckbindungCell(row: SpendenRow)}
-  <span class="text-sm text-muted-foreground"
-    >{zweckbindungLabel(row.zweckbindungKind)}</span
-  >
-{/snippet}
-
-{#snippet betragCell(row: SpendenRow)}
-  <Money valueInCents={row.betragCents} />
-{/snippet}
-
-{#snippet bescheinigungCell(row: SpendenRow)}
-  {#if row.bescheinigungNr}
-    <span class="font-mono text-xs text-foreground">{row.bescheinigungNr}</span>
-  {:else}
-    <span class="text-xs text-muted-foreground/70">ausstehend</span>
-  {/if}
-{/snippet}
-
-<div class="container mx-auto max-w-6xl px-4 py-8 sm:px-6">
-  <TransactionListScaffold
-    tab="spenden"
-    rows={data.rows}
-    total={data.total}
-    page={data.page}
-    pageSize={data.pageSize}
-    selectedYear={data.yearScope}
-    currentYear={data.currentYear}
-    filterState={data.filterState}
-    kategorieOptions={data.kategorieOptions}
-    memberOptions={data.memberOptions}
-    {columns}
-    {kpi}
-    detailHrefBase="/app/spenden"
-    newLabel="Neue Spende"
-    newHref="/app/spenden/neu"
-  />
-</div>
+	{#if data.rows.length === 0}
+		{#if hasActiveFilters}
+			<div
+				data-testid="empty-no-matches"
+				class="flex flex-col items-center gap-3 rounded-[16px] border border-dashed border-(--hairline) bg-white/60 px-6 py-12 text-center"
+			>
+				<p class="text-sm font-medium text-ink-700">Keine Treffer für die aktuellen Filter</p>
+				<!-- eslint-disable svelte/no-navigation-without-resolve -->
+				<a
+					href={resetHref}
+					class="rounded text-sm font-medium text-primary-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)"
+					>Filter zurücksetzen</a
+				>
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
+			</div>
+		{:else}
+			<div
+				data-testid="empty-year"
+				class="flex flex-col items-center gap-2 rounded-[16px] border border-dashed border-(--hairline) bg-white/60 px-6 py-12 text-center"
+			>
+				<p class="text-sm font-medium text-ink-700">Keine Buchungen in {yearLabel}</p>
+			</div>
+		{/if}
+	{:else if sortOverride}
+		<div class="flex flex-col">
+			{@render rowsFor(data.rows)}
+		</div>
+		<Pagination
+			page={data.page}
+			pageSize={data.pageSize}
+			total={data.total}
+			{onPageChange}
+			class="justify-center"
+		/>
+	{:else}
+		{#each groups as g (g.key)}
+			<MonthGroup label={g.label} subtotalCents={g.subtotalCents}>
+				{@render rowsFor(g.rows)}
+			</MonthGroup>
+		{/each}
+		<Pagination
+			page={data.page}
+			pageSize={data.pageSize}
+			total={data.total}
+			{onPageChange}
+			class="justify-center"
+		/>
+	{/if}
+</PageShell>

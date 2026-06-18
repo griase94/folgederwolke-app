@@ -2,8 +2,7 @@
  * Domain helpers for the merged Transactions view (Phase 5).
  *
  * Exports:
- *  - listTransactions: unified query over expenses + income + donations with
- *    optional filters (type, search, year, month, festschreibung-aware).
+ *  - listTransaktionenFeedPage: Aurora UNION-ALL unified feed (slice 5) — also serves the Jahresabschluss Buchungsliste + transactions.csv.
  *  - getTransactionDetail: single-row detail with audit_log timeline.
  *  - listZahlungsarten: for dropdowns.
  *  - deriveSphere: from sphere_override (pre-Festschreibung) else sphere_snapshot.
@@ -11,17 +10,7 @@
  * No schema changes — read-only queries only (§5.4 spec).
  */
 
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  ilike,
-  or,
-  sql,
-  type AnyColumn,
-  type SQL,
-} from "drizzle-orm";
+import { and, asc, desc, eq, sql, type AnyColumn, type SQL } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
@@ -197,256 +186,6 @@ export async function listZahlungsarten(): Promise<ZahlungsartOption[]> {
 }
 
 // ---------------------------------------------------------------------------
-// listTransactions — merged view
-// ---------------------------------------------------------------------------
-
-export interface ListTransactionsOptions {
-  /** If omitted, returns all three kinds. */
-  kind?: TransactionKind;
-  search?: string;
-  year?: number;
-  month?: number; // 1-12
-  limit?: number;
-  offset?: number;
-}
-
-/**
- * @deprecated Phase 2: the merged view paginates in-memory (`.slice()`) after
- * fetching every matching row from all three tables — it does NOT scale.
- * Prefer the per-tab paginated queries `listAusgabenPage` /
- * `listEinnahmenPage` / `listSpendenPage` (real SQL LIMIT/OFFSET + COUNT),
- * defined below. Kept only until the Phase-3 three-tab route replaces the
- * merged route that still calls this.
- */
-export async function listTransactions(
-  opts: ListTransactionsOptions = {},
-): Promise<{ rows: TransactionRow[]; total: number }> {
-  const db = getDb();
-  const { kind, search, year, month, limit = 50, offset = 0 } = opts;
-
-  const allRows: TransactionRow[] = [];
-
-  const searchLike = search ? `%${search}%` : null;
-
-  // ── Expenses ──────────────────────────────────────────────────────────────
-  if (!kind || kind === "expense") {
-    const conditions = [];
-    if (searchLike) {
-      conditions.push(
-        or(
-          ilike(expenses.bezeichnung, searchLike),
-          ilike(expenses.bezahltVonDisplay, searchLike),
-        ),
-      );
-    }
-    if (year) conditions.push(eq(expenses.yearOfBuchung, year));
-    if (month) {
-      // Cash-month filter (migration 0034): the `year` filter is the cash year
-      // (year_of_buchung), so the month must bucket by the CASH date too —
-      // month(abfluss_datum) when present, else month(gebucht_am, Berlin TZ).
-      // Aligning to gebucht_am alone would exclude a row whose cash month differs
-      // from its booking month (e.g. abfluss 2025-03 / gebucht 2025-04).
-      conditions.push(
-        sql`COALESCE(EXTRACT(MONTH FROM ${expenses.abflussDatum})::int, EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int) = ${month}`,
-      );
-    }
-
-    const rows = await db
-      .select({
-        id: expenses.id,
-        businessId: expenses.businessId,
-        bezeichnung: expenses.bezeichnung,
-        betragCents: expenses.betragCents,
-        currency: expenses.currency,
-        gebuchtAm: expenses.gebuchtAm,
-        // Canonical relevanz date: the cash date when present, else the
-        // Berlin-local calendar date of gebucht_am (migration 0034). Threaded
-        // from SQL as a bare YYYY-MM-DD so the GoBD/CSV <Datum> is ALWAYS a
-        // date-only string inside the cash-year window — never a JS UTC
-        // toISOString() fallback (which lands a year-boundary row in Y±1).
-        relevanzDatum: sql<string>`COALESCE(${expenses.abflussDatum}::text, (${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::date::text)`,
-        rechnungsdatum: expenses.rechnungsdatum,
-        sphereSnapshot: expenses.sphereSnapshot,
-        sphereOverride: expenses.sphereOverride,
-        kategorieNameSnapshot: expenses.kategorieNameSnapshot,
-        status: expenses.status,
-        erstattetAm: expenses.erstattetAm,
-        bezahltVonDisplay: expenses.bezahltVonDisplay,
-        festgeschriebenAt: expenses.festgeschriebenAt,
-        yearOfBuchung: expenses.yearOfBuchung,
-      })
-      .from(expenses)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(expenses.gebuchtAm));
-
-    for (const r of rows) {
-      allRows.push({
-        id: r.id,
-        kind: "expense",
-        businessId: r.businessId,
-        bezeichnung: r.bezeichnung,
-        betragCents: Number(r.betragCents),
-        currency: r.currency,
-        gebuchtAm: formatTs(r.gebuchtAm)!,
-        relevanzDatum: r.relevanzDatum ?? null,
-        rechnungsdatum: r.rechnungsdatum ?? null,
-        sphereSnapshot: r.sphereSnapshot,
-        sphereEffective: r.sphereOverride ?? r.sphereSnapshot,
-        kategorieNameSnapshot: r.kategorieNameSnapshot,
-        status: r.status,
-        erstattetAm: r.erstattetAm ?? null,
-        bezahltVonDisplay: r.bezahltVonDisplay,
-        festgeschriebenAt: formatTs(r.festgeschriebenAt),
-        yearOfBuchung: r.yearOfBuchung ?? null,
-      });
-    }
-  }
-
-  // ── Income ────────────────────────────────────────────────────────────────
-  if (!kind || kind === "income") {
-    const conditions = [];
-    if (searchLike) {
-      conditions.push(ilike(income.bezeichnung, searchLike));
-    }
-    if (year) conditions.push(eq(income.yearOfBuchung, year));
-    if (month) {
-      // Cash-month filter (migration 0034) — month(geld_eingang_datum) when
-      // present, else month(gebucht_am, Berlin TZ). See expense branch above.
-      conditions.push(
-        sql`COALESCE(EXTRACT(MONTH FROM ${income.geldEingangDatum})::int, EXTRACT(MONTH FROM ${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int) = ${month}`,
-      );
-    }
-
-    const rows = await db
-      .select({
-        id: income.id,
-        businessId: income.businessId,
-        bezeichnung: income.bezeichnung,
-        betragCents: income.betragCents,
-        currency: income.currency,
-        gebuchtAm: income.gebuchtAm,
-        // Canonical relevanz date: cash date else Berlin-local gebucht_am date
-        // (see expense branch). Bare YYYY-MM-DD, no JS UTC fallback.
-        relevanzDatum: sql<string>`COALESCE(${income.geldEingangDatum}::text, (${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::date::text)`,
-        rechnungsdatum: income.rechnungsdatum,
-        sphereSnapshot: income.sphereSnapshot,
-        kategorieNameSnapshot: income.kategorieNameSnapshot,
-        festgeschriebenAt: income.festgeschriebenAt,
-        yearOfBuchung: income.yearOfBuchung,
-      })
-      .from(income)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(income.gebuchtAm));
-
-    for (const r of rows) {
-      allRows.push({
-        id: r.id,
-        kind: "income",
-        businessId: r.businessId,
-        bezeichnung: r.bezeichnung,
-        betragCents: Number(r.betragCents),
-        currency: r.currency,
-        gebuchtAm: formatTs(r.gebuchtAm)!,
-        relevanzDatum: r.relevanzDatum ?? null,
-        rechnungsdatum: r.rechnungsdatum ?? null,
-        sphereSnapshot: r.sphereSnapshot,
-        sphereEffective: r.sphereSnapshot,
-        kategorieNameSnapshot: r.kategorieNameSnapshot,
-        status: null,
-        erstattetAm: null,
-        bezahltVonDisplay: null,
-        festgeschriebenAt: formatTs(r.festgeschriebenAt),
-        yearOfBuchung: r.yearOfBuchung ?? null,
-      });
-    }
-  }
-
-  // ── Donations ─────────────────────────────────────────────────────────────
-  if (!kind || kind === "donation") {
-    const conditions = [];
-    if (searchLike) {
-      conditions.push(
-        or(
-          ilike(donations.kategorieNameSnapshot, searchLike),
-          ilike(donations.spenderName, searchLike),
-        ),
-      );
-    }
-    if (year) conditions.push(eq(donations.yearOfBuchung, year));
-    if (month) {
-      // Cash-month filter (migration 0034) — month(zugewendet_am) when present,
-      // else month(gebucht_am, Berlin TZ). See expense branch above.
-      conditions.push(
-        sql`COALESCE(EXTRACT(MONTH FROM ${donations.zugewendetAm})::int, EXTRACT(MONTH FROM ${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int) = ${month}`,
-      );
-    }
-
-    const rows = await db
-      .select({
-        id: donations.id,
-        businessId: donations.businessId,
-        betragCents: donations.betragCents,
-        currency: donations.currency,
-        gebuchtAm: donations.gebuchtAm,
-        // Canonical relevanz date: cash date else Berlin-local gebucht_am date
-        // (see expense branch). Bare YYYY-MM-DD, no JS UTC fallback.
-        relevanzDatum: sql<string>`COALESCE(${donations.zugewendetAm}::text, (${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::date::text)`,
-        sphereSnapshot: donations.sphereSnapshot,
-        kategorieNameSnapshot: donations.kategorieNameSnapshot,
-        festgeschriebenAt: donations.festgeschriebenAt,
-        yearOfBuchung: donations.yearOfBuchung,
-        spenderName: donations.spenderName,
-      })
-      .from(donations)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(donations.gebuchtAm));
-
-    for (const r of rows) {
-      allRows.push({
-        id: r.id,
-        kind: "donation",
-        businessId: r.businessId,
-        bezeichnung: r.spenderName
-          ? `Spende von ${r.spenderName}`
-          : r.kategorieNameSnapshot,
-        betragCents: Number(r.betragCents),
-        currency: r.currency,
-        gebuchtAm: formatTs(r.gebuchtAm)!,
-        relevanzDatum: r.relevanzDatum ?? null,
-        rechnungsdatum: null,
-        sphereSnapshot: r.sphereSnapshot,
-        sphereEffective: r.sphereSnapshot,
-        kategorieNameSnapshot: r.kategorieNameSnapshot,
-        status: null,
-        erstattetAm: null,
-        bezahltVonDisplay: r.spenderName ?? null,
-        festgeschriebenAt: formatTs(r.festgeschriebenAt),
-        yearOfBuchung: r.yearOfBuchung ?? null,
-      });
-    }
-  }
-
-  // Sort merged list descending by the CASH-relevant date (relevanzDatum),
-  // falling back to gebuchtAm, with gebuchtAm as the stable tiebreak. This is
-  // the date the Buchungsliste DISPLAYS ("Datum" column = relevanzDatum ??
-  // gebuchtAm) and the date the GoBD/CSV export stamps as <Datum>, so the rows
-  // must order by it too — ordering by gebuchtAm alone made a row with abfluss
-  // 2025-03 / gebucht 2025-04 display 01.03. yet sort among the April rows.
-  const sortKey = (r: TransactionRow): number =>
-    new Date(r.relevanzDatum ?? r.gebuchtAm).getTime();
-  allRows.sort((a, b) => {
-    const cmp = sortKey(b) - sortKey(a);
-    if (cmp !== 0) return cmp;
-    // Tiebreak on the finer-grained booking timestamp (relevanzDatum is
-    // date-only, so same-day rows would otherwise order non-deterministically).
-    return new Date(b.gebuchtAm).getTime() - new Date(a.gebuchtAm).getTime();
-  });
-
-  const total = allRows.length;
-  return { rows: allRows.slice(offset, offset + limit), total };
-}
-
-// ---------------------------------------------------------------------------
 // Per-tab paginated queries (Phase 2, Task 5) — real SQL LIMIT/OFFSET + COUNT.
 //
 // These REPLACE the merged-view `.slice()`-in-memory pagination above: each
@@ -506,11 +245,10 @@ function resolveOrderBy(
 export interface BaseTxRow {
   id: string;
   /**
-   * Per-row discriminant. The shared `TransactionCardMobile` (the <md card the
-   * scaffold renders for every tab) reads it to negate expense amounts (outflow
-   * minus sign) and label the kind pill — without it expenses render as
-   * positive/green with a blank pill. Stamped as a per-table constant by each
-   * `listXPage` map (no DB column; the table identity IS the kind).
+   * Per-row discriminant. The Aurora list pages read it to negate expense
+   * amounts (outflow minus sign) and label the kind pill — without it expenses
+   * render as positive/green with a blank pill. Stamped as a per-table constant
+   * by each `listXPage` map (no DB column; the table identity IS the kind).
    */
   kind: TransactionKind;
   businessId: string;
@@ -826,6 +564,216 @@ export async function listSpendenPage(
       spendeKind: r.spendeKind,
       zweckbindungKind: r.zweckbindungKind,
       bescheinigungNr: r.bescheinigungNr ?? null,
+    })),
+    total,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// listTransaktionenFeedPage — Aurora unified feed (slice 5, spec §8).
+//
+// ONE SQL round-trip shape: UNION ALL of the three per-type projections,
+// year-scoped via the existing WHERE builders, ordered by the CASH-relevant
+// date (relevanz_datum = COALESCE(cash date, Berlin date of gebucht_am) —
+// migration-0034 semantics, identical to what the GoBD/CSV exports emit), with
+// real LIMIT/OFFSET + COUNT exactly like listAusgabenPage (the established
+// pagination idiom — no new cursor mechanics for a Verein-sized dataset).
+//
+// `state.enums.typ` (parsed by the "transaktionen" registry tab) prunes whole
+// UNION arms; the other FilterState fields flow into the per-type builders
+// (search hits bezeichnung/bezahlt_von for expenses, bezeichnung for income,
+// spender/kategorie for donations — the per-type search contract, unchanged).
+//
+// Also the replacement for the DELETED in-memory listTransactions(): the
+// Jahresabschluss Buchungsliste + transactions.csv call it with limit: "all".
+// NOTE one intentional semantic alignment: buildEinnahmenWhere always excludes
+// superseded (Storno-chained) income rows — the feed and the Jahresabschluss
+// surfaces now agree with the Einnahmen tab (pre-launch, no-compat).
+// ---------------------------------------------------------------------------
+
+export interface FeedRow {
+  id: string;
+  kind: TransactionKind;
+  businessId: string;
+  bezeichnung: string;
+  betragCents: number;
+  currency: string;
+  /** ISO timestamp string. */
+  gebuchtAm: string;
+  /**
+   * The cash-relevant date: COALESCE(abfluss/geld_eingang/zugewendet, Berlin
+   * calendar date of gebucht_am). NEVER null — bare YYYY-MM-DD inside the
+   * row's cash-year fiscal window (migration 0034).
+   */
+  relevanzDatum: string;
+  sphereSnapshot: string;
+  /** sphere_override ?? sphere_snapshot (expenses); snapshot otherwise. */
+  sphereEffective: string;
+  kategorieNameSnapshot: string;
+  /** expense only; null for income/donations. */
+  status: string | null;
+  /**
+   * expense only: no Beleg AND no Verzicht-Begründung. App-created rows can
+   * never hit this (0032 CHECK enforces beleg-or-grund) — the flag guards
+   * legacy/import paths so the "Beleg fehlt" chip stays truthful if rows
+   * predating the constraint ever reappear.
+   */
+  belegFehlt: boolean;
+  festgeschriebenAt: string | null;
+  yearOfBuchung: number | null;
+}
+
+export interface FeedPageOptions {
+  state: FilterState;
+  year: YearScope;
+  /** Row window; "all" skips LIMIT/OFFSET (Buchungsliste/CSV lane). */
+  limit: number | "all";
+  offset: number;
+}
+
+interface RawFeedRow extends Record<string, unknown> {
+  id: string;
+  kind: TransactionKind;
+  business_id: string;
+  bezeichnung: string;
+  betrag_cents: string | number;
+  currency: string;
+  gebucht_am: Date | string;
+  relevanz_datum: string;
+  sphere_snapshot: string;
+  sphere_effective: string;
+  kategorie_name_snapshot: string;
+  status: string | null;
+  beleg_fehlt: boolean;
+  festgeschrieben_at: Date | string | null;
+  year_of_buchung: number | null;
+}
+
+const FEED_TYP_TO_KIND: Record<string, TransactionKind> = {
+  ausgaben: "expense",
+  einnahmen: "income",
+  spenden: "donation",
+};
+
+export async function listTransaktionenFeedPage(
+  opts: FeedPageOptions,
+): Promise<{ rows: FeedRow[]; total: number }> {
+  const db = getDb();
+  const typVals = opts.state.enums["typ"] ?? [];
+  const wanted = new Set<TransactionKind>(
+    typVals.length
+      ? typVals.flatMap((t) =>
+          FEED_TYP_TO_KIND[t] ? [FEED_TYP_TO_KIND[t]!] : [],
+        )
+      : (["expense", "income", "donation"] as TransactionKind[]),
+  );
+
+  const arms: SQL[] = [];
+
+  if (wanted.has("expense")) {
+    const conds = buildAusgabenWhere(opts.state, opts.year);
+    const where = conds.length ? and(...conds)! : sql`TRUE`;
+    arms.push(sql`
+      SELECT ${expenses.id} AS id,
+             'expense'::text AS kind,
+             ${expenses.businessId} AS business_id,
+             ${expenses.bezeichnung} AS bezeichnung,
+             ${expenses.betragCents} AS betrag_cents,
+             ${expenses.currency} AS currency,
+             ${expenses.gebuchtAm} AS gebucht_am,
+             COALESCE(${expenses.abflussDatum}::text, (${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::date::text) AS relevanz_datum,
+             ${expenses.sphereSnapshot}::text AS sphere_snapshot,
+             COALESCE(${expenses.sphereOverride}, ${expenses.sphereSnapshot})::text AS sphere_effective,
+             ${expenses.kategorieNameSnapshot} AS kategorie_name_snapshot,
+             ${expenses.status}::text AS status,
+             (${expenses.belegFileId} IS NULL AND ${expenses.belegVerzichtGrund} IS NULL) AS beleg_fehlt,
+             ${expenses.festgeschriebenAt} AS festgeschrieben_at,
+             ${expenses.yearOfBuchung} AS year_of_buchung
+      FROM ${expenses}
+      WHERE ${where}`);
+  }
+
+  if (wanted.has("income")) {
+    const conds = buildEinnahmenWhere(opts.state, opts.year);
+    const where = conds.length ? and(...conds)! : sql`TRUE`;
+    arms.push(sql`
+      SELECT ${income.id} AS id,
+             'income'::text AS kind,
+             ${income.businessId} AS business_id,
+             ${income.bezeichnung} AS bezeichnung,
+             ${income.betragCents} AS betrag_cents,
+             ${income.currency} AS currency,
+             ${income.gebuchtAm} AS gebucht_am,
+             COALESCE(${income.geldEingangDatum}::text, (${income.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::date::text) AS relevanz_datum,
+             ${income.sphereSnapshot}::text AS sphere_snapshot,
+             ${income.sphereSnapshot}::text AS sphere_effective,
+             ${income.kategorieNameSnapshot} AS kategorie_name_snapshot,
+             NULL::text AS status,
+             FALSE AS beleg_fehlt,
+             ${income.festgeschriebenAt} AS festgeschrieben_at,
+             ${income.yearOfBuchung} AS year_of_buchung
+      FROM ${income}
+      WHERE ${where}`);
+  }
+
+  if (wanted.has("donation")) {
+    const conds = buildSpendenWhere(opts.state, opts.year);
+    const where = conds.length ? and(...conds)! : sql`TRUE`;
+    arms.push(sql`
+      SELECT ${donations.id} AS id,
+             'donation'::text AS kind,
+             ${donations.businessId} AS business_id,
+             COALESCE('Spende von ' || ${donations.spenderName}, ${donations.kategorieNameSnapshot}) AS bezeichnung,
+             ${donations.betragCents} AS betrag_cents,
+             ${donations.currency} AS currency,
+             ${donations.gebuchtAm} AS gebucht_am,
+             COALESCE(${donations.zugewendetAm}::text, (${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::date::text) AS relevanz_datum,
+             ${donations.sphereSnapshot}::text AS sphere_snapshot,
+             ${donations.sphereSnapshot}::text AS sphere_effective,
+             ${donations.kategorieNameSnapshot} AS kategorie_name_snapshot,
+             NULL::text AS status,
+             FALSE AS beleg_fehlt,
+             ${donations.festgeschriebenAt} AS festgeschrieben_at,
+             ${donations.yearOfBuchung} AS year_of_buchung
+      FROM ${donations}
+      WHERE ${where}`);
+  }
+
+  if (arms.length === 0) return { rows: [], total: 0 };
+
+  const unionSql = sql.join(arms, sql` UNION ALL `);
+  const pageSql =
+    opts.limit === "all"
+      ? sql``
+      : sql` LIMIT ${opts.limit} OFFSET ${opts.offset}`;
+
+  const [raw, countRows] = await Promise.all([
+    db.execute<RawFeedRow>(
+      sql`SELECT * FROM (${unionSql}) AS feed ORDER BY relevanz_datum DESC, gebucht_am DESC, id DESC${pageSql}`,
+    ),
+    db.execute<{ total: number }>(
+      sql`SELECT count(*)::int AS total FROM (${unionSql}) AS feed`,
+    ),
+  ]);
+
+  const total = Number(countRows[0]?.total ?? 0);
+  return {
+    rows: [...raw].map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      businessId: r.business_id,
+      bezeichnung: r.bezeichnung,
+      betragCents: Number(r.betrag_cents),
+      currency: r.currency,
+      gebuchtAm: formatTs(r.gebucht_am)!,
+      relevanzDatum: r.relevanz_datum,
+      sphereSnapshot: r.sphere_snapshot,
+      sphereEffective: r.sphere_effective,
+      kategorieNameSnapshot: r.kategorie_name_snapshot,
+      status: r.status ?? null,
+      belegFehlt: r.beleg_fehlt === true,
+      festgeschriebenAt: formatTs(r.festgeschrieben_at),
+      yearOfBuchung: r.year_of_buchung ?? null,
     })),
     total,
   };

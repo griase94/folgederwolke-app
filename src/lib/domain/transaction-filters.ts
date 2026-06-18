@@ -1,7 +1,7 @@
 // src/lib/domain/transaction-filters.ts
 import { z } from "zod";
 
-export type TabKey = "ausgaben" | "einnahmen" | "spenden";
+export type TabKey = "ausgaben" | "einnahmen" | "spenden" | "transaktionen";
 export type FilterType =
   | "enum-multi"
   | "member-picker"
@@ -127,6 +127,23 @@ export const FILTER_REGISTRY: Record<TabKey, FilterFieldDef[]> = {
       options: monthOptions(),
     },
     { key: "betrag", label: "Betrag", type: "amount-range" },
+  ],
+  // Aurora slice 5 — the unified /app/transaktionen feed. ONE filter field:
+  // the type chips (Alle/Ausgaben/Einnahmen/Spenden) write ?typ=. Search (?q=)
+  // is handled generically by parseFilterState. The per-type WHERE builders
+  // ignore the "typ" key — listTransaktionenFeedPage reads it to decide which
+  // UNION-ALL arms to include.
+  transaktionen: [
+    {
+      key: "typ",
+      label: "Typ",
+      type: "enum-multi",
+      options: [
+        { value: "ausgaben", label: "Ausgaben" },
+        { value: "einnahmen", label: "Einnahmen" },
+        { value: "spenden", label: "Spenden" },
+      ],
+    },
   ],
 };
 
