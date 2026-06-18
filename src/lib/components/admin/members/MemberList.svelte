@@ -6,6 +6,7 @@
 	import SearchNoResults from '$lib/components/empty/SearchNoResults.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { MemberView } from '$lib/domain/members.js';
+	import { currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
 
 	let {
 		members,
@@ -43,6 +44,11 @@
 	} = $props();
 
 	const hasQuery = $derived(query.trim().length > 0);
+
+	// Package D: current Buchungsjahr for column header (ADR-0001).
+	const headerYear = $derived(
+		years.length > 0 ? clampYearToAvailable(currentBuchungsjahr(), years) : null,
+	);
 </script>
 
 {#if loading}
@@ -92,13 +98,29 @@
 		{/each}
 	</div>
 
-	<!-- Desktop (md+): full row with kebab actions + year beitrag chips -->
+	<!-- Desktop (md+): full row with kebab actions + single current-year pill -->
 	<div
 		data-testid="member-row-list"
 		class="hidden space-y-2 md:block"
 		role="list"
 		aria-label="Mitgliederliste"
 	>
+		<!-- Package D: column header row -->
+		{#if headerYear !== null}
+			<div
+				data-testid="member-list-beitrag-header"
+				class="flex items-center gap-3 px-4 pb-1 text-xs font-medium text-muted-foreground"
+				aria-hidden="true"
+			>
+				<!-- Spacer matching avatar + name columns -->
+				<div class="h-10 w-10 shrink-0"></div>
+				<div class="min-w-0 flex-1"></div>
+				<span class="shrink-0">Beitrag {headerYear}</span>
+				<!-- Spacer matching pay-trigger + kebab -->
+				<div class="w-8 shrink-0"></div>
+			</div>
+		{/if}
+
 		{#each members as member (member.id)}
 			<div role="listitem">
 				<MemberRow
