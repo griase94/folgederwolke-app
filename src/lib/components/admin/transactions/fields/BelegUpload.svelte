@@ -57,7 +57,8 @@
 
 	function handleFiles(files: FileList | null) {
 		if (!files || files.length === 0) return;
-		const file = files[0];
+		const file = files.item(0);
+		if (!file) return;
 		// Revoke any prior object URL to avoid leaks
 		if (previewUrl) URL.revokeObjectURL(previewUrl);
 		if (file.type.startsWith('image/')) {
