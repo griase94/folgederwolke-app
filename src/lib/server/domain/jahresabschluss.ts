@@ -41,12 +41,27 @@ export async function closeBuchhaltungsjahr(
 
   const db = getDb();
 
-  const rows = await db.execute<{
-    table_name: string;
-    rows_festgeschrieben: string;
-  }>(
-    sql`SELECT table_name, rows_festgeschrieben FROM close_buchhaltungsjahr(${year}, ${actorId}::uuid)`,
-  );
+  // Mark the year's rows festgeschrieben AND advance the canonical close signal
+  // `settings.festgeschrieben_bis` in ONE transaction. Without the second step
+  // isYearClosed() / the EÜR alreadyClosed guard / the files write-lock all key
+  // off festgeschrieben_bis and would NEVER see the year as closed — the index
+  // and per-year pages disagreed and the post-close write-lock never armed
+  // (deep-verification HIGH). `festgeschrieben_bis` is stored as a jsonb YEAR
+  // integer; only ever advance it (never regress a later close).
+  const rows = await db.transaction(async (tx) => {
+    const r = await tx.execute<{
+      table_name: string;
+      rows_festgeschrieben: string;
+    }>(
+      sql`SELECT table_name, rows_festgeschrieben FROM close_buchhaltungsjahr(${year}, ${actorId}::uuid)`,
+    );
+    await tx.execute(sql`
+      INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', to_jsonb(${year}::int))
+      ON CONFLICT (key) DO UPDATE SET value = to_jsonb(${year}::int)
+      WHERE settings.value IS NULL OR (settings.value #>> '{}')::int < ${year}
+    `);
+    return r;
+  });
 
   const rowsByTable: Record<string, number> = {};
   let totalRows = 0;
