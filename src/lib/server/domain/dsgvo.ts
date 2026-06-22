@@ -39,6 +39,14 @@ export interface PseudonymiseResult {
   sessionsDeleted: number;
   magicLinksDeleted: number;
   donationsRedacted: number;
+  /**
+   * F31 — donations that could NOT be redacted (e.g. a festgeschrieben year on
+   * a DB that pre-dates the donor-PII carve-out, migration 0037). With the
+   * carve-out applied this is always 0; the field exists so a degraded DB
+   * yields a partial success ("N redacted, M skipped") instead of aborting the
+   * whole erasure.
+   */
+  donationsSkipped: number;
   sentMailsRedacted: number;
   auditLogPayloadsRedacted: number;
 }
@@ -214,6 +222,7 @@ export async function pseudonymise(
       sessionsDeleted: 0,
       magicLinksDeleted: 0,
       donationsRedacted: 0,
+      donationsSkipped: 0,
       sentMailsRedacted: 0,
       auditLogPayloadsRedacted: 0,
     };
@@ -283,17 +292,53 @@ export async function pseudonymise(
     res.magicLinksDeleted = deletedLinks.length;
 
     // ── 3. Redact donations (§147 AO — keep record, strip spender PII) ────
-    const redactedDonations = await tx
-      .update(donations)
-      .set({
-        spenderName: null,
-        spenderAdresse: null,
-        spenderEmail: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(sql`lower(${donations.spenderEmail})`, emailLower))
-      .returning({ id: donations.id });
-    res.donationsRedacted = redactedDonations.length;
+    // GDPR Art. 17 must succeed even for donations in a festgeschriebenes Jahr.
+    // The donor-PII carve-out (migration 0037) lets the trigger pass an UPDATE
+    // that only NULLs spender_name/adresse/email, so the bulk UPDATE below
+    // normally redacts every matching donation. The per-row savepoint fallback
+    // is belt-and-suspenders: on a DB that pre-dates the carve-out a closed-year
+    // row throws 23514; we skip ONLY that row (recording it) instead of letting
+    // the exception abort the entire erasure transaction (member PII, auth rows,
+    // mails would all roll back — F31).
+    const targetDonations = await tx
+      .select({ id: donations.id })
+      .from(donations)
+      .where(eq(sql`lower(${donations.spenderEmail})`, emailLower));
+
+    const redactOne = (q: typeof tx, id: string) =>
+      q
+        .update(donations)
+        .set({
+          spenderName: null,
+          spenderAdresse: null,
+          spenderEmail: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(donations.id, id));
+
+    try {
+      // Fast path: redact all matching rows inside a savepoint so a failure
+      // here doesn't poison the outer transaction.
+      await tx.transaction(async (sp) => {
+        for (const d of targetDonations) {
+          await redactOne(sp, d.id);
+        }
+      });
+      res.donationsRedacted = targetDonations.length;
+    } catch {
+      // Slow path: a row in a closed year was rejected (pre-carve-out DB).
+      // Redact each row in its own savepoint; skip the ones that still fail.
+      for (const d of targetDonations) {
+        try {
+          await tx.transaction(async (sp) => {
+            await redactOne(sp, d.id);
+          });
+          res.donationsRedacted++;
+        } catch {
+          res.donationsSkipped++;
+        }
+      }
+    }
 
     // ── 4. Redact sent_mails recipient ─────────────────────────────────────
     const redactedMails = await tx
@@ -344,6 +389,7 @@ export async function pseudonymise(
           sessionsDeleted: res.sessionsDeleted,
           magicLinksDeleted: res.magicLinksDeleted,
           donationsRedacted: res.donationsRedacted,
+          donationsSkipped: res.donationsSkipped,
           sentMailsRedacted: res.sentMailsRedacted,
           auditLogPayloadsRedacted: res.auditLogPayloadsRedacted,
         },

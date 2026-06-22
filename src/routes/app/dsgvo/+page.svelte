@@ -213,6 +213,12 @@
 						<dt class="text-green-600">Spenden geschwärzt</dt>
 						<dd class="font-semibold">{form.result.donationsRedacted}</dd>
 					</div>
+					{#if form.result.donationsSkipped > 0}
+						<div>
+							<dt class="text-amber-600">Spenden übersprungen (festgeschrieben)</dt>
+							<dd class="font-semibold">{form.result.donationsSkipped}</dd>
+						</div>
+					{/if}
 					<div>
 						<dt class="text-green-600">E-Mails geschwärzt</dt>
 						<dd class="font-semibold">{form.result.sentMailsRedacted}</dd>
