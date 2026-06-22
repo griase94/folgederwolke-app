@@ -13,7 +13,7 @@
  */
 
 import { fail } from "@sveltejs/kit";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, inArray } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
@@ -61,14 +61,16 @@ export const load: PageServerLoad = async ({ url, depends }) => {
   const anchorYear = selectYearFromUrl(url.searchParams, currentBuchungsjahr());
   const years = beitragYearsRange(anchorYear);
 
-  // Package B: in production, hide fixture/seed members from the live list
-  // so test data doesn't pollute a real Vereinsverwaltung view. In dev/test
-  // fixtures are visible (useful for local exploration and CI scenarios).
-  const isProd = (process.env["NODE_ENV"] ?? "").toLowerCase() === "production";
+  // F15: the list must show the SAME member population as every other surface
+  // (matrix, dashboard, year report, picker). The old NODE_ENV=production
+  // `is_fixture=false` filter made the list undercount ("1 of 6") while the
+  // matrix/dashboard showed all members — a single hidden cross-surface
+  // divergence. Per "pre-launch data is disposable", fixtures are purged from
+  // prod via a one-time DELETE (the documented cutover step), not hidden on one
+  // of six surfaces. Show what the rest of the app shows.
   const allMembers = await db
     .select()
     .from(members)
-    .where(isProd ? eq(members.isFixture, false) : undefined)
     .orderBy(members.nachname, members.vorname);
 
   const memberIds = allMembers.map((m) => m.id);

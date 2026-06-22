@@ -14,7 +14,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "$lib/server/db/index.js";
 import { validateIban, normalizeIban } from "$lib/server/domain/iban.js";
-import { berlinYear } from "$lib/domain/year.js";
+import { berlinYear, currentBuchungsjahr } from "$lib/domain/year.js";
 
 // Re-export shared client-safe items so callers that don't need browser
 // compatibility can import everything from one place.
@@ -184,11 +184,18 @@ export function validateEditMember(
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the 3-year window centered on `anchor`: [anchor-1, anchor, anchor+1].
- * Default anchor is the current Berlin-local Buchhaltungsjahr (ADR-0001).
+ * Returns a 3-year window ending no later than the current Buchungsjahr.
+ *
+ * The upper bound is clamped to `currentBuchungsjahr()` (F8): a future column
+ * (e.g. 2027 while the current year is 2026) let the matrix book a Beitrag
+ * into a fiscal year that hasn't begun. So the window is
+ *   [hi-2, hi-1, hi]  where  hi = min(anchor + 1, currentBuchungsjahr()).
+ * For the current anchor this yields [current-2, current-1, current] (no
+ * future column); for a past anchor it stays centered ([anchor-1, anchor,
+ * anchor+1]) since anchor+1 is still <= the current year.
  *
  * C2-2: callers thread `?year=` through to anchor the matrix on the selected
- * Buchungsjahr instead of always showing currentYear ± 1.
+ * Buchungsjahr.
  */
 export function beitragYearsRange(
   // ADR-0001: Berlin-local default — using UTC `new Date().getFullYear()`
@@ -196,7 +203,8 @@ export function beitragYearsRange(
   // boundary.
   anchor: number = berlinYear(),
 ): [number, number, number] {
-  return [anchor - 1, anchor, anchor + 1];
+  const hi = Math.min(anchor + 1, currentBuchungsjahr());
+  return [hi - 2, hi - 1, hi];
 }
 
 // ---------------------------------------------------------------------------

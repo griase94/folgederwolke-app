@@ -14,18 +14,28 @@ import {
 // ---------------------------------------------------------------------------
 
 describe("beitragYearsRange", () => {
-  it("returns a 3-element tuple centered on the current year by default (C2-2)", () => {
+  it("clamps the default window to end at the current year — no future column (F8)", () => {
     const years = beitragYearsRange();
     const current = new Date().getFullYear();
     expect(years).toHaveLength(3);
-    expect(years[0]).toBe(current - 1);
-    expect(years[1]).toBe(current);
-    expect(years[2]).toBe(current + 1);
+    // Upper bound clamped to the current Buchungsjahr: no anchor+1 future cell.
+    expect(years[0]).toBe(current - 2);
+    expect(years[1]).toBe(current - 1);
+    expect(years[2]).toBe(current);
   });
 
-  it("accepts an anchor year and returns [anchor-1, anchor, anchor+1] (C2-2)", () => {
+  it("keeps a past anchor centered ([anchor-1, anchor, anchor+1]) when it stays <= current (C2-2)", () => {
+    // 2024 is in the past relative to any plausible CI run year, so anchor+1
+    // (2025) is still <= the current Buchungsjahr → window stays centered.
     const years = beitragYearsRange(2024);
     expect(years).toEqual([2023, 2024, 2025]);
+  });
+
+  it("never includes a year beyond the current Buchungsjahr (F8)", () => {
+    const current = new Date().getFullYear();
+    // A future anchor must not surface a future column either.
+    const years = beitragYearsRange(current + 5);
+    expect(Math.max(...years)).toBeLessThanOrEqual(current);
   });
 });
 

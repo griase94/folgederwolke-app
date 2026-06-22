@@ -27,7 +27,7 @@ import {
   validateEditMember,
 } from "$lib/server/domain/members.js";
 import { bus } from "$lib/server/events/index.js";
-import { berlinYmd } from "$lib/domain/year.js";
+import { berlinYmd, currentBuchungsjahr } from "$lib/domain/year.js";
 import { requireAdmin } from "$lib/server/domain/require-role.js";
 import { findBeitragssatz } from "$lib/server/domain/beitragssatz.js";
 import { resolveBeitragState } from "$lib/domain/beitrag-state.js";
@@ -35,6 +35,15 @@ import { resolveBeitragState } from "$lib/domain/beitrag-state.js";
 // ---------------------------------------------------------------------------
 // Result types
 // ---------------------------------------------------------------------------
+
+/**
+ * F8 — future-Buchungsjahr write guard message. A Beitrag (paid or befreit)
+ * for a year that hasn't begun would book cash/exemption into a future fiscal
+ * year. Enforced at the write boundary; the matrix UI also clamps its default
+ * window so the future column isn't even reachable in the common case.
+ */
+export const FUTURE_YEAR_ERROR =
+  "Beiträge für zukünftige Jahre können noch nicht erfasst werden.";
 
 export type ActionFailure = {
   ok: false;
@@ -370,6 +379,14 @@ export async function markBeitragPaid(args: {
     return { ok: false, status: 400, error: "Ungültige Parameter" };
   }
 
+  // F8: reject future Buchungsjahre. Recording cash into a year that hasn't
+  // begun books income into a future fiscal year (and the matrix used to let
+  // 2027 be marked paid in 2026). Upper bound is the Berlin Buchungsjahr
+  // (ADR-0001).
+  if (year > currentBuchungsjahr()) {
+    return { ok: false, status: 422, error: FUTURE_YEAR_ERROR };
+  }
+
   // ADR-0006: reject if the target year is festgeschrieben.
   const festgeschriebenBis = await fetchFestgeschriebenBis();
   if (festgeschriebenBis !== null && year <= festgeschriebenBis) {
@@ -608,6 +625,11 @@ export async function setBeitragExempt(args: {
   // §55 AO: reason required when granting exemption
   if (exempt && (!reason || reason.trim() === "")) {
     return { ok: false, status: 400, error: "Grund erforderlich (§55 AO)." };
+  }
+
+  // F8: reject future Buchungsjahre (symmetry with markBeitragPaid).
+  if (year > currentBuchungsjahr()) {
+    return { ok: false, status: 422, error: FUTURE_YEAR_ERROR };
   }
 
   // ADR-0006
