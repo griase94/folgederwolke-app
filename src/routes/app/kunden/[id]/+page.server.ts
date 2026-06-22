@@ -18,9 +18,12 @@ import {
   editCustomer,
   softDeleteCustomer,
 } from "$lib/server/domain/customers-actions.js";
+import { assertUuidOr404 } from "$lib/domain/uuid.js";
 
 export const load: PageServerLoad = async ({ params }) => {
-  const { id } = params;
+  // F14: a non-UUID id (bad bookmark/typo) would hit the uuid column as 22P02
+  // → 500. Validate first → clean 404.
+  const id = assertUuidOr404(params.id, "Kunde nicht gefunden");
   const db = getDb();
 
   const rows = await db

@@ -30,9 +30,11 @@ import {
 import { sendMail } from "$lib/server/mail/index.js";
 import { env } from "$lib/server/env.js";
 import { berlinYear, berlinYmd } from "$lib/domain/year.js";
+import { assertUuidOr404 } from "$lib/domain/uuid.js";
 
 export const load: PageServerLoad = async ({ params }) => {
-  const { id } = params;
+  // F14: validate the uuid param first → clean 404 instead of a 22P02 500.
+  const id = assertUuidOr404(params.id, "Mitglied nicht gefunden");
   const db = getDb();
 
   // ── Fetch member ──────────────────────────────────────────────────────────

@@ -197,6 +197,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 
 export const actions: Actions = {
   supersede: async ({ params, locals }) => {
+    assertUuidOr404(params.id, "Rechnung nicht gefunden");
     const actorUserId = locals.session?.user.id ?? null;
     const result = await supersedeInvoice(params.id, actorUserId);
     if (!result.ok) {
@@ -212,6 +213,7 @@ export const actions: Actions = {
   // Redirect with ?job=<id> so the page's existing poll machinery picks up
   // the new job and refreshes when it finishes.
   "retry-pdf": async ({ params, locals }) => {
+    assertUuidOr404(params.id, "Rechnung nicht gefunden");
     const actorUserId = locals.session?.user.id ?? null;
     const result = await retryInvoicePdf(params.id, actorUserId);
     if (!result.ok) {
@@ -223,6 +225,7 @@ export const actions: Actions = {
   // Mark unpaid → paid. Auto-creates the matching income row in one tx
   // (see markInvoiceAsPaid in src/lib/server/domain/invoices.ts).
   "mark-paid": async ({ params, request, locals }) => {
+    assertUuidOr404(params.id, "Rechnung nicht gefunden");
     const actorUserId = locals.session?.user.id ?? null;
     const formData = await request.formData();
     const bezahltAm = formData.get("bezahltAm")?.toString() ?? "";
@@ -237,6 +240,7 @@ export const actions: Actions = {
   // Same-day-only fat-finger recovery — deletes the linked income row and
   // clears bezahlt_am on the invoice. Guarded by the domain layer.
   "undo-payment": async ({ params, locals }) => {
+    assertUuidOr404(params.id, "Rechnung nicht gefunden");
     const actorUserId = locals.session?.user.id ?? null;
     const result = await undoPayment(params.id, actorUserId);
     if (!result.ok) {

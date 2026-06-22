@@ -17,6 +17,7 @@ import {
   isBescheinigungEnabled,
 } from "$lib/server/domain/spenden.js";
 import { pdfLibBescheinigungRenderer } from "$lib/server/pdf/bescheinigung.js";
+import { assertUuidOr404 } from "$lib/domain/uuid.js";
 
 export const GET: RequestHandler = async ({ params }) => {
   if (!isBescheinigungEnabled()) {
@@ -25,11 +26,13 @@ export const GET: RequestHandler = async ({ params }) => {
       "Bescheinigung kann nicht generiert werden - Freistellungsbescheid fehlt in den Einstellungen",
     );
   }
+  // F14: validate the uuid param first → clean 404 instead of a 22P02 500.
+  const id = assertUuidOr404(params.id, "Spende nicht gefunden");
   const db = getDb();
   const rows = await db
     .select()
     .from(donations)
-    .where(eq(donations.id, params.id))
+    .where(eq(donations.id, id))
     .limit(1);
   const sp = rows[0];
   if (!sp) throw error(404, "Spende nicht gefunden");

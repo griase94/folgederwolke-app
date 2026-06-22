@@ -135,6 +135,9 @@ export const actions: Actions = {
   // route — see +page.svelte). Mirrors /new's `create` action exactly except
   // it calls editInvoice() and redirects to the detail page.
   edit: async ({ request, params, locals }) => {
+    // F14: guard the action too (the load is already guarded) so a hand-crafted
+    // POST to a non-UUID id yields 404, not a 22P02 500.
+    assertUuidOr404(params.id, "Rechnung nicht gefunden");
     const actorUserId = locals.session?.user.id ?? null;
     const formData = await request.formData();
     const raw: Record<string, unknown> = {};

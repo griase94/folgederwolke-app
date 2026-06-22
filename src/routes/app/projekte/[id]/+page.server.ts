@@ -30,9 +30,11 @@ import {
 } from "$lib/server/domain/projects-actions.js";
 import { projectFinancials } from "$lib/server/domain/projects.js";
 import { fileViewUrl } from "$lib/server/files/storage.js";
+import { assertUuidOr404 } from "$lib/domain/uuid.js";
 
 export const load: PageServerLoad = async ({ params, url }) => {
-  const { id } = params;
+  // F14: validate the uuid param first → clean 404 instead of a 22P02 500.
+  const id = assertUuidOr404(params.id, "Projekt nicht gefunden");
   const db = getDb();
 
   // C1-PRJ-A: forward `?toast=` payload (set by /rechnungen/new redirect
