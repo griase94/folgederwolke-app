@@ -180,6 +180,15 @@ export function parseGermanNumber(raw: unknown): number | null {
     } else {
       s = s.replace(/,/g, "");
     }
+  } else if (hasDot) {
+    // Only dot: German thousands ("1.234" → 1234) ONLY when the whole string
+    // matches the thousands shape (1-3 digits then ".ddd" groups). Otherwise
+    // the dot is an English decimal ("12.50"). F30: the old code skipped this
+    // check and let "1.234" parse as 1.234 → 123 cents (×1000 under-count).
+    if (/^\d{1,3}(\.\d{3})+$/.test(s)) {
+      s = s.replace(/\./g, "");
+    }
+    // else: dot is a decimal separator — leave as-is for Number().
   }
 
   const n = Number(s);

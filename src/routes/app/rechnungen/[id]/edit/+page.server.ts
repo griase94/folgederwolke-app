@@ -17,6 +17,7 @@ import { projects } from "$lib/server/db/schema/projects.js";
 import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { invoices } from "$lib/server/db/schema/invoices.js";
 import { editInvoice } from "$lib/server/domain/invoices.js";
+import { parseEuroToCents } from "$lib/domain/money.js";
 
 // ---------------------------------------------------------------------------
 // load
@@ -140,12 +141,14 @@ export const actions: Actions = {
     }
 
     // Convert nettoEur (form input) → nettoCents (domain input). Same
-    // de-DE parser as /new.
+    // canonical de-DE/English parser as /new (F24). Invalid input → leave
+    // nettoCents undefined so editInvoice's Zod validator surfaces the error.
     const nettoEur = (raw["nettoEur"] as string | undefined) ?? "";
-    const cents = Math.round(
-      parseFloat(nettoEur.replace(/\./g, "").replace(",", ".") || "0") * 100,
-    );
-    raw["nettoCents"] = cents;
+    try {
+      raw["nettoCents"] = Number(parseEuroToCents(nettoEur));
+    } catch {
+      // empty / malformed — defer to the editInvoice Zod nettoCents error.
+    }
     delete raw["nettoEur"];
 
     const result = await editInvoice(params.id, raw, actorUserId);
