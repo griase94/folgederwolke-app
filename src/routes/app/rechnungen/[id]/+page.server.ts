@@ -41,10 +41,13 @@ import type {
   InvoiceHistoryEntry,
   InvoicePdfStatus,
 } from "$lib/domain/invoices.js";
+import { assertUuidOr404 } from "$lib/domain/uuid.js";
 
 export const load: PageServerLoad = async ({ params, url }) => {
   const db = getDb();
-  const id = params.id;
+  // F14: a non-UUID param (bad bookmark, typo, stale link) would hit the uuid
+  // column as 22P02 → 500. Validate first → clean 404.
+  const id = assertUuidOr404(params.id, "Rechnung nicht gefunden");
 
   const [row] = await db
     .select({

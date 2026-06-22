@@ -18,6 +18,7 @@ import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { invoices } from "$lib/server/db/schema/invoices.js";
 import { editInvoice } from "$lib/server/domain/invoices.js";
 import { parseEuroToCents } from "$lib/domain/money.js";
+import { assertUuidOr404 } from "$lib/domain/uuid.js";
 
 // ---------------------------------------------------------------------------
 // load
@@ -25,7 +26,8 @@ import { parseEuroToCents } from "$lib/domain/money.js";
 
 export const load: PageServerLoad = async ({ params }) => {
   const db = getDb();
-  const id = params.id;
+  // F14: validate the uuid param first → clean 404 instead of a 22P02 500.
+  const id = assertUuidOr404(params.id, "Rechnung nicht gefunden");
 
   // Fetch invoice (404 if missing). Mirror /[id]/+page.server.ts predecessor/
   // successor query for the superseded check.
