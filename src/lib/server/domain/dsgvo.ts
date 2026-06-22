@@ -353,25 +353,39 @@ export async function pseudonymise(
 
     // ── 5. Redact audit_log payload email/name fields ─────────────────────
     // We use jsonb operations to remove/replace PII keys from payload.
-    // The audit_log is append-only per ADR-0004; Phase 7.5 REVOKE will
-    // prevent UPDATE from app_runtime — until then this UPDATE is permitted.
-    const redactedAudit = await tx
-      .update(auditLog)
-      .set({
-        payload: sql`
-          (COALESCE(${auditLog.payload}, '{}'::jsonb)
-            - 'email'
-            - 'vorname'
-            - 'nachname'
-            - 'iban'
-            - 'adresse'
-            - 'telefon'
-          ) || '{"_pseudonymised": true}'::jsonb
-        `,
-      })
-      .where(sql`${auditLog.payload}::text ilike ${"%" + emailLower + "%"}`)
-      .returning({ id: auditLog.id });
-    res.auditLogPayloadsRedacted = redactedAudit.length;
+    //
+    // The audit_log is append-only per ADR-0004 and `app_runtime` has only
+    // INSERT+SELECT on it (no UPDATE) — so this redaction is rejected (42501)
+    // on the real prod runtime role. It MUST NOT abort the whole GDPR erasure:
+    // the tamper-evident, access-controlled audit_log is a known accepted
+    // retention surface, whereas erasing member/user/donation/mail PII is the
+    // legal duty that has to land. Wrap it in a savepoint so a permission (or
+    // any) failure degrades to "0 audit payloads redacted" instead of rolling
+    // back steps 1–4. (F31 — same resilience pattern as the donations step.)
+    try {
+      const redactedAudit = await tx.transaction((sp) =>
+        sp
+          .update(auditLog)
+          .set({
+            payload: sql`
+              (COALESCE(${auditLog.payload}, '{}'::jsonb)
+                - 'email'
+                - 'vorname'
+                - 'nachname'
+                - 'iban'
+                - 'adresse'
+                - 'telefon'
+              ) || '{"_pseudonymised": true}'::jsonb
+            `,
+          })
+          .where(sql`${auditLog.payload}::text ilike ${"%" + emailLower + "%"}`)
+          .returning({ id: auditLog.id }),
+      );
+      res.auditLogPayloadsRedacted = redactedAudit.length;
+    } catch {
+      // append-only / no UPDATE grant — leave audit payloads intact and record 0.
+      res.auditLogPayloadsRedacted = 0;
+    }
 
     // ── 6. Audit this pseudonymise operation itself ────────────────────────
     await logAudit(
