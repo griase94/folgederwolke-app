@@ -8,6 +8,7 @@ import {
   validateEditMember,
   beitragYearsRange,
 } from "./members.js";
+import { currentBuchungsjahr } from "$lib/domain/year.js";
 
 // ---------------------------------------------------------------------------
 // beitragYearsRange
@@ -16,7 +17,9 @@ import {
 describe("beitragYearsRange", () => {
   it("clamps the default window to end at the current year — no future column (F8)", () => {
     const years = beitragYearsRange();
-    const current = new Date().getFullYear();
+    // Oracle uses currentBuchungsjahr() (Berlin TZ) to match the implementation,
+    // avoiding a UTC↔Berlin New-Year boundary flake on a UTC CI runner.
+    const current = currentBuchungsjahr();
     expect(years).toHaveLength(3);
     // Upper bound clamped to the current Buchungsjahr: no anchor+1 future cell.
     expect(years[0]).toBe(current - 2);
@@ -32,7 +35,7 @@ describe("beitragYearsRange", () => {
   });
 
   it("never includes a year beyond the current Buchungsjahr (F8)", () => {
-    const current = new Date().getFullYear();
+    const current = currentBuchungsjahr();
     // A future anchor must not surface a future column either.
     const years = beitragYearsRange(current + 5);
     expect(Math.max(...years)).toBeLessThanOrEqual(current);
