@@ -17,6 +17,7 @@
 	import { enhance } from '$app/forms';
 	import { toast } from 'svelte-sonner';
 	import { invalidateAll } from '$app/navigation';
+	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 
 	interface Props {
 		detail: TransactionDetail;
@@ -53,7 +54,13 @@
 			'';
 	});
 
-	const betragCents = $derived(Math.round(parseFloat(betragEur || '0') * 100));
+	// Canonical parser for consistency with every other betrag field. The input
+	// is type=number (dot-decimal), so this matches the old parseFloat path; an
+	// empty/invalid value falls back to 0 (the hidden field is server-validated).
+	const betragCents = $derived.by(() => {
+		const c = parseBetragCents(betragEur || '0');
+		return Number.isFinite(c) ? c : 0;
+	});
 	const kindParam = $derived(`?kind=${detail.kind}`);
 
 	// Recipient name for "Speichern und benachrichtigen" toast

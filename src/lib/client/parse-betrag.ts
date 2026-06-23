@@ -21,6 +21,12 @@
  * (negative amount) is rejected as NaN rather than sign-stripped — Auslagen
  * and bookings are never negative, so "-5" must fail validation, not parse to
  * 500 cents.
+ *
+ * Multi-dot malformed input (e.g. "1.234.56" — a thousands-shaped prefix with a
+ * non-thousands tail) is REJECTED (NaN), matching the server parser
+ * `parseEuroToCents` which throws on the same input. Without this guard
+ * `parseFloat("1.234.56")` silently returns 1.234 → 123 cents (the review-flagged
+ * accept-vs-reject divergence). See the cross-check in money.test.ts.
  */
 export function parseBetragCents(raw: string): number {
   if (!raw) return NaN;
@@ -54,6 +60,11 @@ export function parseBetragCents(raw: string): number {
     // else: dot is a decimal separator (English style) — already JS-friendly
   }
   // else: plain digits, leave as-is
+
+  // After normalization at most ONE dot (the decimal point) may remain. More
+  // than one means malformed input that parseFloat would silently truncate
+  // (e.g. "1.234.56" → 1.234). Reject to stay in lock-step with parseEuroToCents.
+  if (cleaned.split(".").length > 2) return NaN;
 
   const num = parseFloat(cleaned);
   return Number.isFinite(num) ? Math.round(num * 100) : NaN;

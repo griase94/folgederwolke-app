@@ -127,4 +127,43 @@ describe("parseEuroToCents agrees with the client parseBetragCents", () => {
     expect(() => parseEuroToCents(input)).toThrow();
     expect(parseBetragCents(input)).toBeNaN();
   });
+
+  // Multi-dot malformed input: a thousands-shaped prefix with a non-thousands
+  // tail. The review flagged this as the one accept-vs-reject divergence —
+  // parseBetragCents used to return 123 (parseFloat truncation) while
+  // parseEuroToCents threw. Now BOTH reject (throw ⇔ NaN).
+  it.each([["1.234.56"], ["1.2.3"], ["1.234.567.8"]])(
+    "'%s' (multi-dot, non-thousands) is rejected by BOTH parsers",
+    (input) => {
+      expect(() => parseEuroToCents(input)).toThrow();
+      expect(parseBetragCents(input)).toBeNaN();
+    },
+  );
+
+  // A well-formed repeated-thousands string ("1.234.567") is NOT multi-dot
+  // malformed — both parse it identically. Pins that the multi-dot guard does
+  // not over-reject legitimate grouping.
+  it("'1.234.567' (repeated thousands) parses equally in both", () => {
+    expect(Number(parseEuroToCents("1.234.567"))).toBe(123456700);
+    expect(parseBetragCents("1.234.567")).toBe(123456700);
+  });
+});
+
+// DOCUMENTED, intentional divergence (NOT a separator-heuristic disagreement):
+// on 3+-decimal input the client ROUNDS the sub-cent digit (Math.round) while
+// the server TRUNCATES (fracStr.slice(0,2)). This is a ≤1-cent edge on unusual
+// sub-cent input, pinned here so a future change is a deliberate, test-visible
+// decision rather than a silent drift. (Review item-4 a.)
+describe("parsers diverge by design on 3rd-decimal rounding vs truncation", () => {
+  it.each([
+    ["12,005", 1201, 1200],
+    ["99,995", 10000, 9999],
+    ["0,005", 1, 0],
+  ])(
+    "'%s' → client rounds to %d, server truncates to %d",
+    (input, clientCents, serverCents) => {
+      expect(parseBetragCents(input)).toBe(clientCents);
+      expect(Number(parseEuroToCents(input))).toBe(serverCents);
+    },
+  );
 });

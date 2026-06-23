@@ -16,6 +16,7 @@ import { members } from "$lib/server/db/schema/members.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
 import { setBeitragssatz } from "$lib/server/domain/beitragssatz-actions.js";
 import { berlinYear } from "$lib/domain/year.js";
+import { parseEuroToCents } from "$lib/domain/money.js";
 
 async function fetchFestgeschriebenBis(): Promise<number | null> {
   const db = getDb();
@@ -112,16 +113,25 @@ export const actions: Actions = {
     // Only "create" must guard against silently clobbering an existing satz;
     // "update" is the deliberate edit path and is allowed to overwrite.
     const mode = fd.get("mode")?.toString() === "update" ? "update" : "create";
-    // Betrag arrives as a euro decimal string (e.g. "80.00" or "80,00").
-    const betragRaw = (fd.get("betrag")?.toString() ?? "").replace(",", ".");
-    const betragEur = Number(betragRaw);
+    // Betrag arrives as a euro string (e.g. "80,00" or "1.234,56"). The
+    // Beitragssatz is the most amount-multiplied value in the app (every member
+    // × every year), and the server trusts raw form data — so route it through
+    // the canonical de-DE/English parser, not the old replace(",",".")+Number()
+    // which mis-parsed German thousands on a crafted/pasted POST (F30 class).
+    const betragRaw = fd.get("betrag")?.toString() ?? "";
     const faelligkeitAt = fd.get("faelligkeitAt")?.toString() || null;
     const decisionNote = fd.get("decisionNote")?.toString() || null;
 
     if (!Number.isFinite(year)) {
       return fail(400, { action: "set-rate", error: "Ungültiges Jahr" });
     }
-    if (!Number.isFinite(betragEur) || betragEur < 0) {
+    let cents: bigint;
+    try {
+      cents = parseEuroToCents(betragRaw);
+    } catch {
+      return fail(400, { action: "set-rate", error: "Ungültiger Betrag" });
+    }
+    if (cents < 0n) {
       return fail(400, { action: "set-rate", error: "Ungültiger Betrag" });
     }
 
@@ -142,8 +152,6 @@ export const actions: Actions = {
         });
       }
     }
-
-    const cents = BigInt(Math.round(betragEur * 100));
 
     const result = await setBeitragssatz({
       year,
