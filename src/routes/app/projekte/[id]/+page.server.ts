@@ -330,6 +330,8 @@ export const actions: Actions = {
     const userId = locals.session?.user.id ?? null;
     const formData = await request.formData();
     const id = formData.get("id")?.toString() || params.id || "";
+    // F14: validate the resolved id BEFORE the ::uuid cast (actions skip load()).
+    assertUuidOr404(id, "Projekt nicht gefunden");
 
     const result = await softDeleteProject(id, userId);
     if (!result.ok) {

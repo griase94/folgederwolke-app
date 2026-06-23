@@ -112,6 +112,9 @@ export const actions: Actions = {
     const userId = locals.session?.user.id ?? null;
     const formData = await request.formData();
     const id = formData.get("id")?.toString() || params.id || "";
+    // F14: validate the resolved id BEFORE the ::uuid cast — load() doesn't run
+    // for an action, so a crafted non-UUID POST would 22P02→500 without this.
+    assertUuidOr404(id, "Kunde nicht gefunden");
 
     const result = await softDeleteCustomer(id, userId);
     if (!result.ok) {

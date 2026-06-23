@@ -227,6 +227,8 @@ export const actions: Actions = {
     const userRole = locals.session?.user.role ?? null;
     const formData = await request.formData();
     const id = formData.get("id")?.toString() || params.id || "";
+    // F14: validate the resolved id BEFORE the ::uuid cast (actions skip load()).
+    assertUuidOr404(id, "Mitglied nicht gefunden");
 
     const result = await softDeleteMember(id, userId, userRole);
     if (!result.ok) {
@@ -241,7 +243,8 @@ export const actions: Actions = {
   "mark-beitrag-paid": async ({ request, locals, params }) => {
     const userId = locals.session?.user.id ?? null;
     const userRole = locals.session?.user.role ?? null;
-    const memberId = params.id;
+    // F14: validate before memberId reaches the ::uuid cast in markBeitragPaid.
+    const memberId = assertUuidOr404(params.id, "Mitglied nicht gefunden");
     const formData = await request.formData();
     const yearStr = formData.get("year")?.toString() ?? "";
     const year = parseInt(yearStr, 10);
@@ -284,7 +287,9 @@ export const actions: Actions = {
   // nothing for the year (CARDINAL RULE — no false debt). VEREIN_BEITRAG_DEFAULT_CENTS
   // fabrication removed; betragCents comes from the canonical state resolver.
   "send-reminder": async ({ request, params }) => {
-    const memberId = params.id;
+    // F14: validate before memberId reaches the ::uuid cast in
+    // checkReminderAllowed (actions skip load()).
+    const memberId = assertUuidOr404(params.id, "Mitglied nicht gefunden");
     const formData = await request.formData();
     const yearStr = formData.get("year")?.toString() ?? "";
     const year = parseInt(yearStr, 10);
