@@ -41,4 +41,13 @@ describe("parseBetragCents", () => {
   it("-5 → NaN (negatives rejected, not sign-stripped)", () => {
     expect(parseBetragCents("-5")).toBeNaN();
   });
+
+  it("1.234.56 → NaN (multi-dot malformed — matches server parseEuroToCents)", () => {
+    // Was 123 via parseFloat truncation; now rejected so the two parsers agree.
+    expect(parseBetragCents("1.234.56")).toBeNaN();
+  });
+
+  it("1.234.567 → 123456700 (repeated thousands is still valid)", () => {
+    expect(parseBetragCents("1.234.567")).toBe(123456700);
+  });
 });

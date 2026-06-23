@@ -32,13 +32,16 @@ import {
 import { env } from "$lib/server/env.js";
 import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
 import { addressLines } from "$lib/server/domain/address.js";
+import { assertUuidOr404 } from "$lib/domain/uuid.js";
 
 export const load: PageServerLoad = async ({ params }) => {
+  // F14: validate the uuid param first → clean 404 instead of a 22P02 500.
+  const id = assertUuidOr404(params.id, "Spende nicht gefunden");
   const db = getDb();
   const rows = await db
     .select()
     .from(donations)
-    .where(eq(donations.id, params.id))
+    .where(eq(donations.id, id))
     .limit(1);
   const sp = rows[0];
   if (!sp) throw error(404, "Spende nicht gefunden");
@@ -133,6 +136,7 @@ async function previewPflichtfelder(sp: typeof donations.$inferSelect) {
 
 export const actions: Actions = {
   generate: async ({ params, locals }) => {
+    assertUuidOr404(params.id, "Spende nicht gefunden");
     const userId = locals.session?.user.id ?? null;
     const result = await allocateBescheinigung(params.id, userId);
     if (!result.ok) {

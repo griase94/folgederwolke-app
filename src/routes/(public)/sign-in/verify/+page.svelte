@@ -16,7 +16,7 @@
 	<title>Anmeldung bestätigen – {page.data.vereinName}</title>
 </svelte:head>
 
-<main class="flex min-h-screen items-center justify-center px-4">
+<main class="flex min-h-dvh items-center justify-center px-4">
 	<div class="w-full max-w-sm space-y-6">
 		<div class="space-y-1">
 			<h1 class="text-2xl font-bold tracking-tight">Anmeldung bestätigen</h1>

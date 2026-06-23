@@ -21,11 +21,15 @@ import { eq } from "drizzle-orm";
 import type { RequestHandler } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { invoices } from "$lib/server/db/schema/invoices.js";
+import { assertUuidOr404 } from "$lib/domain/uuid.js";
 
 export const GET: RequestHandler = async ({ params, locals }) => {
   if (!locals.session) {
     throw error(401, "Nicht authentifiziert");
   }
+
+  // F14: validate the uuid param first → clean 404 instead of a 22P02 500.
+  const id = assertUuidOr404(params.id, "Rechnung nicht gefunden");
 
   const db = getDb();
   const [row] = await db
@@ -34,7 +38,7 @@ export const GET: RequestHandler = async ({ params, locals }) => {
       pdfFileId: invoices.pdfFileId,
     })
     .from(invoices)
-    .where(eq(invoices.id, params.id))
+    .where(eq(invoices.id, id))
     .limit(1);
 
   if (!row) {

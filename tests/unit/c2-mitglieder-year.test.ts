@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import { load as mitgliederLoad } from "../../src/routes/app/mitglieder/+page.server.js";
+import { currentBuchungsjahr } from "$lib/domain/year.js";
 
 const url = process.env.DIRECT_DATABASE_URL ?? process.env.DATABASE_URL ?? "";
 
@@ -40,23 +41,27 @@ describe.skipIf(!url)(
       expect((data as { years: number[] }).years).toEqual([2023, 2024, 2025]);
     });
 
-    it("defaults to current-year window when ?year is absent", async () => {
+    it("defaults to the clamped current-year window when ?year is absent (F8: no future column)", async () => {
       const data = await mitgliederLoad(makeEvent(""));
-      const current = new Date().getFullYear();
+      // F8: beitragYearsRange clamps its upper bound to the current Buchungsjahr,
+      // so the default window is [current-2, current-1, current] (no anchor+1
+      // future cell). Oracle uses currentBuchungsjahr() to share the Berlin TZ
+      // basis with the implementation (avoids a UTC↔Berlin New-Year flake).
+      const current = currentBuchungsjahr();
       expect((data as { years: number[] }).years).toEqual([
+        current - 2,
         current - 1,
         current,
-        current + 1,
       ]);
     });
 
-    it("falls back to current year on garbage ?year input", async () => {
+    it("falls back to the clamped current-year window on garbage ?year input (F8)", async () => {
       const data = await mitgliederLoad(makeEvent("?year=foo"));
-      const current = new Date().getFullYear();
+      const current = currentBuchungsjahr();
       expect((data as { years: number[] }).years).toEqual([
+        current - 2,
         current - 1,
         current,
-        current + 1,
       ]);
     });
   },

@@ -189,7 +189,9 @@
 		>
 			<h3 class="text-base font-semibold text-green-900">Pseudonymisierung abgeschlossen</h3>
 			<p class="mt-1 text-sm text-green-800">
-				Alle personenbezogenen Daten für <strong>{form.email}</strong> wurden pseudonymisiert.
+				Personenbezogene Daten für <strong>{form.email}</strong> wurden gelöscht bzw. pseudonymisiert.
+				Gesetzlich aufzubewahrende Buchungsnachweise (Beträge, Daten, Buchungsjahr) sowie der
+				manipulationssichere Audit-Log (ADR-0004, § 257 HGB / § 147 AO) bleiben erhalten.
 			</p>
 			{#if form?.result}
 				<dl class="mt-3 grid grid-cols-2 gap-2 text-xs text-green-800 sm:grid-cols-3">
@@ -213,9 +215,25 @@
 						<dt class="text-green-600">Spenden geschwärzt</dt>
 						<dd class="font-semibold">{form.result.donationsRedacted}</dd>
 					</div>
+					{#if form.result.donationsSkipped > 0}
+						<div>
+							<dt class="text-amber-600">Spenden übersprungen (festgeschrieben)</dt>
+							<dd class="font-semibold">{form.result.donationsSkipped}</dd>
+						</div>
+					{/if}
 					<div>
 						<dt class="text-green-600">E-Mails geschwärzt</dt>
 						<dd class="font-semibold">{form.result.sentMailsRedacted}</dd>
+					</div>
+					<div>
+						<dt class="text-amber-600">Audit-Log</dt>
+						<dd class="font-semibold">
+							{#if form.result.auditLogPayloadsRedacted > 0}
+								{form.result.auditLogPayloadsRedacted} geschwärzt
+							{:else}
+								aufbewahrt (Manipulationsschutz)
+							{/if}
+						</dd>
 					</div>
 				</dl>
 			{/if}

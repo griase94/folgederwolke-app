@@ -17,6 +17,8 @@ import { projects } from "$lib/server/db/schema/projects.js";
 import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { invoices } from "$lib/server/db/schema/invoices.js";
 import { editInvoice } from "$lib/server/domain/invoices.js";
+import { parseEuroToCents } from "$lib/domain/money.js";
+import { assertUuidOr404 } from "$lib/domain/uuid.js";
 
 // ---------------------------------------------------------------------------
 // load
@@ -24,7 +26,8 @@ import { editInvoice } from "$lib/server/domain/invoices.js";
 
 export const load: PageServerLoad = async ({ params }) => {
   const db = getDb();
-  const id = params.id;
+  // F14: validate the uuid param first → clean 404 instead of a 22P02 500.
+  const id = assertUuidOr404(params.id, "Rechnung nicht gefunden");
 
   // Fetch invoice (404 if missing). Mirror /[id]/+page.server.ts predecessor/
   // successor query for the superseded check.
@@ -132,6 +135,9 @@ export const actions: Actions = {
   // route — see +page.svelte). Mirrors /new's `create` action exactly except
   // it calls editInvoice() and redirects to the detail page.
   edit: async ({ request, params, locals }) => {
+    // F14: guard the action too (the load is already guarded) so a hand-crafted
+    // POST to a non-UUID id yields 404, not a 22P02 500.
+    assertUuidOr404(params.id, "Rechnung nicht gefunden");
     const actorUserId = locals.session?.user.id ?? null;
     const formData = await request.formData();
     const raw: Record<string, unknown> = {};
@@ -140,12 +146,14 @@ export const actions: Actions = {
     }
 
     // Convert nettoEur (form input) → nettoCents (domain input). Same
-    // de-DE parser as /new.
+    // canonical de-DE/English parser as /new (F24). Invalid input → leave
+    // nettoCents undefined so editInvoice's Zod validator surfaces the error.
     const nettoEur = (raw["nettoEur"] as string | undefined) ?? "";
-    const cents = Math.round(
-      parseFloat(nettoEur.replace(/\./g, "").replace(",", ".") || "0") * 100,
-    );
-    raw["nettoCents"] = cents;
+    try {
+      raw["nettoCents"] = Number(parseEuroToCents(nettoEur));
+    } catch {
+      // empty / malformed — defer to the editInvoice Zod nettoCents error.
+    }
     delete raw["nettoEur"];
 
     const result = await editInvoice(params.id, raw, actorUserId);

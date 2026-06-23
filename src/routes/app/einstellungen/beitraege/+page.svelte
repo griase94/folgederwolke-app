@@ -10,6 +10,7 @@
 	 */
 	import { untrack } from 'svelte';
 	import { enhance } from '$app/forms';
+	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -69,9 +70,10 @@
 	);
 	const previewCents = $derived.by(() => {
 		// previewBetrag may be a string (text input) or a number (type=number
-		// binding) — coerce to string before normalising the decimal separator.
-		const n = Number(String(previewBetrag ?? '').replace(',', '.'));
-		return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : 0;
+		// binding) — coerce to string, then use the canonical de-DE/English parser
+		// so the preview matches what the server (parseEuroToCents) will store.
+		const cents = parseBetragCents(String(previewBetrag ?? ''));
+		return Number.isFinite(cents) && cents >= 0 ? cents : 0;
 	});
 	const previewIncomeCents = $derived(previewCents * data.activeMemberCount);
 	// Delta vs. the most recent existing rate (sorted desc, first entry).

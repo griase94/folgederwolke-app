@@ -26,8 +26,12 @@ vi.mock("$lib/server/domain/spenden.js", () => ({
 
 // The load reads the donation row directly; stub the db layer so it is
 // exercisable without a real DB.
+// A valid UUID — the route now guards params.id with assertUuidOr404, so the
+// fixture id must be a real 8-4-4-4-12 uuid (was "d-1", a non-UUID stand-in).
+const DONATION_ID = "11111111-1111-4111-8111-111111111111";
+
 const donationRow = {
-  id: "d-1",
+  id: DONATION_ID,
   businessId: "S-2026-001",
   zugewendetAm: "2026-03-01",
   betragCents: 5000n,
@@ -60,7 +64,7 @@ const { actions } =
 
 const generate = actions.generate!;
 
-function event(id = "d-1", userId: string | null = "user-1") {
+function event(id = DONATION_ID, userId: string | null = "user-1") {
   return {
     params: { id },
     locals: { session: userId ? { user: { id: userId } } : null },
@@ -79,12 +83,12 @@ describe("/app/spenden/[id]/zuwendungsbestaetigung ?/generate", () => {
       bescheinigungNr: "B-2026-001",
       pflichtfelder: {},
     });
-    const r = (await generate(event("d-1"))) as {
+    const r = (await generate(event(DONATION_ID))) as {
       success: boolean;
       bescheinigungNr: string;
     };
     expect(allocateBescheinigungMock).toHaveBeenCalledTimes(1);
-    expect(allocateBescheinigungMock.mock.calls[0]![0]).toBe("d-1");
+    expect(allocateBescheinigungMock.mock.calls[0]![0]).toBe(DONATION_ID);
     expect(r.success).toBe(true);
     expect(r.bescheinigungNr).toBe("B-2026-001");
   });
@@ -95,7 +99,7 @@ describe("/app/spenden/[id]/zuwendungsbestaetigung ?/generate", () => {
       status: 412,
       error: "Freistellungsbescheid fehlt",
     });
-    const r = (await generate(event("d-1"))) as { status: number };
+    const r = (await generate(event(DONATION_ID))) as { status: number };
     expect(r.status).toBe(412);
   });
 });

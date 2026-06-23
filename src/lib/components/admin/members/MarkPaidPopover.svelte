@@ -20,6 +20,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 	import { berlinYmd, berlinYear } from '$lib/domain/year.js';
+	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 
 	type Mode = 'mark-paid' | 'edit' | 'befreien';
 
@@ -88,13 +89,11 @@
 	}
 
 	/** Parse a de-DE decimal string (e.g. "69,69" or "69.69") to integer cents.
-	 *  Returns NaN when the input cannot be parsed. */
+	 *  Returns NaN when the input cannot be parsed. Uses the canonical client
+	 *  parser (F25) — the old local version stripped every dot, mangling
+	 *  dot-decimals like "1.50" into 150,00 €. */
 	function parseCents(raw: string): number {
-		// Normalise: remove thousands separators (period), replace comma decimal with dot
-		const normalised = raw.trim().replace(/\./g, '').replace(',', '.');
-		const val = parseFloat(normalised);
-		if (!isFinite(val) || val < 0) return NaN;
-		return Math.round(val * 100);
+		return parseBetragCents(raw);
 	}
 
 	// ── state ─────────────────────────────────────────────────────────────────

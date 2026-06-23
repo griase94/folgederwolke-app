@@ -34,6 +34,7 @@ import {
   resolveKategorieByName,
 } from "$lib/server/domain/transactions.js";
 import { deriveDonationKategorieName } from "$lib/domain/spenden-kategorie.js";
+import { parseEuroToCents } from "$lib/domain/money.js";
 import { bus } from "$lib/server/events/index.js";
 import { env } from "$lib/server/env.js";
 import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
@@ -243,13 +244,18 @@ export function validateSpendeInput(
     const n = parseInt(coerced.betragCents, 10);
     if (Number.isFinite(n)) coerced.betragCents = n;
   }
-  // Also support "betrag_eur" as a friendlier input → cents.
+  // Also support "betrag_eur" as a friendlier input → cents. Use the canonical
+  // de-DE/English parser (F27) — the old single-comma→dot swap mangled German
+  // thousands ("1.234,56" → 123 cents instead of 123456).
   if (
     coerced.betragCents === undefined &&
     typeof coerced.betrag_eur === "string"
   ) {
-    const eur = parseFloat(coerced.betrag_eur.replace(",", "."));
-    if (Number.isFinite(eur)) coerced.betragCents = Math.round(eur * 100);
+    try {
+      coerced.betragCents = Number(parseEuroToCents(coerced.betrag_eur));
+    } catch {
+      // malformed — leave betragCents undefined so the Zod schema rejects it.
+    }
   }
   const parsed = spendeInputSchema.safeParse(coerced);
   if (!parsed.success) {

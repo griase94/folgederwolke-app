@@ -38,6 +38,20 @@ export const load: PageServerLoad = async ({ url, parent }) => {
   // PR1: beitragsRows moved inside the fan-out so all four queries run in
   // parallel (was: awaited after the Promise.all — a serial tail round-trip).
   const beitragsYear = berlinYear();
+  // F9/F34/F38: numerator and denominator MUST be computed over ONE member
+  // population for the year, or the "X/Y bezahlt" headline can read an
+  // impossible "6/5" and the progress bar overflows. Old query mixed
+  // populations: member_count counted active members (no per-year join),
+  // paid_count counted DISTINCT member_id over member_beitrags rows with NO
+  // member join (so a paid-then-left member inflated the numerator), and
+  // open/overdue applied inconsistent exempt/exited filters → phantom debt.
+  //
+  // New shape: a `liable` CTE of members liable in beitragsYear (joined this
+  // year, not yet exited as of this year), LEFT JOIN their per-year row.
+  // Exempt = member-level beitrag_exempt OR per-year is_exempt. Every count is
+  // taken over THIS set so the numerator can never exceed the denominator and
+  // exempt/exited members never create phantom "offen" debt. Mirrors the
+  // canonical openBeitragsAgg in dashboard.ts and the matrix loader.
   const beitragsQuery = getDb().execute<{
     member_count: string;
     paid_count: string;
@@ -52,30 +66,61 @@ export const load: PageServerLoad = async ({ url, parent }) => {
     WITH grace AS (
       SELECT COALESCE(NULLIF(value #>> '{}', 'null')::int, 60) AS days
       FROM settings WHERE key = 'beitrag.overdue_grace_days'
+    ),
+    liable AS (
+      SELECT
+        m.id                                                          AS member_id,
+        (m.beitrag_exempt OR COALESCE(mb.is_exempt, false))           AS is_exempt,
+        mb.betrag_cents                                               AS betrag_cents,
+        mb.paid_cents                                                 AS paid_cents,
+        mb.gezahlt_am                                                 AS gezahlt_am,
+        bs.faelligkeit_at                                             AS faelligkeit_at
+      FROM members m
+      LEFT JOIN member_beitrags mb
+        ON mb.member_id = m.id AND mb.year = ${beitragsYear}
+      LEFT JOIN beitragssatz_by_year bs ON bs.year = ${beitragsYear}
+      WHERE
+        -- joined on or before this Buchungsjahr (NULL eintritt = always liable)
+        (m.eintritts_datum IS NULL
+           OR EXTRACT(YEAR FROM m.eintritts_datum) <= ${beitragsYear})
+        -- not yet exited as of this Buchungsjahr
+        AND (m.austritts_datum IS NULL
+           OR EXTRACT(YEAR FROM m.austritts_datum) >= ${beitragsYear})
     )
     SELECT
-      (SELECT COUNT(*) FROM members WHERE austritts_datum IS NULL)::text                  AS member_count,
-      COUNT(DISTINCT CASE WHEN mb.paid_cents >= mb.betrag_cents THEN mb.member_id END)::text AS paid_count,
-      COALESCE(SUM(mb.paid_cents), 0)::text                                               AS paid_cents,
-      COUNT(DISTINCT CASE WHEN mb.paid_cents <  mb.betrag_cents THEN mb.member_id END)::text AS open_count,
-      COALESCE(SUM(GREATEST(mb.betrag_cents - mb.paid_cents, 0)), 0)::text                AS open_cents,
-      COUNT(DISTINCT CASE
-        WHEN mb.paid_cents < mb.betrag_cents AND mb.is_exempt = false
-         AND current_date > (COALESCE(bs.faelligkeit_at, (${beitragsYear}::text || '-03-31')::date)
-              + (COALESCE((SELECT days FROM grace), 60) || ' days')::interval)
-        THEN mb.member_id END)::text                                                      AS overdue_count,
-      (SELECT COUNT(*) FROM members m
-         WHERE m.austritts_datum IS NULL
-           AND (m.beitrag_exempt
-                OR EXISTS (SELECT 1 FROM member_beitrags mbx
-                           WHERE mbx.member_id = m.id AND mbx.year = ${beitragsYear} AND mbx.is_exempt))
-      )::text                                                                            AS exempt_count,
+      -- All liable members for the year (incl. exempt). LageCard derives its
+      -- denominator as member_count - exempt_count, so this stays the full
+      -- liable population; paid/open below are non-exempt-only.
+      COUNT(*)::text                                                                       AS member_count,
+      -- Numerator: of the non-exempt liable, the ones whose obligation is fully covered.
+      COUNT(*) FILTER (
+        WHERE NOT is_exempt AND betrag_cents IS NOT NULL AND paid_cents >= betrag_cents
+      )::text                                                                             AS paid_count,
+      COALESCE(SUM(paid_cents) FILTER (WHERE NOT is_exempt), 0)::text                     AS paid_cents,
+      -- Open: liable, non-exempt, with an obligation not yet covered.
+      COUNT(*) FILTER (
+        WHERE NOT is_exempt AND betrag_cents IS NOT NULL AND paid_cents < betrag_cents
+      )::text                                                                             AS open_count,
+      COALESCE(
+        SUM(GREATEST(betrag_cents - paid_cents, 0)) FILTER (WHERE NOT is_exempt),
+        0
+      )::text                                                                             AS open_cents,
+      COUNT(*) FILTER (
+        WHERE NOT is_exempt AND betrag_cents IS NOT NULL AND paid_cents < betrag_cents
+          AND current_date > (COALESCE(faelligkeit_at, (${beitragsYear}::text || '-03-31')::date)
+               + (COALESCE((SELECT days FROM grace), 60) || ' days')::interval)
+      )::text                                                                             AS overdue_count,
+      COUNT(*) FILTER (WHERE is_exempt)::text                                             AS exempt_count,
       (SELECT MAX(gezahlt_am)::text FROM member_beitrags WHERE year = ${beitragsYear})    AS last_payment,
-      (SELECT COUNT(DISTINCT year) FROM member_beitrags
-        WHERE year < ${beitragsYear} AND paid_cents < betrag_cents AND is_exempt = false)::text AS prior_years_unpaid
-    FROM member_beitrags mb
-    LEFT JOIN beitragssatz_by_year bs ON bs.year = mb.year
-    WHERE mb.year = ${beitragsYear}
+      (SELECT COUNT(DISTINCT mby.year) FROM member_beitrags mby
+         JOIN members m2 ON m2.id = mby.member_id
+        WHERE mby.year < ${beitragsYear}
+          AND mby.paid_cents < mby.betrag_cents
+          AND mby.is_exempt = false
+          AND m2.beitrag_exempt = false
+          AND (m2.austritts_datum IS NULL
+               OR EXTRACT(YEAR FROM m2.austritts_datum) >= mby.year))::text               AS prior_years_unpaid
+    FROM liable
   `);
 
   // PR1: festgeschriebenBis is already read by +layout.server.ts for every

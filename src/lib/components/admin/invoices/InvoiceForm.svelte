@@ -19,6 +19,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 	import InvoicePdfPreview from './InvoicePdfPreview.svelte';
+	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 
 	type CustomerOpt = { id: string; name: string; addressBlock: string | null; country?: string };
 	type KategorieOpt = { id: string; name: string };
@@ -138,11 +139,12 @@
 	const nettoCents = $derived(parseEur(nettoEur));
 
 	function parseEur(s: string): number {
-		// Accept "12,34" or "12.34" or "12"
-		const cleaned = s.trim().replace(/\./g, '').replace(',', '.');
-		const n = parseFloat(cleaned);
-		if (!Number.isFinite(n) || n <= 0) return 0;
-		return Math.round(n * 100);
+		// Canonical de-DE/English parser (F24). The bespoke version stripped
+		// every dot, destroying dot-decimals ("12.34" → 1234,00 €). Preview only:
+		// fall back to 0 on empty/invalid so the live PDF preview stays clean —
+		// the server (parseEuroToCents) is authoritative for the stored amount.
+		const cents = parseBetragCents(s);
+		return Number.isFinite(cents) && cents > 0 ? cents : 0;
 	}
 
 	const previewInput = $derived({

@@ -95,7 +95,7 @@
 					{#each data.rechnungen as r (r.id)}
 						<li>
 							<a
-								href="/app/rechnungen/{r.businessId}"
+								href="/app/rechnungen/{r.id}"
 								class="flex items-center justify-between gap-4 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:bg-accent dark:hover:bg-accent/40"
 							>
 								<div class="flex flex-col">

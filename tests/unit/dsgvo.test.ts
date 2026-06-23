@@ -23,13 +23,28 @@ vi.mock("$lib/server/audit-log/index.js", () => ({
 }));
 
 function makeFakeTx() {
-  return {
+  const tx: Record<string, unknown> = {
     select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }),
     update: () => ({
-      set: () => ({ where: () => ({ returning: async () => [] }) }),
+      set: () => ({
+        where: () => {
+          // The donations redaction (F31) calls .update().set().where() WITHOUT
+          // .returning() inside a savepoint; the audit-redaction step still uses
+          // .returning(). Support both by returning a thenable that also exposes
+          // .returning().
+          const p = Promise.resolve([]) as Promise<unknown[]> & {
+            returning?: () => Promise<unknown[]>;
+          };
+          p.returning = async () => [];
+          return p;
+        },
+      }),
     }),
     delete: () => ({ where: () => ({ returning: async () => [] }) }),
+    // F31: nested savepoint support for the donations redaction.
+    transaction: async (fn: (sp: unknown) => Promise<unknown>) => fn(tx),
   };
+  return tx;
 }
 
 // ── Minimal AuskunftData fixture ──────────────────────────────────────────────
@@ -204,6 +219,7 @@ describe("@phase-7 pseudonymise — idempotency contract", () => {
     expect(result.sessionsDeleted).toBe(0);
     expect(result.magicLinksDeleted).toBe(0);
     expect(result.donationsRedacted).toBe(0);
+    expect(result.donationsSkipped).toBe(0);
     expect(result.sentMailsRedacted).toBe(0);
     expect(result.auditLogPayloadsRedacted).toBe(0);
   });

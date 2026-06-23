@@ -46,8 +46,15 @@
 	// members who already HAD a beitrags row, so genuinely-unpaid members with no
 	// row vanished and "total" wrongly equalled "paid". (deep-verification HIGH)
 	const total = $derived(Math.max(beitraege.memberCount - beitraege.exemptMemberCount, 0));
-	const paidPct = $derived(total === 0 ? 0 : (beitraege.paidMemberCount / total) * 100);
-	const overduePct = $derived(total === 0 ? 0 : (beitraege.overdueCount / total) * 100);
+	// F9/F38: numerator + denominator now share one liable-in-year, non-exempt
+	// population in the loader, so paidMemberCount can never exceed total. Clamp
+	// defensively anyway so a future query drift can't render an impossible
+	// "6/5 bezahlt" or overflow the progress bar past 100%.
+	const paidMembers = $derived(Math.min(beitraege.paidMemberCount, total));
+	const paidPct = $derived(total === 0 ? 0 : Math.min((paidMembers / total) * 100, 100));
+	const overduePct = $derived(
+		total === 0 ? 0 : Math.min((beitraege.overdueCount / total) * 100, 100)
+	);
 
 	// "Nothing materialized" — no member_beitrags rows exist for this year, so
 	// every aggregate is zero. Distinct from "all paid" (which has paidCents > 0)
@@ -108,7 +115,7 @@
 			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 		{:else}
 			<p class="mt-2 text-sm font-medium text-ink-900">
-				{beitraege.paidMemberCount}/{total} bezahlt{#if beitraege.exemptMemberCount > 0}<span
+				{paidMembers}/{total} bezahlt{#if beitraege.exemptMemberCount > 0}<span
 						class="font-normal text-ink-500"
 					>
 						· {beitraege.exemptMemberCount} befreit</span
@@ -117,7 +124,7 @@
 			<div
 				class="mt-2 flex h-2 overflow-hidden rounded-full bg-dataviz-track"
 				role="img"
-				aria-label={`${beitraege.paidMemberCount} von ${total} Beiträgen bezahlt, ${beitraege.overdueCount} überfällig${beitraege.exemptMemberCount > 0 ? `, ${beitraege.exemptMemberCount} befreit` : ''}`}
+				aria-label={`${paidMembers} von ${total} Beiträgen bezahlt, ${beitraege.overdueCount} überfällig${beitraege.exemptMemberCount > 0 ? `, ${beitraege.exemptMemberCount} befreit` : ''}`}
 			>
 				<div class="bg-dataviz-paid" style={`width:${paidPct}%`}></div>
 				<div class="bg-severity-warn" style={`width:${overduePct}%`}></div>

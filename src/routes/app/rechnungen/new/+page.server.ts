@@ -19,6 +19,7 @@ import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { idCounters } from "$lib/server/db/schema/id_counters.js";
 import { createInvoice } from "$lib/server/domain/invoices.js";
 import { berlinYear } from "$lib/domain/year.js";
+import { parseEuroToCents } from "$lib/domain/money.js";
 
 // ---------------------------------------------------------------------------
 // load
@@ -124,12 +125,18 @@ export const actions: Actions = {
       if (typeof v === "string") raw[k] = v;
     }
 
-    // Convert nettoEur (form input) → nettoCents (domain input)
+    // Convert nettoEur (form input) → nettoCents (domain input). Use the
+    // canonical de-DE/English parser (F24) — never strip every dot, which
+    // destroyed dot-decimals ("12.34") and produced 10×/100× wrong amounts.
+    // The server is authoritative (it discards any client cents), so this is
+    // the single point of truth. Invalid input → leave nettoCents undefined so
+    // the Zod validator surfaces the proper error.
     const nettoEur = (raw["nettoEur"] as string | undefined) ?? "";
-    const cents = Math.round(
-      parseFloat(nettoEur.replace(/\./g, "").replace(",", ".") || "0") * 100,
-    );
-    raw["nettoCents"] = cents;
+    try {
+      raw["nettoCents"] = Number(parseEuroToCents(nettoEur));
+    } catch {
+      // empty / malformed — defer to the createInvoice Zod nettoCents error.
+    }
     delete raw["nettoEur"];
 
     const result = await createInvoice(raw, actorUserId);

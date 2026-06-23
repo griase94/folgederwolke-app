@@ -260,6 +260,13 @@
       "when": 1781767005551,
       "tag": "0036_auslagen_submissions_beleg_or_grund",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1782149017991,
+      "tag": "0037_dsgvo_donation_pii_carveout",
+      "breakpoints": true
     }
   ]
 }

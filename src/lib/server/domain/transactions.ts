@@ -26,6 +26,7 @@ import { members } from "$lib/server/db/schema/members.js";
 import { bus } from "$lib/server/events/index.js";
 import type { YearScope } from "$lib/domain/year.js";
 import { bookingYearFromCashDate } from "$lib/domain/year.js";
+import { isUuid } from "$lib/domain/uuid.js";
 import type { FilterState } from "$lib/domain/transaction-filters.js";
 import {
   buildAusgabenWhere,
@@ -787,6 +788,11 @@ export async function getTransactionDetail(
   id: string,
   kind: TransactionKind,
 ): Promise<TransactionDetail | null> {
+  // F14: a non-UUID id (bad bookmark/typo) would hit the uuid column as 22P02
+  // → unhandled 500. Treat it as "not found" so the loaders' existing null →
+  // error(404) branch fires instead.
+  if (!isUuid(id)) return null;
+
   const db = getDb();
 
   let base: TransactionDetail | undefined;
