@@ -215,7 +215,18 @@ export async function renderRechnungV2(
   doc.setSubject(`Rechnung an ${input.customer.name}`);
   doc.setAuthor(input.verein.name);
   doc.setProducer("folgederwolke-app");
-  doc.setCreationDate(new Date());
+  // Stamp the invoice DATE as the PDF creation date (parsed as UTC), not the
+  // render time. An invoice re-rendered next week shouldn't claim a different
+  // creation moment, and it removes the biggest run-to-run difference. (pdf-lib
+  // object streams + fontkit subsetting still aren't fully byte-deterministic,
+  // so the committed fixture is a visual reference, not a byte-diff target —
+  // see tests/unit/rechnung-v2.test.ts.)
+  const createdAt = new Date(`${input.rechnungsdatum}T00:00:00Z`);
+  doc.setCreationDate(
+    Number.isNaN(createdAt.getTime())
+      ? new Date("2026-01-01T00:00:00Z")
+      : createdAt,
+  );
 
   const anton = await doc.embedFont(fonts.anton, { subset: true });
   const regular = await doc.embedFont(fonts.dejavu, { subset: true });
