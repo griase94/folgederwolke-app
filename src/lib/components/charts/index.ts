@@ -48,6 +48,8 @@ export {
   type ZoneMeterProps,
   CompareBars,
   type CompareBarsProps,
+  DeltaChip,
+  type DeltaChipProps,
   MiniSparkline,
   type MiniSparklineProps,
   StatTile,

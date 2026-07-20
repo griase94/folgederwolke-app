@@ -53,6 +53,7 @@
 			Object.values(data.filterState.booleans).some(Boolean),
 	);
 	const yearLabel = $derived(yearScopeLabel(data.yearScope));
+	const buchungenLabel = $derived(`${data.total} ${data.total === 1 ? 'Buchung' : 'Buchungen'}`);
 
 	const exportHref = $derived(
 		(() => {
@@ -102,13 +103,9 @@
 <PageShell width="list">
 	<PageHeader title="Spenden">
 		{#snippet meta()}
-			<SpendenKpi
-				totalCents={data.kpi.totalCents}
-				count={data.kpi.count}
-				ohneBescheinigungCount={data.kpi.ohneBescheinigungCount}
-				versandtCount={data.kpi.versandtCount}
-				year={data.yearScope}
-			/>
+			<p class="tabular-nums">
+				<b class="font-semibold text-ink-700">{buchungenLabel}</b> · {yearLabel}
+			</p>
 		{/snippet}
 		{#snippet toolbar()}
 			<!-- Mobile-first toolbar: FilterBar full-width own row; links grouped below. -->
@@ -145,6 +142,16 @@
 
 	<StaleYearBanner selectedYear={data.yearScope} currentYear={data.currentYear} />
 
+	<div class="mb-5">
+		<SpendenKpi
+			totalCents={data.kpi.totalCents}
+			count={data.kpi.count}
+			ohneBescheinigungCount={data.kpi.ohneBescheinigungCount}
+			versandtCount={data.kpi.versandtCount}
+			year={data.yearScope}
+		/>
+	</div>
+
 	{#if data.rows.length === 0}
 		{#if hasActiveFilters}
 			<div
@@ -169,8 +176,10 @@
 			</div>
 		{/if}
 	{:else if sortOverride}
-		<div class="flex flex-col">
-			{@render rowsFor(data.rows)}
+		<div class="overflow-hidden rounded-2xl border bg-card shadow-(--shadow-card)">
+			<div class="divide-y divide-hairline">
+				{@render rowsFor(data.rows)}
+			</div>
 		</div>
 		<Pagination
 			page={data.page}
@@ -180,11 +189,13 @@
 			class="justify-center"
 		/>
 	{:else}
-		{#each groups as g (g.key)}
-			<MonthGroup label={g.label} subtotalCents={g.subtotalCents}>
-				{@render rowsFor(g.rows)}
-			</MonthGroup>
-		{/each}
+		<div class="overflow-hidden rounded-2xl border bg-card shadow-(--shadow-card)">
+			{#each groups as g (g.key)}
+				<MonthGroup label={g.label} subtotalCents={g.subtotalCents}>
+					{@render rowsFor(g.rows)}
+				</MonthGroup>
+			{/each}
+		</div>
 		<Pagination
 			page={data.page}
 			pageSize={data.pageSize}

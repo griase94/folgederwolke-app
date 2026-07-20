@@ -8,9 +8,10 @@
 	 * · action(fixed,right). Heights 44px desktop / 52px mobile.
 	 *
 	 * Type chip: --color-type-* tokens (Ausgabe rose/plum ↓ · Einnahme
-	 * green ↑ · Spende violet ♥ — spec §8). Amount renders in INK with an
-	 * explicit sign; red is reserved for negative AGGREGATES, never for
-	 * individual rows (spec §2 amount color rule).
+	 * green ↑ · Spende violet ♥ — spec §8). Amount carries the SAME type hue via
+	 * the AA-safe *-text tokens with an explicit sign (plate transaktionen-v4
+	 * `.amt-ein/.amt-aus/.amt-spe`, brief §5). The critical red stays reserved
+	 * for negative AGGREGATES (month Netto / grand total in ink), never a row.
 	 */
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
 
@@ -21,11 +22,19 @@
 		statusChips = [],
 		amountCents,
 		signed = true,
-		href
+		href,
+		rank
 	}: {
 		type: 'ausgabe' | 'einnahme' | 'spende';
 		title: string;
 		metaLine: string;
+		/**
+		 * Optional leading rank number (Betrag-lens ranked list, plate
+		 * transaktionen-v4 `.ledger-row.ranked`). Adds a leading rank column; the
+		 * trailing columns (amount + action) are unchanged, so the amount stays on
+		 * the same right-edge ruler as the un-ranked rows and the feed foot.
+		 */
+		rank?: number;
 		/**
 		 * Status chips (master §2.4): per-kind styling. 'warn' (severity-warn
 		 * tint) is reserved for genuine incompleteness ("Beleg fehlt"/"ohne
@@ -44,9 +53,22 @@
 		einnahme: { cls: 'bg-type-einnahme-tint text-type-einnahme', glyph: '↑' },
 		spende: { cls: 'bg-type-spende-tint text-type-spende', glyph: '♥' }
 	};
+	// AA-safe per-type amount hue (plate `.amt-ein/.amt-aus/.amt-spe`, brief §5).
+	const AMT: Record<'ausgabe' | 'einnahme' | 'spende', string> = {
+		ausgabe: 'text-(--ausgabe-text)',
+		einnahme: 'text-(--einnahme-text)',
+		spende: 'text-(--spende-text)'
+	};
 
 	const amountLabel = $derived(formatMoney(amountCents, signed ? 'always' : 'auto'));
 	const a11yName = $derived(`${title}, ${amountLabel}`);
+	// Ranked (Betrag-lens) prepends a rank column; the trailing amount+action
+	// columns are identical, so the amount ruler is unchanged.
+	const gridCols = $derived(
+		rank === undefined
+			? 'grid-cols-[3px_26px_minmax(0,1fr)_auto_auto]'
+			: 'grid-cols-[24px_3px_26px_minmax(0,1fr)_auto_auto]'
+	);
 </script>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -->
@@ -55,8 +77,15 @@
 	aria-label={a11yName}
 	data-testid="txn-row"
 	data-kind={type}
-	class="group grid min-h-[52px] grid-cols-[3px_26px_minmax(0,1fr)_auto_auto] items-center gap-x-2.5 rounded-[10px] px-1 py-1 hover:bg-(--surface-glass) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:min-h-11"
+	class={'group grid min-h-[52px] items-center gap-x-2.5 rounded-[10px] px-1 py-1 hover:bg-(--surface-glass) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:min-h-11 ' +
+		gridCols}
 >
+	{#if rank !== undefined}
+		<span
+			aria-hidden="true"
+			class="text-center text-[12.5px] font-bold tabular-nums text-ink-300">{rank}</span
+		>
+	{/if}
 	<span aria-hidden="true" class="h-7 w-[3px]"></span>
 	<span
 		class={'flex size-[26px] items-center justify-center rounded-lg text-[13px] font-semibold ' +
@@ -81,7 +110,7 @@
 	</span>
 	<span
 		data-testid="txn-row-amount"
-		class="pl-3 text-right text-sm font-medium tabular-nums text-ink-900">{amountLabel}</span
+		class={'pl-3 text-right text-sm font-semibold tabular-nums ' + AMT[type]}>{amountLabel}</span
 	>
 	<span aria-hidden="true"></span>
 </a>

@@ -80,6 +80,8 @@ describe("CI e2e grep coverage (F3)", () => {
     expect(grepTags).toContain("@aurora-impl-f1");
     // Aurora implementation campaign — F2 dataviz (chart family + dashboard):
     expect(grepTags).toContain("@aurora-impl-f2");
+    // Aurora implementation campaign — B1 Buchen Listen-Kette (feed + Betrag lens):
+    expect(grepTags).toContain("@aurora-impl-b1");
   });
 
   it("PWA share_target spec is covered by the CI grep (F3)", () => {
@@ -121,6 +123,8 @@ describe("CI e2e grep coverage (F3)", () => {
     "aurora-impl-f1.spec.ts",
     // Aurora impl campaign — F2 dataviz (dashboard sparkline hero + hover):
     "aurora-impl-f2.spec.ts",
+    // Aurora impl campaign — B1 Buchen Listen-Kette (feed + Betrag lens + KPI):
+    "aurora-impl-b1.spec.ts",
   ];
 
   it("every release-critical spec has at least one tag in the CI grep", () => {

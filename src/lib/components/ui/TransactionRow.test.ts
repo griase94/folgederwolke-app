@@ -1,7 +1,7 @@
 /**
  * Aurora — TransactionRow (master §2.4): single-link feed row, type chip
- * from --color-type-* tokens, signed amount in INK (never red on
- * individual rows — spec §2 amount color rule).
+ * from --color-type-* tokens, signed amount in the AA-safe TYPE hue (plate
+ * transaktionen-v4 .amt-*, brief §5) — never the critical red on a row.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { render, cleanup, screen } from "@testing-library/svelte";
@@ -33,13 +33,15 @@ describe("TransactionRow", () => {
     );
   });
 
-  it("renders the signed amount in ink with tabular numerals — never red", () => {
+  it("renders the signed amount in the type hue with tabular numerals — never the critical red", () => {
     render(TransactionRow, { props: base });
     const amount = screen.getByTestId("txn-row-amount");
     // Tolerate the ICU minus glyph (U+2212) as well as ASCII '-'.
     expect(amount.textContent).toMatch(/[-−]84,50/);
     expect(amount.className).toContain("tabular-nums");
-    expect(amount.className).toContain("text-ink-900");
+    // Ausgabe row → AA-safe plum text token (plate `.amt-aus`), not the
+    // critical red reserved for negative aggregates.
+    expect(amount.className).toContain("text-(--ausgabe-text)");
     expect(amount.className).not.toContain("severity-critical");
   });
 
