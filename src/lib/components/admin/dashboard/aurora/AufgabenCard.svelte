@@ -28,8 +28,21 @@
 	} = $props();
 
 	const tasks = $derived(buildTaskQueue(input, now));
-	let expanded = $state(false);
-	const MOBILE_CAP = 4;
+
+	// v10 mobile grouping: the Beiträge tasks fold into ONE row on small screens
+	// so the queue (and the Lage card top edge) stay above the mobile fold. The
+	// full per-member expandable tray is the Flow-B dashboard rework; here it is
+	// minimal — the grouped row links to the filtered Mitglieder matrix. Desktop
+	// keeps the full flat tier list unchanged.
+	const BEITRAGS_IDS = new Set<string>([
+		'beitraege-ueberfaellig',
+		'beitraege-offen',
+		'vorjahres-beitraege'
+	]);
+	const otherTasks = $derived(tasks.filter((t) => !BEITRAGS_IDS.has(t.id)));
+	const beitragsTasks = $derived(tasks.filter((t) => BEITRAGS_IDS.has(t.id)));
+	const beitragsOverdue = $derived(beitragsTasks.some((t) => t.id === 'beitraege-ueberfaellig'));
+	const beitragsSubline = $derived(beitragsTasks.map((t) => t.title).join(' · '));
 
 	// Tinted 26px icon chips (gradient-brand-soft is THE sanctioned soft
 	// treatment for task rails/chips — spec §2 gradient budget).
@@ -78,6 +91,25 @@
 	</span>
 {/snippet}
 
+{#snippet taskItem(task: QueueTask)}
+	<li data-testid="task-item">
+		<TaskRow
+			railKind={task.railKind}
+			title={task.title}
+			amountCents={task.amountCents}
+			ctaLabel={task.ctaLabel}
+			href={task.href}
+			severity={task.severity}
+		>
+			{#snippet chipIcon()}{@render icon(task)}{/snippet}
+		</TaskRow>
+		{#if task.subline}
+			<!-- align under TaskRow title: px-1(4)+rail(3)+gap(10)+chip(26)+gap(10)=53px -->
+			<p class="-mt-0.5 mb-1 pl-[53px] text-xs text-ink-500">{task.subline}</p>
+		{/if}
+	</li>
+{/snippet}
+
 <section class="rounded-2xl bg-card p-4 shadow-(--shadow-card)" aria-labelledby="aufgaben-heading">
 	<div class="mb-2 flex items-center justify-between">
 		<h2 id="aufgaben-heading" class="text-sm font-semibold tracking-tight text-ink-900">
@@ -97,37 +129,51 @@
 			Alles erledigt — nichts wartet auf dich.
 		</p>
 	{:else}
-		<ul class="flex flex-col">
-			{#each tasks as task, i (task.id)}
-				<li
-					data-testid="task-item"
-					class={i >= MOBILE_CAP && !expanded ? 'hidden md:block' : ''}
-				>
+		<!-- Mobile (v10): non-Beiträge tasks flat + ONE grouped Beiträge row, so
+		     the queue and the Lage top edge stay above the fold. This block leads
+		     the DOM so the fold spec's task-row indexing hits the visible rows. -->
+		<ul class="flex flex-col md:hidden" data-testid="aufgaben-list-mobile">
+			{#each otherTasks as task (task.id)}
+				{@render taskItem(task)}
+			{/each}
+			{#if beitragsTasks.length > 0}
+				<li data-testid="task-item">
 					<TaskRow
-						railKind={task.railKind}
-						title={task.title}
-						amountCents={task.amountCents}
-						ctaLabel={task.ctaLabel}
-						href={task.href}
-						severity={task.severity}
+						railKind={beitragsOverdue ? 'warn' : 'default'}
+						title="Beiträge offen"
+						ctaLabel="Ansehen"
+						href="/app/mitglieder?view=matrix&filter=offen"
+						severity={beitragsOverdue ? 'warn' : undefined}
 					>
-						{#snippet chipIcon()}{@render icon(task)}{/snippet}
+						{#snippet chipIcon()}
+							<span
+								class="flex size-[26px] items-center justify-center rounded-lg bg-severity-warn/10 text-severity-warn-text"
+							>
+								<svg
+									class="size-3.5"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"
+								>
+									<circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
+								</svg>
+							</span>
+						{/snippet}
 					</TaskRow>
-					{#if task.subline}
-						<!-- align under TaskRow title: px-1(4)+rail(3)+gap(10)+chip(26)+gap(10)=53px -->
-						<p class="-mt-0.5 mb-1 pl-[53px] text-xs text-ink-500">{task.subline}</p>
-					{/if}
+					<p class="-mt-0.5 mb-1 pl-[53px] text-xs text-ink-500">{beitragsSubline}</p>
 				</li>
+			{/if}
+		</ul>
+
+		<!-- Desktop: the full flat tier list, unchanged. -->
+		<ul class="hidden flex-col md:flex" data-testid="aufgaben-list-desktop">
+			{#each tasks as task (task.id)}
+				{@render taskItem(task)}
 			{/each}
 		</ul>
-		{#if tasks.length > MOBILE_CAP && !expanded}
-			<button
-				type="button"
-				class="mt-1 w-full rounded-[10px] py-2 text-[13px] font-medium text-primary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:hidden"
-				onclick={() => (expanded = true)}
-			>
-				Alle {tasks.length} Aufgaben
-			</button>
-		{/if}
 	{/if}
 </section>

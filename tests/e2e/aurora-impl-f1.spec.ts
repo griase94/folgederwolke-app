@@ -76,15 +76,30 @@ test.describe("@aurora-impl-f1 F1 foundation", () => {
       await page.waitForTimeout(300);
       await expect(html).toHaveAttribute("data-theme", "aurora");
 
-      // (2) computed-style canary: the gradient-clipped saldo hero resolves a
-      // real background-image (empty tokens → `none` → invisible hero).
-      const hero = page.getByTestId("stand-hero").first();
-      await expect(hero).toBeVisible();
-      const bgImage = await hero.evaluate(
+      // (2) computed-style canary: the token system resolves real values after
+      // hydration (empty tokens → `none` → invisible). Re-anchored in F2: the
+      // v10 Saldo hero is solid ink per the dataviz doctrine (plate
+      // saldo-verlauf-v7), so the gradient probe moved to the active brand nav
+      // pill (bg-gradient-brand-soft), which is present on every /app page.
+      // `:visible` picks the shown sidebar — the shell renders both a collapsed
+      // (tablet, lg:hidden) and a full (lg:block) nav, each with an active link.
+      const brandPill = page
+        .locator('nav a[aria-current="page"]:visible')
+        .first();
+      await expect(brandPill).toBeVisible();
+      const bgImage = await brandPill.evaluate(
         (el) => getComputedStyle(el).backgroundImage,
       );
       expect(bgImage).not.toBe("none");
       expect(bgImage).toContain("gradient");
+
+      // the Saldo hero itself stays guarded: it still resolves a real token
+      // colour (not an empty/transparent fallback).
+      const hero = page.getByTestId("stand-hero").first();
+      await expect(hero).toBeVisible();
+      const heroColor = await hero.evaluate((el) => getComputedStyle(el).color);
+      expect(heroColor).toMatch(/^rgba?\(/);
+      expect(heroColor).not.toBe("rgba(0, 0, 0, 0)");
     });
   }
 

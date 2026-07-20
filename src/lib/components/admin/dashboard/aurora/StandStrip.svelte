@@ -76,7 +76,7 @@
 	}
 </script>
 
-<section aria-label={`Finanzlage ${selectedYear}`} class="flex flex-col gap-5">
+<section aria-label={`Finanzlage ${selectedYear}`} class="flex flex-col gap-3 md:gap-5">
 	{#if locked}
 		<div>
 			<span
@@ -92,11 +92,16 @@
 		</div>
 	{/if}
 
+	<!-- heroTestId keeps the historical, spec-facing "stand-hero" testid on the
+	     leading figure (aurora-dashboard + aurora-impl-f1 specs are consumers)
+	     without clobbering SaldoVerlauf's own "saldo-hero". -->
 	<SaldoVerlauf
 		monthlyCents={saldoTrendCents}
 		openingCents={0}
 		year={selectedYear}
 		eyebrow={`Saldo ${selectedYear}`}
+		heroTestId="stand-hero"
+		compactMobile
 	/>
 
 	{#if isCurrentYear}

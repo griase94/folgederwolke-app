@@ -8,6 +8,20 @@
 		year: number;
 		/** Optional eyebrow override (default "Saldo · Buchungsjahr {year}"). */
 		eyebrow?: string;
+		/**
+		 * Optional extra data-testid on the hero figure line. Lets a consumer
+		 * preserve a stable, spec-facing testid (e.g. the dashboard's historical
+		 * "stand-hero") without clobbering the component's own "saldo-hero".
+		 */
+		heroTestId?: string;
+		/**
+		 * Dashboard-mobile compaction (v10 mstrip anatomy): on small screens drop
+		 * the "Aktuell · Monat" state line and the Tief/Höchststand foot-stats and
+		 * tighten the stack, so the Aufgaben queue stays above the mobile fold.
+		 * The endpoint months already caption the sparkline. Desktop is unchanged;
+		 * the gallery leaves this off and keeps the full printed foot-stats.
+		 */
+		compactMobile?: boolean;
 		class?: string;
 	}
 </script>
@@ -42,6 +56,8 @@
 		openingCents,
 		year,
 		eyebrow,
+		heroTestId,
+		compactMobile = false,
 		class: className,
 	}: SaldoVerlaufProps = $props();
 
@@ -194,7 +210,12 @@
 <section
 	data-slot="saldo-verlauf"
 	data-testid="saldo-verlauf"
-	class={["flex flex-col gap-8 md:flex-row md:items-stretch", className]}
+	class={[
+		compactMobile
+			? "flex flex-col gap-3 md:flex-row md:gap-8 md:items-stretch"
+			: "flex flex-col gap-8 md:flex-row md:items-stretch",
+		className,
+	]}
 	class:is-deficit={deficit}
 >
 	<!-- Hero column: desktop = the left column; on mobile it's `contents` so the
@@ -205,7 +226,7 @@
 			<p class="text-[11px] font-bold uppercase tracking-[0.09em] text-ink-500">
 				{eyebrow ?? `Saldo · Buchungsjahr ${year}`}
 			</p>
-		<p class="mt-3 tabular-nums">
+		<p class="mt-3 tabular-nums" data-testid={heroTestId}>
 			<span
 				data-testid="saldo-hero"
 				class="text-[44px] font-extrabold leading-none tracking-[-0.035em] md:text-[52px]"
@@ -216,7 +237,10 @@
 				></span
 			>
 		</p>
-		<p class="mt-3 text-[13px] font-bold text-ink-500" data-testid="saldo-state">
+		<p
+			class={["mt-3 text-[13px] font-bold text-ink-500", compactMobile && "hidden md:block"]}
+			data-testid="saldo-state"
+		>
 			<span
 				class="text-[10px] font-extrabold uppercase tracking-[0.11em]"
 				style:color={deficit ? TOKEN.deficitStrong : TOKEN.einnahmeStrong}
@@ -260,8 +284,13 @@
 
 		</div>
 
-		<!-- printed extremes — after the sparkline on mobile (dataviz §4 order) -->
-		<dl class="order-3 mt-5 flex gap-7 md:order-none md:mt-auto md:pt-6" data-testid="saldo-extremes">
+		<!-- printed extremes — after the sparkline on mobile (dataviz §4 order).
+		     compactMobile (dashboard) hides them on small screens: the endpoint
+		     months already caption the sparkline and the mobile fold needs the room. -->
+		<dl
+			class={["order-3 mt-5 flex gap-7 md:order-none md:mt-auto md:pt-6", compactMobile && "hidden md:flex"]}
+			data-testid="saldo-extremes"
+		>
 			<div class="flex flex-col gap-1">
 				<dt class="inline-flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-ink-300">
 					<span
