@@ -21,7 +21,8 @@
 		active,
 		paramName
 	}: {
-		options: { value: string; label: string }[];
+		/** `count`, when present, renders a `.cnt` badge after the label (plate). */
+		options: { value: string; label: string; count?: number }[];
 		active: string;
 		paramName: string;
 	} = $props();
@@ -48,11 +49,14 @@
 			class="flex min-h-11 items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:min-h-10"
 		>
 			<span
-				class={'flex h-8 items-center rounded-full px-3 text-[13px] font-semibold transition-colors md:h-7 ' +
+				class={'flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold transition-colors md:h-7 ' +
 					(isActive
 						? 'bg-primary-strong text-white'
 						: 'border border-hairline bg-background text-ink-700 hover:bg-secondary')}
-				>{opt.label}</span
+				>{opt.label}{#if opt.count !== undefined}<span
+						class={'text-[11px] font-bold tabular-nums ' +
+							(isActive ? 'text-white/75' : 'text-ink-300')}>{opt.count}</span
+					>{/if}</span
 			>
 		</button>
 	{/each}

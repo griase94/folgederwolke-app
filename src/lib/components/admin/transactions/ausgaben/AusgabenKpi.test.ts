@@ -20,9 +20,9 @@ describe("AusgabenKpi", () => {
       props: {
         totalCents: 842000,
         count: 47,
+        erstattetCount: 5,
         offenCount: 0,
         oldestOpenAgeDays: null,
-        year: 2026,
       },
     });
     expect(screen.queryByText(/offen/i)).toBeNull();
@@ -33,28 +33,28 @@ describe("AusgabenKpi", () => {
       props: {
         totalCents: 842000,
         count: 47,
+        erstattetCount: 5,
         offenCount: 3,
         oldestOpenAgeDays: 18,
-        year: 2026,
       },
     });
     expect(screen.getByText(/3 offen/)).toBeTruthy();
     expect(screen.getByText(/18/)).toBeTruthy();
   });
 
-  it("renders the meta line (no own <h1> — PageHeader owns the title)", () => {
+  it("renders the Summe tile (no own <h1> — PageHeader owns the title)", () => {
     const { container } = render(AusgabenKpi, {
       props: {
         totalCents: 84200,
         count: 3,
+        erstattetCount: 2,
         offenCount: 0,
         oldestOpenAgeDays: null,
-        year: 2026,
       },
     });
-    // The KPI strip is rendered inside the PageHeader meta slot, so it must NOT
-    // render its own <h1> (that caused a duplicate title). It renders the quiet
-    // meta line instead.
+    // The strip renders below the PageHeader, which owns the page <h1>; the KPI
+    // must NOT render its own heading. The Summe tile carries the total (year +
+    // booking count now live in the PageHeader meta line, plate transaktionen-v4).
     expect(container.querySelector("h1")).toBeNull();
     expect(screen.getByText(/Summe/)).toBeTruthy();
   });

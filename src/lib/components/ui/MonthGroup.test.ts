@@ -25,7 +25,9 @@ describe("MonthGroup", () => {
     // Tolerate the ICU minus glyph (U+2212) as well as ASCII '-'.
     expect(sub.textContent).toMatch(/[-−]123,00/);
     expect(sub.className).toContain("tabular-nums");
-    expect(sub.className).toContain("text-ink-500");
+    // Plate transaktionen-v4 `.mh-net`: the month Netto is ink-900 (weight 700),
+    // not the muted ink-500 of the pre-Aurora quiet subtotal.
+    expect(sub.className).toContain("text-ink-900");
   });
 
   it("renders no subtotal element when subtotalCents is undefined", () => {

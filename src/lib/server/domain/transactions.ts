@@ -630,6 +630,29 @@ export interface FeedPageOptions {
   /** Row window; "all" skips LIMIT/OFFSET (Buchungsliste/CSV lane). */
   limit: number | "all";
   offset: number;
+  /**
+   * Sort lens (spec §4.1, the one real feed delta). `datum` (default) keeps the
+   * chronological cash-date order the month-group feed lives on; `betrag`
+   * ranks the whole result set by ABS(betrag_cents) DESC (the "was waren die
+   * Brocken?" lens). Anything else (or absent) resolves to `datum` — the route
+   * whitelists the URL param, this is the belt-and-braces default.
+   */
+  sort?: "datum" | "betrag";
+}
+
+export interface FeedPage {
+  rows: FeedRow[];
+  /** Count of the whole (paginated) match set. */
+  total: number;
+  /**
+   * Signed net cents (ADR-0003) over the WHOLE match set — expenses negative,
+   * income/donations positive. Its own aggregate (NOT a per-page sum), so the
+   * Betrag-lens "Netto gesamt" foot and the Datum-lens grand total both read the
+   * whole filtered set regardless of pagination.
+   */
+  sumCents: number;
+  /** Distinct Berlin calendar months (YYYY-MM of relevanz_datum) in the set. */
+  monthCount: number;
 }
 
 interface RawFeedRow extends Record<string, unknown> {
@@ -658,7 +681,7 @@ const FEED_TYP_TO_KIND: Record<string, TransactionKind> = {
 
 export async function listTransaktionenFeedPage(
   opts: FeedPageOptions,
-): Promise<{ rows: FeedRow[]; total: number }> {
+): Promise<FeedPage> {
   const db = getDb();
   const typVals = opts.state.enums["typ"] ?? [];
   const wanted = new Set<TransactionKind>(
@@ -740,7 +763,8 @@ export async function listTransaktionenFeedPage(
       WHERE ${where}`);
   }
 
-  if (arms.length === 0) return { rows: [], total: 0 };
+  if (arms.length === 0)
+    return { rows: [], total: 0, sumCents: 0, monthCount: 0 };
 
   const unionSql = sql.join(arms, sql` UNION ALL `);
   const pageSql =
@@ -748,16 +772,38 @@ export async function listTransaktionenFeedPage(
       ? sql``
       : sql` LIMIT ${opts.limit} OFFSET ${opts.offset}`;
 
-  const [raw, countRows] = await Promise.all([
+  // Betrag-lens = ABS(betrag_cents) DESC over the UNION (the "was waren die
+  // Brocken?" ranking); Datum-lens (default) = the chronological cash-date
+  // order the month groups live on. Both carry the same deterministic tiebreak
+  // (relevanz_datum, gebucht_am, id) so pagination is stable.
+  const orderSql =
+    opts.sort === "betrag"
+      ? sql`ORDER BY ABS(betrag_cents) DESC, relevanz_datum DESC, gebucht_am DESC, id DESC`
+      : sql`ORDER BY relevanz_datum DESC, gebucht_am DESC, id DESC`;
+
+  const [raw, aggRows] = await Promise.all([
     db.execute<RawFeedRow>(
-      sql`SELECT * FROM (${unionSql}) AS feed ORDER BY relevanz_datum DESC, gebucht_am DESC, id DESC${pageSql}`,
+      sql`SELECT * FROM (${unionSql}) AS feed ${orderSql}${pageSql}`,
     ),
-    db.execute<{ total: number }>(
-      sql`SELECT count(*)::int AS total FROM (${unionSql}) AS feed`,
+    // ONE aggregate pass over the WHOLE filtered set: count, signed net
+    // (expense negative), and distinct Berlin months (YYYY-MM of the text
+    // relevanz_datum) for the feed foot. Independent of LIMIT/OFFSET.
+    db.execute<{
+      total: number;
+      sum_cents: string | number;
+      month_count: number;
+    }>(
+      sql`SELECT count(*)::int AS total,
+                 COALESCE(SUM(CASE WHEN kind = 'expense' THEN -betrag_cents ELSE betrag_cents END), 0)::bigint AS sum_cents,
+                 COUNT(DISTINCT substr(relevanz_datum, 1, 7))::int AS month_count
+            FROM (${unionSql}) AS feed`,
     ),
   ]);
 
-  const total = Number(countRows[0]?.total ?? 0);
+  const agg = aggRows[0];
+  const total = Number(agg?.total ?? 0);
+  const sumCents = Number(agg?.sum_cents ?? 0);
+  const monthCount = Number(agg?.month_count ?? 0);
   return {
     rows: [...raw].map((r) => ({
       id: r.id,
@@ -777,7 +823,53 @@ export async function listTransaktionenFeedPage(
       yearOfBuchung: r.year_of_buchung ?? null,
     })),
     total,
+    sumCents,
+    monthCount,
   };
+}
+
+export interface FeedKindCounts {
+  expense: number;
+  income: number;
+  donation: number;
+  total: number;
+}
+
+/**
+ * Per-kind counts for the feed's filter chips ("Alle 8 · Einnahmen 7 · …").
+ * Runs ALL three UNION arms — the `typ` chip filter is deliberately IGNORED so
+ * each chip shows its full count in the current year + search scope (a chip's
+ * badge must not collapse to the active filter). One grouped round-trip.
+ */
+export async function countTransaktionenFeedByKind(opts: {
+  state: FilterState;
+  year: YearScope;
+}): Promise<FeedKindCounts> {
+  const db = getDb();
+  const whereOf = (conds: SQL[]): SQL =>
+    conds.length ? and(...conds)! : sql`TRUE`;
+  const arms: SQL[] = [
+    sql`SELECT 'expense'::text AS kind FROM ${expenses} WHERE ${whereOf(buildAusgabenWhere(opts.state, opts.year))}`,
+    sql`SELECT 'income'::text AS kind FROM ${income} WHERE ${whereOf(buildEinnahmenWhere(opts.state, opts.year))}`,
+    sql`SELECT 'donation'::text AS kind FROM ${donations} WHERE ${whereOf(buildSpendenWhere(opts.state, opts.year))}`,
+  ];
+  const rows = await db.execute<{ kind: string; n: number }>(
+    sql`SELECT kind, count(*)::int AS n FROM (${sql.join(arms, sql` UNION ALL `)}) AS feed GROUP BY kind`,
+  );
+  const counts: FeedKindCounts = {
+    expense: 0,
+    income: 0,
+    donation: 0,
+    total: 0,
+  };
+  for (const r of rows) {
+    const n = Number(r.n);
+    if (r.kind === "expense") counts.expense = n;
+    else if (r.kind === "income") counts.income = n;
+    else if (r.kind === "donation") counts.donation = n;
+    counts.total += n;
+  }
+  return counts;
 }
 
 // ---------------------------------------------------------------------------
