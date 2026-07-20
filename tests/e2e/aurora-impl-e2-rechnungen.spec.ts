@@ -115,5 +115,22 @@ test.describe.serial("@aurora-impl-e2 Rechnungs-Kette", () => {
     await expect(
       desktopList.locator(`[data-invoice-id="${createdInvoiceId}"]`),
     ).toContainText("bezahlt");
+    // Flash toast must survive the SSR direct navigation (Toaster-timing fix).
+    await expect(page.getByText("Als bezahlt markiert")).toBeVisible();
+  });
+
+  test("same-day undo on the detail restores offen + flashes its toast", async ({
+    page,
+  }) => {
+    test.skip(createdInvoiceId === "", "depends on the create + paid tests");
+    await loginAs(page, "admin");
+    // The invoice was paid today in the previous test → undo is available.
+    page.on("dialog", (d) => d.accept());
+    await page.goto(`/app/rechnungen/${createdInvoiceId}`);
+    await page.getByTestId("invoice-undo-payment").click();
+
+    // 303 → ?undone=1; the deferred detail toast must fire on SSR direct nav.
+    await page.waitForURL(/undone=1/);
+    await expect(page.getByText("Zahlung zurückgenommen")).toBeVisible();
   });
 });

@@ -15,13 +15,17 @@
 	let { data }: { data: PageData } = $props();
 
 	onMount(() => {
-		// Flash after the per-row inline mark-paid POST + redirect (mirrors the
-		// detail page). `?undone=1` is the undo-payment counterpart.
-		if (page.url.searchParams.get('paid') === '1') {
-			toast.success('Als bezahlt markiert');
-		} else if (page.url.searchParams.get('undone') === '1') {
-			toast.info('Zahlung zurückgenommen');
-		}
+		// Flash after the per-row inline mark-paid POST + redirect. Deferred to
+		// the next macrotask: on an SSR direct navigation the page mounts before
+		// the layout's <Toaster> subscribes, so a synchronous toast() is dropped.
+		// setTimeout(0) fires after the mount cycle, once the Toaster listens.
+		setTimeout(() => {
+			if (page.url.searchParams.get('paid') === '1') {
+				toast.success('Als bezahlt markiert');
+			} else if (page.url.searchParams.get('undone') === '1') {
+				toast.info('Zahlung zurückgenommen');
+			}
+		}, 0);
 	});
 
 	let searchQuery = $state('');

@@ -142,17 +142,18 @@
 			pollTimer = setInterval(() => void pollOnce(jobId), 1000);
 		}
 
-		// Flash after the mark-paid / undo-payment POST + redirect (mirrors the
-		// list page's onMount, which is the verified-working reference). Reading
-		// straight off `page.url.searchParams` — rather than a server-computed
-		// `data.*Flash` boolean — is the same pattern proven to fire there, and
-		// stays correct even if this route is ever reached via a soft client-side
-		// navigation where `data` hasn't been re-derived yet.
-		if (page.url.searchParams.get('paid') === '1') {
-			toast.success('Als bezahlt markiert');
-		} else if (page.url.searchParams.get('undone') === '1') {
-			toast.info('Zahlung zurückgenommen');
-		}
+		// Flash after the mark-paid / undo-payment POST + redirect. Deferred to
+		// the next macrotask: on an SSR direct navigation (the real redirect
+		// path) the page mounts before the layout's <Toaster> subscribes, so a
+		// synchronous toast() here is dropped. setTimeout(0) fires after the
+		// whole mount cycle, once the Toaster is listening.
+		setTimeout(() => {
+			if (page.url.searchParams.get('paid') === '1') {
+				toast.success('Als bezahlt markiert');
+			} else if (page.url.searchParams.get('undone') === '1') {
+				toast.info('Zahlung zurückgenommen');
+			}
+		}, 0);
 	});
 
 	onDestroy(() => stopPolling());
@@ -640,7 +641,7 @@
 					>
 						<dt class="text-xs font-medium text-ink-500">Kategorie</dt>
 						<dd class="min-w-0 text-right text-[13px] font-semibold text-ink-900">
-							<div class="truncate">{inv.kategorieNameSnapshot}</div>
+							<div class="whitespace-normal break-words">{inv.kategorieNameSnapshot}</div>
 							<div class="mt-1 flex justify-end">
 								<SphereBadge sphere={inv.sphereSnapshot} />
 							</div>

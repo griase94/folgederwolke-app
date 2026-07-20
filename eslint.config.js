@@ -56,6 +56,8 @@ export default [
       // Local Claude Code scratch (gitignored): worktree workflow scripts use
       // the workflow runtime globals (agent/parallel/phase/log/args), not source.
       ".claude/",
+      // Local board/judge scratch (gitignored): probe scripts + shot output.
+      ".qa-shots/",
     ],
   },
   // Phase 9: restrict @vercel/blob imports to the one allowed adapter file.

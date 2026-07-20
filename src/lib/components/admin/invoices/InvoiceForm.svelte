@@ -235,7 +235,7 @@
 <!-- Calendar-icon affordance shared by the Eckdaten date trio (Kit anatomy). -->
 {#snippet calendarGlyph()}
 	<svg
-		class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400"
+		class="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-ink-400"
 		fill="none"
 		viewBox="0 0 24 24"
 		stroke="currentColor"
