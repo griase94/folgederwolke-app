@@ -112,5 +112,12 @@ test.describe("@aurora-impl-f1 F1 foundation", () => {
       .getByTestId("mode-segmented")
       .locator('[data-value="dark"]');
     await expect(dunkel).toHaveAttribute("aria-checked", "true");
+    // …and the page actually RENDERS dark: the computed root canvas is a dark
+    // colour (Nacht #16111f ≈ rgb(22,17,31)), not the light wash (~rgb 255 each).
+    const channelSum = await html.evaluate((el) => {
+      const rgb = getComputedStyle(el).backgroundColor.match(/\d+/g) ?? [];
+      return rgb.slice(0, 3).reduce((a, n) => a + Number(n), 0);
+    });
+    expect(channelSum).toBeLessThan(200);
   });
 });
