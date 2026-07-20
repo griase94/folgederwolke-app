@@ -82,6 +82,12 @@ export interface RechnungV2Input {
   leistungsBeschreibung: string | null;
   nettoCents: number;
   kassenwaertName: string;
+  /**
+   * PDF CreationDate metadata. Defaults to `new Date()` in prod so every
+   * rendered invoice carries its real generation time. Tests pass a fixed
+   * Date to get byte-reproducible output (the committed visual baseline).
+   */
+  creationDate?: Date;
 }
 
 // Helpers
@@ -215,7 +221,7 @@ export async function renderRechnungV2(
   doc.setSubject(`Rechnung an ${input.customer.name}`);
   doc.setAuthor(input.verein.name);
   doc.setProducer("folgederwolke-app");
-  doc.setCreationDate(new Date());
+  doc.setCreationDate(input.creationDate ?? new Date());
 
   const anton = await doc.embedFont(fonts.anton, { subset: true });
   const regular = await doc.embedFont(fonts.dejavu, { subset: true });

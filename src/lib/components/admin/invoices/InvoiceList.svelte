@@ -8,7 +8,6 @@
 <script lang="ts">
 	import InvoiceListRow from './InvoiceListRow.svelte';
 	import InvoiceCardMobile from './InvoiceCardMobile.svelte';
-	import NoEntries from '$lib/components/empty/NoEntries.svelte';
 	import SearchNoResults from '$lib/components/empty/SearchNoResults.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { InvoiceRow } from '$lib/domain/invoices.js';
@@ -34,11 +33,19 @@
 {#if invoices.length === 0 && hasQuery}
 	<SearchNoResults {query} onClear={onClearSearch} />
 {:else if invoices.length === 0}
-	<NoEntries entity="Rechnungen" hint="Lege deine erste Rechnung an, um loszulegen.">
-		{#snippet action()}
-			<Button href={newInvoiceHref}>Rechnung anlegen</Button>
-		{/snippet}
-	</NoEntries>
+	<!-- eslint-disable svelte/no-navigation-without-resolve -->
+	<div
+		data-testid="invoice-empty-state"
+		class="grid place-items-center rounded-2xl border border-dashed border-border bg-card px-6 py-14 text-center shadow-sm"
+	>
+		<div class="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-brand-soft text-primary-text" aria-hidden="true">
+			<svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7z" /><path stroke-linecap="round" stroke-linejoin="round" d="M14 2v4a2 2 0 002 2h4M10 9H8m8 4H8m8 4H8" /></svg>
+		</div>
+		<h3 class="text-base font-bold text-ink-900">Noch keine Rechnung gestellt — deine erste?</h3>
+		<p class="mt-1.5 max-w-sm text-sm text-ink-500">Hier sammeln sich alle Rechnungen, die der Verein an Kund:innen stellt. Nummer, PDF und Buchung übernimmt folgederwolke für dich.</p>
+		<Button href={newInvoiceHref} class="mt-5">Erste Rechnung anlegen</Button>
+	</div>
+	<!-- eslint-enable svelte/no-navigation-without-resolve -->
 {:else}
 	<!-- Mobile (< md) card variant -->
 	<div
@@ -54,17 +61,17 @@
 		{/each}
 	</div>
 
-	<!-- Desktop (md+) original row -->
+	<!-- Desktop (md+) — ONE ledger card with hairline-divided rows (house style) -->
 	<div
 		data-testid="invoice-row-list"
-		class="hidden space-y-2 md:block"
-		role="list"
-		aria-label="Rechnungsliste"
+		class="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-sm md:block"
 	>
-		{#each invoices as invoice (invoice.id)}
-			<div role="listitem">
-				<InvoiceListRow {invoice} {today} />
-			</div>
-		{/each}
+		<div class="divide-y divide-hairline" role="list" aria-label="Rechnungsliste">
+			{#each invoices as invoice (invoice.id)}
+				<div role="listitem">
+					<InvoiceListRow {invoice} {today} />
+				</div>
+			{/each}
+		</div>
 	</div>
 {/if}

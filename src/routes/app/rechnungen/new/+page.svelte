@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import PageShell from '$lib/components/layout/PageShell.svelte';
 	import InvoiceForm from '$lib/components/admin/invoices/InvoiceForm.svelte';
 	import type { PageData, ActionData } from './$types.js';
 
@@ -38,44 +39,75 @@
 	<title>Neue Rechnung - {page.data.vereinName}</title>
 </svelte:head>
 
-<div class="container mx-auto max-w-6xl px-4 py-8 sm:px-6">
+<PageShell width="list">
+	<!-- eslint-disable svelte/no-navigation-without-resolve -->
 	<div class="mb-6">
-		<!-- eslint-disable svelte/no-navigation-without-resolve -->
 		<a
 			href="/app/rechnungen"
-			class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+			class="inline-flex items-center gap-1 text-sm text-ink-500 hover:text-ink-900"
 		>
-			<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+			<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
 				<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
 			</svg>
 			Zurück zu Rechnungen
 		</a>
-		<h1 class="mt-2 text-2xl font-bold tracking-tight text-foreground">Neue Rechnung</h1>
-		<p class="mt-0.5 text-sm text-muted-foreground">
-			Die Vorschau aktualisiert sich automatisch. Beim Speichern wird die
-			Rechnung als PDF erzeugt und im Hintergrund erstellt.
+		<h1 class="mt-2 text-2xl font-semibold tracking-[-0.02em] text-ink-900">Neue Rechnung</h1>
+		<p class="mt-0.5 text-sm text-ink-500">
+			Die Vorschau ist das echte PDF — was du siehst, geht raus.
 		</p>
 	</div>
 
 	{#if form && 'error' in form && form.error}
-		<div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+		<div class="mb-4 rounded-xl border border-severity-critical/30 bg-severity-critical/10 px-4 py-3 text-sm text-severity-critical-text">
 			{form.error}
 		</div>
 	{/if}
 
 	{#if data.from === 'projekt' && data.prefillProjectId}
-		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 		<div
-			class="mb-4 rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+			class="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-secondary/60 px-4 py-2.5 text-sm text-ink-700"
 			data-testid="invoice-from-projekt"
 		>
+			<svg
+				class="h-4 w-4 shrink-0 text-ink-400"
+				fill="none"
+				viewBox="0 0 24 24"
+				stroke="currentColor"
+				stroke-width="2"
+				aria-hidden="true"
+				><circle cx="12" cy="12" r="10" /><path
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					d="M12 16v-4M12 8h.01"
+				/></svg
+			>
 			Aus Projekt —
 			<a
-				class="font-medium text-foreground underline"
+				class="font-semibold text-ink-700 underline"
 				href={`/app/projekte/${data.prefillProjectId}`}
 			>
 				zum Projekt zurück
 			</a>
+		</div>
+	{:else if data.prefillCustomerName}
+		<div
+			class="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-secondary/60 px-4 py-2.5 text-sm text-ink-700"
+			data-testid="invoice-from-customer"
+		>
+			<svg
+				class="h-4 w-4 shrink-0 text-ink-400"
+				fill="none"
+				viewBox="0 0 24 24"
+				stroke="currentColor"
+				stroke-width="2"
+				aria-hidden="true"
+				><circle cx="12" cy="12" r="10" /><path
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					d="M12 16v-4M12 8h.01"
+				/></svg
+			>
+			Für <span class="font-semibold text-ink-700">{data.prefillCustomerName}</span>
 		</div>
 	{/if}
 
@@ -86,5 +118,6 @@
 		invoiceNumberPreview={data.invoiceNumberPreview}
 		{initial}
 		{errors}
+		cancelHref="/app/rechnungen"
 	/>
-</div>
+</PageShell>
