@@ -96,14 +96,58 @@ test.describe("@phase-entry-modals Beleg enforcement + modal isolation", () => {
       timeout: 8_000,
     });
     await expect(page).toHaveURL(/\/app\/ausgaben\/neu/);
-    await expect(
-      page.getByText(/IBAN.*ungültig|ungültig/i).first(),
-    ).toBeVisible({
-      timeout: 8_000,
-    });
+    // The banner must carry the SPECIFIC IBAN message — proving the extern guard
+    // actually ran. A loose /ungültig/ match would false-pass on the generic
+    // „Ungültige Eingabe" Zod wall (which is what appeared when the extern hidden
+    // posted "" → null → parse died before the IBAN check ever ran). So we assert
+    // the exact string AND that the generic wall is absent.
+    await expect(page.getByRole("alert")).toContainText("IBAN ist ungültig.");
+    await expect(page.getByText("Ungültige Eingabe")).toHaveCount(0);
     await expect(page.getByText(/Too small|Invalid input/i)).toHaveCount(0);
-    // de-DE echo keeps the comma format the user typed.
+    // Field echo: de-DE Betrag AND the typed IBAN both survive the roundtrip.
     await expect(page.locator("#betrag-display")).toHaveValue("12,00");
+    await expect(page.locator('input[name="externIban"]')).toHaveValue(
+      "DE00 QUATSCH",
+    );
+  });
+
+  // ── 1b. Happy path: a valid Extern-paid Ausgabe actually creates ──────────
+  // Regression guard for the „unsichtbare Wand": the extern hidden used to post
+  // "" so the parse died and NO extern-paid Ausgabe could ever be created. This
+  // drives the full valid extern path (name + a real German IBAN) to a redirect.
+  test("ausgaben/neu — a valid Extern-paid Ausgabe (name + valid IBAN) creates and redirects", async ({
+    page,
+  }) => {
+    await loginAs(page, "admin");
+    await page.goto("/app/ausgaben/neu");
+
+    await fillBaseAusgabeFields(page, {
+      bezeichnung: "E2E-Extern-Happy",
+      betrag: "12,00",
+    });
+    // Belegverzicht arm satisfies the §4.1 Beleg gate without a file.
+    await page.getByRole("radio", { name: /Verzicht begründen/i }).click();
+    await page
+      .locator("#beleg-begruendung")
+      .fill("E2E: Extern-Erstattung, kein Beleg.");
+    // Extern payer with a VALID German IBAN (canonical MOD-97 test IBAN).
+    await page.getByTestId("bezahlt-von-extern").click();
+    await page.getByTestId("extern-name-input").fill("Erika Extern");
+    await page
+      .locator('input[name="externIban"]')
+      .fill("DE89 3704 0044 0532 0130 00");
+
+    const submitBtn = page.locator(
+      '[data-slot="entry-footer"] button[type="submit"]',
+    );
+    await expect(submitBtn).toBeEnabled({ timeout: 5_000 });
+    await submitBtn.click();
+
+    // Success → leaves /neu and lands on the freshly-created Ausgabe detail.
+    await expect(page).not.toHaveURL(/\/app\/ausgaben\/neu/, {
+      timeout: 15_000,
+    });
+    await expect(page).toHaveURL(/\/app\/ausgaben\//, { timeout: 15_000 });
   });
 
   // ── 2. ausgaben/neu — Belegverzicht arm submits OK ────────────────────────

@@ -160,6 +160,11 @@
 		if (bezahltVonKind === 'member' && selectedMember) {
 			return `${selectedMember.vorname} ${selectedMember.nachname}`.trim();
 		}
+		// Extern MUST post the typed name — an empty hidden would map to null on
+		// the server and (with the schema default firing only on `undefined`) fail
+		// the parse with an invisible „Ungültige Eingabe" wall, gate still green,
+		// so the extern-IBAN check downstream would never even run.
+		if (bezahltVonKind === 'extern') return externName.trim();
 		return '';
 	});
 

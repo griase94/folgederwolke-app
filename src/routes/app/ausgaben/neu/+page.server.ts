@@ -253,7 +253,18 @@ const expenseSchema = z.object({
   // Auslage form); the tab can switch to member/extern.
   bezahltVonKind: z.enum(["verein", "member", "extern"]).default("verein"),
   bezahltVonMemberId: z.string().uuid().nullable().optional(),
-  bezahltVonDisplay: z.string().max(200).default("(unbekannt)"),
+  // Backstop: the client posts a hidden `bezahltVonDisplay` derived from the
+  // payer branch, which can arrive empty (→ null after the ""→null map at the
+  // top of the action). `.default()` fires ONLY on `undefined`, so a plain
+  // `.string().default(...)` would reject that null with an invisible
+  // `invalid_type` wall — killing the parse before the extern/member guards
+  // (and the German IBAN check) ever run. `.nullish().transform` coerces any
+  // null/blank to a safe fallback so an empty hidden can never wedge the form.
+  bezahltVonDisplay: z
+    .string()
+    .max(200)
+    .nullish()
+    .transform((v) => v?.trim() || "(unbekannt)"),
   externName: z.string().max(200).nullable().optional(),
   externIban: z.string().max(50).nullable().optional(),
   externEmail: z
