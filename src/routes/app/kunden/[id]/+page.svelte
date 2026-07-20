@@ -72,6 +72,10 @@
 		if (r.faelligkeitsDatum) return `Fällig ${fmtDate(r.faelligkeitsDatum)}`;
 		return 'ohne Zahlungsziel';
 	}
+	// Shared desktop ledger template so the sorthead and the rows align on ONE
+	// grid (ANDY-LENS §1): NUMMER · BEZEICHNUNG · STATUS · DATUM · BETRAG.
+	const LEDGER_GRID = 'sm:grid-cols-[128px_minmax(0,1fr)_108px_96px_92px]';
+
 	const CHIP: Record<InvoiceRowStatus, string> = {
 		offen: 'bg-secondary text-ink-700',
 		überfällig: 'bg-severity-warn-tint text-severity-warn-text',
@@ -189,7 +193,9 @@
 				{/if}
 			{:else if activeTab === 'rechnungen'}
 				<div class="mb-3 flex items-center justify-between gap-3">
-					<h2 class="text-[11px] font-bold uppercase tracking-wider text-ink-500">Alle Rechnungen</h2>
+					<h2 class="text-[11px] font-bold uppercase tracking-wider text-ink-500">
+						{data.rechnungen.length} {data.rechnungen.length === 1 ? 'Rechnung' : 'Rechnungen'}{#if data.kpi.offenCents > 0}<span class="mx-1.5 text-ink-300">·</span><span class="text-open-ink">{formatMoney(data.kpi.offenCents)} offen</span>{/if}
+					</h2>
 					{#if isArchived}
 						<span class="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-border bg-muted px-3.5 text-sm font-semibold text-ink-300" title="Archivierte Kunden: keine neue Rechnung">
 							<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5v14" /></svg>
@@ -219,6 +225,14 @@
 						{/if}
 					</div>
 				{:else}
+					<!-- sorthead (desktop) — same grid template as the rows -->
+					<div class="mb-1.5 hidden px-4 text-[11px] font-bold uppercase tracking-wider text-ink-300 sm:grid sm:gap-4 {LEDGER_GRID}" aria-hidden="true">
+						<span>Nummer</span>
+						<span>Bezeichnung</span>
+						<span>Status</span>
+						<span class="text-right">Datum</span>
+						<span class="text-right">Betrag</span>
+					</div>
 					<div class="flex flex-col gap-2">
 						{#each data.rechnungen as r (r.id)}
 							{@render ledgerRow(r)}
@@ -252,17 +266,20 @@
 {#snippet ledgerRow(r: Rechnung)}
 	{@const s = status(r)}
 	<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-	<a href="/app/rechnungen/{r.id}" class="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-colors hover:bg-muted sm:grid-cols-[150px_1fr_auto_auto] sm:gap-4">
-		<span class="inline-flex items-center gap-1.5 text-xs font-bold text-ink-900">
-			<svg class="h-4 w-4 text-ink-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16h5M8 12h8M8 8h6M6 3h12a1 1 0 011 1v16a1 1 0 01-1.5.86l-1.5-1-1.5 1-1.5-1-1.5 1-1.5-1-1.5 1-1.5-1-1.5 1A1 1 0 015 20V4a1 1 0 011-1z" /></svg>
+	<a href="/app/rechnungen/{r.id}" class="grid grid-cols-2 items-center gap-x-3 gap-y-1.5 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-colors hover:bg-muted {LEDGER_GRID} sm:gap-4 sm:py-2.5">
+		<!-- NUMMER -->
+		<span class="col-start-1 row-start-1 inline-flex items-center gap-1.5 font-mono text-[11px] font-bold text-ink-700 sm:col-start-1 sm:text-xs">
+			<svg class="h-3.5 w-3.5 text-ink-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7z" /><path stroke-linecap="round" stroke-linejoin="round" d="M14 2v4a2 2 0 002 2h4" /></svg>
 			{r.businessId}
 		</span>
-		<span class="min-w-0">
-			<span class="block truncate text-sm font-semibold text-ink-900">{r.bezeichnung}</span>
-			<span class="block text-xs {s === 'überfällig' ? 'font-semibold text-severity-warn-text' : 'text-ink-500'}">{dateLabel(r)}</span>
-		</span>
-		<span class="inline-flex items-center gap-1 justify-self-end rounded-full px-2.5 py-0.5 text-[11px] font-semibold {CHIP[s]} max-sm:col-start-3 max-sm:row-start-1">{CHIP_LABEL[s]}</span>
-		<span class="justify-self-end text-sm font-bold text-type-einnahme tabular-nums max-sm:col-start-3 max-sm:row-start-2">{formatMoney(r.bruttoCents)}</span>
+		<!-- STATUS (mobile: top-right; desktop: col 3) -->
+		<span class="col-start-2 row-start-1 justify-self-end inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold {CHIP[s]} sm:col-start-3 sm:row-start-1 sm:justify-self-start">{CHIP_LABEL[s]}</span>
+		<!-- BEZEICHNUNG (mobile: full width) -->
+		<span class="col-span-2 col-start-1 row-start-2 min-w-0 truncate text-sm font-semibold text-ink-900 sm:col-span-1 sm:col-start-2 sm:row-start-1">{r.bezeichnung}</span>
+		<!-- DATUM -->
+		<span class="col-start-1 row-start-3 text-xs tabular-nums {s === 'überfällig' ? 'font-semibold text-severity-warn-text' : 'text-ink-500'} sm:col-start-4 sm:row-start-1 sm:text-right">{dateLabel(r)}</span>
+		<!-- BETRAG -->
+		<span class="col-start-2 row-start-3 justify-self-end text-sm font-bold text-type-einnahme tabular-nums sm:col-start-5 sm:row-start-1">{formatMoney(r.bruttoCents)}</span>
 	</a>
 {/snippet}
 

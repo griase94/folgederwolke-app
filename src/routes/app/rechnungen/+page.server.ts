@@ -27,6 +27,7 @@ import { fail, redirect } from "@sveltejs/kit";
 import type { Actions, PageServerLoad } from "./$types.js";
 import {
   listInvoices,
+  listInvoicesMeta,
   markInvoiceAsPaid,
 } from "$lib/server/domain/invoices.js";
 import { parseInvoiceFilters } from "$lib/domain/invoices.js";
@@ -36,10 +37,15 @@ export const load: PageServerLoad = async ({ url }) => {
   const defaultYear = yearForBooking(new Date());
   const filters = parseInvoiceFilters(url.searchParams, defaultYear);
 
-  const items = await listInvoices({
-    status: filters.status,
-    year: filters.year,
-  });
+  const [items, meta] = await Promise.all([
+    listInvoices({
+      status: filters.status,
+      year: filters.year,
+    }),
+    // Year-wide aggregate for the header + filter-chip counts (independent of
+    // the active status filter, so the chips always show the full picture).
+    listInvoicesMeta({ year: filters.year }),
+  ]);
 
   // Berlin-local YYYY-MM-DD — used as the default + max bound for the inline
   // mark-paid DateField in each row. Domain re-checks the upper bound on
@@ -51,7 +57,7 @@ export const load: PageServerLoad = async ({ url }) => {
     day: "2-digit",
   }).format(new Date());
 
-  return { invoices: items, filters, today };
+  return { invoices: items, meta, filters, today };
 };
 
 export const actions: Actions = {

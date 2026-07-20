@@ -67,7 +67,7 @@
 </script>
 
 <div
-	class="rounded-xl border border-border bg-muted/30 p-4 shadow-sm"
+	class="rounded-b-xl border-x border-b border-dashed border-border bg-secondary/60 p-4"
 	data-testid="invoice-mark-paid-row"
 	data-invoice-id={invoiceId}
 >
@@ -76,24 +76,21 @@
 
 		<dl class="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
 			<div>
-				<dt class="text-xs uppercase tracking-wide text-muted-foreground">Kund:in</dt>
-				<dd class="mt-0.5 font-medium">{customerName}</dd>
+				<dt class="text-[11px] font-bold uppercase tracking-wider text-ink-300">Kund:in</dt>
+				<dd class="mt-0.5 font-medium text-ink-900">{customerName}</dd>
 			</div>
 			<div>
-				<dt class="text-xs uppercase tracking-wide text-muted-foreground">Bezeichnung</dt>
-				<dd class="mt-0.5 font-medium">{bezeichnung}</dd>
+				<dt class="text-[11px] font-bold uppercase tracking-wider text-ink-300">Bezeichnung</dt>
+				<dd class="mt-0.5 font-medium text-ink-900">{bezeichnung}</dd>
 			</div>
 			<div>
-				<dt class="text-xs uppercase tracking-wide text-muted-foreground">Brutto</dt>
-				<dd class="mt-0.5 font-medium tabular-nums">{bruttoFmt}</dd>
+				<dt class="text-[11px] font-bold uppercase tracking-wider text-ink-300">Brutto</dt>
+				<dd class="mt-0.5 font-medium tabular-nums text-type-einnahme">{bruttoFmt}</dd>
 			</div>
 		</dl>
 
 		<div class="max-w-[12rem]">
-			<label
-				for="bezahlt-am-{invoiceId}"
-				class="mb-1 block text-xs font-medium text-foreground"
-			>
+			<label for="bezahlt-am-{invoiceId}" class="mb-1 block text-xs font-medium text-ink-700">
 				Bezahlt am
 			</label>
 			<DateField
@@ -103,17 +100,24 @@
 				max={today}
 				required
 			/>
-			<p class="mt-1 text-xs text-muted-foreground">Rechnungsdatum: {datumFmt}</p>
+			<p class="mt-1 text-xs text-ink-500">Rechnungsdatum: {datumFmt}</p>
 		</div>
 
-		<p class="text-xs text-muted-foreground">
-			Erstellt automatisch eine Einnahme E-{paymentYear}-NNN über {bruttoFmt}.
+		<p class="text-xs text-ink-500">
+			Erstellt automatisch eine Einnahme E-{paymentYear}-NNN über {bruttoFmt} — heute noch rückgängig machbar.
 		</p>
 
 		<div class="flex flex-wrap items-center gap-2">
-			<Button type="submit" data-testid="invoice-mark-paid-submit">Als bezahlt markieren</Button>
-			<Button type="button" variant="outline" onclick={handleCancel}>Abbrechen</Button>
-			<span class="ml-1 text-xs text-muted-foreground">{businessId}</span>
+			<Button
+				type="submit"
+				data-testid="invoice-mark-paid-submit"
+				class="bg-type-einnahme text-white hover:bg-type-einnahme/90"
+			>
+				<svg class="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+				Als bezahlt markieren
+			</Button>
+			<Button type="button" variant="ghost" onclick={handleCancel}>Abbrechen</Button>
+			<span class="ml-auto font-mono text-xs text-ink-300">{businessId}</span>
 		</div>
 	</form>
 </div>

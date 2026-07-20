@@ -119,11 +119,11 @@ describe.skipIf(!dbConfigured)("per-tab paginated queries", () => {
       limit: 50,
       offset: 0,
     });
-    // corpus seeds exactly one invoice-linked income (spec §4.7): E-2026-905 ← FDW-2026-901.
+    // corpus seeds exactly one invoice-linked income (spec §4.7): E-2026-905 ← FDW-2026-001.
     expect(rows.length).toBeGreaterThanOrEqual(1);
     expect(total).toBe(rows.length);
     expect(rows.every((r) => r.rechnungBusinessId != null)).toBe(true);
-    expect(rows.some((r) => r.rechnungBusinessId === "FDW-2026-901")).toBe(
+    expect(rows.some((r) => r.rechnungBusinessId === "FDW-2026-001")).toBe(
       true,
     );
   });
@@ -143,7 +143,7 @@ describe.skipIf(!dbConfigured)("per-tab paginated queries", () => {
     expect(new Set(ids).size).toBe(ids.length); // no duplicate rows from the join
     const linked = rows.filter((r) => r.rechnungBusinessId != null);
     expect(linked.length).toBe(1);
-    expect(linked[0]!.rechnungBusinessId).toBe("FDW-2026-901");
+    expect(linked[0]!.rechnungBusinessId).toBe("FDW-2026-001");
     expect(linked[0]!.businessId).toBe("E-2026-905");
     // every other income row carries a null badge source.
     expect(

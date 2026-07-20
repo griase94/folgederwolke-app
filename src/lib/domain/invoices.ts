@@ -106,6 +106,9 @@ export interface InvoiceRow {
   id: string;
   businessId: string;
   rechnungsdatum: string;
+  /** ISO date (YYYY-MM-DD) the payment is due, or null (kein Zahlungsziel).
+   *  Drives the list-row "überfällig" derivation (offen AND < today). */
+  faelligkeitsDatum: string | null;
   customerId: string;
   customerName: string;
   bezeichnung: string;
@@ -130,7 +133,6 @@ export interface InvoiceRow {
 
 export interface InvoiceDetail extends InvoiceRow {
   leistungsDatum: string | null;
-  faelligkeitsDatum: string | null;
   customerAddressSnapshot: string | null;
   kategorieId: string | null;
   kategorieNameSnapshot: string;

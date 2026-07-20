@@ -1619,6 +1619,7 @@ export async function listInvoices(
     id: inv.id,
     businessId: inv.businessId,
     rechnungsdatum: inv.rechnungsdatum,
+    faelligkeitsDatum: inv.faelligkeitsDatum ?? null,
     customerId: inv.customerId,
     customerName: customerName ?? inv.customerNameSnapshot,
     bezeichnung: inv.bezeichnung,
@@ -1636,6 +1637,73 @@ export async function listInvoices(
     paidByIncomeId: inv.paidByIncomeId ?? null,
     createdAt: inv.createdAt.toISOString(),
   }));
+}
+
+/**
+ * Server-side aggregate for the /app/rechnungen list header + filter-chip
+ * counts (spec §6 / brief §2). Derived, never stored: the four counts come
+ * from `bezahlt_am` + `faelligkeits_datum` for one Buchungsjahr.
+ *   - all           → COUNT(*)
+ *   - offen         → bezahlt_am IS NULL (überfällig is a subset of this)
+ *   - ueberfaellig  → offen AND faelligkeits_datum < today (Europe/Berlin)
+ *   - bezahlt       → bezahlt_am IS NOT NULL
+ *   - offenSummeCents → Σ brutto of the offen rows (the "… warten aufs Konto")
+ */
+export interface ListInvoicesMeta {
+  all: number;
+  offen: number;
+  ueberfaellig: number;
+  bezahlt: number;
+  offenSummeCents: number;
+}
+
+export async function listInvoicesMeta(
+  opts: { year?: number; now?: Date } = {},
+): Promise<ListInvoicesMeta> {
+  const db = getDb();
+  const { year, now = new Date() } = opts;
+  const todayIso = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+
+  const rows = (await db.execute<{
+    all: string;
+    offen: string;
+    ueberfaellig: string;
+    bezahlt: string;
+    offen_summe: string;
+  }>(sql`
+    SELECT
+      COUNT(*)::text AS all,
+      COUNT(*) FILTER (WHERE ${invoices.bezahltAm} IS NULL)::text AS offen,
+      COUNT(*) FILTER (
+        WHERE ${invoices.bezahltAm} IS NULL
+          AND ${invoices.faelligkeitsDatum} < ${todayIso}
+      )::text AS ueberfaellig,
+      COUNT(*) FILTER (WHERE ${invoices.bezahltAm} IS NOT NULL)::text AS bezahlt,
+      COALESCE(SUM(${invoices.bruttoCents})
+        FILTER (WHERE ${invoices.bezahltAm} IS NULL), 0)::text AS offen_summe
+    FROM ${invoices}
+    ${year !== undefined ? sql`WHERE ${invoices.yearOfBuchung} = ${year}` : sql``}
+  `)) as unknown as {
+    all: string;
+    offen: string;
+    ueberfaellig: string;
+    bezahlt: string;
+    offen_summe: string;
+  }[];
+
+  const r = rows[0];
+  return {
+    all: Number(r?.all ?? 0),
+    offen: Number(r?.offen ?? 0),
+    ueberfaellig: Number(r?.ueberfaellig ?? 0),
+    bezahlt: Number(r?.bezahlt ?? 0),
+    offenSummeCents: Number(r?.offen_summe ?? 0),
+  };
 }
 
 // ---------------------------------------------------------------------------

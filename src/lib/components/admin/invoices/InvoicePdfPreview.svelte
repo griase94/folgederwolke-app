@@ -198,37 +198,42 @@
 </script>
 
 <div
-	class="rounded-xl border border-border bg-muted/30 p-4"
+	class="rounded-2xl border border-border bg-card p-4 shadow-sm"
 	data-component="invoice-pdf-preview"
 >
-	<div class="mb-3 flex items-center justify-between">
-		<h2 class="text-sm font-semibold text-foreground">Vorschau</h2>
+	<div class="mb-3 flex items-center gap-2">
+		<h2 class="flex items-center gap-1.5 text-[13px] font-extrabold tracking-[-0.01em] text-ink-900">
+			<svg class="h-4 w-4 text-ink-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M2.06 12.35a1 1 0 010-.7 10.75 10.75 0 0119.88 0 1 1 0 010 .7 10.75 10.75 0 01-19.88 0z" /><circle cx="12" cy="12" r="3" />
+			</svg>
+			Vorschau
+		</h2>
 		<span
-			class="inline-flex items-center gap-1 text-xs"
+			class="ml-auto inline-flex items-center gap-1.5 text-xs font-semibold"
 			data-testid="preview-state"
 			data-state={badge}
 		>
 			{#if badge === 'aktuell'}
-				<span class="inline-block h-2 w-2 rounded-full bg-emerald-500"></span>
-				<span class="text-emerald-700">Vorschau aktuell</span>
+				<span class="inline-block h-1.5 w-1.5 rounded-full bg-type-einnahme"></span>
+				<span class="text-type-einnahme">Vorschau aktuell</span>
 			{:else if badge === 'wird_aktualisiert'}
-				<span class="inline-block h-2 w-2 animate-pulse rounded-full bg-primary"></span>
-				<span class="text-muted-foreground">wird aktualisiert …</span>
+				<span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary-text"></span>
+				<span class="text-ink-500">wird aktualisiert …</span>
 			{:else}
-				<span class="inline-block h-2 w-2 rounded-full bg-amber-500"></span>
-				<span class="text-amber-700">Vorschau veraltet</span>
+				<span class="inline-block h-1.5 w-1.5 rounded-full bg-severity-warn"></span>
+				<span class="text-severity-warn-text">Vorschau veraltet</span>
 			{/if}
 		</span>
 	</div>
 
 	{#if lastError}
 		<div
-			class="mb-2 flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+			class="mb-2 flex items-center justify-between rounded-lg border border-severity-warn/30 bg-severity-warn/10 px-3 py-2 text-xs text-severity-warn-text"
 		>
-			<span>Vorschau konnte nicht aktualisiert werden.</span>
+			<span>Vorschau gerade nicht möglich — Speichern geht trotzdem.</span>
 			<button
 				type="button"
-				class="font-medium underline"
+				class="font-semibold underline"
 				onclick={manualRetry}
 			>
 				Neu versuchen
@@ -247,19 +252,22 @@
 				href={mobileBlobUrl}
 				target="_blank"
 				rel="noopener"
-				class="inline-flex w-full items-center justify-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted"
+				class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 text-sm font-semibold text-ink-700 hover:bg-secondary"
 			>
 				Vorschau anzeigen
 			</a>
 		{:else}
-			<div class="rounded-md border border-dashed border-border bg-background px-3 py-4 text-center text-xs text-muted-foreground">
+			<div class="rounded-lg border border-dashed border-hairline bg-secondary px-3 py-4 text-center text-xs text-ink-500">
 				Vorschau wird vorbereitet …
 			</div>
 		{/if}
 	</div>
 
-	<!-- Desktop (≥ lg): A4 aspect, double-buffered iframes. -->
-	<div class="relative hidden aspect-[1/1.414] w-full overflow-hidden rounded-md border border-border bg-background lg:block">
+	<!-- Desktop (≥ lg): A4 aspect, double-buffered iframes. Paper is physical
+	     paper (like DocSheet / BelegViewer's PDF canvas) — deliberately
+	     bg-white, NOT the inverting bg-card/bg-background, so it stays light
+	     in dark mode (never a black rectangle before the PDF loads). -->
+	<div class="relative hidden aspect-[1/1.414] w-full overflow-hidden rounded-lg border border-border bg-white lg:block">
 		<iframe
 			bind:this={frontEl}
 			title="Rechnung-Vorschau"
@@ -284,7 +292,7 @@
 				href={frontUrl}
 				target="_blank"
 				rel="noopener"
-				class="text-muted-foreground underline hover:text-foreground"
+				class="text-ink-500 underline hover:text-ink-900"
 			>
 				Im neuen Tab öffnen
 			</a>
@@ -292,8 +300,8 @@
 	{/if}
 	<!-- eslint-enable svelte/no-navigation-without-resolve -->
 
-	<p class="mt-2 text-xs italic text-muted-foreground">
-		Vorschau – Druckbild kann minimal abweichen.
+	<p class="mt-2 text-xs italic text-ink-500">
+		Vorschau — Nummer und PDF werden beim Speichern verbindlich erzeugt.
 	</p>
 
 	<div class="sr-only" aria-live="polite">{ariaSummary}</div>

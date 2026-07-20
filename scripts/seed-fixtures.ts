@@ -36,7 +36,7 @@
  * Phase 6 hard-cutover step deletes WHERE is_fixture=true before importing.
  */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/postgres-js";
 import type postgres from "postgres";
 import * as schema from "../src/lib/server/db/schema/index.js";
@@ -191,8 +191,8 @@ type CustomerFixture = {
   archivedAt?: string;
 };
 
-// Kunden-Kast. Cremosa GmbH replaces the old "Beispiel GmbH" and is the
-// customer the seeded paid invoice (FDW-2026-901) points at.
+// Kunden-Kast. Cremosa GmbH is the customer of the two paid Frühlingsfest
+// invoices (FDW-2026-001/002); FDW-2026-001 links to income E-2026-905.
 const CUSTOMERS: CustomerFixture[] = [
   {
     name: "Cremosa GmbH",
@@ -765,12 +765,13 @@ const INCOME_FIXTURES: IncomeFixture[] = [
     betragCents: 36000n,
     gebuchtAm: T2025,
   },
-  // zweckbetrieb — this row is the paid invoice's matching income receipt.
+  // zweckbetrieb — this row is the paid invoice's matching income receipt: the
+  // payment of the canonical FDW-2026-001 (Cremosa · Catering Frühlingsfest).
   {
     businessId: "E-2026-905",
-    bezeichnung: "Honorar Auftragsproduktion (Rechnung FDW-2026-901)",
-    kategorieName: "Honorar künstlerische Leistung",
-    betragCents: 119000n,
+    bezeichnung: "Catering Frühlingsfest (Rechnung FDW-2026-001)",
+    kategorieName: "Sonstige Einnahme (Zweckbetrieb)",
+    betragCents: 6000n,
     gebuchtAm: T2026,
     isInvoicePayment: true,
   },
@@ -796,6 +797,103 @@ const INCOME_FIXTURES: IncomeFixture[] = [
     kategorieName: "Sonstige Einnahme (Ideell)",
     betragCents: 5000n,
     gebuchtAm: T2026,
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Ausgangsrechnungen — the FDW-2026 canon (spec §3 / FIXTURES §7 + §13a).
+//
+// Six issued invoices so the /app/rechnungen list, detail and kunde-detail
+// Rechnungen-Tab render the real "270,00 € offen" world:
+//   001–003 bezahlt · 004 überfällig · 005/006 offen
+//   → offen 120 + 90 + 60 = 270,00 € · 3 Rechnungen; nächste Nr. FDW-2026-007
+//     (the id_counter seeds from MAX(seq)+1, so the canon MUST end at 006).
+//   Maria Huber: 003 (20,00 bezahlt) + 006 (60,00 offen) → offen 60,00 €.
+//
+// FDW-2026-001 is the single invoice→income link (paid_by_income_id →
+// E-2026-905, P47-05 / spec §4.7); the other two paid invoices carry no
+// income link (no CHECK couples bezahlt_am to paid_by_income_id).
+// §19 UStG: brutto = netto, ust = 0. All kategorien are income kategorien.
+type InvoiceFixture = {
+  businessId: string;
+  /** Resolved to customer id + address snapshot at insert time. */
+  customerName: string;
+  bezeichnung: string;
+  /** Income kategorie (Einnahme); resolved by name. */
+  kategorieName: string;
+  /** netto == brutto (§19). */
+  nettoCents: bigint;
+  rechnungsdatum: string;
+  leistungszeitraum: string;
+  /** Set → the invoice can be überfällig (faelligkeits_datum < heute). */
+  faelligkeitsDatum?: string;
+  /** Set → the invoice is bezahlt. */
+  bezahltAm?: string;
+  /** true → links paid_by_income_id to the isInvoicePayment row (E-2026-905). */
+  linksPaymentIncome?: boolean;
+};
+
+const INVOICE_FIXTURES: InvoiceFixture[] = [
+  {
+    businessId: "FDW-2026-001",
+    customerName: "Cremosa GmbH",
+    bezeichnung: "Catering Frühlingsfest",
+    kategorieName: "Sonstige Einnahme (Zweckbetrieb)",
+    nettoCents: 6000n,
+    rechnungsdatum: "2026-04-28",
+    leistungszeitraum: "April 2026",
+    bezahltAm: "2026-05-02",
+    linksPaymentIncome: true,
+  },
+  {
+    businessId: "FDW-2026-002",
+    customerName: "Cremosa GmbH",
+    bezeichnung: "Nachbestellung Frühlingsfest",
+    kategorieName: "Sonstige Einnahme (Zweckbetrieb)",
+    nettoCents: 4000n,
+    rechnungsdatum: "2026-05-04",
+    leistungszeitraum: "Mai 2026",
+    bezahltAm: "2026-05-12",
+  },
+  {
+    businessId: "FDW-2026-003",
+    customerName: "Maria Huber",
+    bezeichnung: "Kursgebühr Töpfern",
+    kategorieName: "Workshop / Kursgebühr",
+    nettoCents: 2000n,
+    rechnungsdatum: "2026-05-12",
+    leistungszeitraum: "Mai 2026",
+    bezahltAm: "2026-05-20",
+  },
+  {
+    businessId: "FDW-2026-004",
+    customerName: "Kulturkreis Pankow e.V.",
+    bezeichnung: "Workshop „Klang & Bewegung“",
+    kategorieName: "Workshop / Kursgebühr",
+    nettoCents: 12000n,
+    rechnungsdatum: "2026-06-05",
+    leistungszeitraum: "Mai 2026",
+    // fällig in der Vergangenheit → überfällig (der eine amber-Fall der Liste).
+    faelligkeitsDatum: "2026-07-06",
+  },
+  {
+    businessId: "FDW-2026-005",
+    customerName: "Musikschule Klangraum",
+    bezeichnung: "Standmiete Sommerfest",
+    kategorieName: "Sonstige Einnahme (Zweckbetrieb)",
+    nettoCents: 9000n,
+    rechnungsdatum: "2026-06-20",
+    leistungszeitraum: "Juni 2026",
+    // kein Fälligkeitsdatum → bleibt „offen“, wird nie „überfällig“.
+  },
+  {
+    businessId: "FDW-2026-006",
+    customerName: "Maria Huber",
+    bezeichnung: "Kursgebühr Aquarell",
+    kategorieName: "Workshop / Kursgebühr",
+    nettoCents: 6000n,
+    rechnungsdatum: "2026-06-30",
+    leistungszeitraum: "Juni 2026",
   },
 ];
 
@@ -1072,48 +1170,76 @@ export async function seedTransactionCorpus(db: Db): Promise<void> {
       .onConflictDoNothing({ target: schema.donations.businessId });
   }
 
-  // --- Invoice → income link (P47-05, REQUIRED for Phase 5) ---
-  // One paid Ausgangsrechnung whose paid_by_income_id points at the seeded
-  // income receipt E-2026-905. invoices.pdf_file_id / kategorie_id are
-  // nullable so no file blob is needed.
+  // --- Ausgangsrechnungen (Kanon FDW-2026-001…006, spec §3 / FIXTURES §7) ---
+  // 001–003 bezahlt · 004 überfällig · 005/006 offen → offen 270,00 € · 3;
+  // nächste Nr. FDW-2026-007. FDW-2026-001 carries the one invoice→income link
+  // (paid_by_income_id → E-2026-905, P47-05). invoices.pdf_file_id is left
+  // NULL — no blob is seeded (PDFs are produced by the create flow).
   {
-    const [customer] = await db
-      .select({ id: schema.customers.id, name: schema.customers.name })
+    const invoiceCustomerNames = [
+      ...new Set(INVOICE_FIXTURES.map((i) => i.customerName)),
+    ];
+    const customerRows = await db
+      .select({
+        id: schema.customers.id,
+        name: schema.customers.name,
+        addressBlock: schema.customers.addressBlock,
+      })
       .from(schema.customers)
       .where(
         and(
-          eq(schema.customers.name, "Cremosa GmbH"),
+          inArray(schema.customers.name, invoiceCustomerNames),
           eq(schema.customers.isFixture, true),
         ),
-      )
-      .limit(1);
-    // Reuse the already-resolved income kategorie (no extra round-trip).
-    const kat = incomeCats.get("Honorar künstlerische Leistung")!;
-    if (customer) {
+      );
+    const customerByName = new Map(customerRows.map((c) => [c.name, c]));
+    const invoiceCats = await resolveKategorien(
+      db,
+      "income",
+      INVOICE_FIXTURES.map((i) => i.kategorieName),
+    );
+
+    for (const inv of INVOICE_FIXTURES) {
+      const customer = customerByName.get(inv.customerName);
+      if (!customer) continue; // customer seed drifted — guarded by tests
+      const kat = invoiceCats.get(inv.kategorieName)!;
+      // created_at ascends with the number so the list (ORDER BY created_at
+      // DESC) renders newest-first (006 → 001), matching the plate.
+      const stamp = new Date(`${inv.rechnungsdatum}T10:00:00Z`);
       await db
         .insert(schema.invoices)
         .values({
-          businessId: "FDW-2026-901",
+          businessId: inv.businessId,
           source: "fixture",
-          gebuchtAm: new Date(T2026),
-          rechnungsdatum: "2026-03-01",
-          leistungsDatum: "2026-02-28",
+          gebuchtAm: stamp,
+          createdAt: stamp,
+          rechnungsdatum: inv.rechnungsdatum,
+          faelligkeitsDatum: inv.faelligkeitsDatum ?? null,
           customerId: customer.id,
           customerNameSnapshot: customer.name,
-          nettoCents: 119000n,
+          customerAddressSnapshot: customer.addressBlock,
+          nettoCents: inv.nettoCents,
           ustCents: 0n,
-          bruttoCents: 119000n,
+          bruttoCents: inv.nettoCents,
           kategorieId: kat.id,
-          kategorieNameSnapshot: "Honorar künstlerische Leistung",
+          kategorieNameSnapshot: inv.kategorieName,
           sphereSnapshot: kat.sphere,
-          bezeichnung: "Auftragsproduktion Imagefilm",
-          leistungszeitraum: "Februar 2026",
-          // Payment reconciliation — the seeded income receipt.
-          paidByIncomeId: invoicePaymentIncomeId,
-          bezahltAm: "2026-03-10",
+          bezeichnung: inv.bezeichnung,
+          leistungszeitraum: inv.leistungszeitraum,
+          paidByIncomeId: inv.linksPaymentIncome
+            ? invoicePaymentIncomeId
+            : null,
+          bezahltAm: inv.bezahltAm ?? null,
         })
         .onConflictDoNothing({ target: schema.invoices.businessId });
     }
+
+    // Advance the FDW/2026 id_counter past the seeded canon so the next
+    // app-issued invoice is FDW-2026-007 (spec §3), not a collision at 001.
+    // Unlike the -9xx corpus fixtures, this canon uses the low 001–006 range
+    // that fresh allocation would otherwise re-issue. seed_id_counter_from_corpus
+    // sets next_value = MAX(seq)+1 = 7 and is idempotent (GREATEST on conflict).
+    await db.execute(sql`SELECT seed_id_counter_from_corpus(2026, 'FDW')`);
   }
 
   // --- Belegprüfung submissions (>=1 pending, >=1 rejected) ---

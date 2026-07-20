@@ -17,14 +17,24 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ListInvoicesOptions } from "$lib/server/domain/invoices.js";
 
-const { listInvoicesMock } = vi.hoisted(() => ({
+const { listInvoicesMock, listInvoicesMetaMock } = vi.hoisted(() => ({
   listInvoicesMock: vi.fn<(opts?: unknown) => Promise<unknown[]>>(
     async () => [],
+  ),
+  listInvoicesMetaMock: vi.fn<(opts?: unknown) => Promise<unknown>>(
+    async () => ({
+      all: 0,
+      offen: 0,
+      ueberfaellig: 0,
+      bezahlt: 0,
+      offenSummeCents: 0,
+    }),
   ),
 }));
 
 vi.mock("$lib/server/domain/invoices.js", () => ({
   listInvoices: listInvoicesMock,
+  listInvoicesMeta: listInvoicesMetaMock,
 }));
 
 import { load } from "./+page.server.js";
