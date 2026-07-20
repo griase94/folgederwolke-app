@@ -54,7 +54,8 @@ const REGELBEITRAG_CENTS = 6969n;
 type MemberFixture = {
   vorname: string;
   nachname: string;
-  email: string;
+  /** null → the „Keine E-Mail"-Demo (Renate Albrecht, FIXTURES §3). */
+  email: string | null;
   role: (typeof schema.memberRoleEnum.enumValues)[number];
   eintrittsDatum: string;
   beitragExempt?: boolean;
@@ -67,21 +68,21 @@ const MEMBERS: MemberFixture[] = [
   {
     vorname: "Anna",
     nachname: "Müller",
-    email: "anna.mueller@example.org",
+    email: "anna.mueller@example.de",
     role: "mitglied",
     eintrittsDatum: "2020-05-01",
   },
   {
     vorname: "Lena",
     nachname: "Hofmann",
-    email: "lena.hofmann@example.org",
+    email: "lena.hofmann@example.de",
     role: "vorstand", // Vorsitzende (FIXTURES §16b)
     eintrittsDatum: "2019-02-01",
   },
   {
     vorname: "Felix",
     nachname: "Bauer",
-    email: "felix.bauer@example.org",
+    email: "felix.bauer@example.de",
     role: "kassenwart", // Vorstands-Rolle (FIXTURES §16b); Julia Brunner
     // unterschreibt separat als Stammdatum-Kassenwärtin.
     eintrittsDatum: "2019-06-01",
@@ -96,21 +97,25 @@ const MEMBERS: MemberFixture[] = [
   {
     vorname: "Tim",
     nachname: "Schäfer",
-    email: "tim.schaefer@example.org",
+    email: "tim.schaefer@example.de",
     role: "mitglied", // offen 2026; 2025 teilbezahlt (30,00 / 69,69)
     eintrittsDatum: "2023-03-01",
   },
   {
     vorname: "Test",
     nachname: "User",
-    email: "test.user@example.org",
-    role: "mitglied", // ehrliche Test-Zeile — offen
+    // Andys Test-Login — kanonischer Plate-Wert (FIXTURES §3 Z.579). Mail-Versand
+    // ist in dev/test no-op, daher keine echte Zustellung.
+    email: "andy.griesbeck+test@gmail.com",
+    role: "mitglied", // offen 2026
     eintrittsDatum: "2024-01-15",
   },
   {
     vorname: "Renate",
     nachname: "Albrecht",
-    email: "renate.albrecht@example.org",
+    // KEINE E-Mail — der kanonische „Keine E-Mail"-Demo-Fall (FIXTURES §3 Z.580).
+    // Als dauerhaft Befreite ist sie ohnehin nie Reminder-Kandidatin.
+    email: null,
     role: "mitglied",
     eintrittsDatum: "2015-01-01",
     beitragExempt: true,
@@ -220,13 +225,20 @@ const CUSTOMERS: CustomerFixture[] = [
 export async function seedFixtures(db: Db): Promise<void> {
   console.log("seed-fixtures: members …");
   for (const m of MEMBERS) {
-    const emailCanonical = canonicalizeEmail(m.email);
+    const emailCanonical = m.email ? canonicalizeEmail(m.email) : null;
+    // Dedup by canonical email when present; the one email-less member
+    // (Renate) is deduped by name instead.
     const existing = await db
       .select({ id: schema.members.id })
       .from(schema.members)
       .where(
         and(
-          eq(schema.members.emailCanonical, emailCanonical),
+          emailCanonical
+            ? eq(schema.members.emailCanonical, emailCanonical)
+            : and(
+                eq(schema.members.vorname, m.vorname),
+                eq(schema.members.nachname, m.nachname),
+              ),
           eq(schema.members.isFixture, true),
         ),
       )
@@ -293,6 +305,18 @@ export async function seedFixtures(db: Db): Promise<void> {
   // Transaction corpus — depends on kategorien (reference data) + the
   // members/projects/customers fixtures seeded above.
   await seedTransactionCorpus(db);
+
+  // Festschreibung 2024 (ADR-0006 · FIXTURES §16c · mitglieder-spec §3): lock
+  // Buchungsjahr 2024 so the matrix/EÜR render the canonical 🔒 lock badge.
+  // Set LAST — the assert_not_festgeschrieben trigger (migration 0014) blocks
+  // INSERTs into a locked year on income/expenses/donations/invoices, so every
+  // 2024 corpus row (and every paid-2024 Beitrags-Row) must already be in place.
+  // onConflictDoNothing keeps a higher admin-set value on re-seed (never lowers).
+  // value is a JSON number (matrix-loader + isYearClosed both accept number).
+  await db
+    .insert(schema.settings)
+    .values({ key: "festgeschrieben_bis", value: 2024 })
+    .onConflictDoNothing({ target: schema.settings.key });
 }
 
 // ---------------------------------------------------------------------------
@@ -301,16 +325,27 @@ export async function seedFixtures(db: Db): Promise<void> {
 //
 // Per-year Beitragssatz (69,69 €, Fälligkeit 31.03.) for the trailing window
 // 2024/2025/2026, plus member_beitrags rows so the roster reads its canonical
-// states:
-//   - Anna / Lena / Felix — bezahlt (2024–2026): the three "3 von 6 bezahlt"
-//     payers; their 2026 paid rows sum to 209,07 €.
-//   - Tim Schäfer — 2025 teilbezahlt (30,00 / 69,69), 2026 offen (no row).
-//   - Jonas Köhler / Test User — offen/überfällig (no rows → satz-derived).
-//   - Renate Albrecht — permanent befreit via members.beitrag_exempt (no rows).
+// per-year states (mitglieder-spec §3 · FIXTURES §13a/§16c):
 //
-// ANCHOR is the current year's Buchungsjahr window used by the demo plates.
-// The Fälligkeit is the canonical 31.03.; whether an unpaid current-year cell
-// reads "offen" or "überfällig" is derived honestly from today's date + grace.
+//   Mitglied        | 2024        | 2025            | 2026
+//   ----------------|-------------|-----------------|-----------
+//   Anna Müller     | bezahlt 🔒  | bezahlt         | bezahlt 12.06.
+//   Lena Hofmann    | bezahlt 🔒  | bezahlt         | bezahlt 28.05.
+//   Felix Bauer     | bezahlt 🔒  | bezahlt         | bezahlt 14.05.
+//   Jonas Köhler    | bezahlt 🔒  | bezahlt         | überfällig  (no row)
+//   Tim Schäfer     | bezahlt 🔒  | teilbez. 30/69,69| offen      (no row)
+//   Test User       | bezahlt 🔒  | bezahlt         | offen       (no row)
+//   Renate Albrecht | ⌀ befreit   | ⌀              | ⌀          (member.beitrag_exempt)
+//
+// 2024 is festgeschrieben (festgeschrieben_bis = 2024, set at the END of the
+// seed). CRUCIAL: every member applicable in 2024 must be paid or exempt —
+// an unpaid cell in a locked year is the impossible "locked-and-overdue"
+// state, so Jonas/Tim/Test User carry paid 2024 rows too. Only the CURRENT
+// year (2026, not locked) carries the honest open/overdue cells → header
+// "3/6 bezahlt · 209,07 €" (Anna+Lena+Felix). The 2026 paid dates match the
+// Flow-B feed (FIXTURES §13b). offen-vs-überfällig among the unpaid 2026
+// three is a function of the single per-year Fälligkeit + today's date (one
+// Fälligkeit per year — documented limitation).
 
 type BeitragSeed = {
   memberEmail: string;
@@ -320,80 +355,117 @@ type BeitragSeed = {
   notes?: string;
 };
 
+const P = REGELBEITRAG_CENTS;
+
 const BEITRAG_ROWS: BeitragSeed[] = [
-  // Anna Müller — durchgängig bezahlt.
+  // Anna Müller — durchgängig bezahlt (2026 = 12.06., FIXTURES §13b).
   {
-    memberEmail: "anna.mueller@example.org",
+    memberEmail: "anna.mueller@example.de",
     year: 2024,
-    paidCents: REGELBEITRAG_CENTS,
+    paidCents: P,
     gezahltAm: "2024-02-15",
   },
   {
-    memberEmail: "anna.mueller@example.org",
+    memberEmail: "anna.mueller@example.de",
     year: 2025,
-    paidCents: REGELBEITRAG_CENTS,
+    paidCents: P,
     gezahltAm: "2025-02-15",
   },
   {
-    memberEmail: "anna.mueller@example.org",
+    memberEmail: "anna.mueller@example.de",
     year: 2026,
-    paidCents: REGELBEITRAG_CENTS,
-    gezahltAm: "2026-02-10",
+    paidCents: P,
+    gezahltAm: "2026-06-12",
   },
-  // Lena Hofmann — durchgängig bezahlt.
+  // Lena Hofmann — durchgängig bezahlt (2026 = 28.05.).
   {
-    memberEmail: "lena.hofmann@example.org",
+    memberEmail: "lena.hofmann@example.de",
     year: 2024,
-    paidCents: REGELBEITRAG_CENTS,
+    paidCents: P,
     gezahltAm: "2024-01-22",
   },
   {
-    memberEmail: "lena.hofmann@example.org",
+    memberEmail: "lena.hofmann@example.de",
     year: 2025,
-    paidCents: REGELBEITRAG_CENTS,
+    paidCents: P,
     gezahltAm: "2025-01-20",
   },
   {
-    memberEmail: "lena.hofmann@example.org",
+    memberEmail: "lena.hofmann@example.de",
     year: 2026,
-    paidCents: REGELBEITRAG_CENTS,
-    gezahltAm: "2026-01-15",
+    paidCents: P,
+    gezahltAm: "2026-05-28",
   },
-  // Felix Bauer — durchgängig bezahlt.
+  // Felix Bauer — durchgängig bezahlt (2026 = 14.05.).
   {
-    memberEmail: "felix.bauer@example.org",
+    memberEmail: "felix.bauer@example.de",
     year: 2024,
-    paidCents: REGELBEITRAG_CENTS,
+    paidCents: P,
     gezahltAm: "2024-03-10",
   },
   {
-    memberEmail: "felix.bauer@example.org",
+    memberEmail: "felix.bauer@example.de",
     year: 2025,
-    paidCents: REGELBEITRAG_CENTS,
+    paidCents: P,
     gezahltAm: "2025-03-08",
   },
   {
-    memberEmail: "felix.bauer@example.org",
+    memberEmail: "felix.bauer@example.de",
     year: 2026,
-    paidCents: REGELBEITRAG_CENTS,
-    gezahltAm: "2026-03-05",
+    paidCents: P,
+    gezahltAm: "2026-05-14",
   },
-  // Tim Schäfer — 2025 teilbezahlt (30,00 / 69,69). 2026 bleibt offen (no row).
+  // Jonas Köhler — bezahlt 2024+2025, 2026 überfällig (no 2026 row).
   {
-    memberEmail: "tim.schaefer@example.org",
+    memberEmail: "jonas.koehler@example.de",
+    year: 2024,
+    paidCents: P,
+    gezahltAm: "2024-02-20",
+  },
+  {
+    memberEmail: "jonas.koehler@example.de",
+    year: 2025,
+    paidCents: P,
+    gezahltAm: "2025-02-18",
+  },
+  // Tim Schäfer — bezahlt 2024, 2025 teilbezahlt (30,00 / 69,69), 2026 offen.
+  {
+    memberEmail: "tim.schaefer@example.de",
+    year: 2024,
+    paidCents: P,
+    gezahltAm: "2024-03-05",
+  },
+  {
+    memberEmail: "tim.schaefer@example.de",
     year: 2025,
     paidCents: 3000n,
     gezahltAm: "2025-04-10",
     notes: "Teilzahlung 30,00 € — Restbetrag 39,69 € offen",
   },
-  // Jonas Köhler / Test User: intentionally NO rows → open/overdue via satz.
+  // Test User — bezahlt 2024+2025, 2026 offen (no 2026 row).
+  {
+    memberEmail: "andy.griesbeck+test@gmail.com",
+    year: 2024,
+    paidCents: P,
+    gezahltAm: "2024-02-25",
+  },
+  {
+    memberEmail: "andy.griesbeck+test@gmail.com",
+    year: 2025,
+    paidCents: P,
+    gezahltAm: "2025-02-22",
+  },
   // Renate Albrecht: permanent exempt via members.beitrag_exempt → NO rows.
 ];
 
 async function seedBeitraege(db: Db): Promise<void> {
   console.log("seed-fixtures: beitragssätze + beitrags-rows …");
 
-  // Per-year Beitragssatz (PK year → idempotent). decisionNote per FIXTURES §16c.
+  // Per-year Beitragssatz + Fälligkeit 31.03. + Beschluss-Notiz (FIXTURES §16c).
+  // Migration 0026 pre-seeds these years with a neutral "Initial migration
+  // default" note and NO Fälligkeit; onConflictDoUpdate applies the canon
+  // Beschluss-Notizen + explicit Fälligkeit for the demo window (the
+  // einstellungen-beitraege plate shows the MV-Notizen). cents stays 69,69 €.
   const satzRows: Array<{ year: number; note: string }> = [
     { year: 2026, note: "MV 14.03.2026, TOP 7" },
     { year: 2025, note: "MV 15.03.2025, TOP 5" },
@@ -408,7 +480,15 @@ async function seedBeitraege(db: Db): Promise<void> {
         faelligkeitAt: `${s.year}-03-31`,
         decisionNote: s.note,
       })
-      .onConflictDoNothing({ target: schema.beitragssatzByYear.year });
+      .onConflictDoUpdate({
+        target: schema.beitragssatzByYear.year,
+        set: {
+          cents: REGELBEITRAG_CENTS,
+          faelligkeitAt: `${s.year}-03-31`,
+          decisionNote: s.note,
+          updatedAt: new Date(),
+        },
+      });
   }
 
   // Resolve the roster members that carry a Beitrags-Row.
@@ -565,7 +645,7 @@ const EXPENSE_FIXTURES: ExpenseFixture[] = [
     betragCents: 50000n,
     gebuchtAm: T2025,
     status: "erstattet",
-    bezahltVon: { kind: "member", memberEmail: "anna.mueller@example.org" },
+    bezahltVon: { kind: "member", memberEmail: "anna.mueller@example.de" },
     approvedAt: "2025-07-25T10:00:00Z",
     erstattetAm: "2025-08-05",
     zahlungsartLabel: "Banküberweisung",
@@ -580,7 +660,7 @@ const EXPENSE_FIXTURES: ExpenseFixture[] = [
     betragCents: 6780n,
     gebuchtAm: T2025_EARLY,
     status: "geprueft",
-    bezahltVon: { kind: "member", memberEmail: "felix.bauer@example.org" },
+    bezahltVon: { kind: "member", memberEmail: "felix.bauer@example.de" },
     approvedAt: "2025-01-25T10:00:00Z",
     kommentar: "Alt-offener Posten — Felix wartet auf Erstattung.",
   },
