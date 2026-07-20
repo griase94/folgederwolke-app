@@ -63,7 +63,7 @@
 	<div class="whitespace-nowrap text-[29px] font-bold leading-[1.04] tracking-[-0.022em] text-ink-900">{@render value()}</div>
 
 	{#if sub}
-		<p class="mt-1.5 truncate text-[11.5px] text-ink-500">{@render sub()}</p>
+		<p class="mt-1.5 text-[11.5px] leading-snug text-ink-500">{@render sub()}</p>
 	{/if}
 
 	<div class="mt-3.5 flex min-h-0 flex-1 flex-col justify-center">{@render viz()}</div>

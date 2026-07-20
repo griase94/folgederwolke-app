@@ -103,6 +103,25 @@
 		{ name: "Verwaltung & Büro", cents: 64000 },
 		{ name: "Bankgebühren", cents: 18000 },
 	];
+	// A genuine Fehlbetrag year: real income categories summing BELOW the
+	// expenses (16.560 € < 18.360 € → −1.800 €), so labels stay honest.
+	const euerEinDeficit = [
+		{ name: "Mitgliedsbeiträge", cents: 620000 },
+		{ name: "Spenden", cents: 410000 },
+		{ name: "Öffentliche Zuschüsse", cents: 380000 },
+		{ name: "Kursgebühren", cents: 190000 },
+		{ name: "Sponsoring & Werbung", cents: 56000 },
+	];
+	// Income categories for the green ranking (never expense names under a green bar).
+	const kategorienEin = [
+		{ name: "Mitgliedsbeiträge", cents: 840000 },
+		{ name: "Spenden", cents: 525000 },
+		{ name: "Öffentliche Zuschüsse", cents: 480000 },
+		{ name: "Kursgebühren", cents: 312000 },
+		{ name: "Veranstaltungserlöse", cents: 165000 },
+		{ name: "Sponsoring", cents: 98000 },
+		{ name: "Zinsen", cents: 21000 },
+	];
 </script>
 
 <svelte:head><title>Dataviz-Galerie · dev</title></svelte:head>
@@ -147,7 +166,7 @@
 	{@render section("2 · Cashflow", "Divergierende Balken um eine Nulllinie + neutrale Netto-Linie.", cashflowBody)}
 
 	{#snippet sphaerenBody()}
-		<div class="grid gap-5 lg:grid-cols-2">
+		<div class="flex flex-col gap-5">
 			{@render card(sphaerenInner, "Sortierte Balken")}
 			{@render card(sphaerenDefInner, "Defizit links der Null")}
 			{@render card(sphaerenDenseInner, "Dense (Dashboard-Mini)")}
@@ -159,17 +178,17 @@
 	{@render section("3 · Sphären-Komposition", "Teil-vom-Ganzen — vier Sphären-Hues, Betrag + Anteil direkt.", sphaerenBody)}
 
 	{#snippet katBody()}
-		<div class="grid gap-5 lg:grid-cols-2">
+		<div class="flex flex-col gap-5">
 			{@render card(katAusInner, "Ausgaben (rosé)")}
 			{@render card(katEinInner, "Einnahmen (grün)")}
 		</div>
 	{/snippet}
 	{#snippet katAusInner()}<KategorienRanking items={kategorien} hue="ausgabe" />{/snippet}
-	{#snippet katEinInner()}<KategorienRanking items={kategorien} hue="einnahme" />{/snippet}
+	{#snippet katEinInner()}<KategorienRanking items={kategorienEin} hue="einnahme" />{/snippet}
 	{@render section("4 · Top-Posten Ranking", "Rangliste — eine Farbe, Sonstige gebündelt, statisch.", katBody)}
 
 	{#snippet freiBody()}
-		<div class="grid gap-5 lg:grid-cols-3">
+		<div class="flex flex-col gap-5">
 			{@render card(freiSafeInner, "Sicher")}
 			{@render card(freiWarnInner, "Achtung")}
 			{@render card(freiOverInner, "Steuerpflichtig")}
@@ -194,7 +213,7 @@
 		</div>
 	{/snippet}
 	{#snippet euerSurplusInner()}<EuerStruktur einnahmen={euerEin} ausgaben={euerAus} />{/snippet}
-	{#snippet euerDeficitInner()}<EuerStruktur einnahmen={euerAus} ausgaben={euerEin} />{/snippet}
+	{#snippet euerDeficitInner()}<EuerStruktur einnahmen={euerEinDeficit} ausgaben={euerAus} />{/snippet}
 	{@render section("8 · EÜR-Ergebnis", "Zwei Blöcke auf einer €-Achse + Ergebnis-Streifen (Defizit-Flip).", euerBody)}
 
 	{#snippet statBody()}

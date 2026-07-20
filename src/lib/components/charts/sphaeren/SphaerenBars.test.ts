@@ -29,7 +29,7 @@ describe("SphaerenBars", () => {
     expect(screen.getByTestId("sphaeren-bars-dense")).toBeTruthy();
     expect(
       nb(screen.getByTestId("sphaere-row-ideeller").textContent),
-    ).toContain("8.240 €");
+    ).toContain("8.240,00 €");
     expect(
       screen.getByTestId("sphaere-row-wirtschaftlich").textContent,
     ).toMatch(/−/);

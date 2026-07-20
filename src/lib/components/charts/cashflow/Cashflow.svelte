@@ -79,6 +79,7 @@
 	function measure() {
 		if (!svgEl) return;
 		const rect = svgEl.getBoundingClientRect();
+		if (rect.width === 0) return;
 		geo = { rect, sx: rect.width / vbW, sy: rect.height / vbH };
 	}
 	function placeTip() {
@@ -121,10 +122,17 @@
 </script>
 
 <div data-slot="cashflow" data-testid="cashflow" class={className}>
+	<!-- legend (≥2 series, dataviz §3.6) -->
+	<div class="mb-3 flex flex-wrap items-center gap-4 text-[11.5px] font-semibold text-ink-700">
+		<span class="inline-flex items-center gap-1.5"><span class="size-2.5 rounded-[3px]" style:background-color={TOKEN.einnahme}></span>Einnahmen ↑</span>
+		<span class="inline-flex items-center gap-1.5"><span class="size-2.5 rounded-[3px]" style:background-color={TOKEN.ausgabe}></span>Ausgaben ↓</span>
+		<span class="inline-flex items-center gap-1.5"><span class="h-0.5 w-4 rounded-full" style:background-color={TOKEN.ink700}></span>Netto-Saldo</span>
+	</div>
 	<div bind:this={hostEl} class="relative">
 		<svg
 			bind:this={svgEl}
 			viewBox={`0 0 ${vbW} ${vbH}`}
+			style:aspect-ratio={`${vbW} / ${vbH}`}
 			class="block h-auto w-full overflow-visible"
 			role="img"
 			aria-label={`Monatlicher Cashflow ${year}: Einnahmen und Ausgaben je Monat um eine Nulllinie, mit Netto-Saldo-Linie. Werte in der Tabellenansicht.`}
@@ -151,6 +159,10 @@
 
 			<line x1={ml} y1={r2(g.zeroY)} x2={ml + g.plotW} y2={r2(g.zeroY)} style:stroke={TOKEN.ink300} stroke-width="1" />
 			<text x={ml - 10} y={r2(g.zeroY + 3.3)} text-anchor="end" font-size="10" class="tabular-nums" style:fill={TOKEN.ink300}>0 €</text>
+
+			<!-- direction micro-captions (chrome, ink) -->
+			<text x={ml + 2} y={mt - 8} font-size="9" font-weight="700" letter-spacing="0.07em" style:fill={TOKEN.ink300}>EINNAHMEN ↑</text>
+			<text x={ml + 2} y={mt + g.plotH + 15} font-size="9" font-weight="700" letter-spacing="0.07em" style:fill={TOKEN.ink300}>AUSGABEN ↓</text>
 
 			{#each months as _m, i (i)}
 				<text x={r2(ml + i * g.band + g.band / 2)} y={r2(mt + g.plotH + 30)} text-anchor="middle" font-size="11" font-weight={i === readoutIdx ? "700" : "400"} style:fill={i === readoutIdx ? TOKEN.ink900 : TOKEN.ink500}>{MONTHS[i]}</text>

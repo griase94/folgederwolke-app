@@ -31,7 +31,7 @@
 	 * reflow-safe HTML bars for a dashboard card, every value printed.
 	 */
 	import { SPHERE_LABELS } from "$lib/domain/sphere.js";
-	import { eurWhole, pctWhole } from "../_shared/format.js";
+	import { eurWhole, eurCents, pctWhole } from "../_shared/format.js";
 	import { SPHERE_VAR, TOKEN } from "../_shared/tokens.js";
 	import { barLeft, barRight, niceAxis, r2 } from "../_shared/geometry.js";
 	import { watchFineHover, type ChartGeo } from "../_shared/interaction.js";
@@ -87,6 +87,7 @@
 	function measure() {
 		if (!svgEl) return;
 		const rect = svgEl.getBoundingClientRect();
+		if (rect.width === 0) return;
 		geo = { rect, sx: rect.width / vbW, sy: rect.height / vbH };
 	}
 	function placeTip() {
@@ -152,7 +153,7 @@
 						<span class="truncate">{SPHERE_LABELS[row.sphere]}</span>
 					</span>
 					<span class="flex flex-none items-baseline gap-2 tabular-nums">
-						<span class="text-[13px] font-bold" style:color={neg ? TOKEN.deficitStrong : TOKEN.ink900}>{eurWhole(row.cents)}</span>
+						<span class="text-[13px] font-bold" style:color={neg ? TOKEN.deficitStrong : TOKEN.ink900}>{eurCents(row.cents)}</span>
 						{#if s !== null}<span class="min-w-[3.5ch] text-right text-[11px] font-bold text-ink-500">{pctWhole(s)}</span>{/if}
 					</span>
 				</div>
@@ -174,6 +175,7 @@
 		<svg
 			bind:this={svgEl}
 			viewBox={`0 0 ${vbW} ${vbH}`}
+			style:aspect-ratio={`${vbW} / ${vbH}`}
 			class="block h-auto w-full overflow-visible"
 			role="img"
 			aria-label={`Sortierte horizontale Balken: ${totalLabel} je Gemeinnützigkeits-Sphäre, Gesamt ${eurWhole(total)}`}

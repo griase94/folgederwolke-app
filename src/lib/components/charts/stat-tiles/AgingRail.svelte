@@ -25,9 +25,13 @@
 	const daysPct = $derived(clamp((daysOld / scaleMax) * 100, 0, 100));
 	const overdue = $derived(daysOld > fristDays);
 	const over = $derived(Math.max(0, daysOld - fristDays));
-	// In a narrow tile the Frist + älteste labels collide → merge them into one
-	// right-aligned label (dataviz §5 robust-at-scale, mirrors the plate).
-	const mergeLabels = $derived(fristPct > 55 || daysPct - fristPct < 22);
+	// In a narrow tile the mid Frist label collides with an end label → merge it
+	// into one right-aligned label (endpoints win; dataviz §5 robust-at-scale,
+	// mirrors the freigrenze-v5 mobile rule). Catches Frist near either edge or
+	// too close to the älteste marker.
+	const mergeLabels = $derived(
+		fristPct < 18 || fristPct > 55 || daysPct - fristPct < 22,
+	);
 </script>
 
 <div

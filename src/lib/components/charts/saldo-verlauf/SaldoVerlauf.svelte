@@ -122,6 +122,7 @@
 	function measure() {
 		if (!svgEl) return;
 		const rect = svgEl.getBoundingClientRect();
+		if (rect.width === 0) return;
 		geo = { rect, sx: rect.width / vbW, sy: rect.height / vbH };
 	}
 
@@ -185,7 +186,7 @@
 	});
 
 	// Tooltip fields for the active month.
-	const tipMonth = $derived(`${MONTHS[shownIdx]} ${year}`);
+	const tipMonth = $derived(`${MONTHS[shownIdx] ?? ""} ${year}`);
 	const tipYtd = $derived(shownCents - openingCents);
 	const tipMom = $derived(shownCents - (shownIdx === 0 ? openingCents : (monthlyCents[shownIdx - 1] ?? 0)));
 </script>
@@ -196,11 +197,14 @@
 	class={["flex flex-col gap-8 md:flex-row md:items-stretch", className]}
 	class:is-deficit={deficit}
 >
-	<!-- Hero: current stand + Δ chip + printed extremes -->
-	<div class="flex min-w-0 flex-col md:w-[300px] md:flex-none">
-		<p class="text-[11px] font-bold uppercase tracking-[0.09em] text-ink-500">
-			{eyebrow ?? `Saldo · Buchungsjahr ${year}`}
-		</p>
+	<!-- Hero column: desktop = the left column; on mobile it's `contents` so the
+	     hero block (order-1) and the extremes (order-3) join the outer flex around
+	     the sparkline (order-2) → hero → sparkline → extremes (dataviz §4 order). -->
+	<div class="contents md:flex md:w-[300px] md:flex-none md:flex-col">
+		<div class="order-1 flex min-w-0 flex-col md:order-none">
+			<p class="text-[11px] font-bold uppercase tracking-[0.09em] text-ink-500">
+				{eyebrow ?? `Saldo · Buchungsjahr ${year}`}
+			</p>
 		<p class="mt-3 tabular-nums">
 			<span
 				data-testid="saldo-hero"
@@ -218,7 +222,7 @@
 				style:color={deficit ? TOKEN.deficitStrong : TOKEN.einnahmeStrong}
 				>{activeIndex === null ? "Aktuell" : "Monat"}</span
 			>
-			<span class="ml-1.5 text-ink-700">{MONTHS[shownIdx]} {year}</span>
+			<span class="ml-1.5 text-ink-700">{MONTHS[shownIdx] ?? ""} {year}</span>
 		</p>
 
 		<!-- Δ chip: signed € on line 1, signed % since year-start on line 2 -->
@@ -254,8 +258,10 @@
 			</span>
 		</div>
 
-		<!-- printed extremes — the hover-free channel (dataviz §4) -->
-		<dl class="mt-auto flex gap-7 pt-6" data-testid="saldo-extremes">
+		</div>
+
+		<!-- printed extremes — after the sparkline on mobile (dataviz §4 order) -->
+		<dl class="order-3 mt-5 flex gap-7 md:order-none md:mt-auto md:pt-6" data-testid="saldo-extremes">
 			<div class="flex flex-col gap-1">
 				<dt class="inline-flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-ink-300">
 					<span
@@ -266,7 +272,7 @@
 					Tiefstand
 				</dt>
 				<dd class="text-[13.5px] font-bold tabular-nums text-ink-700">{eurCents(lowCents)}</dd>
-				<dd class="text-[11px] font-semibold text-ink-500">{MONTHS[geom.minIdx]} {year}</dd>
+				<dd class="text-[11px] font-semibold text-ink-500">{MONTHS[geom.minIdx] ?? ""} {year}</dd>
 			</div>
 			<div class="flex flex-col gap-1">
 				<dt class="inline-flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-ink-300">
@@ -274,23 +280,24 @@
 					Höchststand
 				</dt>
 				<dd class="text-[13.5px] font-bold tabular-nums text-ink-700">{eurCents(highCents)}</dd>
-				<dd class="text-[11px] font-semibold text-ink-500">{MONTHS[geom.maxIdx]} {year}</dd>
+				<dd class="text-[11px] font-semibold text-ink-500">{MONTHS[geom.maxIdx] ?? ""} {year}</dd>
 			</div>
 		</dl>
 	</div>
 
 	<!-- Sparkline -->
-	<div class="flex min-w-0 flex-1 flex-col justify-center">
+	<div class="order-2 flex min-w-0 flex-1 flex-col justify-center md:order-none">
 		<div bind:this={hostEl} class="relative">
 			<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 			<svg
 				bind:this={svgEl}
 				data-testid="saldo-spark"
 				viewBox={`0 0 ${vbW} ${vbH}`}
+				style:aspect-ratio={`${vbW} / ${vbH}`}
 				class="block h-auto w-full overflow-visible"
 				role="img"
 				tabindex={fineHover ? 0 : -1}
-				aria-label={`Saldo-Verlauf ${year}, aktueller Stand ${eurCents(monthlyCents[current] ?? 0)}, Tiefstand ${eurCents(lowCents)} im ${MONTHS[geom.minIdx]}, Höchststand ${eurCents(highCents)} im ${MONTHS[geom.maxIdx]}. Werte in der Tabellenansicht.`}
+				aria-label={`Saldo-Verlauf ${year}, aktueller Stand ${eurCents(monthlyCents[current] ?? 0)}, Tiefstand ${eurCents(lowCents)} im ${MONTHS[geom.minIdx] ?? ""}, Höchststand ${eurCents(highCents)} im ${MONTHS[geom.maxIdx] ?? ""}. Werte in der Tabellenansicht.`}
 				onpointermove={onMove}
 				onpointerleave={onLeave}
 				onkeydown={onKey}
@@ -362,9 +369,9 @@
 			{/if}
 		</div>
 		<div class="mt-3 flex justify-between text-[10.5px] font-bold uppercase tracking-[0.05em] tabular-nums text-ink-300">
-			<span>{MONTHS[0]} {year}</span>
+			<span>{MONTHS[0] ?? ""} {year}</span>
 			<span class="font-semibold tracking-[0.04em]">Verlauf · {N} Monats-Stände</span>
-			<span>{MONTHS[current]} {year}</span>
+			<span>{MONTHS[current] ?? ""} {year}</span>
 		</div>
 	</div>
 
@@ -374,7 +381,7 @@
 		<thead><tr><th>Monat</th><th>Saldo</th></tr></thead>
 		<tbody>
 			{#each monthlyCents as v, i (i)}
-				<tr><td>{MONTHS[i]} {year}</td><td>{eurCents(v)}</td></tr>
+				<tr><td>{MONTHS[i] ?? ""} {year}</td><td>{eurCents(v)}</td></tr>
 			{/each}
 		</tbody>
 	</table>

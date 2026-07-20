@@ -69,6 +69,7 @@
 	<div class="relative w-full max-w-[400px]">
 		<svg
 			viewBox="0 0 400 236"
+			style:aspect-ratio="400 / 236"
 			class="block h-auto w-full overflow-visible"
 			role="img"
 			aria-label={`Umsatz wirtschaftlicher Geschäftsbetrieb ${year}: ${eurWhole(umsatzCents)}, ${pctOne(frac * 100)} der ${eurWhole(capCents)}-Freigrenze, Zustand ${state === "over" ? "steuerpflichtig" : state === "warn" ? "Achtung" : "sicher"}`}
@@ -109,9 +110,10 @@
 				<span class="absolute -top-[22px] left-1/2 -translate-x-1/2 whitespace-nowrap text-[10.5px] font-extrabold tabular-nums text-ink-900">{eurWhole(umsatzCents)}</span>
 			</span>
 		</div>
+		<!-- Endpoints only — the warn threshold (40.000 €) is already labelled on
+		     the arc tick, so the mid label is dropped to avoid an end-collision. -->
 		<div class="relative mt-2 h-[13px] text-[10.5px] font-bold tabular-nums text-ink-300">
 			<span class="absolute left-0">0 €</span>
-			<span class="absolute -translate-x-1/2" style:left={`${warnFraction * 100}%`}>{eurWhole(capCents * warnFraction)}</span>
 			<span class="absolute right-0">{eurWhole(capCents)}</span>
 		</div>
 		<p class="mt-4 text-[12px] text-ink-500" data-testid="freigrenze-spielraum">

@@ -74,7 +74,10 @@ export const load: PageServerLoad = async ({ url, parent }) => {
         mb.betrag_cents                                               AS betrag_cents,
         mb.paid_cents                                                 AS paid_cents,
         mb.gezahlt_am                                                 AS gezahlt_am,
-        bs.faelligkeit_at                                             AS faelligkeit_at
+        bs.faelligkeit_at                                             AS faelligkeit_at,
+        -- The year's Regelbeitrag — the Soll for a liable member who has NO
+        -- per-year row yet, so their outstanding dues aren't undercounted to 0.
+        bs.cents                                                      AS soll_cents
       FROM members m
       LEFT JOIN member_beitrags mb
         ON mb.member_id = m.id AND mb.year = ${beitragsYear}
@@ -97,16 +100,23 @@ export const load: PageServerLoad = async ({ url, parent }) => {
         WHERE NOT is_exempt AND betrag_cents IS NOT NULL AND paid_cents >= betrag_cents
       )::text                                                                             AS paid_count,
       COALESCE(SUM(paid_cents) FILTER (WHERE NOT is_exempt), 0)::text                     AS paid_cents,
-      -- Open: liable, non-exempt, with an obligation not yet covered.
+      -- Open: liable, non-exempt, with an obligation (own row betrag OR the
+      -- year's Regelbeitrag) not yet covered. Members without a per-year row
+      -- still owe the Regelbeitrag, so they count here and in open_cents — the
+      -- old query silently dropped them (0 open, 0,00 € offen) which read as
+      -- "3 unpaid but nothing owed".
       COUNT(*) FILTER (
-        WHERE NOT is_exempt AND betrag_cents IS NOT NULL AND paid_cents < betrag_cents
+        WHERE NOT is_exempt AND COALESCE(betrag_cents, soll_cents) IS NOT NULL
+          AND COALESCE(paid_cents, 0) < COALESCE(betrag_cents, soll_cents)
       )::text                                                                             AS open_count,
       COALESCE(
-        SUM(GREATEST(betrag_cents - paid_cents, 0)) FILTER (WHERE NOT is_exempt),
+        SUM(GREATEST(COALESCE(betrag_cents, soll_cents) - COALESCE(paid_cents, 0), 0))
+          FILTER (WHERE NOT is_exempt),
         0
       )::text                                                                             AS open_cents,
       COUNT(*) FILTER (
-        WHERE NOT is_exempt AND betrag_cents IS NOT NULL AND paid_cents < betrag_cents
+        WHERE NOT is_exempt AND COALESCE(betrag_cents, soll_cents) IS NOT NULL
+          AND COALESCE(paid_cents, 0) < COALESCE(betrag_cents, soll_cents)
           AND current_date > (COALESCE(faelligkeit_at, (${beitragsYear}::text || '-03-31')::date)
                + (COALESCE((SELECT days FROM grace), 60) || ' days')::interval)
       )::text                                                                             AS overdue_count,

@@ -91,6 +91,7 @@
 <div data-slot="kategorien-ranking" data-testid="kategorien-ranking" class={className}>
 	<svg
 		viewBox={`0 0 ${vbW} ${layout.vbH}`}
+		style:aspect-ratio={`${vbW} / ${layout.vbH}`}
 		class="block h-auto w-full overflow-visible"
 		role="img"
 		aria-label={`Rangliste der ${layout.namedCount} größten Posten, je Balken mit Betrag und Anteil; Rest gebündelt in Sonstige`}

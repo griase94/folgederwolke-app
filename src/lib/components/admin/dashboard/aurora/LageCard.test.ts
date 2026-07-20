@@ -90,12 +90,12 @@ describe("LageCard", () => {
 
   it("Sphären render as dense sorted mini-bars, negative shown with a minus", () => {
     render(LageCard, { props: base });
-    // dense sphaere-v7 bars: one row per sphere, betrag printed directly.
+    // dense sphaere-v7 bars: one row per sphere, betrag printed with cents.
     expect(
       nb(screen.getByTestId("sphaere-row-ideeller").textContent),
-    ).toContain("500 €");
+    ).toContain("500,00 €");
     const neg = screen.getByTestId("sphaere-row-zweckbetrieb");
-    expect(neg.textContent).toMatch(/[-−]15\s*€/);
+    expect(neg.textContent).toMatch(/[-−]15,00/);
   });
 
   it("offene Erstattungen aging rail renders only when there are open reimbursements", () => {

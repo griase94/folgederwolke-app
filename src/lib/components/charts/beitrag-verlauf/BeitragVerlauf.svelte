@@ -72,6 +72,7 @@
 	function measure() {
 		if (!svgEl) return;
 		const rect = svgEl.getBoundingClientRect();
+		if (rect.width === 0) return;
 		geo = { rect, sx: rect.width / vbW, sy: rect.height / vbH };
 	}
 	$effect(() => {
@@ -131,6 +132,7 @@
 		<svg
 			bind:this={svgEl}
 			viewBox={`0 0 ${vbW} ${vbH}`}
+			style:aspect-ratio={`${vbW} / ${vbH}`}
 			class="block h-auto w-full overflow-visible"
 			role="img"
 			aria-label={`Kumulierte Beiträge ${year} bis zum Jahresziel ${eurCents(targetCents)}; Stand ${eurCents(collected)}, ${pctReached} Prozent, ${membersNow} von ${totalMembers} Mitgliedern, ${eurCents(openCents)} offen`}

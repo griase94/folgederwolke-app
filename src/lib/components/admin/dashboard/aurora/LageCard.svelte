@@ -68,6 +68,12 @@
 	const overduePct = $derived(
 		total === 0 ? 0 : Math.min((beitraege.overdueCount / total) * 100, 100)
 	);
+	// „Offen" = unpaid but not yet overdue (openMemberCount includes overdue).
+	// v6 meter order: bezahlt (grün) · offen (amber) · überfällig (rot).
+	const openNotOverdue = $derived(
+		Math.max(beitraege.openMemberCount - beitraege.overdueCount, 0)
+	);
+	const openPct = $derived(total === 0 ? 0 : Math.min((openNotOverdue / total) * 100, 100));
 
 	// "Nothing materialized" — no member_beitrags rows exist for this year, so
 	// every aggregate is zero. Distinct from "all paid" (which has paidCents > 0)
@@ -128,29 +134,27 @@
 			<!-- eslint-enable svelte/no-navigation-without-resolve -->
 		{:else}
 			<p class="mt-2 text-sm font-medium text-ink-900">
-				{paidMembers}/{total} bezahlt{#if beitraege.exemptMemberCount > 0}<span
-						class="font-normal text-ink-500"
-					>
-						· {beitraege.exemptMemberCount} befreit</span
-					>{/if}
+				{paidMembers}/{total} bezahlt{#if beitraege.exemptMemberCount > 0}<span class="font-normal text-ink-500">&nbsp;· {beitraege.exemptMemberCount} befreit</span>{/if}
 			</p>
+			<!-- v6 status meter: bezahlt GRÜN · offen AMBER · überfällig ROT (kein Lila). -->
 			<div
-				class="mt-2 flex h-2 overflow-hidden rounded-full bg-dataviz-track"
+				class="mt-2 flex h-2 gap-px overflow-hidden rounded-full bg-dataviz-track"
 				role="img"
-				aria-label={`${paidMembers} von ${total} Beiträgen bezahlt, ${beitraege.overdueCount} überfällig${beitraege.exemptMemberCount > 0 ? `, ${beitraege.exemptMemberCount} befreit` : ''}`}
+				aria-label={`${paidMembers} von ${total} Beiträgen bezahlt, ${openNotOverdue} offen, ${beitraege.overdueCount} überfällig${beitraege.exemptMemberCount > 0 ? `, ${beitraege.exemptMemberCount} befreit` : ''}`}
 			>
-				<div class="bg-dataviz-paid" style={`width:${paidPct}%`}></div>
-				<div class="bg-severity-warn" style={`width:${overduePct}%`}></div>
+				<div class="bg-type-einnahme" style={`width:${paidPct}%`}></div>
+				<div class="bg-severity-warn" style={`width:${openPct}%`}></div>
+				<div class="bg-severity-critical" style={`width:${overduePct}%`}></div>
 			</div>
 			<div class="mt-1.5 flex items-center gap-3 text-xs text-ink-500">
 				<span class="inline-flex items-center gap-1">
-					<span class="size-1.5 rounded-full bg-dataviz-paid" aria-hidden="true"></span> bezahlt
+					<span class="size-1.5 rounded-full bg-type-einnahme" aria-hidden="true"></span> bezahlt
 				</span>
 				<span class="inline-flex items-center gap-1">
-					<span class="size-1.5 rounded-full bg-severity-warn" aria-hidden="true"></span> überfällig
+					<span class="size-1.5 rounded-full bg-severity-warn" aria-hidden="true"></span> offen
 				</span>
 				<span class="inline-flex items-center gap-1">
-					<span class="size-1.5 rounded-full bg-dataviz-track" aria-hidden="true"></span> offen
+					<span class="size-1.5 rounded-full bg-severity-critical" aria-hidden="true"></span> überfällig
 				</span>
 			</div>
 			<p class="mt-1.5 text-sm tabular-nums text-ink-700" data-testid="lage-beitraege-sums">
@@ -164,7 +168,7 @@
 	<!-- (2) Sphären — sorted mini-bars (dataviz sphaere-v7 dense) -->
 	<div data-testid="lage-sphaeren">
 		<h3 class="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">Sphären-Saldo</h3>
-		<SphaerenBars rows={sphaerenRows} dense showShares={false} totalLabel="Saldo" />
+		<SphaerenBars rows={sphaerenRows} dense totalLabel="Saldo" />
 	</div>
 
 	<!-- (2b) Offene Erstattungen — aging rail -->
@@ -190,7 +194,7 @@
 		<div data-testid="lage-wgb">
 			<div class="flex items-baseline justify-between gap-2">
 				<h3 class="text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">
-					WGB · § 64 AO
+					Wirtschaftl. Geschäftsbetrieb · § 64 AO
 				</h3>
 				<span class="text-xs tabular-nums text-ink-500">
 					{formatMoney(wgb.einnahmenCents)} von {formatMoney(wgb.freigrenzeCents)}

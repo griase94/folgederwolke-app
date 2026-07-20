@@ -84,6 +84,7 @@
 	let fineHover = $state(false);
 	onMount(() => watchFineHover((v) => (fineHover = v)));
 	let activeName = $state<string | null>(null);
+	const activeRow = $derived(placed.rows.find((r) => r.group + r.name === activeName) ?? null);
 
 	// ── result strip (overhang comparison) ─────────────────────────────────
 	const comp = $derived.by(() => {
@@ -128,7 +129,7 @@
 			</div>
 			<div class="md:border-l md:border-(--hairline) md:pl-8">
 				<p class="text-[11px] font-bold uppercase tracking-[0.05em] text-ink-500">Summenvergleich · die {deficit ? "rote" : "grüne"} Lücke ist das Ergebnis</p>
-				<svg viewBox={`0 0 ${comp.cvbW} ${comp.cvbH}`} class="mt-2 block h-auto w-full overflow-visible" role="img" aria-label={`Summenvergleich: Einnahmen ${eurWhole(incSum)}, Ausgaben ${eurWhole(expSum)}, Ergebnis ${eurWholeSigned(result)}`}>
+				<svg viewBox={`0 0 ${comp.cvbW} ${comp.cvbH}`} style:aspect-ratio={`${comp.cvbW} / ${comp.cvbH}`} class="mt-2 block h-auto w-full overflow-visible" role="img" aria-label={`Summenvergleich: Einnahmen ${eurWhole(incSum)}, Ausgaben ${eurWhole(expSum)}, Ergebnis ${eurWholeSigned(result)}`}>
 					<rect x={r2(comp.a)} y={r2(comp.bandTop)} width={r2(comp.b - comp.a)} height={r2(comp.bandBot - comp.bandTop)} rx="4" style:fill={deficit ? "var(--crit-band, var(--dataviz-deficit-tint))" : "var(--ein-band, var(--type-einnahme-tint))"} />
 					<path d={barRight(comp.x0, comp.y1, comp.xF(incSum) - comp.x0, comp.cbt, 4)} style:fill={TOKEN.einnahme} />
 					<path d={barRight(comp.x0, comp.y2, comp.xF(expSum) - comp.x0, comp.cbt, 4)} style:fill={TOKEN.ausgabe} />
@@ -145,7 +146,7 @@
 	<!-- two-block category chart -->
 	<div class="relative rounded-2xl border border-(--hairline) bg-card p-5">
 		<p class="mb-3 text-[11px] font-bold uppercase tracking-[0.05em] text-ink-500">Nach Kategorie · Einnahmen − Ausgaben</p>
-		<svg viewBox={`0 0 ${vbW} ${vbH}`} class="block h-auto w-full overflow-visible" role="img" aria-label={`Einnahmen ${eurWhole(incSum)} über ${einnahmen.length} Kategorien, Ausgaben ${eurWhole(expSum)} über ${ausgaben.length} Kategorien`}>
+		<svg viewBox={`0 0 ${vbW} ${vbH}`} style:aspect-ratio={`${vbW} / ${vbH}`} class="block h-auto w-full overflow-visible" role="img" aria-label={`Einnahmen ${eurWhole(incSum)} über ${einnahmen.length} Kategorien, Ausgaben ${eurWhole(expSum)} über ${ausgaben.length} Kategorien`}>
 			{#each axis.ticks as t (t)}
 				<line x1={r2(xFor(t))} y1={mtop} x2={r2(xFor(t))} y2={placed.bottom} style:stroke={TOKEN.hairline} stroke-width="1" />
 				<text x={r2(xFor(t))} y={placed.bottom + 16} text-anchor="middle" font-size="10.5" class="tabular-nums" style:fill={TOKEN.ink500}>{eurWhole(t)}</text>
@@ -170,6 +171,21 @@
 				<rect x="0" y={r2(row.y)} width={vbW} height={rh} fill="transparent" role="img" aria-label={`${row.name}: ${eurWhole(row.cents)}, ${pctWhole(Math.round((row.cents / (row.grpSum || 1)) * 100))} der ${row.grpLabel === "EINNAHMEN" ? "Einnahmen" : "Ausgaben"}`} onpointerenter={() => fineHover && (activeName = row.group + row.name)} onpointerleave={() => (activeName = null)} />
 			{/each}
 		</svg>
+
+		<!-- desktop hover readout: Anteil an der Gruppe + Gruppensumme (plate v9) -->
+		{#if fineHover && activeRow}
+			<div class="pointer-events-none absolute right-3 top-3 z-10 w-[190px] rounded-xl border bg-card p-3 shadow-(--shadow-card)" aria-hidden="true">
+				<div class="flex items-center gap-2">
+					<span class="size-2.5 flex-none rounded-[3px]" style:background-color={activeRow.group === "ein" ? TOKEN.einnahme : TOKEN.ausgabe}></span>
+					<span class="text-[11.5px] font-semibold text-ink-700">{activeRow.name}</span>
+				</div>
+				<div class="mt-1 text-[20px] font-extrabold tabular-nums text-ink-900">{eurWhole(activeRow.cents)}</div>
+				<div class="mt-2 flex flex-col gap-1.5 border-t border-(--hairline) pt-2 text-[11.5px]">
+					<div class="flex items-baseline justify-between gap-3"><span class="text-ink-500">Anteil an {activeRow.grpLabel === "EINNAHMEN" ? "Einnahmen" : "Ausgaben"}</span><span class="font-bold tabular-nums text-ink-900">{pctWhole(Math.round((activeRow.cents / (activeRow.grpSum || 1)) * 100))}</span></div>
+					<div class="flex items-baseline justify-between gap-3"><span class="text-ink-500">Gruppensumme</span><span class="font-bold tabular-nums text-ink-900">{eurWhole(activeRow.grpSum)}</span></div>
+				</div>
+			</div>
+		{/if}
 	</div>
 
 	<table class="sr-only" data-testid="euer-table">
