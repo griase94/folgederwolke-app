@@ -230,7 +230,7 @@
 			data-slot="entry-header"
 			class="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-hairline bg-background px-5 py-4"
 		>
-			<div class="flex min-w-0 items-center gap-3">
+			<div class="flex min-w-0 items-start gap-3">
 				<span
 					class="flex size-10 shrink-0 items-center justify-center rounded-xl {badgeClass}"
 					data-slot="entry-typebadge"
@@ -241,7 +241,9 @@
 				<div class="min-w-0">
 					<h2 id="entry-form-title" class="truncate text-lg font-semibold text-foreground">{title}</h2>
 					{#if statusHint}
-						<p class="mt-0.5 truncate text-sm text-muted-foreground">{statusHint}</p>
+						<!-- Wraps on mobile so „· Jahr JJJJ" is never truncated off (R2); a
+						     single-line truncate from sm up where the width is ample. -->
+						<p class="mt-0.5 text-sm text-muted-foreground sm:truncate">{statusHint}</p>
 					{/if}
 				</div>
 			</div>

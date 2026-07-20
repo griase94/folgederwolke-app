@@ -50,8 +50,8 @@ test.beforeEach(async () => {
 // ── Suite ────────────────────────────────────────────────────────────────────
 
 test.describe("@phase-entry-modals Beleg enforcement + modal isolation", () => {
-  // ── 1. State-matrix CTA gate + a 0,00 Betrag roundtrips a German 422 ───────
-  test("ausgaben/neu — empty-required disables the CTA (amber gate); a 0,00 Betrag roundtrips a German 422", async ({
+  // ── 1. State-matrix CTA gate + a server-only rule roundtrips a German 422 ───
+  test("ausgaben/neu — empty/0,00 disables the CTA (amber gate); a server-only rule (extern IBAN) roundtrips a German 422", async ({
     page,
   }) => {
     await loginAs(page, "admin");
@@ -67,18 +67,27 @@ test.describe("@phase-entry-modals Beleg enforcement + modal isolation", () => {
     await expect(gate).toContainText(/Fehlt noch/i);
     await expect(submitBtn).toBeDisabled();
 
-    // (b) Fill everything valid EXCEPT a 0,00 Betrag (client-valid, server-invalid),
-    // and satisfy the Beleg gate via the Verzicht arm so the client gate goes green.
+    // (a2) A 0,00 Betrag is NOT submittable — it still counts as missing so the
+    // gate never reads „Alles da." next to a red 0,00 field (Wrinkle a).
+    await page.locator("#betrag-display").fill("0,00");
+    await expect(gate).toHaveAttribute("data-ok", "false");
+    await expect(gate).toContainText(/Betrag/);
+    await expect(submitBtn).toBeDisabled();
+
+    // (b) Everything client-valid, but a malformed Extern-IBAN — a SERVER-only rule
+    // the client never pre-checks — proves the 422 UI echo (German + de-DE Betrag).
     await fillBaseAusgabeFields(page, {
-      bezeichnung: "E2E-0-Betrag",
-      betrag: "0,00",
+      bezeichnung: "E2E-IBAN-422",
+      betrag: "12,00",
     });
     await page.getByRole("radio", { name: /Verzicht begründen/i }).click();
     await page
       .locator("#beleg-begruendung")
-      .fill("E2E: Betrag-0 roundtrip, kein Beleg.");
+      .fill("E2E: kein Beleg, IBAN-Test.");
+    await page.getByTestId("bezahlt-von-extern").click();
+    await page.getByTestId("extern-name-input").fill("Erika Extern");
+    await page.locator('input[name="externIban"]').fill("DE00 QUATSCH");
 
-    // 0,00 counts as present → the CTA enables (the server is the enforcer).
     await expect(submitBtn).toBeEnabled({ timeout: 5_000 });
     await submitBtn.click();
 
@@ -87,13 +96,14 @@ test.describe("@phase-entry-modals Beleg enforcement + modal isolation", () => {
       timeout: 8_000,
     });
     await expect(page).toHaveURL(/\/app\/ausgaben\/neu/);
-    // German message — never "Too small" / "Invalid input".
-    await expect(page.getByText(/größer als 0/i).first()).toBeVisible({
+    await expect(
+      page.getByText(/IBAN.*ungültig|ungültig/i).first(),
+    ).toBeVisible({
       timeout: 8_000,
     });
     await expect(page.getByText(/Too small|Invalid input/i)).toHaveCount(0);
     // de-DE echo keeps the comma format the user typed.
-    await expect(page.locator("#betrag-display")).toHaveValue("0,00");
+    await expect(page.locator("#betrag-display")).toHaveValue("12,00");
   });
 
   // ── 2. ausgaben/neu — Belegverzicht arm submits OK ────────────────────────

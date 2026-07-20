@@ -153,7 +153,7 @@
 			aria-invalid={ariaInvalid ? 'true' : undefined}
 			aria-describedby={ariaDescribedBy}
 			data-testid="date-field-input"
-			class={cn(HERO_INPUT, 'pr-4 text-[color:var(--ink-900)]')}
+			class={cn(HERO_INPUT, 'pr-2.5 text-[color:var(--ink-900)] sm:pr-4')}
 		/>
 		<input type="hidden" {name} value={iso} />
 	</div>

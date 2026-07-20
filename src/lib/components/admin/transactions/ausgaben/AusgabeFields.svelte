@@ -196,13 +196,14 @@
 			(betragCents !== null && betragCents <= 0 ? 'Betrag muss größer als 0 sein.' : null),
 	);
 
-	// ── Gate readout: PRESENCE of the required fields (M4). A present-but-invalid
-	// value (Betrag 0,00) still passes the gate so the CTA enables and the server
-	// gets to return its 422 — the client never blocks that roundtrip. ───────────
+	// ── Gate readout: every required field present + valid (M4 + Wrinkle a). A
+	// Betrag ≤ 0 counts as missing so the gate never reads „Alles da." next to a
+	// red 0,00 field; the server-422 roundtrip is proven via a server-only rule
+	// (extern-IBAN format), not a client-valid 0,00. ─────────────────────────────
 	const belegOk = $derived(hasBelegFile || (keinBeleg && begruendung.trim().length >= 5));
 	const missing = $derived.by(() => {
 		const m: string[] = [];
-		if (betragCents === null) m.push('Betrag');
+		if (betragCents === null || betragCents <= 0) m.push('Betrag');
 		if (!rechnungsdatum) m.push('Datum');
 		if (!bezeichnung.trim()) m.push('Bezeichnung');
 		if (!kategorieName) m.push('Kategorie');

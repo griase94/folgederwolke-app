@@ -107,11 +107,11 @@
 			(betragCents !== null && betragCents <= 0 ? 'Betrag muss größer als 0 sein.' : null),
 	);
 
-	// ── Gate readout: PRESENCE of the required fields (M4). Geldeingang is
-	// optional (seeded to today), so it never gates. ────────────────────────────
+	// ── Gate readout: every required field present + valid (M4 + Wrinkle a); a
+	// Betrag ≤ 0 counts as missing. Geldeingang is optional (seeded to today). ────
 	const missing = $derived.by(() => {
 		const m: string[] = [];
-		if (betragCents === null) m.push('Betrag');
+		if (betragCents === null || betragCents <= 0) m.push('Betrag');
 		if (!bezeichnung.trim()) m.push('Bezeichnung');
 		if (!kategorieName) m.push('Kategorie');
 		return m;
@@ -155,7 +155,7 @@
 					</div>
 					<div class="flex flex-col gap-1.5">
 						<label for="geldEingangDatum" class="text-sm font-medium text-ink-900"
-							>Geldeingang</label
+							>Geldeingang (optional)</label
 						>
 						<HeroDateField
 							id="geldEingangDatum"

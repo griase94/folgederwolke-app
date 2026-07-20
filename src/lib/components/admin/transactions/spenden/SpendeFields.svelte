@@ -125,13 +125,13 @@
 				: null),
 	);
 
-	// ── Gate readout: PRESENCE of the required fields (M4). ─────────────────────
+	// ── Gate readout: every required field present + valid (M4 + Wrinkle a). ─────
 	const spenderOk = $derived(
 		spenderMode === 'member' ? !!selectedMemberId : spenderName.trim().length > 0,
 	);
 	const missing = $derived.by(() => {
 		const m: string[] = [];
-		if (betragCents === null) m.push(isSach ? 'Gemeiner Wert' : 'Betrag');
+		if (betragCents === null || betragCents <= 0) m.push(isSach ? 'Gemeiner Wert' : 'Betrag');
 		if (!zugewendetAm) m.push('Datum');
 		if (!spenderOk) m.push('Spender:in');
 		return m;
@@ -295,7 +295,11 @@
 					class="space-y-3 rounded-xl border border-hairline bg-card/40 p-4"
 					data-testid="sachspende-reveal"
 				>
-					<legend class="px-1 text-sm font-medium text-ink-900">Sachspende — Wertermittlung</legend>
+					<legend
+					class="mb-1 px-1 text-xs font-semibold uppercase tracking-wide text-ink-500"
+				>
+					Sachspende — Wertermittlung
+				</legend>
 
 					<div class="space-y-1.5">
 						<label for="wertermittlung_methode" class="block text-sm font-medium text-ink-900">
