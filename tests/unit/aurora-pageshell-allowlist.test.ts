@@ -41,8 +41,6 @@ const ALLOWLIST = new Set<string>([
   "jahresabschluss/[year]/gobd-export/+page.svelte",
   "jahresabschluss/[year]/spenden/+page.svelte",
   "jahresabschluss/[year]/uebersicht/+page.svelte",
-  "kunden/+page.svelte",
-  "kunden/[id]/+page.svelte",
   "mitglieder/+page.svelte",
   "mitglieder/[id]/+page.svelte",
   "mitglieder/bericht/[year]/+page.svelte",
