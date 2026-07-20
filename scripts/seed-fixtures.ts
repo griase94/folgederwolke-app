@@ -1,12 +1,37 @@
 /**
- * Fixture-only seed — 5 fake Mitglieder, 2 Projects, 2 Customers, all
- * `is_fixture=true` so Phases 2-5 have something to develop against before
- * the Phase 6 importer ingests the real legacy data.
+ * Fixture-only seed — the Aurora design-canon demo dataset.
+ *
+ * Installs the 6+1 Mitglieder-Roster, the Kunden cast, the §15 Projekte cast,
+ * per-year Beitragssätze + Beitrags-Rows, and a showcase transaction corpus,
+ * all `is_fixture=true` (or fixture-adjacent config) so the app renders like
+ * the abgenommene Aurora design plates before the Phase 6 importer ingests
+ * the real legacy data.
+ *
+ * Canon source: `.superpowers/mockups/_kit/FIXTURES.md`
+ *   - Roster 6+1 (§16 + briefs/_flow-mitglieder.md): Anna Müller / Lena Hofmann /
+ *     Felix Bauer (2026 bezahlt) · Jonas Köhler (überfällig) · Tim Schäfer
+ *     (offen, 2025 teilbezahlt 30,00/69,69) · Test User (offen) · Renate Albrecht
+ *     (dauerhaft befreit — Ehrenmitglied). Regelbeitrag 69,69 € = 6969 cents.
+ *   - Kunden (§ rechnungen): Cremosa GmbH · Maria Huber (Privatperson) ·
+ *     Kulturkreis Pankow e.V. · Musikschule Klangraum · Altpapier & Söhne (archiviert).
+ *   - Projekte (§15): the 7-project cast; Sommerfest 2026 is the Detail-Held.
+ *     Project sphere_default stays NULL (the per-project sphere concept is
+ *     product-side removed — do NOT set it).
+ *   - Kassenwärtin persona = Julia Brunner (settings `verein.kassenwaert_name`,
+ *     seeded in scripts/seed.ts — a free Stammdatum, NOT a member reference).
+ *
+ * Beitrags-Kanon: at the current Buchungsjahr the roster reads "3 von 6 bezahlt ·
+ * 209,07 €" (Anna/Lena/Felix paid, Jonas/Tim/Test User open, Renate exempt +
+ * excluded from the denominator) — FIXTURES §13a. Overdue-vs-open among the
+ * unpaid three is a function of the single per-year Fälligkeit and the current
+ * date; the data model has one Fälligkeit per year, so all unpaid current-year
+ * members share the honest computed offen/überfällig state.
  *
  * Idempotency: keyed on natural identifiers via existence-check (members'
  * email_canonical and customers' name aren't UNIQUE in the schema; we look
  * them up before INSERT instead of relying on ON CONFLICT). Projects have
- * UNIQUE(business_id) so ON CONFLICT works directly there.
+ * UNIQUE(business_id), Beitragssätze a PK(year), and member_beitrags a
+ * UNIQUE(member_id, year), so ON CONFLICT works directly there.
  *
  * Phase 6 hard-cutover step deletes WHERE is_fixture=true before importing.
  */
@@ -23,75 +48,197 @@ type Client = ReturnType<typeof postgres>;
 /** Steuerliche Sphäre — the `sphere` pgEnum's value union. */
 type Sphere = (typeof schema.sphereEnum.enumValues)[number];
 
-const MEMBERS = [
+/** Regelbeitrag — 69,69 € in cents (FIXTURES §0/§16c). Stable across years. */
+const REGELBEITRAG_CENTS = 6969n;
+
+type MemberFixture = {
+  vorname: string;
+  nachname: string;
+  /** null → the „Keine E-Mail"-Demo (Renate Albrecht, FIXTURES §3). */
+  email: string | null;
+  role: (typeof schema.memberRoleEnum.enumValues)[number];
+  eintrittsDatum: string;
+  beitragExempt?: boolean;
+  beitragExemptReason?: string;
+};
+
+// Roster 6+1 (FIXTURES §16 + briefs/_flow-mitglieder.md §3). Display order in
+// the matrix is by nachname; insertion order here is free.
+const MEMBERS: MemberFixture[] = [
   {
-    vorname: "Maria",
+    vorname: "Anna",
     nachname: "Müller",
-    email: "maria.mueller@example.org",
-    role: "vorstand" as const,
+    email: "anna.mueller@example.de",
+    role: "mitglied",
+    eintrittsDatum: "2020-05-01",
   },
   {
-    vorname: "Jonas",
-    nachname: "Schäfer",
-    email: "jonas.schaefer@example.org",
-    role: "kassenwart" as const,
-  },
-  {
-    vorname: "Lara",
-    nachname: "Köhler",
-    email: "lara.koehler@example.org",
-    role: "mitglied" as const,
+    vorname: "Lena",
+    nachname: "Hofmann",
+    email: "lena.hofmann@example.de",
+    role: "vorstand", // Vorsitzende (FIXTURES §16b)
+    eintrittsDatum: "2019-02-01",
   },
   {
     vorname: "Felix",
     nachname: "Bauer",
-    email: "felix.bauer@example.org",
-    role: "mitglied" as const,
+    email: "felix.bauer@example.de",
+    role: "kassenwart", // Vorstands-Rolle (FIXTURES §16b); Julia Brunner
+    // unterschreibt separat als Stammdatum-Kassenwärtin.
+    eintrittsDatum: "2019-06-01",
   },
   {
-    vorname: "Sina",
-    nachname: "Hofmann",
-    email: "sina.hofmann@example.org",
-    role: "fördermitglied" as const,
+    vorname: "Jonas",
+    nachname: "Köhler",
+    email: "jonas.koehler@example.de",
+    role: "mitglied", // überfällig — kanonischer Reminder-Empfänger (§16f)
+    eintrittsDatum: "2022-09-01",
+  },
+  {
+    vorname: "Tim",
+    nachname: "Schäfer",
+    email: "tim.schaefer@example.de",
+    role: "mitglied", // offen 2026; 2025 teilbezahlt (30,00 / 69,69)
+    eintrittsDatum: "2023-03-01",
+  },
+  {
+    vorname: "Test",
+    nachname: "User",
+    // Andys Test-Login — kanonischer Plate-Wert (FIXTURES §3 Z.579). Mail-Versand
+    // ist in dev/test no-op, daher keine echte Zustellung.
+    email: "andy.griesbeck+test@gmail.com",
+    role: "mitglied", // offen 2026
+    eintrittsDatum: "2024-01-15",
+  },
+  {
+    vorname: "Renate",
+    nachname: "Albrecht",
+    // KEINE E-Mail — der kanonische „Keine E-Mail"-Demo-Fall (FIXTURES §3 Z.580).
+    // Als dauerhaft Befreite ist sie ohnehin nie Reminder-Kandidatin.
+    email: null,
+    role: "mitglied",
+    eintrittsDatum: "2015-01-01",
+    beitragExempt: true,
+    beitragExemptReason: "Ehrenmitglied seit 2019 — Beitrag dauerhaft erlassen",
   },
 ];
 
-const PROJECTS = [
+type ProjectFixture = {
+  businessId: string;
+  name: string;
+  startDate: string;
+  endDate: string | null;
+  /** ISO timestamp when soft-deleted (archiviert). */
+  archivedAt?: string;
+};
+
+// Projekte-Kanon (FIXTURES §15a). sphere_default stays NULL for every project —
+// the per-project sphere concept is product-side removed. The archived project
+// carries deletedAt (the projekte list filters deletedAt IS NULL, so it shows
+// the six active projects).
+const PROJECTS: ProjectFixture[] = [
+  {
+    businessId: "P-2026-003",
+    name: "Sommerfest 2026",
+    startDate: "2026-03-15",
+    endDate: "2026-10-31",
+  },
+  {
+    businessId: "P-2026-004",
+    name: "Kinder-Sommercamp",
+    startDate: "2026-07-22",
+    endDate: "2026-08-05",
+  },
   {
     businessId: "P-2026-001",
-    name: "Folge der Wolke — Wochenende 2026",
-    sphereDefault: "zweckbetrieb" as const,
+    name: "Merch & Vereinsshop",
+    startDate: "2026-01-01",
+    endDate: "2026-12-31",
+  },
+  {
+    businessId: "P-2026-005",
+    name: "Benefiz-Konzert Herbst",
+    startDate: "2026-10-12",
+    endDate: "2026-10-12",
   },
   {
     businessId: "P-2026-002",
-    name: "Bar-Pop-up Sommer 2026",
-    sphereDefault: "wirtschaftlich" as const,
+    name: "Vereinsheim-Renovierung",
+    startDate: "2026-03-15",
+    endDate: null,
+  },
+  {
+    businessId: "P-2026-006",
+    name: "Neujahrs-Wanderung",
+    startDate: "2026-01-06",
+    endDate: "2026-01-06",
+  },
+  {
+    businessId: "P-2025-004",
+    name: "Weihnachtsmarkt-Stand 2025",
+    startDate: "2025-11-25",
+    endDate: "2025-12-24",
+    archivedAt: "2026-01-12T10:00:00Z",
   },
 ];
 
-const CUSTOMERS = [
+type CustomerFixture = {
+  name: string;
+  anrede: string;
+  addressBlock: string;
+  country?: string;
+  /** ISO timestamp when soft-deleted (archiviert). */
+  archivedAt?: string;
+};
+
+// Kunden-Kast. Cremosa GmbH replaces the old "Beispiel GmbH" and is the
+// customer the seeded paid invoice (FDW-2026-901) points at.
+const CUSTOMERS: CustomerFixture[] = [
   {
-    name: "Beispiel GmbH",
+    name: "Cremosa GmbH",
     anrede: "Sehr geehrte Damen und Herren",
-    addressBlock: "Beispiel GmbH\nMusterstr. 1\n80331 München",
+    addressBlock: "Cremosa GmbH\nMaximilianstraße 12\n80539 München",
   },
   {
-    name: "Antonia Beispiel",
-    anrede: "Liebe Antonia",
-    addressBlock: "Antonia Beispiel\nBeispielweg 2\n80339 München",
+    name: "Maria Huber",
+    anrede: "Liebe Frau Huber",
+    addressBlock: "Maria Huber\nRosenheimer Straße 45\n81667 München",
+  },
+  {
+    name: "Kulturkreis Pankow e.V.",
+    anrede: "Sehr geehrte Damen und Herren",
+    addressBlock: "Kulturkreis Pankow e.V.\nFlorastraße 84\n13187 Berlin",
+  },
+  {
+    name: "Musikschule Klangraum",
+    anrede: "Sehr geehrte Damen und Herren",
+    addressBlock: "Musikschule Klangraum\nLindenallee 7\n80802 München",
+  },
+  {
+    name: "Altpapier & Söhne",
+    anrede: "Sehr geehrte Damen und Herren",
+    addressBlock: "Altpapier & Söhne\nGewerbestraße 3\n85748 Garching",
+    archivedAt: "2026-02-20T10:00:00Z",
   },
 ];
 
 export async function seedFixtures(db: Db): Promise<void> {
   console.log("seed-fixtures: members …");
   for (const m of MEMBERS) {
-    const emailCanonical = canonicalizeEmail(m.email);
+    const emailCanonical = m.email ? canonicalizeEmail(m.email) : null;
+    // Dedup by canonical email when present; the one email-less member
+    // (Renate) is deduped by name instead.
     const existing = await db
       .select({ id: schema.members.id })
       .from(schema.members)
       .where(
         and(
-          eq(schema.members.emailCanonical, emailCanonical),
+          emailCanonical
+            ? eq(schema.members.emailCanonical, emailCanonical)
+            : and(
+                eq(schema.members.vorname, m.vorname),
+                eq(schema.members.nachname, m.nachname),
+              ),
           eq(schema.members.isFixture, true),
         ),
       )
@@ -103,6 +250,11 @@ export async function seedFixtures(db: Db): Promise<void> {
       email: m.email,
       emailCanonical,
       role: m.role,
+      eintrittsDatum: m.eintrittsDatum,
+      beitragExempt: m.beitragExempt ?? false,
+      beitragExemptReason: m.beitragExempt
+        ? (m.beitragExemptReason ?? "Befreit")
+        : null,
       isFixture: true,
     });
   }
@@ -115,7 +267,10 @@ export async function seedFixtures(db: Db): Promise<void> {
       .values({
         businessId: p.businessId,
         name: p.name,
-        sphereDefault: p.sphereDefault,
+        // sphere_default intentionally NULL (per-project sphere removed).
+        startDate: p.startDate,
+        endDate: p.endDate,
+        deletedAt: p.archivedAt ? new Date(p.archivedAt) : null,
         isFixture: true,
       })
       .onConflictDoNothing({ target: schema.projects.businessId });
@@ -138,13 +293,246 @@ export async function seedFixtures(db: Db): Promise<void> {
       name: c.name,
       anrede: c.anrede,
       addressBlock: c.addressBlock,
+      country: c.country ?? "DE",
+      deletedAt: c.archivedAt ? new Date(c.archivedAt) : null,
       isFixture: true,
     });
   }
 
+  // Beitragssätze + Beitrags-Rows — depend on the members seeded above.
+  await seedBeitraege(db);
+
   // Transaction corpus — depends on kategorien (reference data) + the
   // members/projects/customers fixtures seeded above.
   await seedTransactionCorpus(db);
+
+  // Festschreibung 2024 (ADR-0006 · FIXTURES §16c · mitglieder-spec §3): lock
+  // Buchungsjahr 2024 so the matrix/EÜR render the canonical 🔒 lock badge.
+  // Set LAST — the assert_not_festgeschrieben trigger (migration 0014) blocks
+  // INSERTs into a locked year on income/expenses/donations/invoices, so every
+  // 2024 corpus row (and every paid-2024 Beitrags-Row) must already be in place.
+  // onConflictDoNothing keeps a higher admin-set value on re-seed (never lowers).
+  // value is a JSON number (matrix-loader + isYearClosed both accept number).
+  await db
+    .insert(schema.settings)
+    .values({ key: "festgeschrieben_bis", value: 2024 })
+    .onConflictDoNothing({ target: schema.settings.key });
+}
+
+// ---------------------------------------------------------------------------
+// Beitrags-Kanon (FIXTURES §13a / §16c)
+// ---------------------------------------------------------------------------
+//
+// Per-year Beitragssatz (69,69 €, Fälligkeit 31.03.) for the trailing window
+// 2024/2025/2026, plus member_beitrags rows so the roster reads its canonical
+// per-year states (mitglieder-spec §3 · FIXTURES §13a/§16c):
+//
+//   Mitglied        | 2024        | 2025            | 2026
+//   ----------------|-------------|-----------------|-----------
+//   Anna Müller     | bezahlt 🔒  | bezahlt         | bezahlt 12.06.
+//   Lena Hofmann    | bezahlt 🔒  | bezahlt         | bezahlt 28.05.
+//   Felix Bauer     | bezahlt 🔒  | bezahlt         | bezahlt 14.05.
+//   Jonas Köhler    | bezahlt 🔒  | bezahlt         | überfällig  (no row)
+//   Tim Schäfer     | bezahlt 🔒  | teilbez. 30/69,69| offen      (no row)
+//   Test User       | bezahlt 🔒  | bezahlt         | offen       (no row)
+//   Renate Albrecht | ⌀ befreit   | ⌀              | ⌀          (member.beitrag_exempt)
+//
+// 2024 is festgeschrieben (festgeschrieben_bis = 2024, set at the END of the
+// seed). CRUCIAL: every member applicable in 2024 must be paid or exempt —
+// an unpaid cell in a locked year is the impossible "locked-and-overdue"
+// state, so Jonas/Tim/Test User carry paid 2024 rows too. Only the CURRENT
+// year (2026, not locked) carries the honest open/overdue cells → header
+// "3/6 bezahlt · 209,07 €" (Anna+Lena+Felix). The 2026 paid dates match the
+// Flow-B feed (FIXTURES §13b). offen-vs-überfällig among the unpaid 2026
+// three is a function of the single per-year Fälligkeit + today's date (one
+// Fälligkeit per year — documented limitation).
+
+type BeitragSeed = {
+  memberEmail: string;
+  year: number;
+  paidCents: bigint;
+  gezahltAm: string | null;
+  notes?: string;
+};
+
+const P = REGELBEITRAG_CENTS;
+
+const BEITRAG_ROWS: BeitragSeed[] = [
+  // Anna Müller — durchgängig bezahlt (2026 = 12.06., FIXTURES §13b).
+  {
+    memberEmail: "anna.mueller@example.de",
+    year: 2024,
+    paidCents: P,
+    gezahltAm: "2024-02-15",
+  },
+  {
+    memberEmail: "anna.mueller@example.de",
+    year: 2025,
+    paidCents: P,
+    gezahltAm: "2025-02-15",
+  },
+  {
+    memberEmail: "anna.mueller@example.de",
+    year: 2026,
+    paidCents: P,
+    gezahltAm: "2026-06-12",
+  },
+  // Lena Hofmann — durchgängig bezahlt (2026 = 28.05.).
+  {
+    memberEmail: "lena.hofmann@example.de",
+    year: 2024,
+    paidCents: P,
+    gezahltAm: "2024-01-22",
+  },
+  {
+    memberEmail: "lena.hofmann@example.de",
+    year: 2025,
+    paidCents: P,
+    gezahltAm: "2025-01-20",
+  },
+  {
+    memberEmail: "lena.hofmann@example.de",
+    year: 2026,
+    paidCents: P,
+    gezahltAm: "2026-05-28",
+  },
+  // Felix Bauer — durchgängig bezahlt (2026 = 14.05.).
+  {
+    memberEmail: "felix.bauer@example.de",
+    year: 2024,
+    paidCents: P,
+    gezahltAm: "2024-03-10",
+  },
+  {
+    memberEmail: "felix.bauer@example.de",
+    year: 2025,
+    paidCents: P,
+    gezahltAm: "2025-03-08",
+  },
+  {
+    memberEmail: "felix.bauer@example.de",
+    year: 2026,
+    paidCents: P,
+    gezahltAm: "2026-05-14",
+  },
+  // Jonas Köhler — bezahlt 2024+2025, 2026 überfällig (no 2026 row).
+  {
+    memberEmail: "jonas.koehler@example.de",
+    year: 2024,
+    paidCents: P,
+    gezahltAm: "2024-02-20",
+  },
+  {
+    memberEmail: "jonas.koehler@example.de",
+    year: 2025,
+    paidCents: P,
+    gezahltAm: "2025-02-18",
+  },
+  // Tim Schäfer — bezahlt 2024, 2025 teilbezahlt (30,00 / 69,69), 2026 offen.
+  {
+    memberEmail: "tim.schaefer@example.de",
+    year: 2024,
+    paidCents: P,
+    gezahltAm: "2024-03-05",
+  },
+  {
+    memberEmail: "tim.schaefer@example.de",
+    year: 2025,
+    paidCents: 3000n,
+    gezahltAm: "2025-04-10",
+    notes: "Teilzahlung 30,00 € — Restbetrag 39,69 € offen",
+  },
+  // Test User — bezahlt 2024+2025, 2026 offen (no 2026 row).
+  {
+    memberEmail: "andy.griesbeck+test@gmail.com",
+    year: 2024,
+    paidCents: P,
+    gezahltAm: "2024-02-25",
+  },
+  {
+    memberEmail: "andy.griesbeck+test@gmail.com",
+    year: 2025,
+    paidCents: P,
+    gezahltAm: "2025-02-22",
+  },
+  // Renate Albrecht: permanent exempt via members.beitrag_exempt → NO rows.
+];
+
+async function seedBeitraege(db: Db): Promise<void> {
+  console.log("seed-fixtures: beitragssätze + beitrags-rows …");
+
+  // Per-year Beitragssatz + Fälligkeit 31.03. + Beschluss-Notiz (FIXTURES §16c).
+  // Migration 0026 pre-seeds these years with a neutral "Initial migration
+  // default" note and NO Fälligkeit; onConflictDoUpdate applies the canon
+  // Beschluss-Notizen + explicit Fälligkeit for the demo window (the
+  // einstellungen-beitraege plate shows the MV-Notizen). cents stays 69,69 €.
+  const satzRows: Array<{ year: number; note: string }> = [
+    { year: 2026, note: "MV 14.03.2026, TOP 7" },
+    { year: 2025, note: "MV 15.03.2025, TOP 5" },
+    { year: 2024, note: "MV 16.03.2024, TOP 6" },
+  ];
+  for (const s of satzRows) {
+    await db
+      .insert(schema.beitragssatzByYear)
+      .values({
+        year: s.year,
+        cents: REGELBEITRAG_CENTS,
+        faelligkeitAt: `${s.year}-03-31`,
+        decisionNote: s.note,
+      })
+      .onConflictDoUpdate({
+        target: schema.beitragssatzByYear.year,
+        set: {
+          cents: REGELBEITRAG_CENTS,
+          faelligkeitAt: `${s.year}-03-31`,
+          decisionNote: s.note,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  // Resolve the roster members that carry a Beitrags-Row.
+  const emails = [...new Set(BEITRAG_ROWS.map((b) => b.memberEmail))];
+  const memberIdByEmail = new Map<string, string>();
+  if (emails.length > 0) {
+    const rows = await db
+      .select({
+        id: schema.members.id,
+        emailCanonical: schema.members.emailCanonical,
+      })
+      .from(schema.members)
+      .where(
+        and(
+          eq(schema.members.isFixture, true),
+          inArray(
+            schema.members.emailCanonical,
+            emails.map((e) => canonicalizeEmail(e)),
+          ),
+        ),
+      );
+    for (const r of rows) {
+      if (r.emailCanonical) memberIdByEmail.set(r.emailCanonical, r.id);
+    }
+  }
+
+  for (const b of BEITRAG_ROWS) {
+    const memberId = memberIdByEmail.get(canonicalizeEmail(b.memberEmail));
+    if (!memberId) {
+      throw new Error(`seedBeitraege: roster member missing: ${b.memberEmail}`);
+    }
+    await db
+      .insert(schema.memberBeitrags)
+      .values({
+        memberId,
+        year: b.year,
+        betragCents: REGELBEITRAG_CENTS,
+        paidCents: b.paidCents,
+        gezahltAm: b.gezahltAm,
+        notes: b.notes ?? null,
+        source: "fixture",
+      })
+      .onConflictDoNothing();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -252,12 +640,12 @@ const EXPENSE_FIXTURES: ExpenseFixture[] = [
   // zweckbetrieb — MEMBER-paid, reimbursed (approved + erstattet + Zahlungsart).
   {
     businessId: "A-2025-904",
-    bezeichnung: "Honorar DJ-Set (von Maria ausgelegt)",
+    bezeichnung: "Honorar DJ-Set (von Anna ausgelegt)",
     kategorieName: "Honorar Künstler:innen",
     betragCents: 50000n,
     gebuchtAm: T2025,
     status: "erstattet",
-    bezahltVon: { kind: "member", memberEmail: "maria.mueller@example.org" },
+    bezahltVon: { kind: "member", memberEmail: "anna.mueller@example.de" },
     approvedAt: "2025-07-25T10:00:00Z",
     erstattetAm: "2025-08-05",
     zahlungsartLabel: "Banküberweisung",
@@ -272,7 +660,7 @@ const EXPENSE_FIXTURES: ExpenseFixture[] = [
     betragCents: 6780n,
     gebuchtAm: T2025_EARLY,
     status: "geprueft",
-    bezahltVon: { kind: "member", memberEmail: "felix.bauer@example.org" },
+    bezahltVon: { kind: "member", memberEmail: "felix.bauer@example.de" },
     approvedAt: "2025-01-25T10:00:00Z",
     kommentar: "Alt-offener Posten — Felix wartet auf Erstattung.",
   },
@@ -288,7 +676,7 @@ const EXPENSE_FIXTURES: ExpenseFixture[] = [
     status: "abgelehnt",
     rejectedReason:
       "Doppelte Einreichung — bereits über A-2025-904 abgerechnet.",
-    bezahltVon: { kind: "member", memberEmail: "lara.koehler@example.org" },
+    bezahltVon: { kind: "member", memberEmail: "jonas.koehler@example.de" },
   },
   // zweckbetrieb — Verein-paid
   {
@@ -347,7 +735,7 @@ const INCOME_FIXTURES: IncomeFixture[] = [
   // ideeller
   {
     businessId: "E-2024-901",
-    bezeichnung: "Projektzuschuss Stadt 2024",
+    bezeichnung: "Öffentlicher Zuschuss 2024",
     kategorieName: "Zuschuss (zweckgebunden)",
     betragCents: 250000n,
     gebuchtAm: T2024,
@@ -624,7 +1012,7 @@ export async function seedTransactionCorpus(db: Db): Promise<void> {
         gebuchtAm: new Date(T2024),
         zugewendetAm: "2024-05-15",
         betragCents: 10000n,
-        spenderName: "Anonyme Spenderin",
+        spenderName: "Bäckerei Maier GmbH",
         spendeKind: "geldspende",
         zweckbindungKind: "zweckfrei",
         kategorieId: kat.id,
@@ -649,7 +1037,7 @@ export async function seedTransactionCorpus(db: Db): Promise<void> {
         gebuchtAm: new Date(T2025),
         zugewendetAm: "2025-07-20",
         betragCents: 50000n,
-        spenderName: "Förderkreis e.V.",
+        spenderName: "Getränke Huber",
         spendeKind: "geldspende",
         zweckbindungKind: "zweckgebunden",
         zweckbindungText: "Zweckgebunden für die Nachwuchsförderung 2025.",
@@ -671,7 +1059,7 @@ export async function seedTransactionCorpus(db: Db): Promise<void> {
         gebuchtAm: new Date(T2025),
         zugewendetAm: "2025-09-01",
         betragCents: 80000n,
-        spenderName: "Technik Müller GmbH",
+        spenderName: "Sporthaus Vogl",
         spendeKind: "sachspende",
         zweckbindungKind: "zweckfrei",
         kategorieId: kat.id,
@@ -694,7 +1082,7 @@ export async function seedTransactionCorpus(db: Db): Promise<void> {
       .from(schema.customers)
       .where(
         and(
-          eq(schema.customers.name, "Beispiel GmbH"),
+          eq(schema.customers.name, "Cremosa GmbH"),
           eq(schema.customers.isFixture, true),
         ),
       )

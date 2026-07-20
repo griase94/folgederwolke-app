@@ -43,7 +43,15 @@ async function signIn(page: import("@playwright/test").Page): Promise<void> {
   ]);
 }
 
-/** Return the ID of the first fixture member, or null if none. */
+/**
+ * Return the ID of a fixture member who is a genuine reminder candidate:
+ * active, non-exempt, has an email, and is NOT fully paid for the current
+ * Buchungsjahr. The Aurora seed roster (P0.3) marks Anna/Lena/Felix as paid,
+ * so the naive "first fixture member" would land on a paid member and the
+ * "Erinnerung senden" assertions below (no graceful skip) would fail. Scoping
+ * to an unpaid+email member keeps those assertions meaningful under any run
+ * order — including the self-seeding matrix/bericht specs' survivors.
+ */
 async function getFixtureMemberId(): Promise<string | null> {
   if (!process.env["DATABASE_URL"]) return null;
   const { default: postgres } = await import("postgres");
@@ -51,9 +59,22 @@ async function getFixtureMemberId(): Promise<string | null> {
     prepare: false,
     max: 1,
   });
-  const rows = await client<
-    { id: string }[]
-  >`SELECT id FROM members WHERE is_fixture = true ORDER BY created_at LIMIT 1`;
+  const rows = await client<{ id: string }[]>`
+    SELECT m.id
+    FROM members m
+    WHERE m.is_fixture = true
+      AND m.email IS NOT NULL
+      AND m.beitrag_exempt = false
+      AND m.austritts_datum IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM member_beitrags b
+        WHERE b.member_id = m.id
+          AND b.year = EXTRACT(YEAR FROM now())::int
+          AND b.paid_cents >= b.betrag_cents
+          AND b.betrag_cents > 0
+      )
+    ORDER BY m.created_at
+    LIMIT 1`;
   await client.end();
   return rows[0]?.id ?? null;
 }
