@@ -10,7 +10,7 @@
 
 <main class="container mx-auto max-w-3xl px-6 py-12">
 	<article
-		class="prose prose-zinc prose-headings:text-foreground prose-a:text-primary max-w-none"
+		class="prose prose-zinc dark:prose-invert prose-headings:text-foreground prose-a:text-primary max-w-none"
 	>
 		<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 		{@html data.html}
