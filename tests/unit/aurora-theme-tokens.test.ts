@@ -59,6 +59,52 @@ const FROZEN_VALUES: Record<string, string> = {
   "--color-dataviz-paid": "#a78bcb",
 };
 
+// The F1 token reconcile re-points the app-facing `--color-*` tokens onto the
+// kit base tokens (e.g. `--color-severity-critical: var(--sev-critical)` with
+// `--sev-critical: #dc2626`). Both board reviewers proved the RESOLVED values
+// are byte-identical, so the freeze guarantee is intact — the guard just has
+// to resolve one var() level against the base tokens declared in the SAME
+// light block (exactly what the reviewer scripts do) instead of matching the
+// literal text. This keeps it watching the real colour values while tolerating
+// the alias architecture.
+
+/** Content of the LIGHT `[data-theme="aurora"] { … }` block (not `.dark`). */
+function lightBlock(css: string): string {
+  const marker = '[data-theme="aurora"] {';
+  const start = css.indexOf(marker);
+  if (start < 0) throw new Error("light [data-theme] block not found");
+  const open = css.indexOf("{", start);
+  let depth = 0;
+  let i = open;
+  for (; i < css.length; i++) {
+    if (css[i] === "{") depth++;
+    else if (css[i] === "}" && --depth === 0) break;
+  }
+  return css.slice(open + 1, i);
+}
+
+/** Map every `--token: value` declaration in a block to its raw value. */
+function declMap(block: string): Record<string, string> {
+  const map: Record<string, string> = {};
+  const re = /(--[\w-]+):\s*([^;]+);/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(block)) !== null) map[m[1]!] = m[2]!.trim();
+  return map;
+}
+
+const LIGHT_TOKENS = declMap(lightBlock(auroraCss));
+
+/**
+ * Resolve a token's value, following a single `var(--base)` alias level to the
+ * base token declared in the same light block. Composite values pass through.
+ */
+function resolveToken(name: string): string | undefined {
+  const raw = LIGHT_TOKENS[name];
+  if (raw === undefined) return undefined;
+  const alias = raw.match(/^var\((--[\w-]+)\)$/);
+  return alias ? LIGHT_TOKENS[alias[1]!] : raw;
+}
+
 // Names only (values are Aurora-chosen or composite).
 const REQUIRED_TOKENS = [
   "--background",
@@ -109,9 +155,12 @@ describe("aurora.css token contract (master §2.1 — names are law)", () => {
   });
 
   it.each(Object.entries(FROZEN_VALUES))(
-    "%s has the frozen value %s",
+    "%s resolves to the frozen value %s (following one alias level)",
     (name, value) => {
-      expect(auroraCss).toContain(`${name}: ${value};`);
+      // The token must be declared in the light block …
+      expect(LIGHT_TOKENS[name], `${name} is not declared`).toBeDefined();
+      // … and its resolved colour (after one var() alias hop) is frozen.
+      expect(resolveToken(name)).toBe(value);
     },
   );
 
