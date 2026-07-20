@@ -13,8 +13,10 @@ node_modules
 /test-results
 /coverage
 
-# QA capture harness output (qa-capture.spec.ts / qa-live-capture.spec.ts)
+# QA capture harness output (qa-capture.spec.ts / qa-live-capture.spec.ts /
+# qa-dark-sweep.spec.ts)
 .qa-shots/
+.qa-shots-dark/
 .qa-live/
 
 # OS

@@ -4,12 +4,29 @@
 	import type { Snippet } from 'svelte';
 	import type { LayoutData } from './$types.js';
 	import PwaUpdater from '$lib/components/pwa/PwaUpdater.svelte';
-	import { ModeWatcher } from 'mode-watcher';
+	import { ModeWatcher, setMode } from 'mode-watcher';
 	import { injectSpeedInsights } from '@vercel/speed-insights/sveltekit';
 	import { page } from '$app/state';
 	import { onNavigate } from '$app/navigation';
 
 	let { children, data }: { children: Snippet; data: LayoutData } = $props();
+
+	// Make the fdw_mode cookie authoritative on the client. Two reasons:
+	//  (1) mode-watcher's `defaultMode` is not enough — its userPrefersMode
+	//      PersistedState writes its own 'system' default into localStorage at
+	//      import, so ModeWatcher.onMount sees a non-empty key and ignores
+	//      defaultMode → a cookie-dark visitor with no prior localStorage gets
+	//      stripped back to 'system' (.dark removed, switcher shows System).
+	//  (2) We read the COOKIE client-side, not data.mode: on the prerendered
+	//      legal pages data.mode is baked 'system' at build time (no request
+	//      cookie), so it would clobber a dark user's real choice there.
+	// Only override when the cookie is actually present (the toggle sets it +
+	// localStorage together), so we never fight mode-watcher's system default.
+	// Runs after ModeWatcher's (child) onMount; a no-op when they already agree.
+	onMount(() => {
+		const m = document.cookie.match(/(?:^|;\s*)fdw_mode=(light|dark|system)\b/);
+		if (m) setMode(m[1] as 'light' | 'dark' | 'system');
+	});
 	// Favicon links live in src/app.html: the marble set
 	// (favicon.ico + favicon-16/32/96.png + apple-touch-icon.png). We
 	// deliberately do NOT import a logo asset here — the previous code
@@ -115,7 +132,7 @@
 <ModeWatcher
 	disableHeadScriptInjection
 	defaultMode={data.mode}
-	defaultTheme={data.theme}
+	defaultTheme={data.theme ?? 'aurora'}
 />
 
 {@render children()}

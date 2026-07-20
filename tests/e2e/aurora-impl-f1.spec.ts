@@ -87,4 +87,30 @@ test.describe("@aurora-impl-f1 F1 foundation", () => {
       expect(bgImage).toContain("gradient");
     });
   }
+
+  // AL-1 addendum: a first-time visitor with fdw_mode=dark but NO localStorage
+  // must still get dark. mode-watcher's PersistedState pre-writes 'system' into
+  // localStorage at import, defeating defaultMode; we read the cookie client-side
+  // and setMode from it. Assert both .dark AND data-theme survive, and the
+  // switcher reflects Dunkel.
+  test("cookie=dark with empty localStorage keeps .dark + data-theme + switcher", async ({
+    page,
+    context,
+  }) => {
+    await context.addCookies([
+      { name: "fdw_mode", value: "dark", url: "http://127.0.0.1:4173" },
+    ]);
+    await loginAs(page, "admin");
+    await page.goto("/app/einstellungen");
+    await page.waitForTimeout(400);
+
+    const html = page.locator("html");
+    await expect(html).toHaveClass(/\bdark\b/);
+    await expect(html).toHaveAttribute("data-theme", "aurora");
+    // switcher reflects the resolved choice (Dunkel), not the System fallback.
+    const dunkel = page
+      .getByTestId("mode-segmented")
+      .locator('[data-value="dark"]');
+    await expect(dunkel).toHaveAttribute("aria-checked", "true");
+  });
 });
