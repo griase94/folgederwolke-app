@@ -6,8 +6,8 @@
  * Scenarios:
  *   1. ausgaben/neu — submit blocked if neither Beleg arm is satisfied (server
  *      returns 422 and the form stays visible with an error).
- *   2. ausgaben/neu — Belegverzicht arm: ticking "Kein Beleg vorhanden" +
- *      filling Begründung (≥5 chars) lets the form submit successfully.
+ *   2. ausgaben/neu — Belegverzicht arm: picking the "Verzicht begründen"
+ *      segment + filling Begründung (≥5 chars) lets the form submit successfully.
  *   3. manuell-hinzufügen — the Beleg section is present and submit is blocked
  *      (server 422) when neither arm is satisfied.
  *   4. Mobile: the EntryFormShell dialog covers the Topbar and MobileTabBar
@@ -50,54 +50,104 @@ test.beforeEach(async () => {
 // ── Suite ────────────────────────────────────────────────────────────────────
 
 test.describe("@phase-entry-modals Beleg enforcement + modal isolation", () => {
-  // ── 1. ausgaben/neu blocks submit without a Beleg arm ─────────────────────
-  test("ausgaben/neu — submit without Beleg arm returns 422 and shows error", async ({
+  // ── 1. State-matrix CTA gate + a server-only rule roundtrips a German 422 ───
+  test("ausgaben/neu — empty/0,00 disables the CTA (amber gate); a server-only rule (extern IBAN) roundtrips a German 422", async ({
     page,
   }) => {
     await loginAs(page, "admin");
     await page.goto("/app/ausgaben/neu");
 
-    // Dirty the form to enable the Speichern button
-    await fillBaseAusgabeFields(page, {
-      bezeichnung: "E2E-Beleg-block",
-      betrag: "12,50",
-    });
+    const submitBtn = page.locator(
+      '[data-slot="entry-footer"] button[type="submit"]',
+    );
+    const gate = page.locator('[data-slot="entry-gate-line"]');
 
-    // Make the form "dirty" enough for the submit button to enable — the shell
-    // enables Speichern as soon as `dirty` is true (set on first input).
+    // (a) Fresh form: required fields missing → CTA disabled, gate amber (M4).
+    await expect(gate).toHaveAttribute("data-ok", "false");
+    await expect(gate).toContainText(/Fehlt noch/i);
+    await expect(submitBtn).toBeDisabled();
+
+    // (a2) A 0,00 Betrag is NOT submittable — it still counts as missing so the
+    // gate never reads „Alles da." next to a red 0,00 field (Wrinkle a).
+    await page.locator("#betrag-display").fill("0,00");
+    await expect(gate).toHaveAttribute("data-ok", "false");
+    await expect(gate).toContainText(/Betrag/);
+    await expect(submitBtn).toBeDisabled();
+
+    // (b) Everything client-valid, but a malformed Extern-IBAN — a SERVER-only rule
+    // the client never pre-checks — proves the 422 UI echo (German + de-DE Betrag).
+    await fillBaseAusgabeFields(page, {
+      bezeichnung: "E2E-IBAN-422",
+      betrag: "12,00",
+    });
+    await page.getByRole("radio", { name: /Verzicht begründen/i }).click();
+    await page
+      .locator("#beleg-begruendung")
+      .fill("E2E: kein Beleg, IBAN-Test.");
+    await page.getByTestId("bezahlt-von-extern").click();
+    await page.getByTestId("extern-name-input").fill("Erika Extern");
+    await page.locator('input[name="externIban"]').fill("DE00 QUATSCH");
+
+    await expect(submitBtn).toBeEnabled({ timeout: 5_000 });
+    await submitBtn.click();
+
+    // Server returns a GERMAN 422; the form stays (no redirect) and echoes de-DE.
+    await expect(page.locator('[data-slot="entry-form-shell"]')).toBeVisible({
+      timeout: 8_000,
+    });
+    await expect(page).toHaveURL(/\/app\/ausgaben\/neu/);
+    // The banner must carry the SPECIFIC IBAN message — proving the extern guard
+    // actually ran. A loose /ungültig/ match would false-pass on the generic
+    // „Ungültige Eingabe" Zod wall (which is what appeared when the extern hidden
+    // posted "" → null → parse died before the IBAN check ever ran). So we assert
+    // the exact string AND that the generic wall is absent.
+    await expect(page.getByRole("alert")).toContainText("IBAN ist ungültig.");
+    await expect(page.getByText("Ungültige Eingabe")).toHaveCount(0);
+    await expect(page.getByText(/Too small|Invalid input/i)).toHaveCount(0);
+    // Field echo: de-DE Betrag AND the typed IBAN both survive the roundtrip.
+    await expect(page.locator("#betrag-display")).toHaveValue("12,00");
+    await expect(page.locator('input[name="externIban"]')).toHaveValue(
+      "DE00 QUATSCH",
+    );
+  });
+
+  // ── 1b. Happy path: a valid Extern-paid Ausgabe actually creates ──────────
+  // Regression guard for the „unsichtbare Wand": the extern hidden used to post
+  // "" so the parse died and NO extern-paid Ausgabe could ever be created. This
+  // drives the full valid extern path (name + a real German IBAN) to a redirect.
+  test("ausgaben/neu — a valid Extern-paid Ausgabe (name + valid IBAN) creates and redirects", async ({
+    page,
+  }) => {
+    await loginAs(page, "admin");
+    await page.goto("/app/ausgaben/neu");
+
+    await fillBaseAusgabeFields(page, {
+      bezeichnung: "E2E-Extern-Happy",
+      betrag: "12,00",
+    });
+    // Belegverzicht arm satisfies the §4.1 Beleg gate without a file.
+    await page.getByRole("radio", { name: /Verzicht begründen/i }).click();
+    await page
+      .locator("#beleg-begruendung")
+      .fill("E2E: Extern-Erstattung, kein Beleg.");
+    // Extern payer with a VALID German IBAN (canonical MOD-97 test IBAN).
+    await page.getByTestId("bezahlt-von-extern").click();
+    await page.getByTestId("extern-name-input").fill("Erika Extern");
+    await page
+      .locator('input[name="externIban"]')
+      .fill("DE89 3704 0044 0532 0130 00");
+
     const submitBtn = page.locator(
       '[data-slot="entry-footer"] button[type="submit"]',
     );
     await expect(submitBtn).toBeEnabled({ timeout: 5_000 });
-
-    // Submit without selecting either Beleg arm — no file, keinBeleg unchecked.
     await submitBtn.click();
 
-    // The server returns 422; the form stays on the same page (no redirect).
-    // The EntryFormShell (dialog) must still be visible.
-    await expect(page.locator('[data-slot="entry-form-shell"]')).toBeVisible({
-      timeout: 8_000,
+    // Success → leaves /neu and lands on the freshly-created Ausgabe detail.
+    await expect(page).not.toHaveURL(/\/app\/ausgaben\/neu/, {
+      timeout: 15_000,
     });
-
-    // A beleg-related error is surfaced — check for the error text or aria-invalid.
-    // The server echoes errors.beleg (BelegUpload field error) AND a top-level
-    // form.error banner; either mentioning Beleg + erforderlich/hochladen counts.
-    const hasErrorText = await page
-      .getByText(
-        /Beleg.*(erforderlich|hochladen)|Begründung.*(erforderlich|wählen)/i,
-      )
-      .first()
-      .isVisible()
-      .catch(() => false);
-    const hasAriaInvalid = await page
-      .locator('[aria-invalid="true"]')
-      .first()
-      .isVisible()
-      .catch(() => false);
-    expect(
-      hasErrorText || hasAriaInvalid,
-      "Expected a beleg error message or aria-invalid field after 422",
-    ).toBe(true);
+    await expect(page).toHaveURL(/\/app\/ausgaben\//, { timeout: 15_000 });
   });
 
   // ── 2. ausgaben/neu — Belegverzicht arm submits OK ────────────────────────
@@ -112,12 +162,13 @@ test.describe("@phase-entry-modals Beleg enforcement + modal isolation", () => {
       betrag: "5,00",
     });
 
-    // Trigger the Belegverzicht arm
-    const keinBelegCheckbox = page.getByRole("checkbox", {
-      name: /Kein Beleg vorhanden/i,
+    // Trigger the Belegverzicht arm — entry-modal-v4 renders the Beleg gate as a
+    // segment ("Beleg hochladen" | "Verzicht begründen"), not a checkbox.
+    const verzichtSeg = page.getByRole("radio", {
+      name: /Verzicht begründen/i,
     });
-    await expect(keinBelegCheckbox).toBeVisible({ timeout: 3_000 });
-    await keinBelegCheckbox.check();
+    await expect(verzichtSeg).toBeVisible({ timeout: 3_000 });
+    await verzichtSeg.click();
 
     // Fill mandatory Begründung (≥5 trimmed chars)
     await page

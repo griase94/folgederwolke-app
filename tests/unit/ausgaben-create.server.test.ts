@@ -466,6 +466,74 @@ describe("ausgaben/neu ?/create — beleg-or-Begründung", () => {
 });
 
 // ---------------------------------------------------------------------------
+// (e) Extern payer — the „unsichtbare Wand" regression guard.
+//
+// The client derives a hidden `bezahltVonDisplay` and for an extern payer used
+// to leave it "" → the action maps ""→null → the schema `.default("(unbekannt)")`
+// (which fires ONLY on `undefined`) rejected the null with a generic
+// invalid_type wall, so createExpense NEVER ran and the German IBAN check was
+// unreachable. These pin: (1) an empty display no longer wedges the parse, and
+// (2) the specific "IBAN ist ungültig." now actually surfaces.
+// ---------------------------------------------------------------------------
+
+const VALID_DE_IBAN = "DE89370400440532013000";
+
+describe("ausgaben/neu ?/create — Extern payer (empty-display regression)", () => {
+  it("extern + valid name + valid IBAN + EMPTY bezahltVonDisplay → creates (no invisible wall)", async () => {
+    const event = makeEvent({
+      ...VEREIN_BASE,
+      bezahltVonKind: "extern",
+      // Exactly what the buggy client posted for an extern payer: an empty
+      // hidden. Must NOT kill the parse — the backstop coerces it.
+      bezahltVonDisplay: "",
+      externName: "Erika Extern",
+      externIban: VALID_DE_IBAN,
+      keinBeleg: "true",
+      begruendung: "Extern-Erstattung, kein Beleg vorhanden.",
+    });
+
+    const result = await runCreate(event);
+
+    expect(result.fail).toBeUndefined();
+    expect(result.redirect?.status).toBe(303);
+    expect(createExpenseMock).toHaveBeenCalledTimes(1);
+    const createArg = createExpenseMock.mock.calls[0]![0] as {
+      bezahltVonKind?: string;
+      externName?: string | null;
+      externIban?: string | null;
+    };
+    expect(createArg.bezahltVonKind).toBe("extern");
+    expect(createArg.externName).toBe("Erika Extern");
+    expect(createArg.externIban).toBe(VALID_DE_IBAN);
+  });
+
+  it('extern + malformed IBAN + EMPTY bezahltVonDisplay → the SPECIFIC „IBAN ist ungültig." (not the generic wall)', async () => {
+    const event = makeEvent({
+      ...VEREIN_BASE,
+      bezahltVonKind: "extern",
+      bezahltVonDisplay: "",
+      externName: "Erika Extern",
+      externIban: "DE00 QUATSCH",
+      keinBeleg: "true",
+      begruendung: "Extern-Erstattung, kein Beleg vorhanden.",
+    });
+
+    const result = (await runCreate(event)) as {
+      fail?: {
+        status?: number;
+        data?: { error?: string; errors?: Record<string, string[]> };
+      };
+    };
+    expect(result.fail?.status).toBe(422);
+    // The extern guard ran and returned its specific message — NOT the generic
+    // „Ungültige Eingabe" Zod wall that a dead parse would have produced.
+    expect(result.fail?.data?.error).toBe("IBAN ist ungültig.");
+    expect(result.fail?.data?.errors?.extern_iban).toBeTruthy();
+    expect(createExpenseMock).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // load — duplicate-as-template prefill (Fix 1)
 // ---------------------------------------------------------------------------
 
@@ -497,8 +565,8 @@ describe("ausgaben/neu load — duplicate prefill", () => {
     const values = data.values as Record<string, unknown>;
     expect(values).toBeTruthy();
     expect(values.bezeichnung).toBe("Raummiete März");
-    // betragCents is surfaced as a euros string for the display input.
-    expect(values.betrag).toBe("450.00");
+    // betragCents is surfaced as a de-DE euros string for the hero display input.
+    expect(values.betrag).toBe("450,00");
     expect(values.kategorieNameSnapshot).toBe("Miete");
     expect(values.kommentar).toBe("monatlich");
     expect(values.bezahltVonKind).toBe("member");

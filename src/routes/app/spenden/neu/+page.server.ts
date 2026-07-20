@@ -82,6 +82,13 @@ export const load: PageServerLoad = async () => {
     })),
     projects: projectRows.map((p) => ({ id: p.id, name: p.name })),
     anlageGemZeilen,
+    year: parseInt(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: "Europe/Berlin",
+        year: "numeric",
+      }).format(new Date()),
+      10,
+    ),
   };
 };
 

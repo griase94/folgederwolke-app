@@ -3,8 +3,12 @@
  *
  * Verifies that the tax-correctness gates fire in the rendered UI:
  *   - AuslagenForm: submit disabled until Beleg + Rechnungsdatum filled
- *   - /app/ausgaben/neu: Beleg, Rechnungsdatum, Abfluss-Datum
- *     are required at the HTML level (the `required` attribute blocks submit)
+ *   - /app/ausgaben/neu: Beleg is enforced by the M4 client+server gate — with
+ *     every OTHER required field filled the CTA stays disabled and the footer
+ *     gate-line names „Beleg" (the server 422 for a bypassed submit is proven by
+ *     the route-level unit tests in ausgaben-create.server.test.ts)
+ *   - /app/ausgaben/neu: Rechnungsdatum + Abfluss-Datum are required at the HTML
+ *     level (the `required` attribute blocks submit)
  *   - /app/ausgaben/neu: bezahlt_von defaults to 'verein'
  *
  * The Spende kategorieNameSnapshot derivation is verified by a unit test
@@ -70,7 +74,7 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     await expect(submit).toBeDisabled();
   });
 
-  test("ausgaben/neu submit blocked without Beleg (client+server gate, not native required)", async ({
+  test("ausgaben/neu submit blocked without Beleg (M4 gate: CTA disabled + gate-line names Beleg)", async ({
     page,
   }) => {
     await signIn(page);
@@ -82,7 +86,7 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     // Betrag is a type=text inputmode=decimal field (mobile keyboard fix) —
     // locate by its label, not the old input[type=number] selector.
     await page.getByLabel(/betrag/i).fill("10");
-    // Fill the date fields so only Beleg is missing.
+    // Fill the date fields so they aren't the missing gate.
     // C6-FORM (Night-2 E4): the date inputs are now DateField primitives — they
     // accept TT.MM.JJJJ display text and commit ISO to the hidden mirror onBlur.
     const rechnungs = page.getByLabel(/rechnungsdatum/i);
@@ -91,22 +95,34 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     const abfluss = page.getByLabel(/abfluss-datum/i);
     await abfluss.fill("02.05.2026");
     await abfluss.blur();
-    // Beleg deliberately left empty.
+    // Pick a Kategorie — since M2 there is NO preselect, so without this the CTA
+    // would be disabled for BOTH Kategorie AND Beleg and the assertion would
+    // prove nothing specifically about Beleg.
+    const kategorie = page.locator('select[name="kategorieNameSnapshot"]');
+    const optionCount = await kategorie.locator("option").count();
+    if (optionCount > 1) {
+      const val = await kategorie
+        .locator("option")
+        .nth(1)
+        .getAttribute("value");
+      if (val) await kategorie.selectOption(val);
+    }
+    // Beleg deliberately left empty → now the ONLY missing gate.
 
-    // The Beleg redesign replaced the native `required` (a hidden custom-dropzone
-    // file input can't surface a focusable validation bubble — it would silently
-    // block submit with no message) with a client+server gate: submitting without
-    // a Beleg arm keeps the form on the same page and shows a Beleg-required
-    // error (server 422 → BelegUpload field error + form.error banner).
-    await page.getByRole("button", { name: /Ausgabe anlegen/i }).click();
-    await expect(page).toHaveURL(/\/app\/ausgaben\/neu/);
-    await expect(
-      page
-        .getByText(
-          /Beleg.*(erforderlich|hochladen)|Begründung.*(erforderlich|wählen)/i,
-        )
-        .first(),
-    ).toBeVisible({ timeout: 8_000 });
+    // M4 state-matrix contract (mirrors the AuslagenForm toBeDisabled assertion
+    // above): the Beleg redesign replaced the native `required` (a hidden
+    // custom-dropzone file input can't surface a focusable validation bubble)
+    // with a client+server gate. With every OTHER required field filled, the CTA
+    // stays disabled purely because Beleg is missing, and the footer gate-line
+    // names it. The server 422 for a bypassed submit is proven by the
+    // route-level unit tests in ausgaben-create.server.test.ts.
+    const submit = page.locator(
+      '[data-slot="entry-footer"] button[type="submit"]',
+    );
+    await expect(submit).toBeDisabled();
+    await expect(page.locator('[data-slot="entry-gate-line"]')).toContainText(
+      /Beleg/,
+    );
   });
 
   test("/transactions/neu kind=ausgabe Abfluss-Datum is required", async ({
