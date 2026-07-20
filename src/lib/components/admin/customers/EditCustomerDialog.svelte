@@ -42,8 +42,11 @@
 
 	$effect(() => {
 		if (open) {
-			// Opening: honour the requested initial surface (list "Archivieren"
-			// jumps straight to the confirm; "Bearbeiten" starts on the form).
+			// Opening: seed the bound Name from the customer (the other fields
+			// prefill via `values`, but Name is bound to gate the CTA — without
+			// this it opens empty + Speichern disabled), and honour the requested
+			// initial surface (list "Archivieren" jumps straight to the confirm).
+			name = customer?.name ?? '';
 			archiveMode = startInArchiveMode;
 			archiveConfirmed = false;
 		} else {
@@ -200,23 +203,10 @@
 						{/if}
 					</div>
 
+					<!-- Mobile: primary group on top, Archivieren at the bottom behind a
+						 hairline (brief §2/§3). Desktop: archive hard-left, group right. -->
 					<div class="flex flex-col gap-3 border-t border-hairline px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-						<!-- archive zone (hard-left) — only for non-fixture customers -->
-						<div>
-							{#if !customer.isFixture}
-								<Button
-									type="button"
-									variant="ghost"
-									class="text-severity-critical-text hover:bg-severity-critical/10 hover:text-severity-critical-text max-sm:w-full"
-									onclick={() => (archiveMode = true)}
-									disabled={loading}
-								>
-									<svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect width="20" height="5" x="2" y="3" rx="1" /><path stroke-linecap="round" stroke-linejoin="round" d="M4 8v11a2 2 0 002 2h12a2 2 0 002-2V8M10 12h4" /></svg>
-									Kunde archivieren…
-								</Button>
-							{/if}
-						</div>
-						<div class="flex flex-col-reverse gap-2 sm:flex-row">
+						<div class="flex flex-col-reverse gap-2 order-1 sm:order-2 sm:flex-row">
 							<Dialog.Close>
 								{#snippet child({ props })}
 									<Button variant="outline" type="button" {...props} disabled={loading} class="sm:w-auto">Abbrechen</Button>
@@ -231,6 +221,21 @@
 								{/if}
 							</Button>
 						</div>
+						<!-- archive zone — only for non-fixture customers -->
+						{#if !customer.isFixture}
+							<div class="order-2 border-t border-hairline pt-3 sm:order-1 sm:border-0 sm:pt-0">
+								<Button
+									type="button"
+									variant="ghost"
+									class="text-severity-critical-text hover:bg-severity-critical/10 hover:text-severity-critical-text max-sm:w-full"
+									onclick={() => (archiveMode = true)}
+									disabled={loading}
+								>
+									<svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><rect width="20" height="5" x="2" y="3" rx="1" /><path stroke-linecap="round" stroke-linejoin="round" d="M4 8v11a2 2 0 002 2h12a2 2 0 002-2V8M10 12h4" /></svg>
+									Kunde archivieren…
+								</Button>
+							</div>
+						{/if}
 					</div>
 				</form>
 			{/if}

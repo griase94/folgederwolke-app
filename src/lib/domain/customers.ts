@@ -25,10 +25,11 @@ export function countryLabel(code: string): string {
 }
 
 /**
- * Best-effort "PLZ Ort" for the list subline: the last non-empty line of the
- * address block. A bare country line ("Deutschland") isn't an Ort — prefer the
- * line above it when the last line is a single word without a postal code.
- * Returns null when nothing usable is present.
+ * Best-effort Ort for the list subline: the city of the last non-empty
+ * address line, with the leading postal code dropped (kunden-v5 shows just
+ * "München"/"Berlin" — the PLZ made the line truncate on mobile, M2a). A bare
+ * country line ("Deutschland") isn't an Ort — step up one. Null when nothing
+ * usable is present.
  */
 export function deriveOrt(addressBlock: string | null): string | null {
   if (!addressBlock) return null;
@@ -37,10 +38,11 @@ export function deriveOrt(addressBlock: string | null): string | null {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
   if (lines.length === 0) return null;
-  const last = lines[lines.length - 1]!;
-  const hasPlz = /\d{4,5}/.test(last);
-  if (!hasPlz && lines.length >= 2 && /^\p{L}+$/u.test(last)) {
-    return lines[lines.length - 2]!;
+  let ort = lines[lines.length - 1]!;
+  const hasPlz = /\d{4,5}/.test(ort);
+  if (!hasPlz && lines.length >= 2 && /^\p{L}+$/u.test(ort)) {
+    ort = lines[lines.length - 2]!;
   }
-  return last;
+  // "80539 München" → "München"; a line without a leading PLZ stays intact.
+  return ort.replace(/^\d{4,5}\s+/, "").trim() || ort;
 }

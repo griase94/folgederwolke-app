@@ -94,7 +94,7 @@
 			/>
 		</div>
 		<p class="text-xs text-ink-500 sm:ml-auto">
-			<b class="font-bold text-ink-700">{activeCount}</b> Kund:innen{#if archivedCount > 0} · <b class="font-bold text-ink-700">{archivedCount}</b> archiviert{/if}{#if offenTotal > 0} · <b class="font-bold text-ink-700 tabular-nums">{formatMoney(offenTotal)}</b> offen an uns{/if}
+			<b class="font-bold text-ink-700">{activeCount}</b> Kund:innen{#if archivedCount > 0}<span class="mx-1.5 text-ink-300">·</span><b class="font-bold text-ink-700">{archivedCount}</b> archiviert{/if}{#if offenTotal > 0}<span class="mx-1.5 text-ink-300">·</span><b class="font-bold text-ink-700 tabular-nums">{formatMoney(offenTotal)}</b> offen an uns{/if}
 		</p>
 	</div>
 

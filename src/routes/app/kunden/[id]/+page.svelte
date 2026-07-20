@@ -144,7 +144,7 @@
 				<div class="text-[11px] font-semibold uppercase tracking-wider text-ink-500">Gesamt fakturiert</div>
 				<div class="mt-1.5 text-2xl font-bold tracking-[-0.02em] text-ink-900 tabular-nums" data-testid="kpi-gesamt">{formatMoney(data.kpi.gesamtCents)}</div>
 				<div class="mt-1 text-[11.5px] text-ink-500">
-					{data.rechnungen.length} {data.rechnungen.length === 1 ? 'Rechnung' : 'Rechnungen'}{#if since} · seit {since}{/if}
+					{data.rechnungen.length} {data.rechnungen.length === 1 ? 'Rechnung' : 'Rechnungen'}{#if since}<span class="mx-1 text-ink-300">·</span>seit {since}{/if}
 				</div>
 			</div>
 		</div>
@@ -170,7 +170,7 @@
 		<div class="p-5 sm:p-6">
 			{#if activeTab === 'uebersicht'}
 				<h2 class="mb-2 text-[11px] font-bold uppercase tracking-wider text-ink-500">Stammdaten</h2>
-				<CustomerInfoCard customer={data.customer} onEditEmail={() => (editOpen = true)} />
+				<CustomerInfoCard customer={data.customer} onEditEmail={() => (editOpen = true)} canEdit={!isArchived} />
 
 				<div class="mb-2 mt-6 flex items-center justify-between">
 					<h2 class="text-[11px] font-bold uppercase tracking-wider text-ink-500">Letzte Rechnungen</h2>

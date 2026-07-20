@@ -12,12 +12,18 @@
 
 	let {
 		customer,
-		onEditEmail
+		onEditEmail,
+		canEdit = true
 	}: {
 		customer: CustomerView;
 		/** Opens the edit dialog from the "Keine E-Mail — ergänzen" flag. */
 		onEditEmail: () => void;
+		/** false (archived) → the flag is a static amber tag, not a trigger. */
+		canEdit?: boolean;
 	} = $props();
+
+	const flagClass =
+		'inline-flex items-center gap-1.5 rounded-full bg-severity-warn-tint px-2.5 py-0.5 text-[11px] font-semibold text-severity-warn-text ring-1 ring-inset ring-severity-warn/25';
 
 	const rows = $derived.by(() => {
 		const r: FactRow[] = [];
@@ -42,16 +48,17 @@
 		<dd class="flex min-w-0 justify-end text-right text-[13px] font-semibold text-ink-900">
 			{#if customer.email}
 				<a href="mailto:{customer.email}" class="truncate hover:text-primary-text hover:underline">{customer.email}</a>
-			{:else}
-				<button
-					type="button"
-					onclick={onEditEmail}
-					data-testid="customer-email-missing"
-					class="inline-flex items-center gap-1.5 rounded-full bg-severity-warn-tint px-2.5 py-0.5 text-[11px] font-semibold text-severity-warn-text ring-1 ring-inset ring-severity-warn/25 hover:brightness-95"
-				>
+			{:else if canEdit}
+				<button type="button" onclick={onEditEmail} data-testid="customer-email-missing" class="{flagClass} hover:brightness-95">
 					<svg class="h-3.5 w-3.5 text-severity-warn" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
 					Keine E-Mail — ergänzen
 				</button>
+			{:else}
+				<!-- archived: flag stays visible but is not a trigger (M5) -->
+				<span data-testid="customer-email-missing" class={flagClass}>
+					<svg class="h-3.5 w-3.5 text-severity-warn" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+					Keine E-Mail hinterlegt
+				</span>
 			{/if}
 		</dd>
 	</div>
