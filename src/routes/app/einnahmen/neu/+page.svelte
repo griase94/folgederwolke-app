@@ -65,8 +65,9 @@
 
 <EntryFormShell
 	title="Neue Einnahme"
+	statusHint="Geld, das der Verein eingenommen hat · Jahr {data.year}"
 	action="?/create"
-	submitLabel="Speichern"
+	submitLabel="Einnahme anlegen"
 	accent="einnahme"
 	bind:submitting
 	{dirty}

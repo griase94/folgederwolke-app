@@ -47,6 +47,8 @@ describe("GateLine", () => {
     });
     const readout = screen.getByRole("status");
     expect(readout.getAttribute("data-ok")).toBe("true");
-    expect(readout.className).toContain("text-type-einnahme");
+    // Ink is the AA-safe darker green (M7 --einnahme-ink-aa), not the vibrant
+    // --type-einnahme which fails WCAG AA on the tint.
+    expect(readout.className).toContain("var(--einnahme-ink-aa)");
   });
 });

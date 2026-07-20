@@ -48,8 +48,9 @@
 
 <EntryFormShell
 	title="Neue Spende"
+	statusHint="Zuwendung an den Verein · Jahr {data.year}"
 	action="?/create"
-	submitLabel="Speichern"
+	submitLabel="Spende anlegen"
 	accent="spende"
 	bind:submitting
 	{dirty}

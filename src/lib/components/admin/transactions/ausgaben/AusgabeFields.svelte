@@ -188,11 +188,21 @@
 		onDirty?.();
 	}
 
-	// ── Gate readout (advisory only — server enforces; CTA gates on `dirty`) ───
+	// Betrag error (m7): a client value of 0,00 (or ≤0) is client-VALID enough to
+	// submit (the gate treats it as present) but flagged with a red frame + hint;
+	// the server returns the authoritative de-DE 422. A server echo wins.
+	const betragError = $derived(
+		err('betragCents') ??
+			(betragCents !== null && betragCents <= 0 ? 'Betrag muss größer als 0 sein.' : null),
+	);
+
+	// ── Gate readout: PRESENCE of the required fields (M4). A present-but-invalid
+	// value (Betrag 0,00) still passes the gate so the CTA enables and the server
+	// gets to return its 422 — the client never blocks that roundtrip. ───────────
 	const belegOk = $derived(hasBelegFile || (keinBeleg && begruendung.trim().length >= 5));
 	const missing = $derived.by(() => {
 		const m: string[] = [];
-		if (!betragCents || betragCents <= 0) m.push('Betrag');
+		if (betragCents === null) m.push('Betrag');
 		if (!rechnungsdatum) m.push('Datum');
 		if (!bezeichnung.trim()) m.push('Bezeichnung');
 		if (!kategorieName) m.push('Kategorie');
@@ -213,9 +223,10 @@
 	<section class="rounded-xl border border-hairline bg-card/60 p-4" data-slot="ausgabe-section">
 		<h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-500">Buchung</h3>
 		<div class="flex flex-col gap-3">
-			<!-- Betrag-Hero + Rechnungsdatum-Hero (identical anatomy) -->
+			<!-- Betrag-Hero + Rechnungsdatum-Hero (identical anatomy; side-by-side even
+			     on mobile per the plate — ANDY-LENS §2). -->
 			<div>
-				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+				<div class="grid grid-cols-2 gap-2 sm:gap-3">
 					<div class="flex flex-col gap-1.5">
 						<label for="betrag-display" class="text-sm font-medium text-ink-900">
 							Betrag <span class="text-severity-critical" aria-hidden="true">*</span>
@@ -226,14 +237,14 @@
 							value={values.betrag}
 							type="ausgabe"
 							sign="minus"
-							aria-invalid={err('betragCents') ? true : undefined}
+							aria-invalid={betragError ? true : undefined}
 							onchange={(c) => {
 								betragCents = c;
 								markDirty();
 							}}
 						/>
-						{#if err('betragCents')}
-							<p class="text-xs text-severity-critical">{err('betragCents')}</p>
+						{#if betragError}
+							<p class="text-xs text-severity-critical">{betragError}</p>
 						{/if}
 					</div>
 					<div class="flex flex-col gap-1.5">
@@ -277,6 +288,9 @@
 						markDirty();
 					}}
 				/>
+				<span class="text-xs text-ink-500">
+					Wann das Geld abgeflossen ist — bestimmt das Buchungsjahr (oft = Rechnungsdatum).
+				</span>
 				{#if err('abfluss_datum')}
 					<p class="text-xs text-severity-critical">{err('abfluss_datum')}</p>
 				{/if}
@@ -325,8 +339,11 @@
 				{/if}
 			</div>
 
-			<!-- Sphäre — read-only, derived from the Kategorie (ADR-0002) -->
-			<LockedSphereField sphere={kategorieSphere} />
+			<!-- Sphäre — read-only, derived from the Kategorie (ADR-0002); appears
+			     once a Kategorie is chosen (no misleading default before then). -->
+			{#if kategorieName}
+				<LockedSphereField sphere={kategorieSphere} />
+			{/if}
 
 			<!-- Beleg-oder-Verzicht gate (Pflicht) -->
 			<BelegUpload
@@ -346,7 +363,7 @@
 			<!-- Projekt (optional) -->
 			{#if projects.length > 0}
 				<div class="flex flex-col gap-1.5">
-					<label for="projectId" class="text-sm font-medium text-ink-900">Projekt</label>
+					<label for="projectId" class="text-sm font-medium text-ink-900">Projekt (optional)</label>
 					<select id="projectId" name="projectId" bind:value={projectId} class={FIELD_CLASS}>
 						<option value="">— Kein Projekt —</option>
 						{#each projects as p (p.id)}
@@ -410,29 +427,48 @@
 						{/each}
 					</select>
 				{:else}
-					<div class="flex flex-col gap-2">
-						<input
-							name="externName"
-							type="text"
-							placeholder="Name"
-							bind:value={externName}
-							data-testid="extern-name-input"
-							class={FIELD_CLASS}
-						/>
-						<input
-							name="externIban"
-							type="text"
-							placeholder="IBAN"
-							bind:value={externIban}
-							class="{FIELD_CLASS} font-mono"
-						/>
-						<input
-							name="externEmail"
-							type="email"
-							placeholder="E-Mail (optional)"
-							bind:value={externEmail}
-							class={FIELD_CLASS}
-						/>
+					<!-- M8: real labels (the * lives on the label, never in the placeholder). -->
+					<div class="flex flex-col gap-3">
+						<div class="flex flex-col gap-1.5">
+							<label for="externName" class="text-sm font-medium text-ink-900">
+								Name <span class="text-severity-critical" aria-hidden="true">*</span>
+							</label>
+							<input
+								id="externName"
+								name="externName"
+								type="text"
+								placeholder="Name der externen Person"
+								bind:value={externName}
+								data-testid="extern-name-input"
+								class={FIELD_CLASS}
+							/>
+						</div>
+						<div class="flex flex-col gap-1.5">
+							<label for="externIban" class="text-sm font-medium text-ink-900">
+								IBAN <span class="text-severity-critical" aria-hidden="true">*</span>
+							</label>
+							<input
+								id="externIban"
+								name="externIban"
+								type="text"
+								placeholder="DE00 0000 0000 0000 0000 00"
+								bind:value={externIban}
+								class="{FIELD_CLASS} font-mono"
+							/>
+						</div>
+						<div class="flex flex-col gap-1.5">
+							<label for="externEmail" class="text-sm font-medium text-ink-900">
+								E-Mail <span class="text-xs font-normal text-muted-foreground">(optional)</span>
+							</label>
+							<input
+								id="externEmail"
+								name="externEmail"
+								type="email"
+								placeholder="name@example.org"
+								bind:value={externEmail}
+								class={FIELD_CLASS}
+							/>
+						</div>
 					</div>
 				{/if}
 			</div>
@@ -504,7 +540,7 @@
 					rows={2}
 					maxlength={2000}
 					bind:value={kommentar}
-					class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+					class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 sm:text-sm"
 				></textarea>
 			</div>
 		</div>

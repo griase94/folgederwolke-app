@@ -77,11 +77,12 @@
 	 * and intercepts any navigation away while `dirty`.
 	 */
 	import { beforeNavigate } from '$app/navigation';
+	import { onMount } from 'svelte';
 	import { focusTrap } from '$lib/actions/focus-trap.js';
 	import { Portal } from 'bits-ui';
-	import MinusIcon from '@lucide/svelte/icons/minus';
-	import PlusIcon from '@lucide/svelte/icons/plus';
-	import HeartIcon from '@lucide/svelte/icons/heart';
+	import ArrowDownRightIcon from '@lucide/svelte/icons/arrow-down-right';
+	import ArrowUpRightIcon from '@lucide/svelte/icons/arrow-up-right';
+	import HandCoinsIcon from '@lucide/svelte/icons/hand-coins';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import XIcon from '@lucide/svelte/icons/x';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
@@ -101,19 +102,16 @@
 		gateStatus,
 	}: EntryFormShellProps = $props();
 
-	// Accent strip CSS class derived from prop (no hardcoded hex — Aurora token).
-	const accentClass = $derived(
-		accent === 'einnahme'
-			? 'bg-type-einnahme'
-			: accent === 'spende'
-				? 'bg-type-spende'
-				: 'bg-type-ausgabe',
-	);
-
 	// Header type-badge: a tinted squircle + the type glyph (matches CreateSheet:
 	// Ausgabe ↓/Minus · Einnahme ↑/Plus · Spende ♥/Heart).
+	// Badge glyphs match the feed row (TransactionRow) + entry-modal-v4: Ausgabe
+	// corner-arrow-down, Einnahme corner-arrow-up, Spende hand-coins.
 	const BadgeIcon = $derived(
-		accent === 'einnahme' ? PlusIcon : accent === 'spende' ? HeartIcon : MinusIcon,
+		accent === 'einnahme'
+			? ArrowUpRightIcon
+			: accent === 'spende'
+				? HandCoinsIcon
+				: ArrowDownRightIcon,
 	);
 	const GateIcon = $derived(gateStatus?.ok ? CircleCheckIcon : TriangleAlertIcon);
 	const badgeClass = $derived(
@@ -130,12 +128,31 @@
 	// to hold the AA contrast (kit btn-type-cta.css).
 	const ctaColorClass = $derived(
 		accent === 'einnahme'
-			? 'bg-type-einnahme'
+			? // AA-safe green fill so the white label clears WCAG AA (M7).
+				'bg-[var(--einnahme-ink-aa)]'
 			: accent === 'spende'
 				? 'bg-type-spende'
 				: 'bg-type-ausgabe',
 	);
-	const ctaDisabled = $derived(!dirty || submitting);
+	// State-matrix CTA gating (ANDY-LENS §2/§4): typfarben only once every required
+	// field is present (gate „Alles da."-fähig). While required fields are missing
+	// the CTA stays disabled + flat-neutral and the amber gate-line names what's
+	// missing. Fall back to `dirty` only when no gate is wired. The server is still
+	// the enforcer (a client-valid-but-server-invalid value, e.g. Betrag 0,00, can
+	// pass this gate and get a 422 back).
+	const ctaDisabled = $derived(submitting || (gateStatus ? !gateStatus.ok : !dirty));
+
+	// M3: open with focus on the Betrag hero (not the × close). focusTrap moves
+	// focus to the first focusable (the × button) in a microtask on mount; a rAF
+	// runs after that microtask, so this override wins and lands the caret in the
+	// amount field where entry begins.
+	let dialogEl = $state<HTMLElement>();
+	onMount(() => {
+		requestAnimationFrame(() => {
+			const amount = dialogEl?.querySelector<HTMLElement>('[data-testid="amount-field-input"]');
+			amount?.focus();
+		});
+	});
 
 	// ── beforeNavigate dirty-guard (P1-B1 convention) ─────────────────────────
 	// Fires on EVERY navigation away (× → onClose → goto AND browser-back) while
@@ -180,6 +197,7 @@
 		as the × and browser-back (UX-02).
 	-->
 	<div
+		bind:this={dialogEl}
 		class="fixed inset-x-0 bottom-0 z-[70] mx-auto flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-hairline bg-background shadow-card sm:inset-y-8 sm:rounded-2xl"
 		data-slot="entry-form-shell"
 		role="dialog"
@@ -194,12 +212,18 @@
 			}
 		}}
 	>
-		<!-- ── Per-type accent strip (D1: slim gradient at top) ───────────────── -->
+		<!-- ── Accent strip: the brand gradient (entry-modal-v4 `.sheet-accent`,
+		     A/B with the E1 modals). The type identity lives in the badge + CTA. ── -->
 		<div
 			data-slot="entry-accent"
-			class="h-1 w-full shrink-0 {accentClass}"
+			class="h-1 w-full shrink-0 bg-gradient-brand"
 			aria-hidden="true"
 		></div>
+
+		<!-- ── Grab-handle (mobile bottom-sheet affordance; hidden on desktop) ── -->
+		<div class="flex justify-center pt-2 sm:hidden" aria-hidden="true">
+			<span class="h-1 w-9 rounded-full bg-ink-300/60" data-slot="entry-grabber"></span>
+		</div>
 
 		<!-- ── Sticky header ──────────────────────────────────────────────────── -->
 		<header
@@ -245,6 +269,7 @@
 			method="POST"
 			{action}
 			{enctype}
+			novalidate
 			class="flex min-h-0 flex-1 flex-col"
 			onsubmit={() => {
 				submitting = true;
@@ -270,7 +295,7 @@
 				{#if gateStatus}
 					<div
 						class="flex items-center gap-1.5 rounded-[10px] border px-3 py-2 text-xs font-semibold leading-snug {gateStatus.ok
-							? 'border-[color-mix(in_srgb,var(--type-einnahme)_25%,transparent)] bg-type-einnahme-tint text-type-einnahme'
+							? 'border-[color-mix(in_srgb,var(--type-einnahme)_25%,transparent)] bg-type-einnahme-tint text-[color:var(--einnahme-ink-aa)]'
 							: 'border-[color-mix(in_srgb,var(--sev-warn)_30%,transparent)] bg-severity-warn-tint text-severity-warn-text'}"
 						data-slot="entry-gate-line"
 						data-ok={gateStatus.ok}

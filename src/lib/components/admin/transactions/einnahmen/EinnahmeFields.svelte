@@ -101,11 +101,17 @@
 		onDirty?.();
 	}
 
-	// ── Gate readout (advisory only). ─────────────────────────────────────────
+	// Betrag error (m7): 0,00 is client-submittable (gate = present) but flagged.
+	const betragError = $derived(
+		err('betragCents') ??
+			(betragCents !== null && betragCents <= 0 ? 'Betrag muss größer als 0 sein.' : null),
+	);
+
+	// ── Gate readout: PRESENCE of the required fields (M4). Geldeingang is
+	// optional (seeded to today), so it never gates. ────────────────────────────
 	const missing = $derived.by(() => {
 		const m: string[] = [];
-		if (!betragCents || betragCents <= 0) m.push('Betrag');
-		if (!geldEingangDatum) m.push('Datum');
+		if (betragCents === null) m.push('Betrag');
 		if (!bezeichnung.trim()) m.push('Bezeichnung');
 		if (!kategorieName) m.push('Kategorie');
 		return m;
@@ -120,129 +126,144 @@
 </script>
 
 <div class="flex flex-col gap-4" data-slot="einnahme-fields">
-	<!-- Betrag-Hero + Geldeingang-Hero (identical anatomy) -->
-	<div>
-		<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+	<!-- ── Section 1: Buchung ─────────────────────────────────────────────────── -->
+	<section class="rounded-xl border border-hairline bg-card/60 p-4" data-slot="einnahme-section">
+		<h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-500">Buchung</h3>
+		<div class="flex flex-col gap-3">
+			<!-- Betrag-Hero + Geldeingang-Hero (side-by-side even on mobile) -->
+			<div>
+				<div class="grid grid-cols-2 gap-2 sm:gap-3">
+					<div class="flex flex-col gap-1.5">
+						<label for="betragEur" class="text-sm font-medium text-ink-900">
+							Betrag <span class="text-severity-critical" aria-hidden="true">*</span>
+						</label>
+						<AmountField
+							id="betragEur"
+							name="betragCents"
+							value={values.betragEur}
+							type="einnahme"
+							sign="plus"
+							aria-invalid={betragError ? true : undefined}
+							onchange={(c) => {
+								betragCents = c;
+								markDirty();
+							}}
+						/>
+						{#if betragError}
+							<p class="text-xs text-severity-critical">{betragError}</p>
+						{/if}
+					</div>
+					<div class="flex flex-col gap-1.5">
+						<label for="geldEingangDatum" class="text-sm font-medium text-ink-900"
+							>Geldeingang</label
+						>
+						<HeroDateField
+							id="geldEingangDatum"
+							name="geldEingangDatum"
+							value={geldEingangDatum}
+							aria-invalid={err('geldEingangDatum') ? true : undefined}
+							onchange={(iso) => {
+								geldEingangDatum = iso;
+								markDirty();
+							}}
+						/>
+						{#if err('geldEingangDatum')}
+							<p class="text-xs text-severity-critical">{err('geldEingangDatum')}</p>
+						{/if}
+					</div>
+				</div>
+				<p class="mt-2 flex items-center gap-1.5 text-xs text-ink-500">
+					<span class="size-1.5 rounded-full bg-type-einnahme" aria-hidden="true"></span>
+					Wird als <b class="font-semibold text-ink-700">Einnahme</b> mit Plus gebucht.
+				</p>
+			</div>
+
+			<!-- Bezeichnung -->
 			<div class="flex flex-col gap-1.5">
-				<label for="betragEur" class="text-sm font-medium text-ink-900">
-					Betrag <span class="text-severity-critical" aria-hidden="true">*</span>
+				<label for="bezeichnung" class="text-sm font-medium text-ink-900">
+					Bezeichnung <span class="text-severity-critical" aria-hidden="true">*</span>
 				</label>
-				<AmountField
-					id="betragEur"
-					name="betragCents"
-					value={values.betragEur}
-					type="einnahme"
-					sign="plus"
-					aria-invalid={err('betragCents') ? true : undefined}
-					onchange={(c) => {
-						betragCents = c;
-						markDirty();
-					}}
+				<input
+					id="bezeichnung"
+					name="bezeichnung"
+					type="text"
+					required
+					maxlength="500"
+					bind:value={bezeichnung}
+					placeholder="z.B. Teilnahmebeitrag, Standgebühr"
+					aria-invalid={err('bezeichnung') ? true : undefined}
+					oninput={markDirty}
+					class={FIELD_CLASS}
 				/>
-				{#if err('betragCents')}
-					<p class="text-xs text-severity-critical">{err('betragCents')}</p>
+				{#if err('bezeichnung')}
+					<p class="text-xs text-severity-critical">{err('bezeichnung')}</p>
 				{/if}
 			</div>
+
+			<!-- Kategorie (drives Sphäre strictly; sphere shown in the locked field below) -->
 			<div class="flex flex-col gap-1.5">
-				<label for="geldEingangDatum" class="text-sm font-medium text-ink-900">Geldeingang</label>
-				<HeroDateField
-					id="geldEingangDatum"
-					name="geldEingangDatum"
-					value={geldEingangDatum}
-					aria-invalid={err('geldEingangDatum') ? true : undefined}
-					onchange={(iso) => {
-						geldEingangDatum = iso;
+				<KategoriePicker
+					name="kategorieNameSnapshot"
+					options={kategorien}
+					value={kategorieName}
+					required
+					hideSphere
+					onChange={(name) => {
+						kategorieName = name;
 						markDirty();
 					}}
+					onSphere={(s) => (sphere = s)}
 				/>
-				{#if err('geldEingangDatum')}
-					<p class="text-xs text-severity-critical">{err('geldEingangDatum')}</p>
+				{#if err('kategorieNameSnapshot')}
+					<p class="text-xs text-severity-critical">{err('kategorieNameSnapshot')}</p>
 				{/if}
+			</div>
+
+			<!-- Sphäre — read-only, derived from the Kategorie (once one is chosen) -->
+			{#if sphere}
+				<LockedSphereField sphere={sphere as Sphere} />
+			{/if}
+
+			<!-- Beleg (OPTIONAL — plain dropzone, no Verzicht gate) -->
+			<BelegUpload optional label="Beleg / Kontoauszug" error={err('beleg') ?? undefined} />
+		</div>
+	</section>
+
+	<!-- ── Section 2: Zuordnung ───────────────────────────────────────────────── -->
+	<section class="rounded-xl border border-hairline bg-card/60 p-4" data-slot="einnahme-section">
+		<h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-500">Zuordnung</h3>
+		<div class="flex flex-col gap-3">
+			<!-- Projekt (optional) -->
+			<div class="flex flex-col gap-1.5">
+				<label for="projectId" class="text-sm font-medium text-ink-900">Projekt (optional)</label>
+				<select
+					id="projectId"
+					name="projectId"
+					bind:value={projectId}
+					onchange={markDirty}
+					data-testid="transaction-project-picker"
+					class={FIELD_CLASS}
+				>
+					<option value="">— Kein Projekt —</option>
+					{#each projects as p (p.id)}
+						<option value={p.id}>{p.name}</option>
+					{/each}
+				</select>
+			</div>
+
+			<!-- Kommentar -->
+			<div class="flex flex-col gap-1.5">
+				<label for="kommentar" class="text-sm font-medium text-ink-900">Kommentar</label>
+				<textarea
+					id="kommentar"
+					name="kommentar"
+					rows="3"
+					maxlength="2000"
+					bind:value={kommentar}
+					oninput={markDirty}
+					class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 sm:text-sm"
+				></textarea>
 			</div>
 		</div>
-		<p class="mt-2 flex items-center gap-1.5 text-xs text-ink-500">
-			<span class="size-1.5 rounded-full bg-type-einnahme" aria-hidden="true"></span>
-			Wird als <b class="font-semibold text-ink-700">Einnahme</b> mit Plus gebucht.
-		</p>
-	</div>
-
-	<!-- Bezeichnung -->
-	<div class="flex flex-col gap-1.5">
-		<label for="bezeichnung" class="text-sm font-medium text-ink-900">
-			Bezeichnung<span class="text-severity-critical" aria-hidden="true">&nbsp;*</span>
-		</label>
-		<input
-			id="bezeichnung"
-			name="bezeichnung"
-			type="text"
-			required
-			maxlength="500"
-			bind:value={bezeichnung}
-			aria-invalid={err('bezeichnung') ? true : undefined}
-			oninput={markDirty}
-			class={FIELD_CLASS}
-		/>
-		{#if err('bezeichnung')}
-			<p class="text-xs text-severity-critical">{err('bezeichnung')}</p>
-		{/if}
-	</div>
-
-	<!-- Kategorie (drives Sphäre strictly; sphere shown in the locked field below) -->
-	<div class="flex flex-col gap-1.5">
-		<KategoriePicker
-			name="kategorieNameSnapshot"
-			options={kategorien}
-			value={kategorieName}
-			required
-			hideSphere
-			onChange={(name) => {
-				kategorieName = name;
-				markDirty();
-			}}
-			onSphere={(s) => (sphere = s)}
-		/>
-		{#if err('kategorieNameSnapshot')}
-			<p class="text-xs text-severity-critical">{err('kategorieNameSnapshot')}</p>
-		{/if}
-	</div>
-
-	<!-- Sphäre — read-only, derived from the Kategorie (only once one is chosen) -->
-	{#if sphere}
-		<LockedSphereField sphere={sphere as Sphere} />
-	{/if}
-
-	<!-- Projekt (optional) -->
-	<div class="flex flex-col gap-1.5">
-		<label for="projectId" class="text-sm font-medium text-ink-900">Projekt (optional)</label>
-		<select
-			id="projectId"
-			name="projectId"
-			bind:value={projectId}
-			onchange={markDirty}
-			data-testid="transaction-project-picker"
-			class={FIELD_CLASS}
-		>
-			<option value="">— kein Projekt —</option>
-			{#each projects as p (p.id)}
-				<option value={p.id}>{p.name}</option>
-			{/each}
-		</select>
-	</div>
-
-	<!-- Beleg (OPTIONAL — plain dropzone, no Verzicht gate) -->
-	<BelegUpload optional label="Beleg / Kontoauszug" error={err('beleg') ?? undefined} />
-
-	<!-- Kommentar -->
-	<div class="flex flex-col gap-1.5">
-		<label for="kommentar" class="text-sm font-medium text-ink-900">Kommentar</label>
-		<textarea
-			id="kommentar"
-			name="kommentar"
-			rows="3"
-			maxlength="2000"
-			bind:value={kommentar}
-			oninput={markDirty}
-			class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-		></textarea>
-	</div>
+	</section>
 </div>

@@ -38,11 +38,7 @@ import {
   listZahlungsarten,
 } from "$lib/server/domain/transactions.js";
 import { markExpenseErstattet } from "$lib/server/domain/audit-inbox-actions.js";
-import {
-  listKategorieOptions,
-  loadRecentKategorieUsage,
-  pickDefaultKategorieName,
-} from "$lib/server/domain/transaction-pickers.js";
+import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members } from "$lib/server/db/schema/members.js";
@@ -113,11 +109,11 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BEZAHLT_VON = ["verein", "member", "extern"] as const;
 
-/** centsstring → "euros" with 2 decimals (e.g. "45000" → "450.00"). */
+/** centsstring → de-DE euros string (e.g. "45000" → "450,00"); "" when absent. */
 function centsToEuros(cents: string | null): string {
   if (!cents) return "";
   const n = Number(cents);
-  return Number.isFinite(n) ? (n / 100).toFixed(2) : "";
+  return Number.isFinite(n) ? (n / 100).toFixed(2).replace(".", ",") : "";
 }
 
 /**
@@ -153,9 +149,8 @@ function parsePrefill(searchParams: URLSearchParams): AusgabeFormValues {
 // load
 // ---------------------------------------------------------------------------
 
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async ({ url }) => {
   const db = getDb();
-  const userId = locals.session?.user?.id ?? null;
 
   // C1-PRJ-A: `?projectId=` deep-links into this form with the project
   // preselected. Validated UUID shape here; the action's Zod re-validates.
@@ -168,7 +163,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
       ? prefillProjectIdRaw
       : null;
 
-  const [zahlungsarten, allMembers, expenseKategorien, recent, allProjects] =
+  const [zahlungsarten, allMembers, expenseKategorien, allProjects] =
     await Promise.all([
       listZahlungsarten(),
       db
@@ -182,20 +177,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
         .from(members)
         .orderBy(asc(members.nachname)),
       listKategorieOptions("expense"),
-      userId ? loadRecentKategorieUsage(userId) : Promise.resolve([]),
       db
         .select({ id: projects.id, name: projects.name })
         .from(projects)
         .where(isNull(projects.deletedAt))
         .orderBy(projects.name),
     ]);
-
-  const defaultExpenseKategorie = pickDefaultKategorieName({
-    kategorien: expenseKategorien,
-    recent,
-    projectId: null,
-    kind: "expense",
-  });
 
   // Duplicate-as-template prefill (Fix 1): the detail `?/duplicate` redirects
   // here with the descriptive fields on the query string. `values` seeds the
@@ -205,19 +192,22 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   const values: AusgabeFormValues = {
     ...prefill,
     projectId: prefill.projectId || prefillProjectId || "",
-    // No descriptive prefill → land on the smart-default Kategorie.
-    kategorieNameSnapshot:
-      prefill.kategorieNameSnapshot || (defaultExpenseKategorie ?? ""),
+    // A fresh Ausgabe starts with NO Kategorie ("Kategorie wählen…") — parity with
+    // Einnahme; the Gate-Line then lists the missing Kategorie. We deliberately do
+    // NOT preselect the smart-default (M2): a preselected Kategorie silently picks
+    // the Sphäre for the user (ADR-0002) and reads as already-decided. Only a
+    // duplicate-as-template query carries a Kategorie in.
+    kategorieNameSnapshot: prefill.kategorieNameSnapshot || "",
   };
 
   return {
     zahlungsarten,
     members: allMembers,
     expenseKategorien,
-    defaultExpenseKategorie,
     projects: allProjects,
     prefillProjectId,
     values,
+    year: berlinYear(),
   };
 };
 
@@ -233,15 +223,21 @@ const sphereValues = [
 ] as const;
 
 const expenseSchema = z.object({
-  bezeichnung: z.string().min(1).max(500),
-  betragCents: z.coerce.number().int().positive(),
+  bezeichnung: z
+    .string()
+    .min(1, "Bezeichnung ist erforderlich.")
+    .max(500, "Bezeichnung ist zu lang (max. 500 Zeichen)."),
+  betragCents: z.coerce
+    .number()
+    .int("Betrag muss ein gültiger Geldbetrag sein.")
+    .positive("Betrag muss größer als 0 sein."),
   currency: z.string().default("EUR"),
   kategorieNameSnapshot: z
     .string()
-    .min(1)
+    .min(1, "Kategorie muss ausgewählt werden.")
     .max(200)
     .refine((v) => v !== "(Unkategorisiert)", {
-      message: "Kategorie muss ausgewählt werden",
+      message: "Kategorie muss ausgewählt werden.",
     }),
   // Sphere is re-derived inside createExpense (§4.5); accepted-but-ignored for
   // caller parity. Kept in the schema so a tampered/absent value never breaks.
@@ -260,7 +256,11 @@ const expenseSchema = z.object({
   bezahltVonDisplay: z.string().max(200).default("(unbekannt)"),
   externName: z.string().max(200).nullable().optional(),
   externIban: z.string().max(50).nullable().optional(),
-  externEmail: z.string().email().nullable().optional(),
+  externEmail: z
+    .string()
+    .email("E-Mail-Adresse ist ungültig.")
+    .nullable()
+    .optional(),
   // Zahlungsart for the payment path (Verein auto-pay / Schon-bezahlt Erstattung).
   zahlungsartId: z.string().uuid().nullable().optional(),
   // Admin "Schon bezahlt?" toggle (member/extern reveal) + its Erstattungsdatum.

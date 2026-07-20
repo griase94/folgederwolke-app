@@ -67,10 +67,14 @@ async function fillBaseFields(
 ): Promise<void> {
   await page.getByLabel(/Bezeichnung/i).fill(opts.bezeichnung);
   await page.locator("#betrag-display").fill(opts.betrag);
+  // A fresh Ausgabe no longer preselects a Kategorie (M2), and the Speichern CTA
+  // is gated on every required field being present (M4) — so always pick one.
+  const kat = page.locator('select[name="kategorieNameSnapshot"]');
   if (opts.kategorie) {
-    await page
-      .locator('select[name="kategorieNameSnapshot"]')
-      .selectOption({ label: opts.kategorie });
+    await kat.selectOption({ label: opts.kategorie });
+  } else {
+    const val = await kat.locator("option").nth(1).getAttribute("value");
+    if (val) await kat.selectOption(val);
   }
 }
 

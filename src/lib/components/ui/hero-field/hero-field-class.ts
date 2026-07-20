@@ -25,9 +25,11 @@ export const HERO_WRAP_ERROR =
 export const HERO_PREFIX =
   "flex-none grid place-items-center w-5 ml-4 mr-2.5 text-[color:var(--hero-accent)]";
 
-/** The value input — identical metric in both fields (24/800 tabular, right). */
+/** The value input — identical metric in both fields (right-aligned tabular
+ *  extrabold). 19px on mobile so a full date (TT.MM.JJJJ) fits the side-by-side
+ *  hero cell at 390px; 24px from the sm breakpoint up. */
 export const HERO_INPUT =
-  "flex-1 min-w-0 border-0 bg-transparent p-0 text-[24px] font-extrabold leading-none " +
+  "flex-1 min-w-0 border-0 bg-transparent p-0 text-[19px] sm:text-[24px] font-extrabold leading-none " +
   "tabular-nums tracking-[-0.01em] text-right outline-none " +
   "placeholder:text-ink-300 placeholder:font-semibold";
 

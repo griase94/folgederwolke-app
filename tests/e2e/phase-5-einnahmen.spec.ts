@@ -110,7 +110,7 @@ test.describe("@phase-5-einnahmen Einnahmen tab", () => {
 
     await Promise.all([
       page.waitForURL(/\/app\/einnahmen\/[^/]+$/, { timeout: 15_000 }),
-      page.getByRole("button", { name: "Speichern" }).click(),
+      page.getByRole("button", { name: "Einnahme anlegen" }).click(),
     ]);
 
     await page.goto("/app/einnahmen");

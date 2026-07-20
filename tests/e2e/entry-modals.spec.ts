@@ -50,54 +50,50 @@ test.beforeEach(async () => {
 // ── Suite ────────────────────────────────────────────────────────────────────
 
 test.describe("@phase-entry-modals Beleg enforcement + modal isolation", () => {
-  // ── 1. ausgaben/neu blocks submit without a Beleg arm ─────────────────────
-  test("ausgaben/neu — submit without Beleg arm returns 422 and shows error", async ({
+  // ── 1. State-matrix CTA gate + a 0,00 Betrag roundtrips a German 422 ───────
+  test("ausgaben/neu — empty-required disables the CTA (amber gate); a 0,00 Betrag roundtrips a German 422", async ({
     page,
   }) => {
     await loginAs(page, "admin");
     await page.goto("/app/ausgaben/neu");
 
-    // Dirty the form to enable the Speichern button
-    await fillBaseAusgabeFields(page, {
-      bezeichnung: "E2E-Beleg-block",
-      betrag: "12,50",
-    });
-
-    // Make the form "dirty" enough for the submit button to enable — the shell
-    // enables Speichern as soon as `dirty` is true (set on first input).
     const submitBtn = page.locator(
       '[data-slot="entry-footer"] button[type="submit"]',
     );
-    await expect(submitBtn).toBeEnabled({ timeout: 5_000 });
+    const gate = page.locator('[data-slot="entry-gate-line"]');
 
-    // Submit without selecting either Beleg arm — no file, keinBeleg unchecked.
+    // (a) Fresh form: required fields missing → CTA disabled, gate amber (M4).
+    await expect(gate).toHaveAttribute("data-ok", "false");
+    await expect(gate).toContainText(/Fehlt noch/i);
+    await expect(submitBtn).toBeDisabled();
+
+    // (b) Fill everything valid EXCEPT a 0,00 Betrag (client-valid, server-invalid),
+    // and satisfy the Beleg gate via the Verzicht arm so the client gate goes green.
+    await fillBaseAusgabeFields(page, {
+      bezeichnung: "E2E-0-Betrag",
+      betrag: "0,00",
+    });
+    await page.getByRole("radio", { name: /Verzicht begründen/i }).click();
+    await page
+      .locator("#beleg-begruendung")
+      .fill("E2E: Betrag-0 roundtrip, kein Beleg.");
+
+    // 0,00 counts as present → the CTA enables (the server is the enforcer).
+    await expect(submitBtn).toBeEnabled({ timeout: 5_000 });
     await submitBtn.click();
 
-    // The server returns 422; the form stays on the same page (no redirect).
-    // The EntryFormShell (dialog) must still be visible.
+    // Server returns a GERMAN 422; the form stays (no redirect) and echoes de-DE.
     await expect(page.locator('[data-slot="entry-form-shell"]')).toBeVisible({
       timeout: 8_000,
     });
-
-    // A beleg-related error is surfaced — check for the error text or aria-invalid.
-    // The server echoes errors.beleg (BelegUpload field error) AND a top-level
-    // form.error banner; either mentioning Beleg + erforderlich/hochladen counts.
-    const hasErrorText = await page
-      .getByText(
-        /Beleg.*(erforderlich|hochladen)|Begründung.*(erforderlich|wählen)/i,
-      )
-      .first()
-      .isVisible()
-      .catch(() => false);
-    const hasAriaInvalid = await page
-      .locator('[aria-invalid="true"]')
-      .first()
-      .isVisible()
-      .catch(() => false);
-    expect(
-      hasErrorText || hasAriaInvalid,
-      "Expected a beleg error message or aria-invalid field after 422",
-    ).toBe(true);
+    await expect(page).toHaveURL(/\/app\/ausgaben\/neu/);
+    // German message — never "Too small" / "Invalid input".
+    await expect(page.getByText(/größer als 0/i).first()).toBeVisible({
+      timeout: 8_000,
+    });
+    await expect(page.getByText(/Too small|Invalid input/i)).toHaveCount(0);
+    // de-DE echo keeps the comma format the user typed.
+    await expect(page.locator("#betrag-display")).toHaveValue("0,00");
   });
 
   // ── 2. ausgaben/neu — Belegverzicht arm submits OK ────────────────────────

@@ -264,25 +264,31 @@ describe("EntryFormShell — D1 portal + z-index + accent", () => {
     expect(strip).toBeTruthy();
   });
 
-  it("default accent=ausgabe → strip carries bg-type-ausgabe", () => {
+  it("accent strip is the brand gradient (type identity lives in the badge + CTA, m2)", () => {
     render(EntryFormShell, { props: baseProps() });
     const strip = document.body.querySelector('[data-slot="entry-accent"]');
-    expect((strip as HTMLElement).className).toContain("bg-type-ausgabe");
+    expect((strip as HTMLElement).className).toContain("bg-gradient-brand");
   });
 
-  it("accent=einnahme → strip carries bg-type-einnahme", () => {
+  it("default accent=ausgabe → the type-badge carries the plum tint", () => {
+    render(EntryFormShell, { props: baseProps() });
+    const badge = document.body.querySelector('[data-slot="entry-typebadge"]');
+    expect((badge as HTMLElement).className).toContain("text-type-ausgabe");
+  });
+
+  it("accent=einnahme → the type-badge carries the green tint", () => {
     render(EntryFormShell, {
       props: baseProps({ accent: "einnahme" }),
     });
-    const strip = document.body.querySelector('[data-slot="entry-accent"]');
-    expect((strip as HTMLElement).className).toContain("bg-type-einnahme");
+    const badge = document.body.querySelector('[data-slot="entry-typebadge"]');
+    expect((badge as HTMLElement).className).toContain("text-type-einnahme");
   });
 
-  it("accent=spende → strip carries bg-type-spende", () => {
+  it("accent=spende → the type-badge carries the violet tint", () => {
     render(EntryFormShell, {
       props: baseProps({ accent: "spende" }),
     });
-    const strip = document.body.querySelector('[data-slot="entry-accent"]');
-    expect((strip as HTMLElement).className).toContain("bg-type-spende");
+    const badge = document.body.querySelector('[data-slot="entry-typebadge"]');
+    expect((badge as HTMLElement).className).toContain("text-type-spende");
   });
 });

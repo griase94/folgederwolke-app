@@ -125,7 +125,7 @@
 				class={cn(
 					'mt-3 flex items-center gap-1.5 rounded-[9px] border px-3 py-2.5 text-xs font-semibold leading-snug',
 					status.ok
-						? 'border-[color-mix(in_srgb,var(--type-einnahme)_25%,transparent)] bg-type-einnahme-tint text-type-einnahme'
+						? 'border-[color-mix(in_srgb,var(--type-einnahme)_25%,transparent)] bg-type-einnahme-tint text-[color:var(--einnahme-ink-aa)]'
 						: 'border-[color-mix(in_srgb,var(--sev-warn)_30%,transparent)] bg-severity-warn-tint text-severity-warn-text'
 				)}
 				data-slot="gate-readout"

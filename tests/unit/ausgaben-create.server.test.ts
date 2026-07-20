@@ -497,8 +497,8 @@ describe("ausgaben/neu load — duplicate prefill", () => {
     const values = data.values as Record<string, unknown>;
     expect(values).toBeTruthy();
     expect(values.bezeichnung).toBe("Raummiete März");
-    // betragCents is surfaced as a euros string for the display input.
-    expect(values.betrag).toBe("450.00");
+    // betragCents is surfaced as a de-DE euros string for the hero display input.
+    expect(values.betrag).toBe("450,00");
     expect(values.kategorieNameSnapshot).toBe("Miete");
     expect(values.kommentar).toBe("monatlich");
     expect(values.bezahltVonKind).toBe("member");

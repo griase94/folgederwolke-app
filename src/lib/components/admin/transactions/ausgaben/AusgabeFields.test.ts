@@ -97,10 +97,20 @@ describe("AusgabeFields — B2 entry-modal-v4 section layout", () => {
     ).not.toBeNull();
   });
 
-  it("Sphäre is a read-only locked field derived from the Kategorie (never a select)", () => {
+  it("Sphäre is a read-only locked field, shown once a Kategorie is chosen (never a select)", () => {
+    // Fresh form (no Kategorie) → no misleading default sphere is shown.
     render(AusgabeFields, { props: baseProps() });
-    const locked = document.querySelector('[data-slot="locked-sphere-field"]');
-    expect(locked).not.toBeNull();
+    expect(
+      document.querySelector('[data-slot="locked-sphere-field"]'),
+    ).toBeNull();
+    cleanup();
+    // With a Kategorie seeded, the derived Sphäre appears as a read-only field.
+    const props = baseProps();
+    props.values = { ...props.values, kategorieNameSnapshot: "Bürobedarf" };
+    render(AusgabeFields, { props });
+    expect(
+      document.querySelector('[data-slot="locked-sphere-field"]'),
+    ).not.toBeNull();
   });
 
   it("bezahlt-von is a neutral segmented toggle (data-slot=bezahlt-von-grid)", () => {

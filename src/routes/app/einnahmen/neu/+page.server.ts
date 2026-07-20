@@ -98,6 +98,7 @@ export const load: PageServerLoad = async ({ url }) => {
     projects: allProjects,
     initialProjectId,
     values: EMPTY_VALUES,
+    year: berlinYear(),
   };
 };
 
@@ -106,16 +107,22 @@ export const load: PageServerLoad = async ({ url }) => {
 // ---------------------------------------------------------------------------
 
 const incomeSchema = z.object({
-  bezeichnung: z.string().min(1).max(500),
-  betragCents: z.coerce.number().int().positive(),
+  bezeichnung: z
+    .string()
+    .min(1, "Bezeichnung ist erforderlich.")
+    .max(500, "Bezeichnung ist zu lang (max. 500 Zeichen)."),
+  betragCents: z.coerce
+    .number()
+    .int("Betrag muss ein gültiger Geldbetrag sein.")
+    .positive("Betrag muss größer als 0 sein."),
   currency: z.string().default("EUR"),
   // The picker drives this; createIncome resolves kategorie + sphere from it.
   kategorieNameSnapshot: z
     .string()
-    .min(1)
+    .min(1, "Kategorie muss ausgewählt werden.")
     .max(200)
     .refine((v) => v !== "(Unkategorisiert)", {
-      message: "Kategorie muss ausgewählt werden",
+      message: "Kategorie muss ausgewählt werden.",
     }),
   // Optional kategorie id (createIncome resolves by NAME — id is not honored).
   kategorieId: z.string().uuid().nullable().optional(),
@@ -140,8 +147,12 @@ function valuesFromForm(data: FormData): EinnahmeFormValues {
   const centsNum = Number(cents);
   return {
     bezeichnung: str("bezeichnung"),
-    // Echo the typed euros back (the hidden betragCents mirrors it client-side).
-    betragEur: cents && Number.isFinite(centsNum) ? String(centsNum / 100) : "",
+    // Echo the typed euros back in de-DE (comma) so the hero AmountField re-seeds
+    // exactly what the user sees — "0,00" not "0.00".
+    betragEur:
+      cents && Number.isFinite(centsNum)
+        ? (centsNum / 100).toFixed(2).replace(".", ",")
+        : "",
     geldEingangDatum: str("geldEingangDatum"),
     kategorieName: str("kategorieNameSnapshot"),
     projectId: str("projectId"),

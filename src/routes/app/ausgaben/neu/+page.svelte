@@ -76,6 +76,7 @@
 
 <EntryFormShell
 	title="Neue Ausgabe"
+	statusHint="Geld, das der Verein ausgegeben hat · Jahr {data.year}"
 	action="?/create"
 	submitLabel="Ausgabe anlegen"
 	accent="ausgabe"

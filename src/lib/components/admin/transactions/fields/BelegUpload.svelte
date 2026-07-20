@@ -248,7 +248,7 @@
 			minlength="5"
 			rows="3"
 			placeholder="Warum liegt kein Beleg vor? (mindestens 5 Zeichen)"
-			class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+			class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 sm:text-sm"
 		></textarea>
 		<p class="text-xs text-ink-500">
 			Ohne Beleg braucht's einen nachvollziehbaren Grund. Er wandert mit ins Prüf-Protokoll.
