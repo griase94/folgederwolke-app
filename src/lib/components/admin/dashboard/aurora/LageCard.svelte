@@ -9,7 +9,11 @@
 	 */
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
 	import { type Sphere } from '$lib/domain/sphere.js';
-	import { SphaerenBars, AgingRail } from '$lib/components/charts/index.js';
+	// Direct component imports (not the charts barrel) so the dashboard pulls
+	// only these two into the client bundle, not the whole chart family — the
+	// barrel isn't tree-shakeable (package has no `sideEffects: false`).
+	import SphaerenBars from '$lib/components/charts/sphaeren/SphaerenBars.svelte';
+	import AgingRail from '$lib/components/charts/stat-tiles/AgingRail.svelte';
 
 	let {
 		beitraege,

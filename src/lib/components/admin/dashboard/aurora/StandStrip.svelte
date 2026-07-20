@@ -8,7 +8,10 @@
 	 * zugesagt/frei subline (current year only), and the Einnahmen/Spenden/
 	 * Ausgaben triplet. All money integer cents.
 	 */
-	import { SaldoVerlauf } from '$lib/components/charts/index.js';
+	// Import the component directly (not via the charts barrel) so the dashboard
+	// pulls only SaldoVerlauf into the client bundle, never the whole family —
+	// the barrel isn't tree-shakeable (package has no `sideEffects: false`).
+	import SaldoVerlauf from '$lib/components/charts/saldo-verlauf/SaldoVerlauf.svelte';
 	// One shared money formatter (real U+2212 minus) — same as the charts, so the
 	// Stand-strip triplet never drifts to an ASCII hyphen (board MAJOR 3).
 	import { eurCents as formatMoney } from '$lib/components/charts/_shared/format.js';
