@@ -45,6 +45,25 @@ export function rechnungenStatusLabel(status: RechnungenStatus): string {
   }
 }
 
+/**
+ * Concrete payment state of a single invoice (never "alle"). The 4-status
+ * canon lives in ONE derivation (flow-brief §5.6): open unless `bezahltAm`
+ * is set; overdue when open AND `faelligkeitsDatum` is strictly before today.
+ * `todayIso` is a Berlin-local YYYY-MM-DD (callers pass the same value the
+ * /app/rechnungen load computes) so the boundary is timezone-correct.
+ */
+export type InvoiceRowStatus = "offen" | "überfällig" | "bezahlt";
+
+export function deriveInvoiceStatus(
+  bezahltAm: string | null,
+  faelligkeitsDatum: string | null,
+  todayIso: string,
+): InvoiceRowStatus {
+  if (bezahltAm) return "bezahlt";
+  if (faelligkeitsDatum && faelligkeitsDatum < todayIso) return "überfällig";
+  return "offen";
+}
+
 export interface InvoiceListFilters {
   status: RechnungenStatus;
   year: number;

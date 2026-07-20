@@ -1,113 +1,70 @@
+<!--
+	CustomerInfoCard — the Übersicht "Stammdaten" facts (kunde-detail-v1).
+	Built on the FactsTable primitive so every value sits on ONE right-hand
+	ruler; the multi-line address is a full-width sub-row (verbatim, F6). The
+	E-Mail row carries the amber flag-warn when no address is on file (spec §2.4
+	/ G3 — without it, no Mail-Versand). Trailing rows use the same ruler.
+-->
 <script lang="ts">
-	import * as Card from '$lib/components/ui/card/index.js';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import EditCustomerDialog from './EditCustomerDialog.svelte';
+	import FactsTable, { type FactRow } from '$lib/components/ui/facts-table/FactsTable.svelte';
+	import { countryLabel } from '$lib/domain/customers.js';
 	import type { CustomerView } from '$lib/server/domain/customers.js';
 
-	let { customer }: { customer: CustomerView } = $props();
+	let {
+		customer,
+		onEditEmail
+	}: {
+		customer: CustomerView;
+		/** Opens the edit dialog from the "Keine E-Mail — ergänzen" flag. */
+		onEditEmail: () => void;
+	} = $props();
 
-	let editOpen = $state(false);
+	const rows = $derived.by(() => {
+		const r: FactRow[] = [];
+		if (customer.anrede) r.push({ label: 'Anrede', value: customer.anrede });
+		if (customer.addressBlock)
+			r.push({ label: 'Adresse', value: customer.addressBlock, block: true });
+		r.push({ label: 'Land', value: countryLabel(customer.country) });
+		return r;
+	});
 
-	function formatDate(d: string | null): string {
-		if (!d) return '—';
-		return new Date(d).toLocaleDateString('de-DE', {
-			year: 'numeric',
-			month: 'long',
-			day: 'numeric'
-		});
-	}
-
-	const isArchived = $derived(!!customer.deletedAt);
+	const seit = $derived(
+		new Date(customer.createdAt).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
+	);
 </script>
 
-<Card.Root class="overflow-hidden">
-	<div class="h-2 bg-gradient-to-r from-sky-400 to-cyan-500"></div>
-
-	<Card.Content class="p-6">
-		<!-- Icon + name -->
-		<div class="mb-6 flex items-start gap-4">
-			<div
-				class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-sky-800 shadow-sm"
-				aria-hidden="true"
-			>
-				<svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-				</svg>
-			</div>
-			<div class="min-w-0 flex-1">
-				<h2 class="truncate text-xl font-bold text-foreground">{customer.name}</h2>
-				<div class="mt-1 flex flex-wrap items-center gap-2">
-					{#if isArchived}
-						<span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-							archiviert
-						</span>
-					{:else}
-						<span class="inline-flex items-center rounded-full border border-green-200 bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
-							aktiv
-						</span>
-					{/if}
-					{#if customer.isFixture}
-						<span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-							Fixture
-						</span>
-					{/if}
-				</div>
-			</div>
-		</div>
-
-		<dl class="space-y-3">
-			{#if customer.anrede}
-				<div class="flex items-start gap-3">
-					<dt class="flex w-28 shrink-0 items-center gap-1.5 text-sm text-muted-foreground">Anrede</dt>
-					<dd class="text-sm text-foreground">{customer.anrede}</dd>
-				</div>
-			{/if}
-
+<!-- rows = Anrede/Adresse/Land; the trailing bespoke rows below live inside the
+	 same FactsTable ruler (default children → the primitive's `children` slot). -->
+<FactsTable {rows} data-testid="customer-facts">
+	<!-- E-Mail — flag-warn (amber) when missing -->
+	<div class="grid min-h-10 items-baseline gap-4 border-t border-hairline py-2.5" style="grid-template-columns: var(--facts-lbl) minmax(0, 1fr)">
+		<dt class="text-xs font-medium text-ink-500">E-Mail</dt>
+		<dd class="flex min-w-0 justify-end text-right text-[13px] font-semibold text-ink-900">
 			{#if customer.email}
-				<div class="flex items-start gap-3">
-					<dt class="flex w-28 shrink-0 items-center gap-1.5 text-sm text-muted-foreground">E-Mail</dt>
-					<dd class="min-w-0 flex-1 break-all text-sm font-medium text-foreground">
-						<a href="mailto:{customer.email}" class="hover:text-primary hover:underline">
-							{customer.email}
-						</a>
-					</dd>
-				</div>
+				<a href="mailto:{customer.email}" class="truncate hover:text-primary-text hover:underline">{customer.email}</a>
+			{:else}
+				<button
+					type="button"
+					onclick={onEditEmail}
+					data-testid="customer-email-missing"
+					class="inline-flex items-center gap-1.5 rounded-full bg-severity-warn-tint px-2.5 py-0.5 text-[11px] font-semibold text-severity-warn-text ring-1 ring-inset ring-severity-warn/25 hover:brightness-95"
+				>
+					<svg class="h-3.5 w-3.5 text-severity-warn" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+					Keine E-Mail — ergänzen
+				</button>
 			{/if}
+		</dd>
+	</div>
 
-			{#if customer.addressBlock}
-				<div class="flex items-start gap-3">
-					<dt class="flex w-28 shrink-0 items-center gap-1.5 text-sm text-muted-foreground">Adresse</dt>
-					<dd class="min-w-0 flex-1 whitespace-pre-wrap text-sm text-foreground">{customer.addressBlock}</dd>
-				</div>
-			{/if}
-
-			{#if customer.notes}
-				<div class="flex items-start gap-3">
-					<dt class="flex w-28 shrink-0 items-center gap-1.5 text-sm text-muted-foreground">Notizen</dt>
-					<dd class="min-w-0 flex-1 whitespace-pre-wrap text-sm text-foreground">{customer.notes}</dd>
-				</div>
-			{/if}
-
-			<div class="flex items-start gap-3">
-				<dt class="flex w-28 shrink-0 items-center gap-1.5 text-sm text-muted-foreground">Angelegt</dt>
-				<dd class="text-sm text-muted-foreground">{formatDate(customer.createdAt)}</dd>
-			</div>
-		</dl>
-
-		<div class="mt-6 border-t border-border pt-4">
-			<Button
-				variant="outline"
-				class="w-full"
-				onclick={() => (editOpen = true)}
-				aria-label="Kunden bearbeiten"
-			>
-				<svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-				</svg>
-				Bearbeiten
-			</Button>
+	{#if customer.notes}
+		<div class="grid grid-cols-1 border-t border-hairline py-2.5">
+			<dt class="text-xs font-medium text-ink-500">Notizen</dt>
+			<dd class="mt-1 whitespace-pre-line text-[13px] font-medium text-ink-900">{customer.notes}</dd>
 		</div>
-	</Card.Content>
-</Card.Root>
+	{/if}
 
-<EditCustomerDialog bind:open={editOpen} {customer} />
+	<div class="grid min-h-10 items-baseline gap-4 border-t border-hairline py-2.5" style="grid-template-columns: var(--facts-lbl) minmax(0, 1fr)">
+		<dt class="text-xs font-medium text-ink-500">Dabei seit</dt>
+		<dd class="min-w-0 text-right text-[13px] font-semibold text-ink-900">{seit}</dd>
+	</div>
+</FactsTable>

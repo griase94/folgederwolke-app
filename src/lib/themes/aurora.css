@@ -127,6 +127,11 @@
   /* "merely open" — NOT sev-warn (amber is reserved for true overdue) */
   --neutral-open: #b8aecb;
   --open-tint: color-mix(in oklch, var(--neutral-open) 26%, var(--card));
+  /* AA-safe open-money INK (F6): the tint --neutral-open (#b8aecb) lands ~2:1 as
+     digit-text on white; the darker #8f85a8 (= the Nacht --neutral-open value)
+     clears AA-large on Weiß. ONE open-money text colour flow-weit (list kf-amt +
+     Kunde-Detail KPI/Summenzeile). Tint SURFACES keep --neutral-open. */
+  --open-ink: #8f85a8;
 
   /* ── transaction type accents (+ tint surfaces) ──────────────────────── */
   /* Ausgabe is rose/plum, distinct from BOTH brand pinks (spec §3). */
@@ -281,6 +286,8 @@
   --info-tint: color-mix(in srgb, var(--sev-info) 20%, var(--card));
   --neutral-open: #8f85a8;
   --open-tint: color-mix(in srgb, var(--neutral-open) 22%, var(--card));
+  /* On the dark card the lighter #b8aecb reads as the AA-safe open ink. */
+  --open-ink: #b8aecb;
 
   /* — transaction-type accents — */
   --type-ausgabe: #cf8fb2;

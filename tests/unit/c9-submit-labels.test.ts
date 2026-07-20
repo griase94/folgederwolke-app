@@ -15,8 +15,10 @@ const CASES: Array<{ path: string; expectedLabel: string }> = [
     expectedLabel: "Mitglied anlegen",
   },
   {
+    // Aurora E1: kit-modal restyle — submit label singularised to match the
+    // modal-kunde-v4 plate ("Kunde anlegen").
     path: "src/lib/components/admin/customers/AddCustomerDialog.svelte",
-    expectedLabel: "Kunden anlegen",
+    expectedLabel: "Kunde anlegen",
   },
   {
     path: "src/lib/components/admin/projects/AddProjectDialog.svelte",

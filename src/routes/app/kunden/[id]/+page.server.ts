@@ -8,7 +8,7 @@
  */
 
 import { error, fail } from "@sveltejs/kit";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { customers } from "$lib/server/db/schema/customers.js";
@@ -17,6 +17,7 @@ import { projects } from "$lib/server/db/schema/projects.js";
 import {
   editCustomer,
   softDeleteCustomer,
+  restoreCustomer,
 } from "$lib/server/domain/customers-actions.js";
 import { assertUuidOr404 } from "$lib/domain/uuid.js";
 
@@ -38,15 +39,17 @@ export const load: PageServerLoad = async ({ params }) => {
 
   const c = rows[0];
 
-  const [rechnungenRows, projekteRows] = await Promise.all([
+  const [rechnungenRows, projekteRows, aggRows] = await Promise.all([
     db
       .select({
         id: invoices.id,
         businessId: invoices.businessId,
         bezeichnung: invoices.bezeichnung,
         nettoCents: invoices.nettoCents,
+        bruttoCents: invoices.bruttoCents,
         bezahltAm: invoices.bezahltAm,
         rechnungsdatum: invoices.rechnungsdatum,
+        faelligkeitsDatum: invoices.faelligkeitsDatum,
       })
       .from(invoices)
       .where(eq(invoices.customerId, c.id))
@@ -61,7 +64,25 @@ export const load: PageServerLoad = async ({ params }) => {
       .where(
         and(eq(projects.defaultCustomerId, c.id), isNull(projects.deletedAt)),
       ),
+    // KPI aggregates computed in SQL (not from rechnungen[]) so the figures
+    // stay stable if the list is ever paginated (kunde-detail.md §5).
+    db
+      .select({
+        offenCents: sql<string>`COALESCE(SUM(CASE WHEN ${invoices.bezahltAm} IS NULL THEN ${invoices.bruttoCents} ELSE 0 END), 0)`,
+        gesamtCents: sql<string>`COALESCE(SUM(${invoices.bruttoCents}), 0)`,
+      })
+      .from(invoices)
+      .where(eq(invoices.customerId, c.id)),
   ]);
+
+  // Berlin-local YYYY-MM-DD — bounds the overdue derivation identically to
+  // the /app/rechnungen list (ADR-0001 / Europe/Berlin).
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 
   return {
     customer: {
@@ -81,10 +102,17 @@ export const load: PageServerLoad = async ({ params }) => {
       businessId: r.businessId,
       bezeichnung: r.bezeichnung,
       nettoCents: Number(r.nettoCents),
+      bruttoCents: Number(r.bruttoCents),
       bezahltAm: r.bezahltAm ?? null,
       rechnungsdatum: r.rechnungsdatum,
+      faelligkeitsDatum: r.faelligkeitsDatum ?? null,
     })),
     projekte: projekteRows,
+    kpi: {
+      offenCents: Number(aggRows[0]?.offenCents ?? 0),
+      gesamtCents: Number(aggRows[0]?.gesamtCents ?? 0),
+    },
+    today,
   };
 };
 
@@ -122,5 +150,22 @@ export const actions: Actions = {
     }
 
     return { action: "delete", success: true };
+  },
+
+  // Restore from the detail route's "Wiederherstellen" banner (kunde-detail.md
+  // §6.3). The domain fn already exists; only this action + the banner UI were
+  // missing here (previously restore lived only on the list).
+  restore: async ({ request, locals, params }) => {
+    const userId = locals.session?.user.id ?? null;
+    const formData = await request.formData();
+    const id = formData.get("id")?.toString() || params.id || "";
+    assertUuidOr404(id, "Kunde nicht gefunden");
+
+    const result = await restoreCustomer(id, userId);
+    if (!result.ok) {
+      return fail(result.status, { action: "restore", error: result.error });
+    }
+
+    return { action: "restore", success: true };
   },
 };
