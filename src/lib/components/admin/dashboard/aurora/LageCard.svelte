@@ -8,13 +8,15 @@
 	 *     once WGB > 0. Y is ALWAYS wgb.freigrenzeCents formatted — no literals.
 	 */
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
-	import { SPHERE_LABELS, type Sphere } from '$lib/domain/sphere.js';
+	import { type Sphere } from '$lib/domain/sphere.js';
+	import { SphaerenBars, AgingRail } from '$lib/components/charts/index.js';
 
 	let {
 		beitraege,
 		dimmed,
 		sphaeren,
-		wgb
+		wgb,
+		offeneErstattungen
 	}: {
 		beitraege: {
 			year: number;
@@ -39,7 +41,18 @@
 			einnahmenCents: number;
 			freigrenzeCents: number;
 		};
+		/** Approved-but-not-yet-erstattet aging (dataviz aging rail). */
+		offeneErstattungen?: {
+			count: number;
+			sumCents: number;
+			oldestDays: number;
+			fristDays: number;
+		};
 	} = $props();
+
+	const sphaerenRows = $derived(
+		sphaeren.map((s) => ({ sphere: s.sphere, cents: s.saldoCents }))
+	);
 
 	// Denominator = members EXPECTED to pay = active members minus exempt
 	// (Ehrenmitglieder). The old `paidMemberCount + openMemberCount` only counted
@@ -148,26 +161,26 @@
 
 	<hr class="my-4 border-(--hairline)" />
 
-	<!-- (2) Sphären -->
+	<!-- (2) Sphären — sorted mini-bars (dataviz sphaere-v7 dense) -->
 	<div data-testid="lage-sphaeren">
-		<h3 class="text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">Sphären</h3>
-		<table class="mt-2 w-full text-sm">
-			<tbody>
-				{#each sphaeren as row (row.sphere)}
-					<tr>
-						<td class="py-1 text-ink-700">{SPHERE_LABELS[row.sphere]}</td>
-						<td
-							data-testid={`sphaere-saldo-${row.sphere}`}
-							class={'py-1 text-right tabular-nums ' +
-								(row.saldoCents < 0 ? 'text-severity-critical-text' : 'text-ink-700')}
-						>
-							{formatMoney(row.saldoCents)}
-						</td>
-					</tr>
-				{/each}
-			</tbody>
-		</table>
+		<h3 class="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">Sphären-Saldo</h3>
+		<SphaerenBars rows={sphaerenRows} dense showShares={false} totalLabel="Saldo" />
 	</div>
+
+	<!-- (2b) Offene Erstattungen — aging rail -->
+	{#if offeneErstattungen && offeneErstattungen.count > 0}
+		<hr class="my-4 border-(--hairline)" />
+		<div data-testid="lage-erstattungen">
+			<div class="mb-2 flex items-baseline justify-between gap-2">
+				<h3 class="text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">Offene Erstattungen</h3>
+				<span class="text-xs tabular-nums text-ink-500">
+					{offeneErstattungen.count}
+					{offeneErstattungen.count === 1 ? 'Auslage' : 'Auslagen'} · {formatMoney(offeneErstattungen.sumCents)}
+				</span>
+			</div>
+			<AgingRail daysOld={offeneErstattungen.oldestDays} fristDays={offeneErstattungen.fristDays} />
+		</div>
+	{/if}
 
 	<!-- (3) WGB · § 64 AO — LAST; only once WGB > 0 AND a real Freigrenze is set
 	     (freigrenzeCents > 0 guards the wgbPct division: a zeroed statutory

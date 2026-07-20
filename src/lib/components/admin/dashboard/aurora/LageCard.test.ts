@@ -9,6 +9,9 @@ import LageCard from "./LageCard.svelte";
 
 afterEach(() => cleanup());
 
+const nb = (s: string | null) =>
+  (s ?? "").split(String.fromCharCode(160)).join(" ");
+
 const base = {
   beitraege: {
     year: 2026,
@@ -85,12 +88,33 @@ describe("LageCard", () => {
     expect(screen.getByTestId("lage-heute-label")).toBeTruthy();
   });
 
-  it("negative Sphären saldo gets the severity text token, positive gets ink", () => {
+  it("Sphären render as dense sorted mini-bars, negative shown with a minus", () => {
     render(LageCard, { props: base });
-    const neg = screen.getByTestId("sphaere-saldo-zweckbetrieb");
-    expect(neg.className).toContain("text-severity-critical-text");
-    const pos = screen.getByTestId("sphaere-saldo-ideeller");
-    expect(pos.className).toContain("text-ink-700");
+    // dense sphaere-v7 bars: one row per sphere, betrag printed directly.
+    expect(
+      nb(screen.getByTestId("sphaere-row-ideeller").textContent),
+    ).toContain("500 €");
+    const neg = screen.getByTestId("sphaere-row-zweckbetrieb");
+    expect(neg.textContent).toMatch(/[-−]15\s*€/);
+  });
+
+  it("offene Erstattungen aging rail renders only when there are open reimbursements", () => {
+    const { unmount } = render(LageCard, { props: base });
+    expect(screen.queryByTestId("lage-erstattungen")).toBeNull();
+    unmount();
+    render(LageCard, {
+      props: {
+        ...base,
+        offeneErstattungen: {
+          count: 3,
+          sumCents: 27000,
+          oldestDays: 38,
+          fristDays: 14,
+        },
+      },
+    });
+    expect(screen.getByTestId("lage-erstattungen")).toBeTruthy();
+    expect(screen.getByTestId("aging-rail")).toBeTruthy();
   });
 
   it("WGB meter renders the Freigrenze FROM PROPS (no literal) and hides at 0", () => {
