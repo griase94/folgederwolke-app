@@ -45,17 +45,21 @@ describe("TransactionRow", () => {
     expect(amount.className).not.toContain("severity-critical");
   });
 
-  it("type chip carries the matching type tokens, row carries data-kind", () => {
-    for (const [type, cls, glyph] of [
-      ["ausgabe", "bg-type-ausgabe-tint", "↓"],
-      ["einnahme", "bg-type-einnahme-tint", "↑"],
-      ["spende", "bg-type-spende-tint", "♥"],
+  it("type glyph tile carries the matching type tokens, row carries data-kind", () => {
+    for (const [type, cls] of [
+      ["ausgabe", "bg-type-ausgabe-tint"],
+      ["einnahme", "bg-type-einnahme-tint"],
+      ["spende", "bg-type-spende-tint"],
     ] as const) {
-      const { unmount } = render(TransactionRow, { props: { ...base, type } });
+      const { container, unmount } = render(TransactionRow, {
+        props: { ...base, type },
+      });
       expect(screen.getByTestId("txn-row").getAttribute("data-kind")).toBe(
         type,
       );
-      expect(screen.getByText(glyph).className).toContain(cls);
+      // The 34px glyph squircle (Lucide icon inside) carries the type tint token.
+      const glyph = container.querySelector('[data-slot="row-glyph"]');
+      expect(glyph?.className).toContain(cls);
       unmount();
     }
   });

@@ -20,6 +20,7 @@ describe("AusgabenKpi", () => {
       props: {
         totalCents: 842000,
         count: 47,
+        erstattetCount: 5,
         offenCount: 0,
         oldestOpenAgeDays: null,
       },
@@ -32,6 +33,7 @@ describe("AusgabenKpi", () => {
       props: {
         totalCents: 842000,
         count: 47,
+        erstattetCount: 5,
         offenCount: 3,
         oldestOpenAgeDays: 18,
       },
@@ -45,6 +47,7 @@ describe("AusgabenKpi", () => {
       props: {
         totalCents: 84200,
         count: 3,
+        erstattetCount: 2,
         offenCount: 0,
         oldestOpenAgeDays: null,
       },

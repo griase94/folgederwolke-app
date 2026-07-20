@@ -13,7 +13,10 @@
  */
 
 import type { PageServerLoad } from "./$types.js";
-import { listTransaktionenFeedPage } from "$lib/server/domain/transactions.js";
+import {
+  listTransaktionenFeedPage,
+  countTransaktionenFeedByKind,
+} from "$lib/server/domain/transactions.js";
 import { parseFilterState } from "$lib/domain/transaction-filters.js";
 
 const PAGE_SIZE = 50;
@@ -55,11 +58,18 @@ export const load: PageServerLoad = async ({ url, parent }) => {
     }));
   }
 
+  // Per-kind counts for the filter-chip badges (all three arms, typ ignored).
+  const chipCounts = await countTransaktionenFeedByKind({
+    state,
+    year: yearScope,
+  });
+
   return {
     rows,
     total,
     sumCents,
     monthCount,
+    chipCounts,
     sort,
     page,
     pageSize: PAGE_SIZE,

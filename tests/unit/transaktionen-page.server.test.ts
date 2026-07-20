@@ -9,9 +9,21 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ALL_YEARS } from "../../src/lib/domain/year.js";
 
-const feedMock = vi.fn(async (_opts: unknown) => ({ rows: [], total: 0 }));
+const feedMock = vi.fn(async (_opts: unknown) => ({
+  rows: [],
+  total: 0,
+  sumCents: 0,
+  monthCount: 0,
+}));
+const countMock = vi.fn(async (_opts: unknown) => ({
+  expense: 0,
+  income: 0,
+  donation: 0,
+  total: 0,
+}));
 vi.mock("$lib/server/domain/transactions.js", () => ({
   listTransaktionenFeedPage: feedMock,
+  countTransaktionenFeedByKind: countMock,
 }));
 
 const { load } =
@@ -37,7 +49,14 @@ const PARENT_2026 = {
 
 beforeEach(() => {
   feedMock.mockReset();
-  feedMock.mockResolvedValue({ rows: [], total: 0 });
+  feedMock.mockResolvedValue({
+    rows: [],
+    total: 0,
+    sumCents: 0,
+    monthCount: 0,
+  });
+  countMock.mockReset();
+  countMock.mockResolvedValue({ expense: 0, income: 0, donation: 0, total: 0 });
 });
 
 describe("/app/transaktionen load", () => {

@@ -17,6 +17,8 @@ export interface AusgabenKpi {
   totalCents: number;
   /** Count of all expenses in scope. */
   count: number;
+  /** Count of erstattete expenses (erstattetAm IS NOT NULL) — KPI status tile. */
+  erstattetCount: number;
   /** Count of OPEN expenses (approved, not erstattet, not rejected). */
   offenCount: number;
   /**
@@ -60,6 +62,7 @@ export async function listAusgabenKpi(year: YearScope): Promise<AusgabenKpi> {
       .select({
         sumCents: sum(expenses.betragCents),
         cnt: count(),
+        erstattetCount: sql<number>`count(*) FILTER (WHERE ${expenses.erstattetAm} IS NOT NULL)::int`,
       })
       .from(expenses)
       .where(yearPredicate),
@@ -87,6 +90,7 @@ export async function listAusgabenKpi(year: YearScope): Promise<AusgabenKpi> {
   return {
     totalCents: Number(totalAgg[0]?.sumCents ?? 0),
     count: totalAgg[0]?.cnt ?? 0,
+    erstattetCount: totalAgg[0]?.erstattetCount ?? 0,
     offenCount: offenAgg[0]?.offenCount ?? 0,
     oldestOpenAgeDays:
       oldestRaw === null || oldestRaw === undefined ? null : Number(oldestRaw),

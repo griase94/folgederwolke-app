@@ -1,9 +1,9 @@
 <script lang="ts" module>
 	export interface DeltaChipProps {
-		/** Einnahmen (income) in the bucket, integer cents. */
-		einnahmenCents: number;
-		/** Ausgaben (expense) in the bucket, integer cents. */
-		ausgabenCents: number;
+		/** Cash-in (Einnahmen + Spenden) in the bucket, integer cents → up-stub. */
+		cashInCents: number;
+		/** Cash-out (Ausgaben) in the bucket, integer cents → down-stub. */
+		cashOutCents: number;
 		class?: string;
 	}
 </script>
@@ -23,13 +23,13 @@
 	 */
 	import { TOKEN } from "../_shared/tokens.js";
 
-	let { einnahmenCents, ausgabenCents, class: className }: DeltaChipProps = $props();
+	let { cashInCents, cashOutCents, class: className }: DeltaChipProps = $props();
 
 	// Shared scale keyed to the larger side; `1` guards div-by-zero when both
 	// are 0 (both stubs then omitted). Max stub height = 5 of the 12-tall box.
-	const hi = $derived(Math.max(einnahmenCents, ausgabenCents, 1));
-	const upH = $derived(einnahmenCents > 0 ? Math.max(1, (einnahmenCents / hi) * 5) : 0);
-	const dnH = $derived(ausgabenCents > 0 ? Math.max(1, (ausgabenCents / hi) * 5) : 0);
+	const hi = $derived(Math.max(cashInCents, cashOutCents, 1));
+	const upH = $derived(cashInCents > 0 ? Math.max(1, (cashInCents / hi) * 5) : 0);
+	const dnH = $derived(cashOutCents > 0 ? Math.max(1, (cashOutCents / hi) * 5) : 0);
 </script>
 
 <svg

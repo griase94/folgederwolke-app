@@ -12,9 +12,19 @@
 	import { SPHERE_VAR } from '$lib/components/charts/_shared/tokens.js';
 	import KpiStrip from '../KpiStrip.svelte';
 	import KpiTile from '../KpiTile.svelte';
-	import { SPHERE_LABELS, SPHERES, type Sphere } from '$lib/domain/sphere.js';
+	import { SPHERES, type Sphere } from '$lib/domain/sphere.js';
 	import { yearScopeLabel, type YearScope } from '$lib/domain/year.js';
 	import { buchungenLabel as fmtBuchungen } from '$lib/domain/transaction-kpi.js';
+
+	// Short sphere labels for the narrow KPI tiles (dashboard-v10 forms): the full
+	// "Wirtschaftlicher Geschäftsbetrieb" would clip in a quarter-width tile. The
+	// full names still live in SPHERE_LABELS for prose surfaces.
+	const SPHERE_TILE_LABEL: Record<Sphere, string> = {
+		ideeller: 'Ideeller Bereich',
+		vermoegen: 'Vermögen',
+		zweckbetrieb: 'Zweckbetrieb',
+		wirtschaftlich: 'Wirtsch. Geschäftsbetrieb'
+	};
 
 	interface Props {
 		/** Sum of all non-superseded income cents in scope. */
@@ -48,7 +58,7 @@
 	<KpiStrip data-slot="sphere-split" aria-label="Einnahmen nach Sphäre">
 		{#each SPHERES as sphere (sphere)}
 			<KpiTile
-				label={SPHERE_LABELS[sphere]}
+				label={SPHERE_TILE_LABEL[sphere]}
 				value={formatMoney(bySphere[sphere])}
 				accent={SPHERE_VAR[sphere]}
 				data-sphere-chip=""

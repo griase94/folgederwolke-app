@@ -828,6 +828,50 @@ export async function listTransaktionenFeedPage(
   };
 }
 
+export interface FeedKindCounts {
+  expense: number;
+  income: number;
+  donation: number;
+  total: number;
+}
+
+/**
+ * Per-kind counts for the feed's filter chips ("Alle 8 · Einnahmen 7 · …").
+ * Runs ALL three UNION arms — the `typ` chip filter is deliberately IGNORED so
+ * each chip shows its full count in the current year + search scope (a chip's
+ * badge must not collapse to the active filter). One grouped round-trip.
+ */
+export async function countTransaktionenFeedByKind(opts: {
+  state: FilterState;
+  year: YearScope;
+}): Promise<FeedKindCounts> {
+  const db = getDb();
+  const whereOf = (conds: SQL[]): SQL =>
+    conds.length ? and(...conds)! : sql`TRUE`;
+  const arms: SQL[] = [
+    sql`SELECT 'expense'::text AS kind FROM ${expenses} WHERE ${whereOf(buildAusgabenWhere(opts.state, opts.year))}`,
+    sql`SELECT 'income'::text AS kind FROM ${income} WHERE ${whereOf(buildEinnahmenWhere(opts.state, opts.year))}`,
+    sql`SELECT 'donation'::text AS kind FROM ${donations} WHERE ${whereOf(buildSpendenWhere(opts.state, opts.year))}`,
+  ];
+  const rows = await db.execute<{ kind: string; n: number }>(
+    sql`SELECT kind, count(*)::int AS n FROM (${sql.join(arms, sql` UNION ALL `)}) AS feed GROUP BY kind`,
+  );
+  const counts: FeedKindCounts = {
+    expense: 0,
+    income: 0,
+    donation: 0,
+    total: 0,
+  };
+  for (const r of rows) {
+    const n = Number(r.n);
+    if (r.kind === "expense") counts.expense = n;
+    else if (r.kind === "income") counts.income = n;
+    else if (r.kind === "donation") counts.donation = n;
+    counts.total += n;
+  }
+  return counts;
+}
+
 // ---------------------------------------------------------------------------
 // getTransactionDetail
 // ---------------------------------------------------------------------------

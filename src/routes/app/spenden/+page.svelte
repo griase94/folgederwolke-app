@@ -16,23 +16,23 @@
 	import MonthGroup from '$lib/components/ui/MonthGroup.svelte';
 	import { Pagination } from '$lib/components/ui/pagination/index.js';
 	import { groupByMonth } from '$lib/domain/month-group.js';
+	import { formatDatumDe } from '$lib/domain/datum.js';
 	import { spendeArtLabel, zweckbindungLabel } from '$lib/domain/spenden-labels.js';
-	import { yearScopeLabel } from '$lib/domain/year.js';
+	import { yearScopeLabel, yearScopeMetaLabel } from '$lib/domain/year.js';
 	import type { SpendenRow } from '$lib/server/domain/transactions.js';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
 
-	function formatDatum(iso: string): string {
-		return new Date(iso).toLocaleDateString('de-DE');
-	}
 	function metaLine(row: SpendenRow): string {
-		return `${formatDatum(row.gebuchtAm)} · ${spendeArtLabel(row.spendeKind)} · ${zweckbindungLabel(row.zweckbindungKind)}`;
+		return `${formatDatumDe(row.gebuchtAm)} · ${spendeArtLabel(row.spendeKind)} · ${zweckbindungLabel(row.zweckbindungKind)}`;
 	}
 	function chips(row: SpendenRow): { label: string; kind?: 'warn' | 'neutral' }[] {
-		// master §2.4: the Bescheinigungs-Nr (or "Bescheinigung ausstehend") is a
-		// status indicator, not an incompleteness warning → neutral.
-		return [{ label: row.bescheinigungNr ?? 'Bescheinigung ausstehend', kind: 'neutral' }];
+		// The issued Bescheinigungs-Nr is a settled status → neutral; a still-open
+		// "Bescheinigung ausstehend" is a to-do → warn (amber), never neutral-grey.
+		return row.bescheinigungNr
+			? [{ label: row.bescheinigungNr, kind: 'neutral' }]
+			: [{ label: 'Bescheinigung ausstehend', kind: 'warn' }];
 	}
 
 	const sortOverride = $derived($page.url.searchParams.has('sort'));
@@ -53,6 +53,7 @@
 			Object.values(data.filterState.booleans).some(Boolean),
 	);
 	const yearLabel = $derived(yearScopeLabel(data.yearScope));
+	const yearMetaLabel = $derived(yearScopeMetaLabel(data.yearScope));
 	const buchungenLabel = $derived(`${data.total} ${data.total === 1 ? 'Buchung' : 'Buchungen'}`);
 
 	const exportHref = $derived(
@@ -104,7 +105,7 @@
 	<PageHeader title="Spenden">
 		{#snippet meta()}
 			<p class="tabular-nums">
-				<b class="font-semibold text-ink-700">{buchungenLabel}</b> · {yearLabel}
+				<b class="font-semibold text-ink-700">{buchungenLabel}</b> · {yearMetaLabel}
 			</p>
 		{/snippet}
 		{#snippet toolbar()}
@@ -170,9 +171,51 @@
 		{:else}
 			<div
 				data-testid="empty-year"
-				class="flex flex-col items-center gap-2 rounded-[16px] border border-dashed border-(--hairline) bg-card/60 px-6 py-12 text-center"
+				class="flex flex-col items-center gap-3 rounded-[16px] border border-dashed border-(--hairline) bg-card/60 px-6 py-12 text-center"
 			>
-				<p class="text-sm font-medium text-ink-700">Keine Buchungen in {yearLabel}</p>
+				<span
+					class="flex size-11 items-center justify-center rounded-full bg-type-spende-tint text-type-spende"
+				>
+					<svg
+						class="size-5"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
+						<rect width="20" height="5" x="2" y="7" rx="1" /><path d="M12 7v14" /><path
+							d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"
+						/><path d="M7.5 7a2.5 2.5 0 0 1 0-5C10 2 12 5.5 12 7c0-1.5 2-5 4.5-5a2.5 2.5 0 0 1 0 5" />
+					</svg>
+				</span>
+				<div class="space-y-1">
+					<p class="text-sm font-medium text-ink-900">Noch keine Spenden in {yearLabel}</p>
+					<p class="max-w-xs text-xs text-ink-500">
+						Sobald du eine Spende erfasst, findest du sie hier — mit ihrem Bescheinigungs-Status.
+					</p>
+				</div>
+				<!-- eslint-disable svelte/no-navigation-without-resolve -->
+				<a
+					href="/app/spenden/neu"
+					class="inline-flex h-10 items-center gap-1.5 rounded-full bg-primary-strong px-4 text-sm font-semibold text-white shadow-(--glow-brand) hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2"
+				>
+					<svg
+						class="size-4"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2.4"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
+						<path d="M5 12h14M12 5v14" />
+					</svg>Neue Spende
+				</a>
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			</div>
 		{/if}
 	{:else if sortOverride}
@@ -191,7 +234,14 @@
 	{:else}
 		<div class="overflow-hidden rounded-2xl border bg-card shadow-(--shadow-card)">
 			{#each groups as g (g.key)}
-				<MonthGroup label={g.label} subtotalCents={g.subtotalCents}>
+				<MonthGroup
+					label={g.label}
+					subtotalCents={g.subtotalCents}
+					count={g.rows.length}
+					cashInCents={g.rows.reduce((s, r) => s + r.betragCents, 0)}
+					cashOutCents={0}
+					netLabel="Netto Monat"
+				>
 					{@render rowsFor(g.rows)}
 				</MonthGroup>
 			{/each}

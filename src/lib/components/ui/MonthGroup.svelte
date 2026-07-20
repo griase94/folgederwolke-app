@@ -18,30 +18,30 @@
 		label,
 		subtotalCents,
 		count,
-		einnahmenCents,
-		ausgabenCents,
+		cashInCents,
+		cashOutCents,
 		netLabel,
 		children
 	}: {
 		label: string;
 		subtotalCents?: number;
-		/** Row count in the bucket → "· N Buchungen" (feed month head). */
+		/** Row count in the bucket → "· N Buchungen" (feed/type-list month head). */
 		count?: number;
-		/** Feed only: Einnahmen share of the month (drives the DeltaChip). */
-		einnahmenCents?: number;
-		/** Feed only: Ausgaben share of the month (drives the DeltaChip). */
-		ausgabenCents?: number;
-		/** Feed only: small stacked caption above the net ("Netto Monat"). */
+		/** Cash-in share of the month (Einnahmen + Spenden) → DeltaChip up-stub. */
+		cashInCents?: number;
+		/** Cash-out share of the month (Ausgaben) → DeltaChip down-stub. */
+		cashOutCents?: number;
+		/** Small stacked caption above the net ("Netto Monat"). */
 		netLabel?: string;
 		children?: Snippet;
 	} = $props();
 
-	const showDelta = $derived(einnahmenCents !== undefined && ausgabenCents !== undefined);
+	const showDelta = $derived(cashInCents !== undefined && cashOutCents !== undefined);
 </script>
 
 <section data-month-group>
 	<header
-		class="grid grid-cols-[3px_26px_minmax(0,1fr)_auto_auto] items-center gap-x-2.5 border-b border-hairline bg-secondary/50 px-1 py-2"
+		class="grid grid-cols-[3px_34px_minmax(0,1fr)_auto_auto] items-center gap-x-2.5 border-b border-hairline bg-secondary/50 px-1 py-2"
 	>
 		<!-- Left: calendar glyph + month label + optional count, spanning the
 		     rail+chip+title columns so it clears the amount ruler. h2 sits under
@@ -78,7 +78,7 @@
 				{/if}
 				<span class="flex items-center gap-1.5">
 					{#if showDelta}
-						<DeltaChip einnahmenCents={einnahmenCents ?? 0} ausgabenCents={ausgabenCents ?? 0} />
+						<DeltaChip cashInCents={cashInCents ?? 0} cashOutCents={cashOutCents ?? 0} />
 					{/if}
 					<span
 						data-testid="month-subtotal"

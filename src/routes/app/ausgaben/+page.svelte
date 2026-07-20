@@ -20,22 +20,20 @@
 	import MonthGroup from '$lib/components/ui/MonthGroup.svelte';
 	import { Pagination } from '$lib/components/ui/pagination/index.js';
 	import { groupByMonth } from '$lib/domain/month-group.js';
+	import { formatDatumDe } from '$lib/domain/datum.js';
 	import { SPHERE_LABELS, type Sphere } from '$lib/domain/sphere.js';
 	import { statusPresentation } from '$lib/domain/transaction-status.js';
-	import { yearScopeLabel } from '$lib/domain/year.js';
+	import { yearScopeLabel, yearScopeMetaLabel } from '$lib/domain/year.js';
 	import type { AusgabenRow } from '$lib/server/domain/transactions.js';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
 
-	function formatDatum(iso: string): string {
-		return new Date(iso).toLocaleDateString('de-DE');
-	}
 	function sphereLabel(s: string): string {
 		return SPHERE_LABELS[s as Sphere] ?? s;
 	}
 	function metaLine(row: AusgabenRow): string {
-		const parts = [formatDatum(row.gebuchtAm), sphereLabel(row.sphereEffective)];
+		const parts = [formatDatumDe(row.gebuchtAm), sphereLabel(row.sphereEffective)];
 		if (row.bezahltVonDisplay) parts.push(row.bezahltVonDisplay);
 		return parts.join(' · ');
 	}
@@ -65,6 +63,7 @@
 			Object.values(data.filterState.booleans).some(Boolean),
 	);
 	const yearLabel = $derived(yearScopeLabel(data.yearScope));
+	const yearMetaLabel = $derived(yearScopeMetaLabel(data.yearScope));
 	const buchungenLabel = $derived(`${data.total} ${data.total === 1 ? 'Buchung' : 'Buchungen'}`);
 
 	const exportHref = $derived(
@@ -116,7 +115,7 @@
 	<PageHeader title="Ausgaben">
 		{#snippet meta()}
 			<p class="tabular-nums">
-				<b class="font-semibold text-ink-700">{buchungenLabel}</b> · {yearLabel}
+				<b class="font-semibold text-ink-700">{buchungenLabel}</b> · {yearMetaLabel}
 			</p>
 		{/snippet}
 		{#snippet toolbar()}
@@ -137,15 +136,43 @@
 				<div class="flex flex-wrap items-center gap-2">
 					<a
 						href="/app/ausgaben/ueberweisungen"
-						class="inline-flex h-11 items-center rounded-[10px] px-3 text-sm font-medium text-primary-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
-						>Überweisungsliste</a
+						class="inline-flex h-11 items-center gap-1.5 rounded-[10px] border border-(--hairline) bg-card px-3 text-sm font-medium text-ink-700 hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
+					>
+						<svg
+							class="size-4"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<path
+								d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"
+							/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" />
+						</svg>Überweisungsliste</a
 					>
 					<a
 						href={exportHref}
 						data-testid="export-cta"
 						title="Gefilterte und sortierte Liste vollständig herunterladen (alle Seiten)"
-						class="inline-flex h-11 items-center rounded-[10px] border border-(--hairline) bg-card px-3 text-sm font-medium text-ink-700 hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
-						>CSV</a
+						class="inline-flex h-11 items-center gap-1.5 rounded-[10px] border border-(--hairline) bg-card px-3 text-sm font-medium text-ink-700 hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
+					>
+						<svg
+							class="size-4"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path
+								d="m7 10 5 5 5-5"
+							/>
+						</svg>CSV</a
 					>
 					<a
 						href="/app/ausgaben/neu"
@@ -165,6 +192,7 @@
 		<AusgabenKpi
 			totalCents={data.kpi.totalCents}
 			count={data.kpi.count}
+			erstattetCount={data.kpi.erstattetCount}
 			offenCount={data.kpi.offenCount}
 			oldestOpenAgeDays={data.kpi.oldestOpenAgeDays}
 		/>
@@ -209,7 +237,14 @@
 	{:else}
 		<div class="overflow-hidden rounded-2xl border bg-card shadow-(--shadow-card)">
 			{#each groups as g (g.key)}
-				<MonthGroup label={g.label} subtotalCents={g.subtotalCents}>
+				<MonthGroup
+					label={g.label}
+					subtotalCents={g.subtotalCents}
+					count={g.rows.length}
+					cashInCents={0}
+					cashOutCents={g.rows.reduce((s, r) => s + r.betragCents, 0)}
+					netLabel="Netto Monat"
+				>
 					{@render rowsFor(g.rows)}
 				</MonthGroup>
 			{/each}

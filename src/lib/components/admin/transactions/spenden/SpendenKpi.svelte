@@ -1,16 +1,16 @@
 <!--
-  SpendenKpi — the Spenden list header strip (spec §9.1, Phase 6 Task 2).
+  SpendenKpi — the Spenden list KPI strip (spec §9.1, plate transaktionen-v4 §4).
 
-  A quiet anchor (Jahr|Alle · Summe · N Spenden) followed by two status pills:
-    - "N ohne Bescheinigung" — DISAPPEARS at zero (the §9.1 delight: when every
-      donation is bescheinigt there is no nagging pill).
-    - "M Bescheinigungen versandt" — the count of issued Zuwendungsbestätigungen.
-
-  There is NO Sammelbestätigungs-Fenster / deadline pill (§9.1): no statutory
-  cutoff exists, so a deadline would be a false signal.
+  Kit tiles (Summe · Anzahl · Versandt) with the Jahr · N-Spenden anchor folded
+  into the Summe tile, plus the §9.1 delight: a DISAPPEARING "N ohne
+  Bescheinigung" amber pill that is ABSENT when every donation is bescheinigt.
+  There is NO Sammelbestätigungs-Fenster / deadline (no statutory cutoff → a
+  deadline would be a false signal). No own <h1>: PageHeader owns the title.
 -->
 <script lang="ts">
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
+	import KpiStrip from '../KpiStrip.svelte';
+	import KpiTile from '../KpiTile.svelte';
 	import { yearScopeLabel, type YearScope } from '$lib/domain/year.js';
 	import { spendenLabel as fmtSpenden } from '$lib/domain/transaction-kpi.js';
 
@@ -28,27 +28,29 @@
 	const spendenLabel = $derived(fmtSpenden(count));
 </script>
 
-<div data-testid="kpi-strip">
-	<!-- No <h1>: PageHeader owns the page title; render only the quiet anchor. -->
-	<p class="text-sm text-muted-foreground" data-testid="spenden-kpi-anchor">
-		{yearLabel} · {formatMoney(totalCents)} · {spendenLabel}
-	</p>
+<div data-testid="kpi-strip" class="flex flex-col gap-2.5">
+	<KpiStrip>
+		<KpiTile
+			label="Summe Spenden"
+			value={formatMoney(totalCents)}
+			accent="var(--type-spende)"
+			sub={`${yearLabel} · ${spendenLabel}`}
+		/>
+		<KpiTile label="Anzahl" value={String(count)} />
+		<KpiTile
+			label="Versandt"
+			value={`${versandtCount} versandt`}
+			accent="var(--type-einnahme)"
+		/>
+	</KpiStrip>
 
-	<!-- Status pills. -->
-	<div class="mt-2 flex flex-wrap items-center gap-2">
-		{#if ohneBescheinigungCount > 0}
-			<span
-				data-testid="kpi-ohne-bescheinigung"
-				class="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200"
-			>
-				{ohneBescheinigungCount} ohne Bescheinigung
-			</span>
-		{/if}
+	{#if ohneBescheinigungCount > 0}
+		<!-- §9.1 disappearing pill: absent when every donation is bescheinigt. -->
 		<span
-			data-testid="kpi-versandt"
-			class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
+			data-testid="kpi-ohne-bescheinigung"
+			class="inline-flex w-fit items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200"
 		>
-			{versandtCount} Bescheinigungen versandt
+			{ohneBescheinigungCount} ohne Bescheinigung
 		</span>
-	</div>
+	{/if}
 </div>

@@ -16,19 +16,17 @@
 	import MonthGroup from '$lib/components/ui/MonthGroup.svelte';
 	import { Pagination } from '$lib/components/ui/pagination/index.js';
 	import { groupByMonth } from '$lib/domain/month-group.js';
+	import { formatDatumDe } from '$lib/domain/datum.js';
 	import { SPHERE_LABELS, type Sphere } from '$lib/domain/sphere.js';
-	import { yearScopeLabel } from '$lib/domain/year.js';
+	import { yearScopeLabel, yearScopeMetaLabel } from '$lib/domain/year.js';
 	import type { EinnahmenRow } from '$lib/server/domain/transactions.js';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
 
-	function formatDatum(iso: string): string {
-		return new Date(iso).toLocaleDateString('de-DE');
-	}
 	function metaLine(row: EinnahmenRow): string {
 		const sphere = SPHERE_LABELS[row.sphereSnapshot as Sphere] ?? row.sphereSnapshot;
-		return `${formatDatum(row.gebuchtAm)} · ${sphere} · ${row.kategorieNameSnapshot}`;
+		return `${formatDatumDe(row.gebuchtAm)} · ${sphere} · ${row.kategorieNameSnapshot}`;
 	}
 	function chips(row: EinnahmenRow): { label: string; kind?: 'warn' | 'neutral' }[] {
 		// master §2.4: "aus Rechnung FDW-…" is a provenance signal, not a warning → neutral.
@@ -55,6 +53,7 @@
 			Object.values(data.filterState.booleans).some(Boolean),
 	);
 	const yearLabel = $derived(yearScopeLabel(data.yearScope));
+	const yearMetaLabel = $derived(yearScopeMetaLabel(data.yearScope));
 	const buchungenLabel = $derived(`${data.total} ${data.total === 1 ? 'Buchung' : 'Buchungen'}`);
 
 	const exportHref = $derived(
@@ -106,7 +105,7 @@
 	<PageHeader title="Einnahmen">
 		{#snippet meta()}
 			<p class="tabular-nums">
-				<b class="font-semibold text-ink-700">{buchungenLabel}</b> · {yearLabel}
+				<b class="font-semibold text-ink-700">{buchungenLabel}</b> · {yearMetaLabel}
 			</p>
 		{/snippet}
 		{#snippet toolbar()}
@@ -192,7 +191,14 @@
 	{:else}
 		<div class="overflow-hidden rounded-2xl border bg-card shadow-(--shadow-card)">
 			{#each groups as g (g.key)}
-				<MonthGroup label={g.label} subtotalCents={g.subtotalCents}>
+				<MonthGroup
+					label={g.label}
+					subtotalCents={g.subtotalCents}
+					count={g.rows.length}
+					cashInCents={g.rows.reduce((s, r) => s + r.betragCents, 0)}
+					cashOutCents={0}
+					netLabel="Netto Monat"
+				>
 					{@render rowsFor(g.rows)}
 				</MonthGroup>
 			{/each}

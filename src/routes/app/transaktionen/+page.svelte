@@ -20,26 +20,29 @@
 	import { Pagination } from '$lib/components/ui/pagination/index.js';
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
 	import { groupByMonth } from '$lib/domain/month-group.js';
+	import { formatDatumDe } from '$lib/domain/datum.js';
 	import { SPHERE_LABELS, type Sphere } from '$lib/domain/sphere.js';
 	import { statusPresentation } from '$lib/domain/transaction-status.js';
-	import { yearScopeLabel } from '$lib/domain/year.js';
+	import { yearScopeMetaLabel } from '$lib/domain/year.js';
 	import type { FeedRow } from '$lib/server/domain/transactions.js';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
 
-	const TYP_OPTIONS = [
-		{ value: '', label: 'Alle' },
-		{ value: 'ausgaben', label: 'Ausgaben' },
-		{ value: 'einnahmen', label: 'Einnahmen' },
-		{ value: 'spenden', label: 'Spenden' },
-	];
 	const activeTyp = $derived(data.filterState.enums['typ']?.[0] ?? '');
+	// Chip order follows the plate (Alle · Einnahmen · Ausgaben · Spenden); each
+	// chip carries its per-kind count over the year+search set (typ ignored).
+	const TYP_OPTIONS = $derived([
+		{ value: '', label: 'Alle', count: data.chipCounts.total },
+		{ value: 'einnahmen', label: 'Einnahmen', count: data.chipCounts.income },
+		{ value: 'ausgaben', label: 'Ausgaben', count: data.chipCounts.expense },
+		{ value: 'spenden', label: 'Spenden', count: data.chipCounts.donation },
+	]);
 
-	const LENS_OPTIONS = [
-		{ value: 'datum', label: 'Datum' },
-		{ value: 'betrag', label: 'Betrag' },
-	];
+	const LENS_OPTIONS = $derived([
+		{ value: 'datum', label: 'Datum', icon: lensIcon },
+		{ value: 'betrag', label: 'Betrag', icon: lensIcon },
+	]);
 	const lens = $derived<'datum' | 'betrag'>(data.sort === 'betrag' ? 'betrag' : 'datum');
 
 	const KIND_TO_TYPE = {
@@ -56,13 +59,9 @@
 	function signedCents(r: FeedRow): number {
 		return r.kind === 'expense' ? -r.betragCents : r.betragCents;
 	}
-	function formatDatum(isoDate: string): string {
-		const [y, m, d] = isoDate.split('-');
-		return `${d}.${m}.${y}`;
-	}
 	function metaLine(r: FeedRow): string {
 		const sphere = SPHERE_LABELS[r.sphereEffective as Sphere] ?? r.sphereEffective;
-		return `${formatDatum(r.relevanzDatum)} · ${sphere}`;
+		return `${formatDatumDe(r.relevanzDatum)} · ${sphere}`;
 	}
 	function chips(r: FeedRow): { label: string; kind?: 'warn' | 'neutral' }[] {
 		// master §2.4 per-kind chips: only genuine incompleteness ("Beleg fehlt")
@@ -76,19 +75,19 @@
 
 	// Datum lens: month groups on the cash (relevanz) date, each carrying the
 	// Einnahmen/Ausgaben split that drives the DeltaChip (income vs spending).
-	function splitOf(rows: FeedRow[]): { einnahmenCents: number; ausgabenCents: number } {
-		let einnahmenCents = 0;
-		let ausgabenCents = 0;
+	function splitOf(rows: FeedRow[]): { cashInCents: number; cashOutCents: number } {
+		let cashInCents = 0;
+		let cashOutCents = 0;
 		for (const r of rows) {
-			if (r.kind === 'expense') ausgabenCents += r.betragCents;
-			else einnahmenCents += r.betragCents;
+			if (r.kind === 'expense') cashOutCents += r.betragCents;
+			else cashInCents += r.betragCents;
 		}
-		return { einnahmenCents, ausgabenCents };
+		return { cashInCents, cashOutCents };
 	}
 	const groups = $derived(groupByMonth(data.rows, (r) => r.relevanzDatum, signedCents));
 
-	// Foot readout: whole-set totals (server aggregate), honest across pages.
-	const yearLabel = $derived(yearScopeLabel(data.yearScope));
+	// Foot + meta readout: whole-set totals (server aggregate), honest across pages.
+	const yearMetaLabel = $derived(yearScopeMetaLabel(data.yearScope));
 	const buchungenLabel = $derived(`${data.total} ${data.total === 1 ? 'Buchung' : 'Buchungen'}`);
 	const monateLabel = $derived(
 		`${data.monthCount} ${data.monthCount === 1 ? 'Monat' : 'Monate'}`,
@@ -154,10 +153,32 @@
 	<title>Transaktionen – {$page.data.vereinName}</title>
 </svelte:head>
 
+{#snippet lensIcon(value: string)}
+	<svg
+		class="size-4"
+		viewBox="0 0 24 24"
+		fill="none"
+		stroke="currentColor"
+		stroke-width="2"
+		stroke-linecap="round"
+		stroke-linejoin="round"
+		aria-hidden="true"
+	>
+		{#if value === 'betrag'}
+			<path d="M4 10h12M4 14h9" />
+			<path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2" />
+		{:else}
+			<path d="M8 2v4M16 2v4" />
+			<rect width="18" height="18" x="3" y="4" rx="2" />
+			<path d="M3 10h18" />
+		{/if}
+	</svg>
+{/snippet}
+
 {#snippet feedFoot(mode: 'datum' | 'betrag')}
 	<div
 		data-testid="feed-foot"
-		class="grid grid-cols-[3px_26px_minmax(0,1fr)_auto_auto] items-center gap-x-2.5 border-t border-hairline bg-secondary/40 px-1 py-3"
+		class="grid grid-cols-[3px_34px_minmax(0,1fr)_auto_auto] items-center gap-x-2.5 border-t border-hairline bg-secondary/40 px-1 py-3"
 	>
 		<div class="col-span-3 flex min-w-0 items-center gap-2 pl-1.5 text-xs text-ink-500">
 			<svg
@@ -173,7 +194,9 @@
 				<path d="M3 5h.01M3 12h.01M3 19h.01M8 5h13M8 12h13M8 19h13" />
 			</svg>
 			<span class="truncate"
-				>{buchungenLabel} · {mode === 'betrag' ? 'eine Gesamtliste' : monateLabel} · {yearLabel}</span
+				>{buchungenLabel} · {mode === 'betrag'
+					? 'eine Gesamtliste'
+					: monateLabel} · {yearMetaLabel}</span
 			>
 		</div>
 		<div class="flex flex-col items-end leading-tight">
@@ -192,7 +215,7 @@
 	<PageHeader title="Transaktionen">
 		{#snippet meta()}
 			<p class="tabular-nums">
-				<b class="font-semibold text-ink-700">{buchungenLabel}</b> · {yearLabel}
+				<b class="font-semibold text-ink-700">{buchungenLabel}</b> · {yearMetaLabel}
 			</p>
 		{/snippet}
 		{#snippet toolbar()}
@@ -286,8 +309,8 @@
 						label={g.label}
 						subtotalCents={g.subtotalCents}
 						count={g.rows.length}
-						einnahmenCents={split.einnahmenCents}
-						ausgabenCents={split.ausgabenCents}
+						cashInCents={split.cashInCents}
+						cashOutCents={split.cashOutCents}
 						netLabel="Netto Monat"
 					>
 						{#each g.rows as r (r.kind + r.id)}

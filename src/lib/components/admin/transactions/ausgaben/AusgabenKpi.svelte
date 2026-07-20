@@ -16,17 +16,19 @@
 	interface Props {
 		totalCents: number;
 		count: number;
+		erstattetCount: number;
 		offenCount: number;
 		oldestOpenAgeDays: number | null;
 	}
 
-	let { totalCents, count, offenCount, oldestOpenAgeDays }: Props = $props();
+	let { totalCents, count, erstattetCount, offenCount, oldestOpenAgeDays }: Props = $props();
 </script>
 
 <div data-testid="kpi-strip" class="flex flex-col gap-2.5">
 	<KpiStrip>
 		<KpiTile label="Summe Ausgaben" value={formatMoney(totalCents)} accent="var(--type-ausgabe)" />
 		<KpiTile label="Anzahl" value={String(count)} />
+		<KpiTile label="Erstattet" value={String(erstattetCount)} accent="var(--type-einnahme)" />
 	</KpiStrip>
 
 	{#if offenCount > 0}

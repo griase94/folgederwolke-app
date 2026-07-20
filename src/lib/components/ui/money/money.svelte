@@ -28,7 +28,10 @@
 
 	export function formatMoney(valueInCents: number, forceSign: MoneyForceSign = "auto"): string {
 		const euros = valueInCents / 100;
-		return getFormatter(forceSign).format(euros);
+		// Intl de-DE emits an ASCII hyphen-minus (U+002D) for negatives; normalise
+		// to the real MINUS SIGN (U+2212) so every money string across the app reads
+		// typographically correct and column-aligns with the plus (ANDY-LENS §4).
+		return getFormatter(forceSign).format(euros).replace(/[-‐]/g, "−");
 	}
 </script>
 

@@ -193,3 +193,12 @@ export function isStaleYear(scope: YearScope, currentYear: number): boolean {
 export function yearScopeLabel(scope: YearScope): string {
   return scope === ALL_YEARS ? "Alle Jahre" : String(scope);
 }
+
+/**
+ * Longer meta-line variant: a concrete year reads "Buchungsjahr 2026" (the
+ * plate ph-meta phrasing), ALL_YEARS stays "Alle Jahre". Used in the
+ * PageHeader meta of the feed + the three type lists.
+ */
+export function yearScopeMetaLabel(scope: YearScope): string {
+  return scope === ALL_YEARS ? "Alle Jahre" : `Buchungsjahr ${scope}`;
+}
