@@ -15,8 +15,9 @@
 import type { LayoutServerLoad } from "./$types.js";
 import { env, isPublicFormEnabled } from "$lib/server/env.js";
 import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
+import { MODE_COOKIE, resolveMode } from "$lib/themes/index.js";
 
-export const load: LayoutServerLoad = async () => {
+export const load: LayoutServerLoad = async ({ cookies }) => {
   const stammdaten = await readStammdaten();
   return {
     publicFormEnabled: isPublicFormEnabled(),
@@ -24,5 +25,9 @@ export const load: LayoutServerLoad = async () => {
     // Runtime Verein contact email — injected into the public-form consent text
     // (datenschutzText) so the client module stays free of `$env`.
     kontaktEmail: env.VEREIN_KONTAKT_EMAIL,
+    // Dark-mode preference (F1). Seeds mode-watcher's defaultMode so a client
+    // with a set cookie but empty localStorage still resolves the right mode;
+    // the segmented control in Einstellungen reads this as its initial value.
+    mode: resolveMode(cookies.get(MODE_COOKIE)),
   };
 };

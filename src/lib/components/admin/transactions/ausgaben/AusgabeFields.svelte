@@ -3,7 +3,7 @@
 	 * AusgabeFields — Package C1. Aurora 3-section redesign.
 	 *
 	 * Sections: Grunddaten / Beleg (position 2) / Bezahlt-von
-	 * Each section is a light card (rounded-xl border-hairline bg-white/60 p-4).
+	 * Each section is a light card (rounded-xl border-hairline bg-card/60 p-4).
 	 *
 	 * Betrag → type=text inputmode=decimal + parseBetragCents (ADR-0003).
 	 * FIELD_CLASS throughout. Bezahlt-von → grid-cols-3.
@@ -198,7 +198,7 @@
 
 	<!-- ── Section 1: Grunddaten ─────────────────────────────────────────────── -->
 	<section
-		class="rounded-xl border border-hairline bg-white/60 p-4"
+		class="rounded-xl border border-hairline bg-card/60 p-4"
 		data-slot="ausgabe-section"
 	>
 		<h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-500">Grunddaten</h3>
@@ -337,7 +337,7 @@
 					rows={2}
 					maxlength={2000}
 					bind:value={kommentar}
-					class="w-full rounded-[10px] border border-hairline bg-white px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+					class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
 				></textarea>
 			</div>
 		</div>
@@ -345,7 +345,7 @@
 
 	<!-- ── Section 2: Beleg (position 2, mandatory) ─────────────────────────── -->
 	<section
-		class="rounded-xl border border-hairline bg-white/60 p-4"
+		class="rounded-xl border border-hairline bg-card/60 p-4"
 		data-slot="ausgabe-section"
 	>
 		<h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-500">Beleg</h3>
@@ -354,7 +354,7 @@
 
 	<!-- ── Section 3: Bezahlt-von ─────────────────────────────────────────────── -->
 	<section
-		class="rounded-xl border border-hairline bg-white/60 p-4"
+		class="rounded-xl border border-hairline bg-card/60 p-4"
 		data-slot="ausgabe-section"
 	>
 		<h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-500">Bezahlt von</h3>
@@ -374,7 +374,7 @@
 						'inline-flex min-h-11 items-center justify-center rounded-[10px] px-3 py-1.5 text-sm font-medium transition-colors',
 						bezahltVonKind === k
 							? 'bg-primary-strong text-primary-foreground'
-							: 'border border-hairline bg-white text-ink-700 hover:bg-muted/50',
+							: 'border border-hairline bg-card text-ink-700 hover:bg-muted/50',
 					].join(' ')}
 				>
 					{l}

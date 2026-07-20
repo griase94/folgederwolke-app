@@ -44,7 +44,7 @@
 				<!-- eslint-disable svelte/no-navigation-without-resolve -->
 				<a
 					href={`/app/ausgaben/${linkedExpenseId}`}
-					class="inline-flex min-h-11 items-center gap-1 rounded-full border border-hairline bg-white px-3 text-sm font-medium text-primary-text hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:min-h-10"
+					class="inline-flex min-h-11 items-center gap-1 rounded-full border border-hairline bg-card px-3 text-sm font-medium text-primary-text hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:min-h-10"
 					>Zur Ausgabe →</a
 				>
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
@@ -59,7 +59,7 @@
 			<span class="text-ink-700">{formatDate(decidedAt)}</span>
 		</div>
 		{#if decisionReason}
-			<div class="rounded-xl border border-hairline bg-white px-3 py-2 text-sm text-ink-700">
+			<div class="rounded-xl border border-hairline bg-card px-3 py-2 text-sm text-ink-700">
 				<p class="mb-1 text-xs font-medium uppercase tracking-wide text-ink-500">Grund</p>
 				<p class="whitespace-pre-line text-ink-900">{decisionReason}</p>
 			</div>

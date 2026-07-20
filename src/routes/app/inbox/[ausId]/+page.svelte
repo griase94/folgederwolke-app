@@ -58,7 +58,7 @@
 	<PageHeader title={data.submission.bezeichnung} backHref="/app/inbox?status=Offen" backLabel="Prüfung" />
 
 	<div
-		class="overflow-hidden rounded-2xl border border-hairline bg-white shadow-(--shadow-card)"
+		class="overflow-hidden rounded-2xl border border-hairline bg-card shadow-(--shadow-card)"
 		aria-label="Einreichung {data.submission.ausId}"
 	>
 		<div class="grid grid-cols-1 gap-0 lg:grid-cols-[minmax(0,1.55fr)_minmax(360px,1fr)]">

@@ -110,7 +110,7 @@
 			</div>
 		</div>
 	{:else}
-		<div class="rounded-2xl border border-hairline bg-white p-2 shadow-(--shadow-card) sm:p-3">
+		<div class="rounded-2xl border border-hairline bg-card p-2 shadow-(--shadow-card) sm:p-3">
 			<InboxList submissions={data.submissions} {activeStatus} />
 		</div>
 	{/if}

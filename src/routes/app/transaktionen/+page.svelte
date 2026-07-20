@@ -137,7 +137,7 @@
 					placeholder="Suchen…"
 					aria-label="Transaktionen durchsuchen"
 					autocomplete="off"
-					class="h-11 w-full max-w-xs rounded-[10px] border border-(--hairline) bg-white px-3 text-sm text-ink-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
+					class="h-11 w-full max-w-xs rounded-[10px] border border-(--hairline) bg-card px-3 text-sm text-ink-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
 				/>
 				<FilterChips options={TYP_OPTIONS} active={activeTyp} paramName="typ" />
 			</div>
@@ -147,7 +147,7 @@
 	{#if data.rows.length === 0}
 		<div
 			data-testid="feed-empty"
-			class="flex flex-col items-center gap-3 rounded-[16px] border border-dashed border-(--hairline) bg-white/60 px-6 py-12 text-center"
+			class="flex flex-col items-center gap-3 rounded-[16px] border border-dashed border-(--hairline) bg-card/60 px-6 py-12 text-center"
 		>
 			<p class="text-sm font-medium text-ink-700">Keine Buchungen gefunden.</p>
 			{#if hasActiveFilters}

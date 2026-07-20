@@ -78,7 +78,7 @@
 	</span>
 {/snippet}
 
-<section class="rounded-2xl bg-white p-4 shadow-(--shadow-card)" aria-labelledby="aufgaben-heading">
+<section class="rounded-2xl bg-card p-4 shadow-(--shadow-card)" aria-labelledby="aufgaben-heading">
 	<div class="mb-2 flex items-center justify-between">
 		<h2 id="aufgaben-heading" class="text-sm font-semibold tracking-tight text-ink-900">
 			Aufgaben

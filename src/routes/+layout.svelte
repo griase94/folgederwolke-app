@@ -4,6 +4,7 @@
 	import type { Snippet } from 'svelte';
 	import type { LayoutData } from './$types.js';
 	import PwaUpdater from '$lib/components/pwa/PwaUpdater.svelte';
+	import { ModeWatcher } from 'mode-watcher';
 	import { injectSpeedInsights } from '@vercel/speed-insights/sveltekit';
 	import { page } from '$app/state';
 	import { onNavigate } from '$app/navigation';
@@ -95,6 +96,16 @@
 		<meta name="robots" content="noindex,nofollow" />
 	{/if}
 </svelte:head>
+
+<!--
+	Dark mode (F1): mode-watcher owns the client-side `.dark` class + the
+	`mode.current` store (consumed by sonner) and tracks the OS colour scheme
+	live for `system` mode. `disableHeadScriptInjection` skips its FOUC inline
+	script (blocked by our `script-src 'self'` CSP) — the server already stamps
+	`.dark` into the SSR HTML (hooks.server.ts) so the first paint is flash-free.
+	`defaultMode` seeds it from the fdw_mode cookie when localStorage is empty.
+-->
+<ModeWatcher disableHeadScriptInjection defaultMode={data.mode} />
 
 {@render children()}
 

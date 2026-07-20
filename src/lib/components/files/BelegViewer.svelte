@@ -416,7 +416,7 @@
 					class="mx-auto h-auto max-w-full rounded border"
 				/>
 			{:else if isPdf && !pdfFailed}
-				<canvas bind:this={mainCanvas} class="mx-auto h-auto max-w-full rounded border bg-white"
+				<canvas bind:this={mainCanvas} class="mx-auto h-auto max-w-full rounded border bg-card"
 				></canvas>
 			{:else}
 				<!-- Render-failure fallback for PDFs (and any other mimeType). -->

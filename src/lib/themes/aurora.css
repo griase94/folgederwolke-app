@@ -214,6 +214,12 @@
 [data-theme="aurora"].dark {
   color-scheme: dark;
 
+  /* NOTE: the dark ROOT canvas is painted by app.html's own cold-start
+     <style> (`html.dark { background-color: #16111f }`) — that rule is
+     unlayered and wins over app.html's light `html {…}` paint, and loads
+     before this bundle so the first paint is already dark (flash-free). This
+     token block only re-points the design tokens. */
+
   /* — surfaces & shadcn core — */
   --background: #16111f;
   --foreground: #f5f1fb;

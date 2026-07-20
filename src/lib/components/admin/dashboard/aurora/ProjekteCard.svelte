@@ -20,7 +20,7 @@
 </script>
 
 {#if rows.length > 0}
-	<section class="rounded-2xl bg-white p-4 shadow-(--shadow-card)" aria-labelledby="projekte-heading">
+	<section class="rounded-2xl bg-card p-4 shadow-(--shadow-card)" aria-labelledby="projekte-heading">
 		<h2 id="projekte-heading" class="mb-2 text-sm font-semibold tracking-tight text-ink-900">
 			Projekte
 		</h2>

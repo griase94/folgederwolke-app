@@ -47,7 +47,7 @@
 				>
 			{:else}
 				<span
-					class="inline-flex items-center rounded-full border border-hairline bg-white px-2 py-0.5 text-[11px] font-medium text-ink-500"
+					class="inline-flex items-center rounded-full border border-hairline bg-card px-2 py-0.5 text-[11px] font-medium text-ink-500"
 					>Schon gesehen</span
 				>
 			{/if}
@@ -74,7 +74,7 @@
 					</a>
 					<!-- eslint-enable svelte/no-navigation-without-resolve -->
 					<span
-						class="inline-flex items-center rounded-full border border-hairline bg-white px-1.5 py-px text-[10px] font-medium text-ink-500"
+						class="inline-flex items-center rounded-full border border-hairline bg-card px-1.5 py-px text-[10px] font-medium text-ink-500"
 						>Mitglied</span
 					>
 					{#if submission.memberContext.austrittsDatum}
@@ -86,7 +86,7 @@
 					<span class="font-medium">{submission.bezahltVonDisplay}</span>
 					{#if isExtern}
 						<span
-							class="inline-flex items-center rounded-full border border-hairline bg-white px-1.5 py-px text-[10px] font-medium text-ink-500"
+							class="inline-flex items-center rounded-full border border-hairline bg-card px-1.5 py-px text-[10px] font-medium text-ink-500"
 							>Extern</span
 						>
 					{/if}

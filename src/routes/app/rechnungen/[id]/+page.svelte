@@ -164,7 +164,7 @@
 				<form method="POST" action="?/undo-payment" class="ml-auto">
 					<button
 						type="submit"
-						class="rounded-md border border-emerald-300 bg-white px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+						class="rounded-md border border-emerald-300 bg-card px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
 						data-testid="invoice-undo-payment"
 					>
 						Zahlung rückgängig

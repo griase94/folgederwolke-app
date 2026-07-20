@@ -73,7 +73,7 @@
 					class={'shrink-0 rounded-full px-1.5 py-px text-[11px] font-medium ' +
 						(chip.kind === 'warn'
 							? 'bg-severity-warn/15 text-severity-warn-text'
-							: 'border border-(--hairline) bg-white text-ink-500')}
+							: 'border border-(--hairline) bg-card text-ink-500')}
 					>{chip.label}</span
 				>
 			{/each}
