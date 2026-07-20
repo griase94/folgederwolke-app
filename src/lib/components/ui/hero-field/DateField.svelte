@@ -1,5 +1,11 @@
 <!--
-	DateField — the Datum hero field (F1 shared primitive).
+	DateField — the Datum HERO field (F1 shared primitive).
+
+	WHEN TO USE: the big entry-modal date field, sibling of AmountField
+	($lib/components/ui/hero-field). Use THIS when a date sits next to an amount
+	and must share the hero anatomy. For a normal, compact form field (member
+	forms, filters) use the plain $lib/components/ui/date-field/DateField instead
+	— same parsing contract, standard 44px control height, no hero chrome.
 
 	Sibling of AmountField (identical anatomy — see hero-field-class.ts). A date
 	is a fact, not a type, so the accent is neutral ink (ANDY-LENS §4): the value

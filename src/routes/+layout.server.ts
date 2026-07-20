@@ -15,7 +15,12 @@
 import type { LayoutServerLoad } from "./$types.js";
 import { env, isPublicFormEnabled } from "$lib/server/env.js";
 import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
-import { MODE_COOKIE, resolveMode } from "$lib/themes/index.js";
+import {
+  MODE_COOKIE,
+  resolveMode,
+  THEME_COOKIE,
+  resolveThemeId,
+} from "$lib/themes/index.js";
 
 export const load: LayoutServerLoad = async ({ cookies }) => {
   const stammdaten = await readStammdaten();
@@ -29,5 +34,10 @@ export const load: LayoutServerLoad = async ({ cookies }) => {
     // with a set cookie but empty localStorage still resolves the right mode;
     // the segmented control in Einstellungen reads this as its initial value.
     mode: resolveMode(cookies.get(MODE_COOKIE)),
+    // Resolved theme id (matches the data-theme the hooks stamp into <html>).
+    // mode-watcher ALSO owns the data-theme attribute; without seeding it with
+    // our theme it would set data-theme="" on hydration and kill every token
+    // ([data-theme="aurora"] stops matching). See +layout.svelte defaultTheme.
+    theme: resolveThemeId(cookies.get(THEME_COOKIE)),
   };
 };

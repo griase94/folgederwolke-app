@@ -104,8 +104,19 @@
 	script (blocked by our `script-src 'self'` CSP) — the server already stamps
 	`.dark` into the SSR HTML (hooks.server.ts) so the first paint is flash-free.
 	`defaultMode` seeds it from the fdw_mode cookie when localStorage is empty.
+
+	CRITICAL: mode-watcher also manages the `data-theme` attribute (its own
+	"custom theme" feature). Without `defaultTheme` it writes data-theme="" on
+	hydration, so `[data-theme="aurora"]` stops matching and EVERY token dies
+	(dead gradients, transparent surfaces). `defaultTheme={data.theme}` (the
+	resolved fdw_theme id) keeps data-theme="aurora" — verified by the
+	post-hydration assert in aurora-impl-f1.spec.ts.
 -->
-<ModeWatcher disableHeadScriptInjection defaultMode={data.mode} />
+<ModeWatcher
+	disableHeadScriptInjection
+	defaultMode={data.mode}
+	defaultTheme={data.theme}
+/>
 
 {@render children()}
 

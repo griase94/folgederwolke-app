@@ -1,5 +1,11 @@
 <!--
-	DateField - locale-locked (de-DE) date primitive.
+	DateField - locale-locked (de-DE) date primitive (COMPACT form-field variant).
+
+	WHEN TO USE: standard 44px form control for member forms, filters, settings —
+	the everyday date field. For the big entry-modal date that sits beside a
+	Betrag and must share the hero anatomy, use
+	$lib/components/ui/hero-field/DateField instead (same parsing contract,
+	larger hero chrome). Two components, one parsing behaviour.
 
 	Renders a TT.MM.JJJJ text input. We deliberately do NOT use
 	<input type="date"> because:
