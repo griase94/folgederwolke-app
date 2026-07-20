@@ -68,7 +68,7 @@ const PARENT_2025 = {
 
 beforeEach(() => {
   listSpendenPageMock.mockClear();
-  listSpendenPageMock.mockResolvedValue({ rows: [], total: 0, sumCents: 0, monthCount: 0 });
+  listSpendenPageMock.mockResolvedValue({ rows: [], total: 0 });
   listSpendenKpiMock.mockClear();
   listKategorieOptionsMock.mockClear();
   listMemberOptionsMock.mockClear();
@@ -136,7 +136,7 @@ describe("/app/spenden load", () => {
   });
 
   it("clamps an out-of-bounds ?page to the last page", async () => {
-    listSpendenPageMock.mockResolvedValue({ rows: [], total: 120, sumCents: 0, monthCount: 0 });
+    listSpendenPageMock.mockResolvedValue({ rows: [], total: 120 });
     const data = (await spendenLoad(
       makeLoadEvent("?page=99", PARENT_2025),
     )) as { page: number };
