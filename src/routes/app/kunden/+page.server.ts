@@ -9,10 +9,11 @@
  */
 
 import { fail } from "@sveltejs/kit";
-import { isNull } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { customers } from "$lib/server/db/schema/customers.js";
+import { invoices } from "$lib/server/db/schema/invoices.js";
 import {
   addCustomer,
   editCustomer,
@@ -23,25 +24,43 @@ import {
 export const load: PageServerLoad = async () => {
   const db = getDb();
 
-  const rows = await db
-    .select()
-    .from(customers)
-    .where(isNull(customers.deletedAt))
-    .orderBy(customers.name);
+  // Archived customers ARE returned (Aurora E1 / plate kunden-v5): the list
+  // renders them under a quiet "Archiviert · N" section, never in the active
+  // stack. The client splits on `deletedAt`.
+  const rows = await db.select().from(customers).orderBy(customers.name);
+
+  // One GROUP BY join: Σ open Brutto + total invoice count per customer.
+  // offenCents drives the "Offen an uns" fact; invoiceCount separates
+  // "keine Rechnungen" (0) from "alles bezahlt" (>0, offen = 0).
+  const agg = await db
+    .select({
+      customerId: invoices.customerId,
+      offenCents: sql<string>`COALESCE(SUM(CASE WHEN ${invoices.bezahltAm} IS NULL THEN ${invoices.bruttoCents} ELSE 0 END), 0)`,
+      invoiceCount: sql<string>`COUNT(*)`,
+    })
+    .from(invoices)
+    .groupBy(invoices.customerId);
+
+  const aggMap = new Map(agg.map((a) => [a.customerId, a]));
 
   return {
-    customers: rows.map((c) => ({
-      id: c.id,
-      name: c.name,
-      anrede: c.anrede,
-      addressBlock: c.addressBlock,
-      country: c.country,
-      email: c.email,
-      notes: c.notes,
-      isFixture: c.isFixture,
-      deletedAt: c.deletedAt?.toISOString() ?? null,
-      createdAt: c.createdAt.toISOString(),
-    })),
+    customers: rows.map((c) => {
+      const a = aggMap.get(c.id);
+      return {
+        id: c.id,
+        name: c.name,
+        anrede: c.anrede,
+        addressBlock: c.addressBlock,
+        country: c.country,
+        email: c.email,
+        notes: c.notes,
+        isFixture: c.isFixture,
+        deletedAt: c.deletedAt?.toISOString() ?? null,
+        createdAt: c.createdAt.toISOString(),
+        offenCents: Number(a?.offenCents ?? 0),
+        invoiceCount: Number(a?.invoiceCount ?? 0),
+      };
+    }),
   };
 };
 

@@ -26,6 +26,18 @@ export type CustomerView = {
   createdAt: string;
 };
 
+/**
+ * List-row shape: a CustomerView plus the two invoice aggregates the Kunden
+ * list needs (Aurora E1). `offenCents` = Σ brutto of unpaid invoices;
+ * `invoiceCount` distinguishes "keine Rechnungen" (0) from "alles bezahlt"
+ * (>0 with offenCents = 0). Assignable to CustomerView, so the same object
+ * feeds the edit dialog untouched.
+ */
+export type CustomerListView = CustomerView & {
+  offenCents: number;
+  invoiceCount: number;
+};
+
 // ---------------------------------------------------------------------------
 // Zod schemas
 // ---------------------------------------------------------------------------

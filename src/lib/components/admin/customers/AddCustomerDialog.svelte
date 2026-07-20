@@ -1,29 +1,31 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { toast } from 'svelte-sonner';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
-	import { Label } from '$lib/components/ui/label/index.js';
+	import CustomerFormFields from './CustomerFormFields.svelte';
 
 	let {
 		open = $bindable(false),
 		onSuccess
 	}: {
 		open: boolean;
-		onSuccess?: () => void;
+		/** Fired after a successful add — the list refreshes, the invoice form
+		 *  selects the new customer (quick-add context). */
+		onSuccess?: (customerId: string) => void;
 	} = $props();
 
 	let loading = $state(false);
 	let errors = $state<Record<string, string[]>>({});
+	let name = $state('');
 
 	function reset() {
 		errors = {};
 		loading = false;
+		name = '';
 	}
 
-	function fieldError(key: string): string | undefined {
-		return errors[key]?.[0];
-	}
+	const canSubmit = $derived(name.trim().length > 0 && !loading);
 </script>
 
 <Dialog.Root
@@ -32,13 +34,33 @@
 		if (!v) reset();
 	}}
 >
-	<Dialog.Content class="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-		<Dialog.Header>
-			<Dialog.Title>Kunden hinzufügen</Dialog.Title>
-			<Dialog.Description>
-				Neuen Kunden anlegen. Pflichtfeld: Name (Firma oder Person).
-			</Dialog.Description>
-		</Dialog.Header>
+	<Dialog.Content
+		showCloseButton={false}
+		class="gap-0 overflow-hidden p-0 sm:max-w-[460px] max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:right-0 max-sm:w-full max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none"
+	>
+		<!-- brand accent bar -->
+		<div class="h-1 w-full bg-gradient-brand" aria-hidden="true"></div>
+		<!-- mobile grab handle -->
+		<div class="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-ink-300/60 sm:hidden" aria-hidden="true"></div>
+
+		<!-- header -->
+		<div class="flex items-center gap-3 border-b border-hairline px-5 py-4">
+			<div class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-brand-soft text-primary-text" aria-hidden="true">
+				<svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M6 21V5a2 2 0 012-2h8a2 2 0 012 2v16M6 10H4a2 2 0 00-2 2v7a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2h-2M10 8h4m-4 4h4m-4 9v-3a2 2 0 014 0v3" />
+				</svg>
+			</div>
+			<div class="min-w-0">
+				<Dialog.Title class="text-lg font-bold tracking-tight text-ink-900">Kunde anlegen</Dialog.Title>
+				<Dialog.Description class="text-xs text-ink-500">Pflicht ist nur der Name.</Dialog.Description>
+			</div>
+			<Dialog.Close
+				class="ml-auto grid h-9 w-9 shrink-0 place-items-center self-start rounded-lg border border-border text-ink-500 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				aria-label="Schließen"
+			>
+				<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+			</Dialog.Close>
+		</div>
 
 		<form
 			method="POST"
@@ -46,136 +68,50 @@
 			use:enhance={() => {
 				loading = true;
 				errors = {};
+				const submitted = name.trim();
 				return async ({ result, update }) => {
 					loading = false;
 					if (result.type === 'failure') {
 						errors = (result.data?.errors as Record<string, string[]>) ?? {};
 					} else if (result.type === 'success') {
+						const customerId = (result.data?.customerId as string | undefined) ?? '';
+						toast.success(`${submitted} angelegt`);
 						open = false;
 						reset();
-						onSuccess?.();
+						onSuccess?.(customerId);
 						await update();
 					} else {
 						await update();
 					}
 				};
 			}}
-			class="space-y-4"
 		>
-			<div class="space-y-1">
-				<Label for="add-cust-name">Name (Firma / Person) *</Label>
-				<Input
-					id="add-cust-name"
-					name="name"
-					required
-					placeholder="z. B. Muster GmbH oder Max Mustermann"
-					aria-invalid={!!fieldError('name')}
-					aria-describedby={fieldError('name') ? 'add-cust-name-err' : undefined}
-				/>
-				{#if fieldError('name')}
-					<p id="add-cust-name-err" class="text-xs text-destructive">{fieldError('name')}</p>
+			<div class="flex max-h-[70vh] flex-col gap-3.5 overflow-y-auto px-5 py-5 max-sm:max-h-[62vh]">
+				<CustomerFormFields idPrefix="add-cust" {errors} bind:name />
+
+				{#if errors['_']}
+					<p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{errors['_']?.[0]}</p>
 				{/if}
 			</div>
 
-			<div class="space-y-1">
-				<Label for="add-cust-anrede">Anrede</Label>
-				<Input
-					id="add-cust-anrede"
-					name="anrede"
-					placeholder='z. B. „Liebe Maria" oder „Sehr geehrte Damen und Herren"'
-				/>
-				{#if fieldError('anrede')}
-					<p class="text-xs text-destructive">{fieldError('anrede')}</p>
-				{/if}
-			</div>
-
-			<div class="space-y-1">
-				<Label for="add-cust-email">E-Mail</Label>
-				<Input
-					id="add-cust-email"
-					name="email"
-					type="email"
-					autocomplete="email"
-					aria-invalid={!!fieldError('email')}
-				/>
-				{#if fieldError('email')}
-					<p class="text-xs text-destructive">{fieldError('email')}</p>
-				{/if}
-			</div>
-
-			<div class="space-y-1">
-				<Label for="add-cust-address">Adressblock</Label>
-				<textarea
-					id="add-cust-address"
-					name="address_block"
-					rows="4"
-					class="border-input bg-background focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 sm:text-sm"
-					placeholder="Mehrzellige Adresse für den Rechnungskopf"
-				></textarea>
-				{#if fieldError('address_block')}
-					<p class="text-xs text-destructive">{fieldError('address_block')}</p>
-				{/if}
-			</div>
-
-			<div class="space-y-1">
-				<Label for="add-cust-country">Land</Label>
-				<select
-					id="add-cust-country"
-					name="country"
-					class="border-input bg-background focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 sm:text-sm"
-				>
-					<option value="DE" selected>Deutschland</option>
-					<option value="AT">Österreich</option>
-					<option value="CH">Schweiz</option>
-					<option value="FR">Frankreich</option>
-					<option value="IT">Italien</option>
-					<option value="NL">Niederlande</option>
-					<option value="BE">Belgien</option>
-					<option value="LU">Luxemburg</option>
-					<option value="GB">Vereinigtes Königreich</option>
-					<option value="US">Vereinigte Staaten</option>
-					<option value="ES">Spanien</option>
-				</select>
-				<p class="text-xs text-muted-foreground">Auf der Rechnung nur angezeigt, wenn nicht Deutschland.</p>
-				{#if fieldError('country')}
-					<p class="text-xs text-destructive">{fieldError('country')}</p>
-				{/if}
-			</div>
-
-			<div class="space-y-1">
-				<Label for="add-cust-notes">Notizen</Label>
-				<textarea
-					id="add-cust-notes"
-					name="notes"
-					rows="2"
-					class="border-input bg-background focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 sm:text-sm"
-				></textarea>
-			</div>
-
-			{#if errors['_']}
-				<p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-					{errors['_']?.[0]}
-				</p>
-			{/if}
-
-			<Dialog.Footer>
+			<div class="flex flex-col-reverse gap-2 border-t border-hairline px-5 py-4 sm:flex-row sm:justify-end">
 				<Dialog.Close>
 					{#snippet child({ props })}
-						<Button variant="outline" type="button" {...props} disabled={loading}>
-							Abbrechen
-						</Button>
+						<Button variant="outline" type="button" {...props} disabled={loading} class="sm:w-auto">Abbrechen</Button>
 					{/snippet}
 				</Dialog.Close>
-				<Button type="submit" disabled={loading}>
+				<Button type="submit" disabled={!canSubmit} data-testid="add-customer-submit" class="sm:w-auto">
 					{#if loading}
 						<svg class="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
 							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
 							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
 						</svg>
+						Wird angelegt …
+					{:else}
+						Kunde anlegen
 					{/if}
-					Kunden anlegen
 				</Button>
-			</Dialog.Footer>
+			</div>
 		</form>
 	</Dialog.Content>
 </Dialog.Root>

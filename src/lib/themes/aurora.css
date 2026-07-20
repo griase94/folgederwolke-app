@@ -127,6 +127,15 @@
   /* "merely open" — NOT sev-warn (amber is reserved for true overdue) */
   --neutral-open: #b8aecb;
   --open-tint: color-mix(in oklch, var(--neutral-open) 26%, var(--card));
+  /* AA-safe open-money INK (F6). The open Beträge render at 15px BOLD (list
+     kf-amt + Kunde-Detail Summenzeile) = normal text → need full AA 4.5:1, not
+     the 3:1 large-text bar. Measured on the rendered post-F6 plates: the list
+     tint --neutral-open #b8aecb = 2.11:1 and the detail plate's own #8f85a8 =
+     3.45:1 both FAIL 4.5:1 (the plates missed this at the 15px sites). #786c96
+     is the same violet-grey family (H 257°, S 17% — just darkened) and clears
+     full AA at 4.79:1 on card-white. ONE open-money text colour flow-weit; the
+     24px KPI hero also uses it. Tint SURFACES keep --neutral-open. */
+  --open-ink: #786c96;
 
   /* ── transaction type accents (+ tint surfaces) ──────────────────────── */
   /* Ausgabe is rose/plum, distinct from BOTH brand pinks (spec §3). */
@@ -281,6 +290,9 @@
   --info-tint: color-mix(in srgb, var(--sev-info) 20%, var(--card));
   --neutral-open: #8f85a8;
   --open-tint: color-mix(in srgb, var(--neutral-open) 22%, var(--card));
+  /* On the dark card the lighter #b8aecb is the open ink — ~7.95:1 on the
+     Nacht card, full AA at 15px bold. */
+  --open-ink: #b8aecb;
 
   /* — transaction-type accents — */
   --type-ausgabe: #cf8fb2;
