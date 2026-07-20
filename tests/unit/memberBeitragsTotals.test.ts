@@ -38,16 +38,26 @@ describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
   // would couple to the global seed shape. The seed currently ships 5
   // active fixture members but we don't hard-code that — read it.
   let baselineActiveCount = 0;
+  // Active members already carrying beitrag_exempt=true in the global seed
+  // (the Aurora roster ships Renate Albrecht as a permanent Ehrenmitglied).
+  // exemptCount assertions express deltas against this so they don't couple
+  // to the seed's exempt shape, mirroring the baselineActiveCount pattern.
+  let baselineExemptCount = 0;
 
   beforeAll(async () => {
-    // Capture the active-member baseline so memberCount assertions can
-    // express deltas instead of absolutes.
+    // Capture the active-member + active-exempt baselines so count assertions
+    // can express deltas instead of absolutes.
     const probe = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
     try {
       const rows = await probe<{ c: string }[]>`
         SELECT COUNT(*)::text AS c FROM members WHERE austritts_datum IS NULL
       `;
       baselineActiveCount = Number(rows[0]?.c ?? 0);
+      const exemptRows = await probe<{ c: string }[]>`
+        SELECT COUNT(*)::text AS c FROM members
+        WHERE austritts_datum IS NULL AND beitrag_exempt = true
+      `;
+      baselineExemptCount = Number(exemptRows[0]?.c ?? 0);
     } finally {
       await probe.end();
     }
@@ -214,8 +224,9 @@ describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
 
     const totals = await memberBeitragsTotals(SEED_YEAR);
 
-    // exemptCount is a NEW field on the aggregate (Night-2).
-    expect(totals.exemptCount).toBe(1);
+    // exemptCount is a NEW field on the aggregate (Night-2). +1 = m2 marked
+    // exempt above, on top of the seed's exempt baseline (Renate).
+    expect(totals.exemptCount).toBe(baselineExemptCount + 1);
 
     // m1 fully paid 60€ → paidCents still 6000 (exempt status doesn't
     // erase prior payments).
@@ -237,7 +248,8 @@ describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
     // m1/m2/m3 still active; exempt flag does NOT remove them from the
     // active-member count.
     expect(totals.memberCount).toBe(baselineActiveCount + 3);
-    expect(totals.exemptCount).toBe(2);
+    // +2 = m1 & m2 marked exempt above, on top of the seed baseline.
+    expect(totals.exemptCount).toBe(baselineExemptCount + 2);
   });
 
   it("Night-2: exemptCount excludes austritts_datum members (active-only)", async () => {
@@ -255,6 +267,8 @@ describe.skipIf(!DIRECT_DATABASE_URL)("memberBeitragsTotals(year)", () => {
       await mut.end();
     }
     const totals = await memberBeitragsTotals(SEED_YEAR);
-    expect(totals.exemptCount).toBe(0);
+    // m3 is exempt but austritts → excluded; only the seed's active-exempt
+    // baseline (Renate) remains.
+    expect(totals.exemptCount).toBe(baselineExemptCount);
   });
 });
