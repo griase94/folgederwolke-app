@@ -325,7 +325,14 @@ describe("@phase-2 matrix loader — locked year", () => {
     // with current-year matrix flows in other specs.
     await ensureSatz(2021);
     await db.execute(
-      sql`INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', '2022'::jsonb) ON CONFLICT (key) DO UPDATE SET value = '2022'::jsonb`,
+      // Raise-only (GREATEST) so we never LOWER festgeschrieben_bis — the
+      // monotonic trigger blocks lowering for app_runtime, and the seed now
+      // ships festgeschrieben_bis=2024 (Aurora canon). A locked test year ≤ the
+      // effective value (2021 ≤ 2024) is what these assertions actually need.
+      sql`INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', '2022'::jsonb)
+          ON CONFLICT (key) DO UPDATE SET value = GREATEST(
+            COALESCE(NULLIF(settings.value #>> '{}', 'null')::int, 0), 2022
+          )::text::jsonb`,
     );
 
     const m = await seedMember({ name: "LockedYearMember" });
@@ -350,7 +357,14 @@ describe("@phase-2 matrix loader — locked year", () => {
     await ensureSatz(2021);
     const db = getDb();
     await db.execute(
-      sql`INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', '2022'::jsonb) ON CONFLICT (key) DO UPDATE SET value = '2022'::jsonb`,
+      // Raise-only (GREATEST) so we never LOWER festgeschrieben_bis — the
+      // monotonic trigger blocks lowering for app_runtime, and the seed now
+      // ships festgeschrieben_bis=2024 (Aurora canon). A locked test year ≤ the
+      // effective value (2021 ≤ 2024) is what these assertions actually need.
+      sql`INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', '2022'::jsonb)
+          ON CONFLICT (key) DO UPDATE SET value = GREATEST(
+            COALESCE(NULLIF(settings.value #>> '{}', 'null')::int, 0), 2022
+          )::text::jsonb`,
     );
 
     const m = await seedMember({ name: "LockedPaidMember" });

@@ -266,6 +266,20 @@ async function main() {
     // so a saved admin edit is never overwritten on re-seed).
     await seedVereinStammdatenFromEnv(db);
 
+    // Kassenwärt:in (Unterschrift) — a free Stammdatum, NOT a member reference
+    // (FIXTURES §16a/§16b). Canon persona = Julia Brunner. Migration 0023 ships
+    // the drift default "Julia Schwarz"; correct it to the canon here, but ONLY
+    // when the stored value is still that exact drift default — a real admin
+    // edit (any other value) is preserved on re-seed.
+    await db
+      .insert(schema.settings)
+      .values({ key: "verein.kassenwaert_name", value: "Julia Brunner" })
+      .onConflictDoUpdate({
+        target: schema.settings.key,
+        set: { value: "Julia Brunner" },
+        setWhere: sql`settings.value = '"Julia Schwarz"'::jsonb`,
+      });
+
     // Mail template placeholders.
     for (const key of MAIL_TEMPLATE_KEYS) {
       await db
