@@ -133,4 +133,21 @@ test.describe("@phase-2 auslage form UI", () => {
       page.getByText(/Datei hierher ziehen oder auswählen/),
     ).toBeVisible();
   });
+
+  test("project select is populated with seeded projects (AT-002 regression guard)", async ({
+    page,
+  }) => {
+    // AT-002: the project dropdown is rendered from the `+layout.server.ts`
+    // active-projects query and previously shipped a regression where that
+    // query returned an empty array, so the <select> silently rendered with
+    // only its default option (or not at all, since it's gated on
+    // `projects.length > 0`). Assert it actually carries the seeded projects,
+    // not just that the form renders.
+    await goToForm(page);
+
+    const select = page.locator("#wofuer-select");
+    await expect(select).toBeVisible();
+    const optionCount = await select.locator("option").count();
+    expect(optionCount).toBeGreaterThan(1);
+  });
 });

@@ -16,8 +16,8 @@
  *       "bereits aktiv" message.
  *   S6: /api/files/<not-a-uuid>/blob returns 400.
  *
- * Auth helper mirrors inbox.spec.ts / rechnungen.spec.ts (insert magic_link,
- * click-through /sign-in/verify).
+ * Auth helper uses the magic-link pattern (insert a magic_links row, then
+ * click through /sign-in/verify) shared by several specs in this directory.
  *
  * Sad-path setup (S4 + S5) uses a direct superuser INSERT into `files` —
  * this is the only practical way to ship a test that pins the exact error

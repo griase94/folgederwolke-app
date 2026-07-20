@@ -28,6 +28,7 @@ const ROUTES = [
   "/app/jahresabschluss",
   "/app/kunden",
   "/app/einstellungen",
+  "/app/dsgvo",
 ];
 
 test.describe("@smoke authenticated app routes", () => {
