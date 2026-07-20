@@ -18,7 +18,9 @@
  * amendment). The tag still satisfies tests/unit/ci-e2e-grep.test.ts (every
  * spec must carry at least one @-tagged describe block).
  *
- * Login + DB-skip helpers mirror tests/e2e/c7-desktop-transactions-list.spec.ts.
+ * Login helper uses the magic-link pattern (insert magic_link row, click
+ * through /sign-in/verify); a beforeEach guard skips the suite entirely
+ * when DATABASE_URL is unset.
  */
 
 import { expect, test } from "@playwright/test";

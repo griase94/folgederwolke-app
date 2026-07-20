@@ -12,8 +12,8 @@
  *   E6: Submitting the same PDF twice via the public form both succeed
  *       (dedup path inside the upload pipeline).
  *
- * Auth pattern matches inbox.spec.ts / rechnungen.spec.ts: insert a
- * magic_links row directly into Postgres, then click-through /sign-in/verify.
+ * Auth pattern: insert a magic_links row directly into Postgres, then
+ * click through /sign-in/verify — shared by several specs in this directory.
  *
  * The form's BelegUpload component does client-side image compression but
  * passes PDFs through unmodified, so a minimal valid PDF blob exercises the

@@ -14,7 +14,8 @@
  *   3. A dirty form on /app/rechnungen/new AND /app/ausgaben/neu prompts
  *      with window.confirm on sidebar navigation.
  *
- * Auth helper mirrors tests/e2e/rechnungen.spec.ts (magic-link insertion).
+ * Auth helper uses the magic-link pattern (insert magic_link row, click
+ * through /sign-in/verify).
  *
  * @phase-9 @phase-11
  */
