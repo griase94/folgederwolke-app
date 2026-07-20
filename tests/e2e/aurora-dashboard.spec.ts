@@ -122,7 +122,10 @@ test.describe("@phase-aurora-slice4 Aurora dashboard mobile", () => {
     // at ~831 minimum. So we assert Lage RENDERS and peeks within ~1.5 viewports —
     // tighter than the plate's own 2.2× — while the tasks-above-the-fold doctrine
     // stays strictly guarded above.
-    const LAGE_PEEK_MAX = Math.round(1.5 * 932); // 1398
+    // Guard threshold = measured 913 + ~10% headroom; the pre-fix regression
+    // (lage-top 1114 before the v10 compaction) MUST fail this bound — it is a
+    // stack-blow-up guard, not a fold promise (v10 plate puts Lage at y≈2046).
+    const LAGE_PEEK_MAX = 1005;
     const lage = await page.getByTestId("lage-beitraege").boundingBox();
     expect(lage).not.toBeNull();
     expect(lage!.y).toBeLessThan(LAGE_PEEK_MAX);
