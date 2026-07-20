@@ -13,6 +13,7 @@ const sampleInvoice: InvoiceRow = {
   id: "inv_1",
   businessId: "INV-2026-001",
   rechnungsdatum: "2026-03-04",
+  faelligkeitsDatum: null,
   customerId: "cus_1",
   customerName: "Beispielkundin GmbH",
   bezeichnung: "Beratungsleistung März",

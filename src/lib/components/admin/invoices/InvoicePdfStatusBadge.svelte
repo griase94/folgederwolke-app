@@ -1,10 +1,14 @@
 <!--
   InvoicePdfStatusBadge — tiny pill showing the PDF generation status of an
-  invoice. Color-coded for at-a-glance scanning in the list view.
+  invoice. Color-coded for at-a-glance scanning in the list AND detail view.
 
   Phase 11: derived purely from pdfStatus + presence of pdfFileId. The legacy
   driveStatus axis is gone — invoices now persist directly to Vercel Blob via
   the files table, so a successful generation means the blob exists.
+
+  Aurora (E2-3): recoloured from ad-hoc Tailwind palette colours to the shared
+  severity/type-einnahme tokens so this badge matches every other status chip
+  in the app (InvoiceListRow, InvoiceCardMobile) instead of its own palette.
 -->
 <script lang="ts">
 	import type { InvoicePdfStatus } from '$lib/domain/invoices.js';
@@ -29,20 +33,22 @@
 	const toneClass = $derived.by(() => {
 		switch (meta.tone) {
 			case 'primary':
-				return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+				return 'border-type-einnahme/25 bg-type-einnahme-tint text-type-einnahme';
 			case 'warning':
-				return 'border-amber-200 bg-amber-50 text-amber-700';
+				return 'border-severity-warn/30 bg-severity-warn-tint text-severity-warn-text';
 			case 'destructive':
-				return 'border-red-200 bg-red-50 text-red-700';
+				return 'border-severity-critical/30 bg-severity-critical/10 text-severity-critical-text';
 			default:
-				return 'border-border bg-muted text-muted-foreground';
+				return 'border-border bg-secondary text-ink-500';
 		}
 	});
 </script>
 
 <span
-	class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium {toneClass}"
+	class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold {toneClass}"
 	title={meta.label}
+	data-testid="invoice-pdf-status-badge"
+	data-status={effectiveStatus}
 >
 	{#if effectiveStatus === 'running' || effectiveStatus === 'queued'}
 		<span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current"></span>

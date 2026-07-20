@@ -84,6 +84,8 @@ describe("CI e2e grep coverage (F3)", () => {
     expect(grepTags).toContain("@aurora-impl-b1");
     // Aurora implementation campaign — E1 Kunden-Kette (modal, list, detail):
     expect(grepTags).toContain("@aurora-impl-e1");
+    // Aurora implementation campaign — E2 Rechnungs-Kette (list, detail, form):
+    expect(grepTags).toContain("@aurora-impl-e2");
   });
 
   it("PWA share_target spec is covered by the CI grep (F3)", () => {
@@ -129,6 +131,8 @@ describe("CI e2e grep coverage (F3)", () => {
     "aurora-impl-b1.spec.ts",
     // Aurora impl campaign — E1 Kunden-Kette (create/detail/archive-undo):
     "aurora-impl-e1-kunden.spec.ts",
+    // Aurora impl campaign — E2 Rechnungs-Kette (list/detail/form/mark-paid):
+    "aurora-impl-e2-rechnungen.spec.ts",
   ];
 
   it("every release-critical spec has at least one tag in the CI grep", () => {

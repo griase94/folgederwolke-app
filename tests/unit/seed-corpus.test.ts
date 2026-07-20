@@ -83,7 +83,7 @@ describe.skipIf(!dbConfigured)("showcase seed corpus", () => {
       sql`SELECT i.paid_by_income_id, inc.business_id AS income_business_id
           FROM invoices i
           LEFT JOIN income inc ON inc.id = i.paid_by_income_id
-          WHERE i.business_id = 'FDW-2026-901'`,
+          WHERE i.business_id = 'FDW-2026-001'`,
     );
     const arr = rows as {
       paid_by_income_id: string | null;

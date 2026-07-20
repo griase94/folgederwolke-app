@@ -41,7 +41,7 @@ const dbConfigured = (process.env["DIRECT_DATABASE_URL"] ?? "").length > 0;
 
 // Business IDs from the seeded showcase corpus (scripts/seed-fixtures.ts).
 const EXPENSE_WITH_BELEG_BIZ = "A-2026-907"; // a 2026 expense to attach a Beleg to
-const INCOME_WITH_INVOICE_BIZ = "E-2026-905"; // ← FDW-2026-901 (paid_by_income_id)
+const INCOME_WITH_INVOICE_BIZ = "E-2026-905"; // ← FDW-2026-001 (paid_by_income_id)
 const INCOME_NO_INVOICE_BIZ = "E-2026-906"; // no invoice → rechnungBusinessId null
 const SACHSPENDE_BIZ = "S-2025-903"; // wertermittlungMethode + zustandBeschreibung
 const ZWECKGEBUNDEN_BIZ = "S-2025-902"; // zweckbindungText + zweckgebunden
@@ -178,7 +178,7 @@ describe.skipIf(!dbConfigured)("getTransactionDetail per-kind fields", () => {
   // ── Einnahmen: aus-Rechnung link ─────────────────────────────────────────────
   it("income: exposes rechnungBusinessId for the invoice-linked receipt", async () => {
     const detail = await getTransactionDetail(incomeWithInvoiceId, "income");
-    expect(detail!.rechnungBusinessId).toBe("FDW-2026-901");
+    expect(detail!.rechnungBusinessId).toBe("FDW-2026-001");
   });
 
   it("income: rechnungBusinessId is null for non-invoice-linked income", async () => {

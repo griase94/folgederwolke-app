@@ -3,9 +3,12 @@
  * in place. Same form + live PDF preview as /new; submit hits the `?/edit`
  * action which calls `editInvoice()` and bumps the PDF version.
  *
- * load() rejects (403 page with German message) if the invoice is paid,
- * festgeschrieben, or already superseded. Defence-in-depth: the domain also
- * re-checks these guards.
+ * load() returns `{ blocked: { reason, invoiceId, businessId } }` (Aurora E2
+ * DELTA §6.4 — used to be a bare `error(403, msg)`) if the invoice is paid,
+ * festgeschrieben, or already superseded, so +page.svelte can render a
+ * designed lock page instead of SvelteKit's default error boundary.
+ * Defence-in-depth: the domain (editInvoice) also re-checks these guards, so
+ * a hand-crafted POST past the blocked load is still rejected server-side.
  */
 
 import { error, fail, redirect } from "@sveltejs/kit";
@@ -17,6 +20,7 @@ import { projects } from "$lib/server/db/schema/projects.js";
 import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { invoices } from "$lib/server/db/schema/invoices.js";
 import { editInvoice } from "$lib/server/domain/invoices.js";
+import { addCustomer } from "$lib/server/domain/customers-actions.js";
 import { parseEuroToCents } from "$lib/domain/money.js";
 import { assertUuidOr404 } from "$lib/domain/uuid.js";
 
@@ -41,31 +45,41 @@ export const load: PageServerLoad = async ({ params }) => {
     throw error(404, "Rechnung nicht gefunden");
   }
 
+  // Aurora E2 DELTA §6.4: these guards used to `throw error(403, msg)` —
+  // SvelteKit's default error boundary is a bare, undesigned page. Return a
+  // `blocked` shape instead so +page.svelte can render a proper lock page
+  // (testid invoice-edit-blocked) with the same verbatim German reason text
+  // and a way back to the invoice. Reasons kept byte-for-byte identical to
+  // the prior error() messages — editInvoice() still re-checks all three
+  // server-side (defence-in-depth), so this is presentation-only.
+  let blockedReason: string | null = null;
   if (inv.bezahltAm) {
-    throw error(
-      403,
-      "Bereits bezahlte Rechnungen können nicht mehr bearbeitet werden.",
-    );
-  }
-  if (inv.festgeschriebenAt) {
-    throw error(
-      403,
-      "Diese Rechnung ist festgeschrieben (Jahr abgeschlossen).",
-    );
+    blockedReason =
+      "Bereits bezahlte Rechnungen können nicht mehr bearbeitet werden.";
+  } else if (inv.festgeschriebenAt) {
+    blockedReason = "Diese Rechnung ist festgeschrieben (Jahr abgeschlossen).";
+  } else {
+    // Same predecessor/successor lookup as the detail page (lines ~66-71): is
+    // this invoice already the predecessor of a newer correction?
+    const [successor] = await db
+      .select({ id: invoices.id })
+      .from(invoices)
+      .where(eq(invoices.supersedesId, id))
+      .limit(1);
+    if (successor) {
+      blockedReason =
+        "Diese Rechnung wurde bereits durch eine Korrektur ersetzt.";
+    }
   }
 
-  // Same predecessor/successor lookup as the detail page (lines ~66-71): is
-  // this invoice already the predecessor of a newer correction?
-  const [successor] = await db
-    .select({ id: invoices.id })
-    .from(invoices)
-    .where(eq(invoices.supersedesId, id))
-    .limit(1);
-  if (successor) {
-    throw error(
-      403,
-      "Diese Rechnung wurde bereits durch eine Korrektur ersetzt.",
-    );
+  if (blockedReason) {
+    return {
+      blocked: {
+        reason: blockedReason,
+        invoiceId: inv.id,
+        businessId: inv.businessId,
+      },
+    } as const;
   }
 
   // Load the same option lists /new uses for the form selects.
@@ -102,6 +116,7 @@ export const load: PageServerLoad = async ({ params }) => {
   });
 
   return {
+    blocked: null,
     invoice: {
       id: inv.id,
       businessId: inv.businessId,
@@ -167,5 +182,26 @@ export const actions: Actions = {
     }
 
     throw redirect(303, `/app/rechnungen/${params.id}?job=${result.jobId}`);
+  },
+
+  // Aurora E2 DELTA §6.2: inline Quick-Add-Kunde, same thin wrapper as
+  // /new and /app/kunden — AddCustomerDialog posts to `?/add` relative to
+  // whichever page it's mounted on.
+  add: async ({ request, locals }) => {
+    const userId = locals.session?.user.id ?? null;
+    const formData = await request.formData();
+    const raw: Record<string, unknown> = {};
+    for (const [k, v] of formData.entries()) raw[k] = v;
+
+    const result = await addCustomer(raw, userId);
+    if (!result.ok) {
+      return fail(result.status, {
+        action: "add",
+        errors: result.errors,
+        values: result.values,
+      });
+    }
+
+    return { action: "add", success: true, customerId: result.customerId };
   },
 };

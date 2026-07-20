@@ -11,9 +11,16 @@
  *
  * The committed visual baseline lives at
  *   tests/fixtures/expected/rechnung-v2-beate-uwe.pdf
- * so future renderer changes can be eyeballed via `diff -q` (the binary
- * differs run-to-run because of timestamps; a future visual-diff workflow
- * is out of scope here).
+ * so future renderer changes can be eyeballed via `diff -q`.
+ *
+ * The fixture stays byte-stable because the test NEVER rewrites it on a normal
+ * run — the write is guarded behind UPDATE_PDF_FIXTURE. That write-guard is the
+ * actual mechanism that stopped the 1–2-byte churn every `pnpm test`. The
+ * render is NOT fully byte-deterministic even with a fixed `creationDate`
+ * (pdf-lib still varies object ids / font-subset ordering run-to-run), so
+ * regenerating with UPDATE_PDF_FIXTURE=1 produces a fresh, differing baseline
+ * each time — that's expected; pinning `creationDate` only removes the wall-clock
+ * timestamp as one source of drift.
  */
 import { describe, it, expect } from "vitest";
 import { writeFile, mkdir } from "node:fs/promises";
@@ -40,6 +47,10 @@ const VEREIN_FIXTURE: RechnungV2Input["verein"] = {
   iban: "DE25 8306 5408 0006 8944 53",
   bic: "GENO DEF1 SLR",
 };
+
+// Fixed CreationDate for the committed baseline so its bytes are reproducible
+// (the renderer defaults to `new Date()` in prod).
+const BASELINE_CREATION_DATE = new Date("2026-03-02T09:00:00.000Z");
 
 async function writeOut(name: string, bytes: Uint8Array): Promise<string> {
   const path = `/tmp/rechnung-test-${name}.pdf`;
@@ -84,13 +95,18 @@ describe("Rechnung v2 — fixture renders", () => {
       leistungsBeschreibung: "“Beate Invites: Folge der Wolke” am 21.02.2026",
       nettoCents: 167570,
       kassenwaertName: "Annalena Feix",
+      // Pinned so the committed baseline is byte-reproducible.
+      creationDate: BASELINE_CREATION_DATE,
     });
     await assertSensiblePdf(bytes);
     await writeOut("beate", bytes);
-    // Commit a copy under tests/fixtures/expected for the baseline.
-    const expectedPath = "tests/fixtures/expected/rechnung-v2-beate-uwe.pdf";
-    await mkdir(dirname(expectedPath), { recursive: true });
-    await writeFile(expectedPath, bytes);
+    // The committed baseline is a manual visual reference — a normal test run
+    // must NEVER rewrite it. Regenerate deliberately with UPDATE_PDF_FIXTURE=1.
+    if (process.env["UPDATE_PDF_FIXTURE"]) {
+      const expectedPath = "tests/fixtures/expected/rechnung-v2-beate-uwe.pdf";
+      await mkdir(dirname(expectedPath), { recursive: true });
+      await writeFile(expectedPath, bytes);
+    }
   });
 
   it("renders WITHOUT a Zusatz line (2-line address)", async () => {

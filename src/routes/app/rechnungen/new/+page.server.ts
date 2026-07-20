@@ -18,6 +18,7 @@ import { projects } from "$lib/server/db/schema/projects.js";
 import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { idCounters } from "$lib/server/db/schema/id_counters.js";
 import { createInvoice } from "$lib/server/domain/invoices.js";
+import { addCustomer } from "$lib/server/domain/customers-actions.js";
 import { berlinYear } from "$lib/domain/year.js";
 import { parseEuroToCents } from "$lib/domain/money.js";
 
@@ -35,6 +36,9 @@ export const load: PageServerLoad = async ({ url }) => {
   const projectIdParam = url.searchParams.get("projectId");
   const fromParam = url.searchParams.get("from");
   const fromSafe = fromParam === "projekt" ? "projekt" : null;
+  // Aurora E2 DELTA §6.3: deep-link from a Kunde detail's "+ Rechnung" CTA
+  // carries ?customerId=<uuid> — same shape as the projectId prefill above.
+  const customerIdParam = url.searchParams.get("customerId");
   const isUuid = (s: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 
@@ -97,6 +101,19 @@ export const load: PageServerLoad = async ({ url }) => {
   const nextSeq = counterRows[0] ? Number(counterRows[0].nextValue) : 1;
   const invoiceNumberPreview = `FDW-${year}-${String(nextSeq).padStart(3, "0")}`;
 
+  // DELTA §6.3: an explicit ?customerId= wins over the project-derived
+  // prefill (it's a more specific deep-link) and drives the quiet "Für
+  // {Name}" band — looked up against the already-fetched active-customer
+  // list so we don't need a second query.
+  let prefillCustomerName: string | null = null;
+  if (customerIdParam && isUuid(customerIdParam)) {
+    const found = allCustomers.find((c) => c.id === customerIdParam);
+    if (found) {
+      prefillCustomerId = found.id;
+      prefillCustomerName = found.name;
+    }
+  }
+
   return {
     customers: allCustomers,
     projects: allProjects,
@@ -106,6 +123,9 @@ export const load: PageServerLoad = async ({ url }) => {
     // C1-PRJ-A: prefill + redirect-back-with-toast plumbing.
     prefillProjectId,
     prefillCustomerId,
+    // Aurora E2 DELTA §6.3: only set for the explicit ?customerId= deep-link
+    // (the ?projectId=&from=projekt band is a separate, existing affordance).
+    prefillCustomerName,
     from: fromSafe,
   };
 };
@@ -173,5 +193,27 @@ export const actions: Actions = {
       303,
       `/app/rechnungen/${result.invoiceId}?job=${result.jobId}`,
     );
+  },
+
+  // Aurora E2 DELTA §6.2: inline Quick-Add-Kunde. Mirrors /app/kunden's own
+  // `add` action verbatim (same domain call) — AddCustomerDialog posts to
+  // `?/add` relative to whichever page it's mounted on, so the form route
+  // needs its own copy of this thin wrapper.
+  add: async ({ request, locals }) => {
+    const userId = locals.session?.user.id ?? null;
+    const formData = await request.formData();
+    const raw: Record<string, unknown> = {};
+    for (const [k, v] of formData.entries()) raw[k] = v;
+
+    const result = await addCustomer(raw, userId);
+    if (!result.ok) {
+      return fail(result.status, {
+        action: "add",
+        errors: result.errors,
+        values: result.values,
+      });
+    }
+
+    return { action: "add", success: true, customerId: result.customerId };
   },
 };

@@ -8,6 +8,10 @@
   for edited events — a single-line diff per changed field.
 
   Phase 12-B. Agent C imports this component on the detail page.
+
+  Aurora (E2-3): recoloured to the ink-scale + hairline tokens (was shadcn
+  border-border/text-foreground/text-muted-foreground) so the timeline
+  matches the rest of the Rechnung-detail rail cards.
 -->
 <script lang="ts">
 	type InvoiceHistoryEntry = {
@@ -180,48 +184,45 @@
 	);
 </script>
 
-<div class="space-y-0">
+<div class="space-y-0" data-testid="invoice-history">
 	{#if view.length === 0}
-		<div class="rounded-xl border border-dashed border-border py-10 text-center">
-			<p class="text-sm text-muted-foreground">Noch keine Aktivitäten</p>
+		<div class="rounded-xl border border-dashed border-hairline py-8 text-center">
+			<p class="text-sm text-ink-500">Noch keine Aktivitäten</p>
 		</div>
 	{:else}
 		<div class="relative space-y-3">
 			<!-- Vertical connector line -->
-			<div
-				class="absolute bottom-4 left-[19px] top-4 w-px bg-border"
-				aria-hidden="true"
-			></div>
+			<div class="absolute bottom-4 left-[9px] top-4 w-px bg-hairline" aria-hidden="true"></div>
 
 			{#each view as item (item.key)}
-				<div class="relative flex items-start gap-4">
+				<div class="relative flex items-start gap-3">
 					<!-- Indicator dot -->
 					<div
-						class="relative z-10 mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-muted-foreground/40 bg-background"
+						class="relative z-10 mt-1 flex h-[19px] w-[19px] shrink-0 items-center justify-center rounded-full border-2 border-ink-300/50 bg-card"
 					>
-						<div class="h-1.5 w-1.5 rounded-full bg-muted-foreground/60"></div>
+						<div class="h-1.5 w-1.5 rounded-full bg-ink-300"></div>
 					</div>
 
-					<!-- Content card -->
-					<div class="flex-1 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+					<!-- Content -->
+					<div class="min-w-0 flex-1 pb-0.5">
 						<div class="flex flex-wrap items-baseline gap-x-2">
-							<p class="text-sm font-semibold text-foreground">{item.label}</p>
+							<p class="text-[13px] font-semibold text-ink-900">{item.label}</p>
 							{#if item.labelSuffix}
-								<p class="text-xs text-muted-foreground">{item.labelSuffix}</p>
+								<p class="text-xs text-ink-500">{item.labelSuffix}</p>
 							{/if}
 						</div>
-						<p class="mt-0.5 text-xs text-muted-foreground">
-							· {item.actorName ?? 'System'} ·
+						<p class="mt-0.5 text-xs text-ink-500">
+							{item.actorName ?? 'System'} ·
 							<time datetime={item.occurredAt}>{fmtDateTime(item.occurredAt)}</time>
 						</p>
 
 						{#if item.changedFields && item.changedFields.length > 0}
-							<ul class="mt-2 space-y-1 text-xs text-foreground">
+							<ul class="mt-2 space-y-1 text-xs text-ink-700">
 								{#each item.changedFields as cf (cf.field)}
 									<li>
-										<span class="font-medium">{fieldLabel(cf.field)}:</span>
-										<span class="text-muted-foreground">{fmtValue(cf.field, cf.before)}</span>
-										<span class="mx-1 text-muted-foreground">→</span>
+										<span class="font-medium text-ink-900">{fieldLabel(cf.field)}:</span>
+										<span class="text-ink-500">{fmtValue(cf.field, cf.before)}</span>
+										<span class="mx-1 text-ink-300">→</span>
 										<span>{fmtValue(cf.field, cf.after)}</span>
 									</li>
 								{/each}

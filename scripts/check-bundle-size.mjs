@@ -52,8 +52,17 @@ const IMMUTABLE_DIR = join(
 // DEV-gated dynamic import (src/routes/app/dev/charts), so this bump reflects
 // only the legitimate dashboard cost. Measured total 1 902.4 KiB → limit set
 // to new actual + ~5 % headroom.
+//
+// Aurora impl wave 1, 2026-07-21: the F2 headroom was consumed by three
+// feature lanes stacking genuine new client JS on top of the dashboard —
+// B1 transaktionen feed (#140), E1 Kunden-Kette (#141) and E2 Rechnungs-Kette
+// (list/detail/form + kunde-detail ledger). No single chunk regressed
+// (largest still 410.2 KiB, well under its 462 KB gate → pdfjs stays lazy
+// split), so this is legitimate cumulative growth, not an accidental
+// eager-import. Measured total 1 998.2 KiB → limit set to new actual + ~2.9 %
+// headroom, sized to also absorb the in-flight B2 Erfassen-Kette (#143).
 const LARGEST_CHUNK_LIMIT = 462_000; // 462 KB
-const TOTAL_JS_LIMIT = 2_045_000; // ~1 997 KiB
+const TOTAL_JS_LIMIT = 2_108_000; // ~2 059 KiB (actual 1 998.2 KiB + headroom)
 
 // ---------- helpers -------------------------------------------------------- //
 

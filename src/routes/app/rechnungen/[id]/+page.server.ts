@@ -36,6 +36,9 @@ import {
   supersedeInvoice,
   undoPayment,
 } from "$lib/server/domain/invoices.js";
+import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
+import { addressLines } from "$lib/server/domain/address.js";
+import { env } from "$lib/server/env.js";
 import type {
   InvoiceDetail,
   InvoiceHistoryEntry,
@@ -171,12 +174,24 @@ export const load: PageServerLoad = async ({ params, url }) => {
     day: "2-digit",
   }).format(new Date());
 
+  // Aussteller block on the doc-sheet (board finding): name + postal address
+  // + contact e-mail, sourced the same way the real canonical PDF does
+  // (readStammdaten() for name/address, MAIL_FROM for the footer contact
+  // e-mail — see loadRenderInput in $lib/server/domain/invoices.ts).
+  const sd = await readStammdaten();
+  const verein = {
+    name: sd.name,
+    adresseLines: addressLines(sd.adresse),
+    email: env.MAIL_FROM || "",
+  };
+
   return {
     invoice,
     predecessor,
     successor,
     auditEntries,
     today,
+    verein,
     latestJob: latestJob
       ? {
           id: latestJob.id,
@@ -190,8 +205,6 @@ export const load: PageServerLoad = async ({ params, url }) => {
         }
       : null,
     pollJobId: url.searchParams.get("job"),
-    paidFlash: url.searchParams.get("paid") === "1",
-    undoneFlash: url.searchParams.get("undone") === "1",
   };
 };
 
