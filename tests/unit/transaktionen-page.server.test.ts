@@ -9,9 +9,21 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ALL_YEARS } from "../../src/lib/domain/year.js";
 
-const feedMock = vi.fn(async (_opts: unknown) => ({ rows: [], total: 0 }));
+const feedMock = vi.fn(async (_opts: unknown) => ({
+  rows: [],
+  total: 0,
+  sumCents: 0,
+  monthCount: 0,
+}));
+const countMock = vi.fn(async (_opts: unknown) => ({
+  expense: 0,
+  income: 0,
+  donation: 0,
+  total: 0,
+}));
 vi.mock("$lib/server/domain/transactions.js", () => ({
   listTransaktionenFeedPage: feedMock,
+  countTransaktionenFeedByKind: countMock,
 }));
 
 const { load } =
@@ -37,7 +49,14 @@ const PARENT_2026 = {
 
 beforeEach(() => {
   feedMock.mockReset();
-  feedMock.mockResolvedValue({ rows: [], total: 0 });
+  feedMock.mockResolvedValue({
+    rows: [],
+    total: 0,
+    sumCents: 0,
+    monthCount: 0,
+  });
+  countMock.mockReset();
+  countMock.mockResolvedValue({ expense: 0, income: 0, donation: 0, total: 0 });
 });
 
 describe("/app/transaktionen load", () => {
@@ -75,7 +94,12 @@ describe("/app/transaktionen load", () => {
   });
 
   it("clamps an out-of-bounds ?page to the last page (offset of the displayed fetch = last page)", async () => {
-    feedMock.mockResolvedValue({ rows: [], total: 120 });
+    feedMock.mockResolvedValue({
+      rows: [],
+      total: 120,
+      sumCents: 0,
+      monthCount: 0,
+    });
     const data = (await load(makeLoadEvent("?page=99", PARENT_2026))) as {
       page: number;
     };

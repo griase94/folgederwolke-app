@@ -1,7 +1,7 @@
 /**
  * Aurora — TransactionRow (master §2.4): single-link feed row, type chip
- * from --color-type-* tokens, signed amount in INK (never red on
- * individual rows — spec §2 amount color rule).
+ * from --color-type-* tokens, signed amount in the AA-safe TYPE hue (plate
+ * transaktionen-v4 .amt-*, brief §5) — never the critical red on a row.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { render, cleanup, screen } from "@testing-library/svelte";
@@ -33,27 +33,33 @@ describe("TransactionRow", () => {
     );
   });
 
-  it("renders the signed amount in ink with tabular numerals — never red", () => {
+  it("renders the signed amount in the type hue with tabular numerals — never the critical red", () => {
     render(TransactionRow, { props: base });
     const amount = screen.getByTestId("txn-row-amount");
     // Tolerate the ICU minus glyph (U+2212) as well as ASCII '-'.
     expect(amount.textContent).toMatch(/[-−]84,50/);
     expect(amount.className).toContain("tabular-nums");
-    expect(amount.className).toContain("text-ink-900");
+    // Ausgabe row → AA-safe plum text token (plate `.amt-aus`), not the
+    // critical red reserved for negative aggregates.
+    expect(amount.className).toContain("text-(--ausgabe-text)");
     expect(amount.className).not.toContain("severity-critical");
   });
 
-  it("type chip carries the matching type tokens, row carries data-kind", () => {
-    for (const [type, cls, glyph] of [
-      ["ausgabe", "bg-type-ausgabe-tint", "↓"],
-      ["einnahme", "bg-type-einnahme-tint", "↑"],
-      ["spende", "bg-type-spende-tint", "♥"],
+  it("type glyph tile carries the matching type tokens, row carries data-kind", () => {
+    for (const [type, cls] of [
+      ["ausgabe", "bg-type-ausgabe-tint"],
+      ["einnahme", "bg-type-einnahme-tint"],
+      ["spende", "bg-type-spende-tint"],
     ] as const) {
-      const { unmount } = render(TransactionRow, { props: { ...base, type } });
+      const { container, unmount } = render(TransactionRow, {
+        props: { ...base, type },
+      });
       expect(screen.getByTestId("txn-row").getAttribute("data-kind")).toBe(
         type,
       );
-      expect(screen.getByText(glyph).className).toContain(cls);
+      // The 34px glyph squircle (Lucide icon inside) carries the type tint token.
+      const glyph = container.querySelector('[data-slot="row-glyph"]');
+      expect(glyph?.className).toContain(cls);
       unmount();
     }
   });

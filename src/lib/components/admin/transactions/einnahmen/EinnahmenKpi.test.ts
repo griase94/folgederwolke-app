@@ -61,7 +61,9 @@ describe("EinnahmenKpi — anchor + Sphären-Split chips", () => {
     expect(screen.getByText(/Ideeller/i)).toBeTruthy();
     expect(screen.getByText(/Vermögen/i)).toBeTruthy();
     expect(screen.getByText(/Zweckbetrieb/i)).toBeTruthy();
-    expect(screen.getByText(/Wirtschaftlich/i)).toBeTruthy();
+    // KPI tile uses the short sphere label ("Wirtsch. Geschäftsbetrieb") to
+    // avoid a clipped "WIRTSCHAFTLICHER GESCHÄFT…" (dashboard-v10 short form).
+    expect(screen.getByText(/Wirtsch\./i)).toBeTruthy();
     // the empty sphere (vermoegen) is shown as 0,00 € (exact), not omitted.
     // Scope to the vermoegen chip so the assertion isn't satisfied by the
     // "…0,00 €" suffix of a non-empty total.
