@@ -109,8 +109,26 @@ test.describe("@phase-aurora-slice4 Aurora dashboard mobile", () => {
       expect(third!.y + third!.height).toBeLessThan(FOLD);
     }
 
+    // Lage top edge — re-calibrated F2 (2026-07-20) to the v10 mobile anatomy.
+    // The old `< FOLD` encoded the PRE-v10 compact hero; the v10 dashboard leads
+    // with the Saldo sparkline-hero + the Aufgaben queue, and the Lage card peeks
+    // BELOW the fold by design. Plate proof: dashboard-v10.html rendered at
+    // 430×932 puts the Beiträge/Lage section top at y≈2046 (~2.2 viewports),
+    // i.e. well below the fold. App measures lage-top ≈ 913 (~1.0 viewport) — the
+    // grouped Aufgaben make it MORE compact than the plate. Geometric proof for
+    // why `< FOLD` is impossible alongside ≥3 task rows above the fold: the third
+    // task row already ends at ~775, and the fixed ~56px card boundary (AufgabenCard
+    // p-4 bottom 16 + grid gap-6 24 + LageCard p-4 top 16) puts the next card's top
+    // at ~831 minimum. So we assert Lage RENDERS and peeks within ~1.5 viewports —
+    // tighter than the plate's own 2.2× — while the tasks-above-the-fold doctrine
+    // stays strictly guarded above.
+    // Guard threshold = measured 913 + ~10% headroom; the pre-fix regression
+    // (lage-top 1114 before the v10 compaction) MUST fail this bound — it is a
+    // stack-blow-up guard, not a fold promise (v10 plate puts Lage at y≈2046).
+    const LAGE_PEEK_MAX = 1005;
     const lage = await page.getByTestId("lage-beitraege").boundingBox();
-    expect(lage!.y).toBeLessThan(FOLD);
+    expect(lage).not.toBeNull();
+    expect(lage!.y).toBeLessThan(LAGE_PEEK_MAX);
   });
 
   test("mobile stack order: Aufgaben before Lage before Projekte before Aktivität", async ({

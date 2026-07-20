@@ -25,6 +25,10 @@
 		return fromYear !== toYear;
 	});
 
+	// Target reimbursement window for the aging rail: an approved Auslage should
+	// be paid out within ~2 weeks. Past it, the rail turns red (overfällig).
+	const ERSTATTUNG_FRIST_DAYS = 14;
+
 	const SPHERE_ORDER: Sphere[] = ['ideeller', 'vermoegen', 'zweckbetrieb', 'wirtschaftlich'];
 	const sphaeren = $derived(
 		SPHERE_ORDER.map((s) => ({
@@ -71,6 +75,8 @@
 			spendenCount={data.cashflow.spendenBuchungenCount}
 			ausgabenCents={data.cashflow.ausgabenYtdCents}
 			ausgabenCount={data.cashflow.ausgabenBuchungenCount}
+			einnahmenMonthlyCents={data.cashflow.einnahmenMonthlyCents}
+			ausgabenMonthlyCents={data.cashflow.ausgabenMonthlyCents}
 			selectedYear={data.selectedYear}
 			currentYear={data.currentYear}
 			festgeschriebenBis={data.festgeschriebenBis}
@@ -111,6 +117,12 @@
 						dimmed={data.selectedYear !== data.currentYear}
 						{sphaeren}
 						wgb={data.wgb}
+						offeneErstattungen={{
+							count: data.approvedNotErstattetCount,
+							sumCents: data.approvedNotErstattetSumCents,
+							oldestDays: data.approvedNotErstattetOldestDays,
+							fristDays: ERSTATTUNG_FRIST_DAYS
+						}}
 					/>
 				</div>
 				<div class="order-4 lg:order-none">

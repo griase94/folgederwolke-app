@@ -1,8 +1,8 @@
 /**
  * @phase-aurora-slice4
- * Stand strip (spec §7): eyebrow SALDO {year}, gradient hero (positive only),
- * zugesagt/frei subline (current year only), stat triplet with Buchungen
- * micro-captions, Festschreibung lock chip.
+ * Stand strip (spec §7 · dataviz saldo-verlauf): eyebrow SALDO {year}, running
+ * Saldo sparkline hero (SaldoVerlauf), zugesagt/frei subline (current year
+ * only), stat triplet with Buchungen micro-captions, Festschreibung lock chip.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { render, cleanup, screen } from "@testing-library/svelte";
@@ -19,6 +19,9 @@ const base = {
   spendenCount: 1,
   ausgabenCents: 106544,
   ausgabenCount: 7,
+  // Monthly cash so the running-saldo sparkline endpoint === saldoCents.
+  einnahmenMonthlyCents: [50000, 40000, 30000, 80000, 0, 0, 0, 0, 0, 0, 0, 0],
+  ausgabenMonthlyCents: [20000, 10000, 30000, 16544, 0, 0, 0, 0, 0, 0, 0, 0],
   selectedYear: 2026,
   currentYear: 2026,
   festgeschriebenBis: null as number | null,
@@ -30,15 +33,10 @@ describe("StandStrip", () => {
     expect(screen.getByText(/Saldo 2026/i)).toBeTruthy();
   });
 
-  it("positive saldo renders gradient-clipped, negative renders solid ink (no gradient, no red)", () => {
-    const { unmount } = render(StandStrip, { props: base });
-    const hero = screen.getByTestId("stand-hero");
-    expect(hero.className).toContain("bg-clip-text");
-    unmount();
-    render(StandStrip, { props: { ...base, saldoCents: -4200 } });
-    const negHero = screen.getByTestId("stand-hero");
-    expect(negHero.className).not.toContain("bg-clip-text");
-    expect(negHero.className).toContain("text-ink-900");
+  it("renders the saldo-verlauf sparkline hero", () => {
+    render(StandStrip, { props: base });
+    expect(screen.getByTestId("saldo-verlauf")).toBeTruthy();
+    expect(screen.getByTestId("saldo-hero")).toBeTruthy();
   });
 
   it("subline shows zugesagt and frei (saldo − zugesagt) in the current year", () => {
@@ -64,7 +62,7 @@ describe("StandStrip", () => {
 
   it("Ausgaben stat renders with explicit minus sign", () => {
     render(StandStrip, { props: base });
-    // Tolerate the ICU minus glyph (U+2212) as well as ASCII '-' (see note below).
+    // Tolerate the ICU minus glyph (U+2212) as well as ASCII '-'.
     expect(screen.getByTestId("stand-stat-ausgaben").textContent).toMatch(
       /[-−]1\.065,44/,
     );

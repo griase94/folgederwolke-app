@@ -44,8 +44,16 @@ const IMMUTABLE_DIR = join(
 // Bumped after the final-board UI pass (PDF-retry recovery, Dateien Aurora
 // redesign, dashboard/Beiträge empty states, mobile-responsive rows) added
 // ~2 KB of justified client JS.
+//
+// F2 dataviz family, 2026-07-20, PR #139: the dashboard now adopts three
+// chart components (SaldoVerlauf, SphaerenBars, AgingRail + _shared geometry/
+// format helpers), which is genuine new client JS. The dev-only chart gallery
+// and the other eleven chart forms are kept OUT of the prod bundle via a
+// DEV-gated dynamic import (src/routes/app/dev/charts), so this bump reflects
+// only the legitimate dashboard cost. Measured total 1 902.4 KiB → limit set
+// to new actual + ~5 % headroom.
 const LARGEST_CHUNK_LIMIT = 462_000; // 462 KB
-const TOTAL_JS_LIMIT = 1_930_000; // 1 930 KB
+const TOTAL_JS_LIMIT = 2_045_000; // ~1 997 KiB
 
 // ---------- helpers -------------------------------------------------------- //
 

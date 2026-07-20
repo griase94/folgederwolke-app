@@ -1,11 +1,15 @@
 /**
  * @phase-aurora-slice4
- * Aufgaben card: buildTaskQueue rendering, mobile cap 4 + "Alle N Aufgaben"
- * expander, "Heute" context label when selectedYear ≠ berlinYear, empty
- * state, WGB subline rendering.
+ * Aufgaben card: buildTaskQueue rendering, v10 mobile Beiträge grouping
+ * (one row on mobile, full flat list on desktop), "Heute" context label when
+ * selectedYear ≠ berlinYear, empty state, WGB subline rendering.
+ *
+ * NOTE: the card renders TWO lists — aufgaben-list-mobile (grouped) and
+ * aufgaben-list-desktop (flat) — hidden per-breakpoint via CSS. JSDOM has no
+ * breakpoints, so both are in the DOM; scope queries with `within(...)`.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { render, cleanup, screen, fireEvent } from "@testing-library/svelte";
+import { render, cleanup, screen, within } from "@testing-library/svelte";
 import AufgabenCard from "./AufgabenCard.svelte";
 import type { TaskQueueInput } from "$lib/domain/task-queue.js";
 
@@ -38,28 +42,35 @@ const FULL = input({
 }); // → 6 tasks
 
 describe("AufgabenCard", () => {
-  it("renders the queue in order with row links", () => {
-    render(AufgabenCard, {
+  it("desktop list renders the full queue in tier order with row links + rank1 rail", () => {
+    const { container } = render(AufgabenCard, {
       props: { input: FULL, selectedYear: 2026, currentYear: 2026, now: NOW },
     });
-    const rows = screen.getAllByTestId("task-row");
+    const desktop = container.querySelector(
+      "[data-testid='aufgaben-list-desktop']",
+    ) as HTMLElement;
+    const rows = within(desktop).getAllByTestId("task-row");
     expect(rows.length).toBe(6);
     expect(rows[0]!.getAttribute("data-rail")).toBe("rank1");
   });
 
-  it("mobile cap: rows 5+ get hidden md:block before expansion; expander reveals them", async () => {
+  it("mobile list folds the Beiträge tasks into one 'Beiträge offen' row (desktop stays flat)", () => {
     const { container } = render(AufgabenCard, {
       props: { input: FULL, selectedYear: 2026, currentYear: 2026, now: NOW },
     });
-    const items = container.querySelectorAll("[data-testid='task-item']");
-    expect(items[4]!.className).toContain("hidden");
-    expect(items[4]!.className).toContain("md:block");
-    await fireEvent.click(
-      screen.getByRole("button", { name: "Alle 6 Aufgaben" }),
-    );
-    for (const li of container.querySelectorAll("[data-testid='task-item']")) {
-      expect(li.className).not.toContain("hidden");
-    }
+    const mobile = container.querySelector(
+      "[data-testid='aufgaben-list-mobile']",
+    ) as HTMLElement;
+    const desktop = container.querySelector(
+      "[data-testid='aufgaben-list-desktop']",
+    ) as HTMLElement;
+    // FULL → 3 non-Beiträge tasks (Belege, Erstattung, Jahresabschluss) + the
+    // 3 Beiträge summaries folded into ONE grouped row = 4 mobile rows.
+    expect(within(mobile).getAllByTestId("task-row").length).toBe(4);
+    expect(within(desktop).getAllByTestId("task-row").length).toBe(6);
+    expect(
+      within(mobile).getAllByText("Beiträge offen").length,
+    ).toBeGreaterThan(0);
   });
 
   it("shows the 'Heute' context label only when selectedYear ≠ currentYear", () => {
@@ -104,8 +115,9 @@ describe("AufgabenCard", () => {
         now: NOW,
       },
     });
+    // rendered in both the mobile and desktop lists (CSS hides one per breakpoint).
     expect(
-      screen.getByText("Sphären-Zuordnung der Buchungen prüfen"),
-    ).toBeTruthy();
+      screen.getAllByText("Sphären-Zuordnung der Buchungen prüfen").length,
+    ).toBeGreaterThan(0);
   });
 });

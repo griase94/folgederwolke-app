@@ -108,6 +108,8 @@ export interface DashboardKpis {
   /** Expenses approved but not yet erstattet, with sum in cents. */
   approvedNotErstattetCount: number;
   approvedNotErstattetSumCents: bigint;
+  /** Age in days of the OLDEST approved-not-erstattet expense (0 if none). */
+  approvedNotErstattetOldestDays: number;
   /** Member_beitrags rows open in current Berlin year. */
   openBeitragsCount: number;
   openBeitragsMembers: number;
@@ -230,11 +232,12 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
     //    (FIX 8 from slice-4 plan: single-source via countOpenAuslagen()).
     countOpenAuslagen(),
 
-    // 2. Approved expenses not yet erstattet
+    // 2. Approved expenses not yet erstattet (+ oldest approval → aging rail)
     db
       .select({
         cnt: count(),
         sumCents: sum(expenses.betragCents),
+        oldestApprovedAt: sql<string | null>`MIN(${expenses.approvedAt})`,
       })
       .from(expenses)
       .where(
@@ -682,12 +685,23 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
 
   const ausgabenBySphereCents = bucketBySphere(expensesBySphereRows);
 
+  const oldestApprovedAt = approvedNotErstattet[0]?.oldestApprovedAt ?? null;
+  const approvedNotErstattetOldestDays = oldestApprovedAt
+    ? Math.max(
+        0,
+        Math.floor(
+          (Date.now() - new Date(oldestApprovedAt).getTime()) / 86_400_000,
+        ),
+      )
+    : 0;
+
   return {
     openAuslagenCount: openAuslagen,
     approvedNotErstattetCount: approvedNotErstattet[0]?.cnt ?? 0,
     approvedNotErstattetSumCents: BigInt(
       approvedNotErstattet[0]?.sumCents ?? 0,
     ),
+    approvedNotErstattetOldestDays,
     openBeitragsCount: openBeitragsAgg[0]?.rowCount ?? 0,
     openBeitragsMembers: Number(openBeitragsAgg[0]?.memberCount ?? 0),
     // Phase 1 Beitrag summary KPIs (Task 1.7)
