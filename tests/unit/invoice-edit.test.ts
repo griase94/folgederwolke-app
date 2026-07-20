@@ -128,9 +128,12 @@ const { logAudit } = await import("$lib/server/audit-log/index.js");
 const INVOICE_ID = "11111111-1111-4111-8111-111111111111";
 const ACTOR_ID = "00000000-0000-4000-8000-000000000001";
 const CUSTOMER_ID = "22222222-2222-4222-8222-222222222222";
+const KATEGORIE_ID = "33333333-3333-4333-8333-333333333333";
 
 const validInput = {
   customerId: CUSTOMER_ID,
+  // E-PR3: Kategorie is mandatory on the invoice form/schema.
+  kategorieId: KATEGORIE_ID,
   rechnungsdatum: "2026-05-15",
   bezeichnung: "Webseite Q2 2026",
   leistungszeitraum: "Mai 2026",
@@ -278,6 +281,7 @@ describe("editInvoice — happy path", () => {
       [existingInvoiceRow()], // invoice
       [], // successor lookup → no successor
       [customerRow()], // customer lookup
+      [{ name: "Webseiten & Digitales", sphere: "wirtschaftlich" }], // kategorie lookup (E-PR3: kategorieId now always set)
     );
 
     // Wire the tx callback up so we can capture what was called.

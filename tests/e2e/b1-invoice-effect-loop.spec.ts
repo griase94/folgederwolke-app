@@ -119,6 +119,10 @@ test.describe("@phase-9 B-1 InvoiceForm effect loop fix", () => {
 
     await page.fill('input[name="bezeichnung"]', "Test");
     await page.fill('input[name="nettoEur"]', "100,00");
+    // E-PR3: Kategorie is now a required field — pick one so the CTA gate opens
+    // (this test asserts the submit enables; the effect-loop guard is unrelated
+    // to the gate, but the button won't enable without a complete form).
+    await page.selectOption('select[name="kategorieId"]', { index: 1 });
 
     // Submit button should be enabled within 1.5s (no effect-loop blocking)
     const submitBtn = page.locator(

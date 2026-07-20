@@ -100,16 +100,41 @@
 	const payable = $derived(!isPaid && !isFestgeschrieben && !isSuperseded);
 	const sameDayUndo = $derived(isPaid && inv.bezahltAm === data.today && !isFestgeschrieben);
 
-	// G3 (E-PR2 scope): the send action isn't wired yet, so the button stays
-	// disabled unconditionally — but the reason is always visible (never a
-	// silent grey button). Once pdf_status='generated', the real remaining
-	// gate is the customer's e-mail address; that field isn't in this load()
-	// yet (mail-invoice.md DELTA), so we surface it as the fallback reason.
+	// ── Versand (E-PR3) ───────────────────────────────────────────────────────
+	// The send action is enabled once the PDF is generated AND the customer has
+	// an e-mail; otherwise the button stays disabled with a visible `.gate-line`
+	// reason (never a silent grey button). `data.versand` carries the latest
+	// invoice_versendet sent_mails row (null = never sent).
+	const hasCustomerEmail = $derived(Boolean(data.customerEmail));
+	const alreadySent = $derived(data.versand?.status === 'sent');
+	const sendFailed = $derived(data.versand?.status === 'failed');
+	const canSend = $derived(inv.pdfStatus === 'generated' && hasCustomerEmail && !isSuperseded);
+	const versandAtFmt = $derived(fmtIsoDate(data.versand?.at ?? null));
+
+	// Gate reason when the send action is NOT available (verbatim plate copy).
 	const sendGateReason = $derived(
 		inv.pdfStatus !== 'generated'
 			? 'Fehlt noch: PDF muss zuerst erzeugt werden'
 			: 'Fehlt noch: Kunde hat keine E-Mail-Adresse hinterlegt'
 	);
+
+	// Inline confirm (modal-confirm intent, no fragile native dialog). `resend`
+	// distinguishes the first send from a deliberate "Erneut senden".
+	let sendConfirmOpen = $state(false);
+	let sendResend = $state(false);
+	let sending = $state(false);
+
+	function openSend(): void {
+		sendResend = false;
+		sendConfirmOpen = true;
+	}
+	function openResend(): void {
+		sendResend = true;
+		sendConfirmOpen = true;
+	}
+	function closeSend(): void {
+		sendConfirmOpen = false;
+	}
 
 	function stopPolling(): void {
 		if (pollTimer) {
@@ -148,10 +173,15 @@
 		// synchronous toast() here is dropped. setTimeout(0) fires after the
 		// whole mount cycle, once the Toaster is listening.
 		setTimeout(() => {
+			const sent = page.url.searchParams.get('sent');
 			if (page.url.searchParams.get('paid') === '1') {
 				toast.success('Als bezahlt markiert');
 			} else if (page.url.searchParams.get('undone') === '1') {
 				toast.info('Zahlung zurückgenommen');
+			} else if (sent === 'resend') {
+				toast.success('Rechnung erneut per Mail gesendet');
+			} else if (sent === '1') {
+				toast.success('Rechnung per Mail gesendet');
 			}
 		}, 0);
 	});
@@ -461,20 +491,36 @@
 				</Button>
 			{/if}
 
-			{#if !isSuperseded}
-				<Button
-					type="button"
-					variant="ghost"
-					disabled
-					aria-disabled="true"
-					title={sendGateReason}
-					data-testid="invoice-send-mail-disabled"
-				>
-					<svg class="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"
-						><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg
+			{#if !isSuperseded && !sendConfirmOpen}
+				{#if canSend && !alreadySent}
+					<Button type="button" variant="outline" onclick={openSend} data-testid="invoice-send-mail">
+						<svg class="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"
+							><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg
+						>
+						Per Mail senden
+					</Button>
+				{:else if alreadySent}
+					<Button type="button" variant="outline" onclick={openResend} data-testid="invoice-resend-mail">
+						<svg class="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"
+							><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg
+						>
+						Erneut senden
+					</Button>
+				{:else}
+					<Button
+						type="button"
+						variant="ghost"
+						disabled
+						aria-disabled="true"
+						title={sendGateReason}
+						data-testid="invoice-send-mail-disabled"
 					>
-					Per Mail senden
-				</Button>
+						<svg class="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"
+							><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg
+						>
+						Per Mail senden
+					</Button>
+				{/if}
 			{/if}
 
 			{#if !editable && notEditableReason}
@@ -491,7 +537,8 @@
 			{/if}
 		</div>
 
-		{#if !isSuperseded}
+		<!-- send gate reason — only while genuinely blocked (never once sent) -->
+		{#if !isSuperseded && !canSend && !alreadySent}
 			<p
 				class="mt-2 flex items-center gap-1.5 text-xs font-medium text-severity-warn-text"
 				data-testid="invoice-send-gate-reason"
@@ -501,6 +548,51 @@
 				>
 				{sendGateReason}
 			</p>
+		{/if}
+
+		<!-- inline send confirm (modal-confirm intent) — names the recipient -->
+		{#if sendConfirmOpen}
+			<form
+				method="POST"
+				action="?/send-mail"
+				class="mt-3 rounded-xl border border-border bg-secondary/60 p-4"
+				data-testid="invoice-send-confirm"
+				use:enhance={() => {
+					sending = true;
+					return async ({ update }) => {
+						await update();
+						sending = false;
+						sendConfirmOpen = false;
+					};
+				}}
+			>
+				{#if sendResend}
+					<input type="hidden" name="resend" value="1" />
+				{/if}
+				<p class="text-sm font-semibold text-ink-900">
+					{sendResend ? 'Rechnung erneut per Mail senden?' : 'Rechnung per Mail senden?'}
+				</p>
+				<p class="mt-1 text-[13px] text-ink-700">
+					Die Rechnung {inv.businessId} geht mit dem PDF im Anhang an
+					<span class="font-semibold text-ink-900">{data.customerEmail}</span>.
+					{#if sendResend && versandAtFmt}
+						Schon versendet am {versandAtFmt}.
+					{/if}
+				</p>
+				<div class="mt-3 flex flex-wrap gap-2">
+					<Button
+						type="submit"
+						disabled={sending}
+						data-testid="invoice-send-submit"
+						class="border border-primary-strong bg-primary-strong text-primary-foreground hover:bg-primary-strong/90"
+					>
+						{sending ? 'Wird gesendet …' : sendResend ? 'Erneut senden' : 'Jetzt senden'}
+					</Button>
+					<Button type="button" variant="ghost" onclick={closeSend} disabled={sending} data-testid="invoice-send-cancel">
+						Abbrechen
+					</Button>
+				</div>
+			</form>
 		{/if}
 	</div>
 
@@ -847,6 +939,81 @@
 					{/if}
 				</div>
 			</div>
+
+			<!-- Versand (G3) — only once the invoice has been sent (or a send failed) -->
+			{#if alreadySent || sendFailed}
+				<div class="rounded-2xl border border-border bg-card p-4 shadow-sm" data-testid="invoice-versand-card">
+					<h2 class="mb-3 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-ink-500">
+						<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"
+							><path stroke-linecap="round" stroke-linejoin="round" d="M4 4h16v16H4z" /><path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="M4 6l8 6 8-6"
+							/></svg
+						>
+						Versand
+					</h2>
+
+					{#if sendFailed}
+						<div
+							class="flex flex-col gap-3 rounded-xl border border-severity-critical/25 bg-severity-critical/10 px-3.5 py-3"
+							data-testid="invoice-send-failed"
+						>
+							<div class="flex items-start gap-2.5">
+								<svg
+									class="mt-0.5 h-4 w-4 shrink-0 text-severity-critical-text"
+									fill="none"
+									viewBox="0 0 24 24"
+									stroke="currentColor"
+									stroke-width="2"
+									aria-hidden="true"
+								>
+									<circle cx="12" cy="12" r="10" /><path stroke-linecap="round" d="M12 8v4M12 16h.01" />
+								</svg>
+								<div class="min-w-0 text-sm">
+									<p class="font-semibold text-severity-critical-text">Versand fehlgeschlagen</p>
+									<p class="mt-0.5 text-ink-700">
+										Die Mail an {data.versand?.to} konnte nicht zugestellt werden.
+									</p>
+								</div>
+							</div>
+							<form
+								method="POST"
+								action="?/send-mail"
+								use:enhance={() => {
+									sending = true;
+									return async ({ update }) => {
+										await update();
+										sending = false;
+									};
+								}}
+							>
+								<Button type="submit" size="sm" variant="outline" disabled={sending} data-testid="invoice-send-retry">
+									<svg class="mr-1.5 h-4 w-4" class:animate-spin={sending} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"
+										><path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+										/></svg
+									>
+									Erneut versuchen
+								</Button>
+							</form>
+						</div>
+					{:else}
+						<dl class="text-sm" data-testid="invoice-versand-facts">
+							<div class="grid grid-cols-[92px_minmax(0,1fr)] items-baseline gap-3 py-1.5">
+								<dt class="text-xs font-medium text-ink-500">Versendet am</dt>
+								<dd class="text-right text-[13px] font-semibold tabular-nums text-ink-900">{versandAtFmt}</dd>
+							</div>
+							<div class="grid grid-cols-[92px_minmax(0,1fr)] items-baseline gap-3 border-t border-hairline py-1.5">
+								<dt class="text-xs font-medium text-ink-500">An</dt>
+								<dd class="min-w-0 truncate text-right text-[13px] font-semibold text-ink-900">{data.versand?.to}</dd>
+							</div>
+						</dl>
+					{/if}
+				</div>
+			{/if}
 
 			<!-- Verlauf -->
 			<div class="rounded-2xl border border-border bg-card p-4 shadow-sm">

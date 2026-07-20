@@ -220,17 +220,17 @@ describe("BeitragsReminder — brand strip + content + Giro-QR", () => {
 // InvoiceVersendetMail + Giro-QR
 // ---------------------------------------------------------------------------
 
-describe("InvoiceVersendetMail — brand strip + content + Giro-QR", () => {
+describe("InvoiceVersendetMail — brand strip + content + Versand (E-PR3)", () => {
   const propsWithIban = {
     ...WL_IDENTITY,
     customerName: "Max Mustermann GmbH",
+    anrede: "Liebe Frau Mustermann",
     invoiceNumber: "RE-2026-007",
     bezeichnung: "Workshop Cloudchoreographie",
     bruttoCents: 119000,
     currency: "EUR",
     rechnungsdatum: "2026-05-15",
     faelligkeitsDatum: "2026-06-14",
-    downloadUrl: "https://app.folgederwolke.de/invoices/RE-2026-007.pdf",
     iban: "DE43830654089999999999",
     bic: "SSKMDEMMXXX",
     empfaenger: "Verein X e.V.",
@@ -244,29 +244,45 @@ describe("InvoiceVersendetMail — brand strip + content + Giro-QR", () => {
     expectBrandStrip(html);
   });
 
-  it("renders invoice content (number, Betrag, Fälligkeit, download)", async () => {
+  it("renders invoice content + anrede greeting + PDF-attached notice, no download CTA", async () => {
     const { html } = await renderTemplate(
       "InvoiceVersendetMail",
       propsWithIban,
     );
-    expect(html).toContain("Max Mustermann GmbH");
+    // Greeting is the verbatim anrede — never "Liebe:r {Firmenname}".
+    expect(html).toContain("Liebe Frau Mustermann");
+    expect(html).not.toContain("Liebe:r");
     expect(html).toContain("RE-2026-007");
     expect(html).toContain("1.190,00");
     expect(html).toContain("15.05.2026");
     expect(html).toContain("14.06.2026");
-    expect(html).toContain(
-      "https://app.folgederwolke.de/invoices/RE-2026-007.pdf",
-    );
+    // E3a: the PDF is attached — a notice, not a download CTA/link.
+    expect(html).toContain("Deine Rechnung hängt als PDF an dieser E-Mail.");
+    expect(html).not.toContain("herunterladen");
+    expect(html).not.toContain("/app/");
   });
 
-  it("embeds the EPC 069 Giro-QR payload when iban + empfaenger present", async () => {
+  it("renders the bank-transfer block (no QR <pre> payload — the Giro-QR image is deferred)", async () => {
     const { html } = await renderTemplate(
       "InvoiceVersendetMail",
       propsWithIban,
     );
-    expect(html).toMatch(/<pre[^>]*>[\s\S]*BCD\s*\n001\s*\n1\s*\nSCT/);
-    expect(html).toMatch(/EUR1190\.00/);
+    // Bank details present …
+    expect(html).toContain("DE43830654089999999999");
+    expect(html).toContain("SSKMDEMMXXX");
     // Verwendungszweck = invoice number
     expect(html).toContain("RE-2026-007");
+    expect(html).toContain("Einfach per Überweisung");
+    // … but NO EPC-069 <pre> payload (removed with the QR carve-out).
+    expect(html).not.toMatch(/<pre[^>]*>[\s\S]*BCD/);
+  });
+
+  it("falls back to a neutral greeting when anrede is null", async () => {
+    const { html } = await renderTemplate("InvoiceVersendetMail", {
+      ...propsWithIban,
+      anrede: null,
+    });
+    expect(html).toContain("Hallo! Anbei deine Rechnung als PDF");
+    expect(html).not.toContain("Liebe");
   });
 });

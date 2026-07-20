@@ -43,6 +43,11 @@ export const smtp: MailProvider = {
       html: msg.html,
       text: msg.text,
       headers: msg.headers,
+      attachments: msg.attachments?.map((a) => ({
+        filename: a.filename,
+        content: Buffer.from(a.content),
+        contentType: a.contentType,
+      })),
     });
     return { messageId: info.messageId ?? "" };
   },

@@ -34,6 +34,7 @@ import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { files } from "$lib/server/db/schema/files.js";
 import { income } from "$lib/server/db/schema/income.js";
+import { sentMails } from "$lib/server/db/schema/mails.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { resolveKategorieByName } from "$lib/server/domain/transactions.js";
 import { getFileStorage, type FileStorage } from "$lib/server/files/storage.js";
@@ -105,6 +106,10 @@ export type UndoPaymentResult =
   | { ok: true }
   | { ok: false; status: number; error: string };
 
+export type SendInvoiceMailResult =
+  | { ok: true; sendAttempt: number; deduped: boolean; to: string }
+  | { ok: false; status: number; error: string };
+
 // ---------------------------------------------------------------------------
 // Zod schema for createInvoice
 // ---------------------------------------------------------------------------
@@ -119,11 +124,12 @@ export const createInvoiceSchema = z
       .uuid("Ungueltige Projekt-ID")
       .optional()
       .or(z.literal("")),
+    // E-PR3: Kategorie is mandatory. A Rechnung is revenue, so it must carry a
+    // real income Kategorie — this is what lets mark-paid book the matching
+    // income row without guessing a sphere. Empty/absent → clear German error.
     kategorieId: z
       .string()
-      .uuid("Ungueltige Kategorie-ID")
-      .optional()
-      .or(z.literal("")),
+      .uuid("Bitte eine Kategorie für die Rechnung wählen"),
     rechnungsdatum: z
       .string()
       .regex(ISO_DATE, "Rechnungsdatum im Format JJJJ-MM-TT")
@@ -1213,13 +1219,27 @@ export async function markInvoiceAsPaid(
     incomeKategorieName = inv.kategorieNameSnapshot;
     incomeSphere = inv.sphereSnapshot;
   } else {
-    const kat = await resolveKategorieByName(
-      "income",
-      inv.kategorieNameSnapshot,
-    );
-    incomeKategorieId = kat.id;
-    incomeKategorieName = kat.name;
-    incomeSphere = kat.sphere;
+    // Altbestand: an invoice created before Kategorie became mandatory (E-PR3)
+    // has no kategorie_id and a snapshot that won't resolve to a real income
+    // Kategorie ("(Unkategorisiert)"). Marking it paid would need a sphere to
+    // book the income, so we can't — but a 500 "Kategorie not found" is a
+    // dead end for the user. Return a graceful 422 that points at the fix.
+    try {
+      const kat = await resolveKategorieByName(
+        "income",
+        inv.kategorieNameSnapshot,
+      );
+      incomeKategorieId = kat.id;
+      incomeKategorieName = kat.name;
+      incomeSphere = kat.sphere;
+    } catch {
+      return {
+        ok: false,
+        status: 422,
+        error:
+          "Dieser Rechnung fehlt eine Kategorie. Bitte zuerst die Rechnung bearbeiten und eine Kategorie wählen, dann als bezahlt markieren.",
+      };
+    }
   }
 
   const txResult = await db.transaction(async (tx) => {
@@ -1405,6 +1425,184 @@ export async function undoPayment(
   });
 
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// sendInvoiceMail — E-PR3. Dispatch the invoice to the customer by email.
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the Verein bank identity for the mail's transfer block, mirroring
+ * loadRenderInput: settings (`verein.iban`/`verein.bic`) win over env, name
+ * comes from readStammdaten(). Returns nulls when unconfigured so the template
+ * falls back to the Überweisung-hint-only payment state.
+ */
+async function resolveVereinBankIdentity(): Promise<{
+  empfaenger: string;
+  iban: string | null;
+  bic: string | null;
+}> {
+  const db = getDb();
+  const rows = await db.execute<{ key: string; value: unknown }>(
+    sql`SELECT key, value FROM settings WHERE key IN ('verein.iban', 'verein.bic')`,
+  );
+  const map = new Map<string, string>();
+  for (const r of rows as { key: string; value: unknown }[]) {
+    const v = r.value;
+    if (typeof v === "string") map.set(r.key, v);
+    else if (v !== null && v !== undefined) map.set(r.key, String(v));
+  }
+  const unquote = (s: string): string => s.replace(/^"|"$/g, "");
+  const sd = await readStammdaten();
+  const iban = unquote(map.get("verein.iban") ?? "") || env.VEREIN_IBAN || "";
+  const bic = unquote(map.get("verein.bic") ?? "") || env.VEREIN_BIC || "";
+  return {
+    empfaenger: sd.name,
+    iban: iban || null,
+    bic: bic || null,
+  };
+}
+
+/**
+ * Send (or re-send / retry) the invoice_versendet mail to the customer.
+ *
+ * Guards: PDF must be generated (pdf_file_id present), the customer must have
+ * an email on file, the invoice must not be superseded. The actual send +
+ * PDF attachment + audit anchor run in the `invoice.versendet` bus handler
+ * (§4.1.1 #2 — never sendMail() inline from an action).
+ *
+ * send_attempt (ADR-0005):
+ *   - no prior send                → 0 (first send; a double-submit dedups via
+ *                                    the sent_mails UNIQUE, so exactly one row)
+ *   - latest send failed           → latest+1 (retry a failed attempt)
+ *   - `resend` on a sent invoice   → latest+1 (deliberate re-send / "Mahnung")
+ *   - already sent, not a resend   → no-op (deduped:true), no second row
+ */
+export async function sendInvoiceMail(
+  invoiceId: string,
+  opts: { resend: boolean },
+  actorUserId: string | null,
+): Promise<SendInvoiceMailResult> {
+  if (!invoiceId) {
+    return { ok: false, status: 400, error: "Fehlende Rechnungs-ID" };
+  }
+  const db = getDb();
+
+  const [inv] = await db
+    .select()
+    .from(invoices)
+    .where(eq(invoices.id, invoiceId))
+    .limit(1);
+  if (!inv) {
+    return { ok: false, status: 404, error: "Rechnung nicht gefunden" };
+  }
+
+  // Superseded invoices are dead — never send a stornierte Rechnung.
+  const [successor] = await db
+    .select({ businessId: invoices.businessId })
+    .from(invoices)
+    .where(eq(invoices.supersedesId, invoiceId))
+    .limit(1);
+  if (successor) {
+    return {
+      ok: false,
+      status: 409,
+      error: `Diese Rechnung wurde durch ${successor.businessId} ersetzt und kann nicht versendet werden`,
+    };
+  }
+
+  // Gate 1: a usable PDF must exist (matches the detail page's send-gate).
+  if (inv.pdfStatus !== "generated" || !inv.pdfFileId) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Fehlt noch: PDF muss zuerst erzeugt werden",
+    };
+  }
+
+  // Gate 2: the customer needs a current email address.
+  const [customer] = await db
+    .select({ email: customers.email, anrede: customers.anrede })
+    .from(customers)
+    .where(eq(customers.id, inv.customerId))
+    .limit(1);
+  const to = customer?.email?.trim() ?? "";
+  if (!to) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Fehlt noch: Kunde hat keine E-Mail-Adresse hinterlegt",
+    };
+  }
+
+  // Compute send_attempt from prior invoice_versendet rows for this invoice.
+  const [latest] = await db
+    .select({ sendAttempt: sentMails.sendAttempt, status: sentMails.status })
+    .from(sentMails)
+    .where(
+      and(
+        eq(sentMails.template, "invoice_versendet"),
+        eq(sentMails.entityKind, "invoice"),
+        eq(sentMails.entityId, invoiceId),
+      ),
+    )
+    .orderBy(desc(sentMails.sendAttempt))
+    .limit(1);
+
+  let sendAttempt: number;
+  if (!latest) {
+    sendAttempt = 0;
+  } else if (latest.status === "failed") {
+    sendAttempt = latest.sendAttempt + 1;
+  } else if (opts.resend) {
+    sendAttempt = latest.sendAttempt + 1;
+  } else {
+    // Already sent and this is not a deliberate re-send → idempotent no-op.
+    return {
+      ok: true,
+      deduped: true,
+      sendAttempt: latest.sendAttempt,
+      to,
+    };
+  }
+
+  const bank = await resolveVereinBankIdentity();
+
+  try {
+    await bus.emit("invoice.versendet", {
+      invoiceId: inv.id,
+      invoiceBusinessId: inv.businessId,
+      actorUserId,
+      sendAttempt,
+      to,
+      pdfFileId: inv.pdfFileId,
+      customerName: inv.customerNameSnapshot,
+      anrede: customer?.anrede?.trim() ? customer.anrede.trim() : null,
+      bezeichnung: inv.bezeichnung,
+      bruttoCents: Number(inv.bruttoCents),
+      currency: inv.currency,
+      rechnungsdatum: inv.rechnungsdatum,
+      faelligkeitsDatum: inv.faelligkeitsDatum ?? null,
+      iban: bank.iban,
+      bic: bank.bic,
+      empfaenger: bank.empfaenger,
+    });
+  } catch (err) {
+    // The bus handler re-throws on a send failure (AggregateError). The
+    // sent_mails row for this attempt is already marked 'failed' by sendMail,
+    // so a subsequent retry bumps to the next attempt.
+    console.error(
+      `[invoice.sendInvoiceMail] send failed for ${inv.businessId}:`,
+      err,
+    );
+    return {
+      ok: false,
+      status: 502,
+      error: `Die Mail an ${to} konnte nicht zugestellt werden`,
+    };
+  }
+
+  return { ok: true, deduped: false, sendAttempt, to };
 }
 
 // ---------------------------------------------------------------------------

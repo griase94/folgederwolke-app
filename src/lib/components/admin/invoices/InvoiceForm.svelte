@@ -215,7 +215,8 @@
 	const gateMissing = $derived(
 		[
 			!customerId ? 'Kund:in wählen' : null,
-			nettoCents <= 0 ? 'Betrag eintragen' : null
+			nettoCents <= 0 ? 'Betrag eintragen' : null,
+			!kategorieId ? 'Kategorie wählen' : null
 		].filter((m): m is string => m !== null)
 	);
 	const gateDisabled = $derived(gateMissing.length > 0);
@@ -512,14 +513,24 @@
 			<div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
 				<div>
 					<label for="kategorieId" class="mb-1 block text-[13px] font-semibold text-ink-700"
-						>Kategorie (optional)</label
+						>Kategorie</label
 					>
-					<select id="kategorieId" name="kategorieId" bind:value={kategorieId} class={FIELD}>
-						<option value="">—</option>
+					<select
+						id="kategorieId"
+						name="kategorieId"
+						bind:value={kategorieId}
+						required
+						aria-invalid={fieldError('kategorieId') ? 'true' : undefined}
+						class={FIELD}
+					>
+						<option value="" disabled>Kategorie wählen …</option>
 						{#each kategorien as k (k.id)}
 							<option value={k.id}>{k.name}</option>
 						{/each}
 					</select>
+					{#if fieldError('kategorieId')}
+						<p class="mt-1 text-xs font-medium text-severity-critical-text">{fieldError('kategorieId')}</p>
+					{/if}
 				</div>
 				<div>
 					<label for="projectId" class="mb-1 block text-[13px] font-semibold text-ink-700"

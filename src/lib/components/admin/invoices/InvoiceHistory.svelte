@@ -131,6 +131,10 @@
 					labelSuffix: deduped ? '(gleicher Inhalt)' : null
 				};
 			}
+			case 'versendet': {
+				const to = typeof entry.payload?.to === 'string' ? (entry.payload.to as string) : null;
+				return { label: 'Per Mail versendet', labelSuffix: to ? `an ${to}` : null };
+			}
 			case 'paid':
 				return { label: 'Zahlung verbucht', labelSuffix: null };
 			case 'payment_undone':
