@@ -162,7 +162,8 @@
 						<div class="absolute inset-y-[-2px] w-px" style:left={`${zeroPct}%`} style:background-color={TOKEN.ink300}></div>
 					{/if}
 					{#if neg}
-						<div class="absolute inset-y-0 rounded-l-[5px]" style:right={`${100 - zeroPct}%`} style:width={`${negW}%`} style:background-color={TOKEN.deficit}></div>
+						<!-- deficit segment: colour follows the entity (sphere hue), only the value text goes rose (plate sphaere-v7) -->
+						<div class="absolute inset-y-0 rounded-l-[5px]" style:right={`${100 - zeroPct}%`} style:width={`${negW}%`} style:background-color={SPHERE_VAR[row.sphere]}></div>
 					{:else}
 						<div class="absolute inset-y-0 rounded-r-[5px]" style:left={`${zeroPct}%`} style:width={`${posW}%`} style:background-color={SPHERE_VAR[row.sphere]}></div>
 					{/if}
@@ -201,7 +202,8 @@
 							{eurWhole(row.cents)}<tspan dx="8" font-size="11" font-weight="700" style:fill={TOKEN.ink500}>{s !== null ? pctWhole(s) : ""}</tspan>
 						</text>
 					{:else}
-						<path d={barLeft(zeroX, y, zeroX - xFor(row.cents), barH)} style:fill={TOKEN.deficit} />
+						<!-- deficit bar stays the sphere hue (colour follows the entity, plate sphaere-v7); only the value below is rose -->
+						<path d={barLeft(zeroX, y, zeroX - xFor(row.cents), barH)} style:fill={SPHERE_VAR[row.sphere]} />
 						<text x={r2(xFor(row.cents) - 12)} y={r2(y + barH / 2 + 4.5)} text-anchor="end" font-size="13" font-weight="750" class="tabular-nums" style:fill={TOKEN.deficitStrong}>{eurWhole(row.cents)}</text>
 					{/if}
 					<text x={r2(ml - 18)} y={r2(y + barH / 2 + 4.5)} text-anchor="end" font-size="13" font-weight="650" style:fill={TOKEN.ink900}>{SPHERE_LABELS[row.sphere]}</text>
@@ -232,7 +234,7 @@
 				{#if activeIndex !== null && sorted[activeIndex]}
 					{@const row = sorted[activeIndex]!}
 					<div class="flex items-center gap-2">
-						<span class="size-2.5 flex-none rounded-[3px]" style:background-color={row.cents < 0 ? TOKEN.deficit : SPHERE_VAR[row.sphere]}></span>
+						<span class="size-2.5 flex-none rounded-[3px]" style:background-color={SPHERE_VAR[row.sphere]}></span>
 						<span class="text-[11.5px] font-semibold text-ink-700">{SPHERE_LABELS[row.sphere]}</span>
 					</div>
 					<div class="mt-1 text-[22px] font-extrabold tabular-nums text-ink-900">{eurWhole(row.cents)}</div>

@@ -254,7 +254,7 @@
 						class="font-bold"
 						style:color={deficit ? TOKEN.deficitStrong : TOKEN.einnahmeStrong}
 						>{pctOneSigned(deltaPct)}</span
-					> {/if}seit Jahresbeginn
+					>&nbsp;{/if}seit Jahresbeginn
 			</span>
 		</div>
 

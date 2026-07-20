@@ -141,7 +141,11 @@
 	</div>
 {/snippet}
 
-<div>
+<!-- `relative` gives the chart sr-only <table> twins a positioned ancestor INSIDE
+     the AdminShell scroller. Without it the sr-only tables (position:absolute from
+     the utility) anchor to <body>, sit at their deep static Y, and grow the document
+     past the shell — leaving empty wash behind the main scroller. -->
+<div class="relative">
 	<header class="mb-10">
 		<p class="text-[11px] font-bold uppercase tracking-[0.1em] text-primary-text">Aurora · Dataviz</p>
 		<h1 class="mt-1 text-2xl font-extrabold text-ink-900">Chart-Familie · Galerie</h1>

@@ -198,7 +198,7 @@
 		<div data-testid="lage-wgb">
 			<div class="flex items-baseline justify-between gap-2">
 				<h3 class="text-xs font-semibold uppercase tracking-[0.08em] text-ink-500">
-					Wirtschaftl. Geschäftsbetrieb · § 64 AO
+					Wirtschaftl. Geschäftsbetrieb · §&nbsp;64&nbsp;AO
 				</h3>
 				<span class="text-xs tabular-nums text-ink-500">
 					{formatMoney(wgb.einnahmenCents)} von {formatMoney(wgb.freigrenzeCents)}
