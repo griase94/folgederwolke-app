@@ -293,7 +293,9 @@
 	<!-- Spacer: pushes search + user menu to the right edge -->
 	<div class="flex-1" aria-hidden="true"></div>
 
-	<span class="hidden" data-testid="verein-wordmark">{$page.data.vereinName}</span>
+	<span class="hidden" data-testid="verein-wordmark" data-env="VEREIN_NAME"
+		>{$page.data.vereinName}</span
+	>
 
 	<!-- Search input (desktop) -->
 	<div class="fdw-search-wrap relative hidden w-64 md:block xl:w-80">

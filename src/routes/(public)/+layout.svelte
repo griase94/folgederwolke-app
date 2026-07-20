@@ -36,7 +36,11 @@
 			aria-label="Zur Startseite"
 		>
 			<img src="/logo-lineart.svg" alt="" class="h-7 w-7" aria-hidden="true" />
-			<span class="text-sm font-semibold tracking-tight">{page.data.vereinName}</span>
+			<span
+				class="text-sm font-semibold tracking-tight"
+				data-testid="brand-wordmark"
+				data-env="VEREIN_NAME">{page.data.vereinName}</span
+			>
 		</a>
 
 		{#if onSignIn}
