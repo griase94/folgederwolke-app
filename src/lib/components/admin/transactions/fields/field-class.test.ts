@@ -24,8 +24,9 @@ describe("FIELD_CLASS", () => {
     expect(FIELD_CLASS).toContain("border-hairline");
   });
 
-  it("contains bg-white", () => {
-    expect(FIELD_CLASS).toContain("bg-white");
+  it("contains bg-card (a theme surface that inverts in dark, not bg-white)", () => {
+    expect(FIELD_CLASS).toContain("bg-card");
+    expect(FIELD_CLASS).not.toContain("bg-white");
   });
 
   it("contains px-3 text-sm outline-none", () => {

@@ -189,7 +189,7 @@
 				data-testid="decision-reject"
 				onclick={() => (rejectOpen = true)}
 				disabled={approving}
-				class="flex h-11 w-32 shrink-0 items-center justify-center rounded-[10px] border border-hairline bg-white text-sm font-medium text-severity-critical-text transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+				class="flex h-11 w-32 shrink-0 items-center justify-center rounded-[10px] border border-hairline bg-card text-sm font-medium text-severity-critical-text transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
 			>
 				Ablehnen
 			</button>
@@ -205,7 +205,7 @@
 			>Verzicht spenden</button
 		>
 		<span
-			class="inline-flex items-center rounded-full border border-hairline bg-white px-1.5 py-px text-[10px] font-medium text-ink-500"
+			class="inline-flex items-center rounded-full border border-hairline bg-card px-1.5 py-px text-[10px] font-medium text-ink-500"
 			>In Vorbereitung</span
 		>
 	</div>

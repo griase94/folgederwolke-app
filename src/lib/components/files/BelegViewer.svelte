@@ -416,6 +416,8 @@
 					class="mx-auto h-auto max-w-full rounded border"
 				/>
 			{:else if isPdf && !pdfFailed}
+				<!-- PDF preview is paper: stays white in dark (like DocSheet / the
+				     Beleg photo). Deliberately bg-white, NOT the inverting bg-card. -->
 				<canvas bind:this={mainCanvas} class="mx-auto h-auto max-w-full rounded border bg-white"
 				></canvas>
 			{:else}

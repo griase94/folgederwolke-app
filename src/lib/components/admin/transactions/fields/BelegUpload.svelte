@@ -137,7 +137,7 @@
 				? 'border-primary bg-primary/5'
 				: error
 					? 'border-severity-critical bg-severity-critical/5'
-					: 'border-hairline bg-white/60 hover:border-primary/40 hover:bg-primary/5'}"
+					: 'border-hairline bg-card/60 hover:border-primary/40 hover:bg-primary/5'}"
 			ondragover={onDragOver}
 			ondragleave={onDragLeave}
 			ondrop={onDrop}
@@ -176,7 +176,7 @@
 					<button
 						type="button"
 						onclick={openCamera}
-						class="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] border border-hairline bg-white px-3 text-sm font-medium text-ink-700 shadow-sm hover:bg-muted/50 active:scale-95"
+						class="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] border border-hairline bg-card px-3 text-sm font-medium text-ink-700 shadow-sm hover:bg-muted/50 active:scale-95"
 					>
 						<span aria-hidden="true">📷</span>
 						Foto aufnehmen
@@ -185,7 +185,7 @@
 					<button
 						type="button"
 						onclick={openFilePicker}
-						class="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] border border-hairline bg-white px-3 text-sm font-medium text-ink-700 shadow-sm hover:bg-muted/50 active:scale-95"
+						class="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] border border-hairline bg-card px-3 text-sm font-medium text-ink-700 shadow-sm hover:bg-muted/50 active:scale-95"
 					>
 						Datei wählen
 					</button>
@@ -241,7 +241,7 @@
 				minlength="5"
 				rows="3"
 				placeholder="Warum liegt kein Beleg vor? (mindestens 5 Zeichen)"
-				class="w-full rounded-[10px] border border-hairline bg-white px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+				class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
 			></textarea>
 		</div>
 	{/if}

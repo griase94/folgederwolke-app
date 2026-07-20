@@ -67,26 +67,30 @@
 	<span class="flex size-[26px] items-center justify-center" aria-hidden="true">
 		{@render chipIcon()}
 	</span>
-	<span class={'truncate text-[15px] font-medium md:text-sm ' + titleClass}>{title}</span>
+	<!-- Title wraps on mobile (never truncate the task), truncates on the
+	     fixed-height desktop row (ANDY-LENS AL-4: meta wraps, nothing clipped). -->
+	<span class={'text-[15px] font-medium md:truncate md:text-sm ' + titleClass}>{title}</span>
 	<span class="pl-3 text-right text-sm font-medium tabular-nums text-ink-700">{amountLabel}</span>
+	<!-- Action slot: min-width keeps the pills on ONE aligned ruler; nowrap
+	     stops long labels ("Zur Überweisungsliste") wrapping to two lines. -->
 	<span
-		class="col-start-3 col-end-[-1] flex items-center justify-start md:col-auto md:ml-3 md:w-36 md:justify-end"
+		class="col-start-3 col-end-[-1] flex items-center justify-start md:col-auto md:ml-3 md:w-auto md:min-w-40 md:justify-end"
 		data-testid="task-cta-slot"
 	>
 		{#if railKind === 'critical'}
 			<span
 				data-testid="task-cta"
-				class="inline-flex h-7 items-center rounded-full bg-severity-critical px-3 text-[13px] font-semibold text-white"
+				class="inline-flex h-7 items-center whitespace-nowrap rounded-full bg-severity-critical px-3 text-[13px] font-semibold text-white"
 			>{ctaLabel}</span>
 		{:else if railKind === 'rank1'}
 			<span
 				data-testid="task-cta"
-				class="inline-flex h-7 items-center rounded-full bg-primary-strong px-3 text-[13px] font-semibold text-white shadow-(--glow-brand)"
+				class="inline-flex h-7 items-center whitespace-nowrap rounded-full bg-primary-strong px-3 text-[13px] font-semibold text-white shadow-(--glow-brand)"
 			>{ctaLabel}</span>
 		{:else}
 			<span
 				data-testid="task-cta"
-				class="text-[13px] font-medium text-primary-text group-hover:underline"
+				class="whitespace-nowrap text-[13px] font-medium text-primary-text group-hover:underline"
 			>{ctaLabel}</span>
 		{/if}
 	</span>

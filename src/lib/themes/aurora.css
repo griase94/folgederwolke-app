@@ -7,16 +7,32 @@
  * master plan §2.1. Adding a theme = copy this contract into a new file
  * under src/lib/themes/ + one registry entry in src/lib/themes/index.ts.
  *
- * Dark-ready, not dark-shipped: a future `[data-theme="aurora"].dark { … }`
- * block in THIS file may override tokens; the registry's hasDark flag
- * controls whether the switcher offers a dark toggle.
+ * Dark IS shipped: the `[data-theme="aurora"].dark { … }` block at the bottom
+ * overrides tokens for the "Nacht" palette. The registry's hasDark flag is
+ * true, so the Einstellungen switcher offers Hell/Dunkel/System and
+ * mode-watcher toggles the `.dark` class on <html>.
+ *
+ * ── Kit-Contract-Abgleich (F1, 2026-07-20) ────────────────────────────────
+ * This file is reconciled against the abgenommen design-kit token contract
+ * (.superpowers/mockups/_kit/aurora-kit.css §1 TOKENS light + §1b Nacht). The
+ * kit uses UN-prefixed family names (--sev-*, --type-*, --sphere-*,
+ * --dataviz-*, --neutral-open); those are added here as the SINGLE SOURCE OF
+ * TRUTH. The pre-existing `--color-*`-prefixed tokens that app.css @theme
+ * inline turns into Tailwind utilities (--color-severity-*, --color-type-*,
+ * --color-dataviz-*) are RE-POINTED to alias the kit tokens. In light mode
+ * every aliased value is byte-identical to what shipped before (no visual
+ * regression); the aliases additionally inherit the Nacht values for free in
+ * the `.dark` scope. shadcn token names are never renamed.
  *
  * This rule is intentionally UNLAYERED: Tailwind's @theme inline emits
  * self-referential declarations into @layer theme, and unlayered author CSS
  * wins the cascade on <html>, so these values always resolve. See app.css.
  */
 [data-theme="aurora"] {
-  color-scheme: light only;
+  /* light by default; the .dark block below flips color-scheme to dark.
+     (Was `light only` while dark was un-shipped — relaxed to `light` so the
+     .dark override can take effect. Documented F1.) */
+  color-scheme: light;
 
   /* ── shadcn base tokens — Aurora values ──────────────────────────────── */
   --background: #ffffff;
@@ -65,11 +81,20 @@
     rgb(168 85 247 / 0.1),
     rgb(59 130 246 / 0.1)
   );
+  /* single-hue CTA gradient (kit --gradient-cta) */
+  --gradient-cta: linear-gradient(
+    180deg,
+    #ff3d9e 0%,
+    #ff1e8c 48%,
+    #e01580 100%
+  );
   --gradient-text: linear-gradient(92deg, #ff1e8c, #a855f7 55%, #3b82f6);
   --bg-wash: linear-gradient(135deg, #fff1f6 0%, #f4eeff 52%, #ecf3ff 100%);
   --glow-brand: 0 3px 10px rgb(255 30 140 / 0.3);
-  --surface-glass: rgb(255 255 255 / 0.72);
+  /* kit value 0.7 (was 0.72 — imperceptible; aligned to the abgenommen kit) */
+  --surface-glass: rgb(255 255 255 / 0.7);
   --blur-glass: 14px;
+  --scrim: rgb(26 20 40 / 0.55);
 
   /* ── ink scale ───────────────────────────────────────────────────────── */
   --ink-900: #1a1126;
@@ -78,27 +103,237 @@
   --ink-300: #9c92ae; /* decorative/disabled ONLY — never running text */
   --hairline: rgb(36 24 48 / 0.06);
 
+  /* ══ Kit-Contract-Abgleich — additive families (F1) ═══════════════════════
+     Kit-named tokens are the source of truth; the `--color-*` aliases below
+     keep the existing @theme-inline Tailwind utilities working AND inherit the
+     Nacht overrides in the .dark scope. */
+
   /* ── severity (decoupled from brand — pink is BANNED from warnings) ──── */
-  --color-severity-critical: #dc2626;
-  --color-severity-critical-text: #b91c1c;
-  --color-severity-warn: #f59e0b;
-  --color-severity-warn-text: #b45309;
-  --color-severity-info: #64748b;
+  --sev-critical: #dc2626;
+  --sev-critical-text: #b91c1c;
+  --sev-critical-tint: #fdeaea;
+  --sev-warn: #f59e0b;
+  --sev-warn-text: #b45309;
+  --sev-warn-tint: #fef3e2;
+  --sev-info: #64748b;
+  --info-tint: #eef1f6;
+  /* app-facing aliases (frozen names consumed by app.css @theme inline) */
+  --color-severity-critical: var(--sev-critical);
+  --color-severity-critical-text: var(--sev-critical-text);
+  --color-severity-warn: var(--sev-warn);
+  --color-severity-warn-text: var(--sev-warn-text);
+  --color-severity-info: var(--sev-info);
+
+  /* "merely open" — NOT sev-warn (amber is reserved for true overdue) */
+  --neutral-open: #b8aecb;
+  --open-tint: color-mix(in oklch, var(--neutral-open) 26%, var(--card));
 
   /* ── transaction type accents (+ tint surfaces) ──────────────────────── */
   /* Ausgabe is rose/plum, distinct from BOTH brand pinks (spec §3). */
-  --color-type-ausgabe: #a64d79;
-  --color-type-ausgabe-tint: #f7e9f1;
-  --color-type-einnahme: #1f9e76;
-  --color-type-einnahme-tint: #e6f6ee;
-  --color-type-spende: #7c3aed;
-  --color-type-spende-tint: #efeafb;
+  --type-ausgabe: #a64d79;
+  --type-ausgabe-tint: #f7e9f1;
+  --type-einnahme: #1f9e76;
+  --type-einnahme-tint: #e6f6ee;
+  --type-spende: #7c3aed;
+  --type-spende-tint: #efeafb;
+  /* darkened on-tint text tones (AA on their own tints) */
+  --einnahme-text: color-mix(in oklch, var(--type-einnahme), #000 22%);
+  --ausgabe-text: color-mix(in oklch, var(--type-ausgabe), #000 12%);
+  --spende-text: color-mix(in oklch, var(--type-spende), #000 8%);
+  --warn-text: color-mix(in oklch, var(--sev-warn), #000 30%);
+  --crit-text: color-mix(in oklch, var(--sev-critical), #000 8%);
+  --einnahme-strong: #17805e;
+  /* app-facing aliases (frozen names consumed by app.css @theme inline) */
+  --color-type-ausgabe: var(--type-ausgabe);
+  --color-type-ausgabe-tint: var(--type-ausgabe-tint);
+  --color-type-einnahme: var(--type-einnahme);
+  --color-type-einnahme-tint: var(--type-einnahme-tint);
+  --color-type-spende: var(--type-spende);
+  --color-type-spende-tint: var(--type-spende-tint);
 
-  /* ── data-viz ────────────────────────────────────────────────────────── */
-  --color-dataviz-paid: #a78bcb;
-  --color-dataviz-track: rgb(36 24 48 / 0.06);
+  /* ── Beitrags-status ladder (kit) ────────────────────────────────────── */
+  --st-paid: var(--type-einnahme);
+  --st-paid-ink: #157a5a;
+  --st-open: var(--sev-warn);
+  --st-open-ink: var(--sev-warn-text);
+  --st-over: var(--sev-critical);
+  --st-over-ink: var(--sev-critical-text);
+  --st-exempt: var(--ink-300);
+  --st-exempt-ink: var(--ink-500);
+
+  /* ── data-viz (kit families; F2 dataviz PR is the primary consumer) ──── */
+  --dataviz-paid: #a78bcb;
+  --dataviz-track: rgb(36 24 48 / 0.06);
+  --dataviz-baseline: rgb(36 24 48 / 0.14);
+  --dataviz-crosshair: #c7c0d2;
+  --dataviz-halo: #ffffff;
+  --dataviz-deficit: #e11d48;
+  --dataviz-deficit-strong: #be123c;
+  --dataviz-deficit-tint: #fde7ec;
+  /* app-facing aliases (frozen names consumed by app.css @theme inline) */
+  --color-dataviz-paid: var(--dataviz-paid);
+  --color-dataviz-track: var(--dataviz-track);
+
+  /* ── Gemeinnützigkeits-Sphären (ratified, non-brand, CVD-separated) ──── */
+  --sphere-ideeller: #1f9e76;
+  --sphere-ideeller-tint: #e6f6ee;
+  --sphere-zweckbetrieb: #3b82f6;
+  --sphere-zweckbetrieb-tint: #e8f0fe;
+  --sphere-vermoegen: #c2683f;
+  --sphere-vermoegen-tint: #f7ece4;
+  --sphere-wirtschaftlich: #7c3aed;
+  --sphere-wirtschaftlich-tint: #efeafb;
+
+  /* ── bespoke component surfaces (kit — DocSheet/AmountField/detail panels) */
+  --amount-surface: #faf7fb;
+  --detail-tint: #f4eefb;
+  --paper: var(--card); /* DocSheet paper — stays paper-white, see .dark note */
+  --control: #5b54c9;
+  --control-tint: #eeedfb;
+  --key-edge: color-mix(in srgb, var(--ink-900) 15%, transparent);
+  --key-soft: 0 2px 5px -2px color-mix(in srgb, var(--ink-900) 16%, transparent);
+  --sk-shimmer: rgb(255 255 255 / 0.65);
 
   /* ── card shadow (ONE family, violet-tinted — spec §2) ───────────────── */
   /* prettier-ignore */
   --shadow-card: 0 1px 2px rgb(168 85 247 / 0.05), 0 10px 28px -10px rgb(168 85 247 / 0.14);
+  /* prettier-ignore */
+  --shadow-lift: 0 2px 4px rgb(168 85 247 / 0.07), 0 22px 46px -16px rgb(168 85 247 / 0.3);
+  /* prettier-ignore */
+  --shadow-hero: 0 1px 2px rgb(31 158 118 / 0.06), 0 16px 40px -14px rgb(31 158 118 / 0.24);
+}
+
+/* ══════════════ Nacht — dark override (kit §1b) ═══════════════════════════
+   Toggled by mode-watcher adding `.dark` to <html data-theme="aurora">.
+   Overrides only the BASE kit tokens; the `--color-*` aliases defined in the
+   light block resolve against these automatically (var() is resolved in the
+   element's scope), so Tailwind utilities like text-severity-critical and
+   bg-type-einnahme pick up the Nacht tones with no extra declarations.
+   NOTE: --paper deliberately does NOT invert — DocSheet renders a physical
+   document that stays paper-white in both modes (see DocSheet.svelte). */
+[data-theme="aurora"].dark {
+  color-scheme: dark;
+
+  /* NOTE: the dark ROOT canvas is painted by app.html's own cold-start
+     <style> (`html.dark { background-color: #16111f }`) — that rule is
+     unlayered and wins over app.html's light `html {…}` paint, and loads
+     before this bundle so the first paint is already dark (flash-free). This
+     token block only re-points the design tokens. */
+
+  /* — surfaces & shadcn core — */
+  --background: #16111f;
+  --foreground: #f5f1fb;
+  --card: #201a30;
+  --card-foreground: #f5f1fb;
+  --popover: #251e3a;
+  --popover-foreground: #f5f1fb;
+  --primary: #ff1e8c;
+  --primary-foreground: #ffffff;
+  --primary-strong: #d6116f;
+  --primary-text: #ff70b0;
+  --secondary: #292142;
+  --secondary-foreground: #d6cfe4;
+  --muted: #292142;
+  --muted-foreground: #9a91b0;
+  --accent: #292142;
+  --accent-foreground: #d6cfe4;
+  --destructive: #dc2626;
+  --border: rgb(255 255 255 / 0.1);
+  --input: rgb(255 255 255 / 0.14);
+  --ring: #ff70b0;
+  --sidebar: #201a30;
+  --sidebar-foreground: #d6cfe4;
+  --sidebar-primary: #ff70b0;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #292142;
+  --sidebar-accent-foreground: #d6cfe4;
+  --sidebar-border: rgb(255 255 255 / 0.08);
+  --sidebar-ring: #ff70b0;
+
+  /* — gradients, wash, glass — */
+  --gradient-brand-soft: linear-gradient(
+    92deg,
+    rgb(255 30 140 / 0.18),
+    rgb(168 85 247 / 0.18),
+    rgb(59 130 246 / 0.18)
+  );
+  --gradient-text: linear-gradient(92deg, #ff5aa0, #c4a2ff 55%, #6fa8ff);
+  --bg-wash: linear-gradient(135deg, #201126 0%, #17142a 52%, #101c30 100%);
+  --glow-brand: 0 3px 14px rgb(255 30 140 / 0.42);
+  --surface-glass: rgb(26 20 40 / 0.72);
+  --scrim: rgb(0 0 0 / 0.66);
+
+  /* — ink scale + hairline — */
+  --ink-900: #f5f1fb;
+  --ink-700: #d6cfe4;
+  --ink-500: #9a91b0;
+  --ink-300: #6f6685;
+  --hairline: rgb(255 255 255 / 0.07);
+
+  /* — severity (brighter accents on dark) — */
+  --sev-critical: #ef4444;
+  --sev-critical-text: #f87171;
+  --sev-critical-tint: color-mix(in srgb, var(--sev-critical) 20%, var(--card));
+  --sev-warn: #f59e0b;
+  --sev-warn-text: #fbbf24;
+  --sev-warn-tint: color-mix(in srgb, var(--sev-warn) 20%, var(--card));
+  --sev-info: #94a3b8;
+  --info-tint: color-mix(in srgb, var(--sev-info) 20%, var(--card));
+  --neutral-open: #8f85a8;
+  --open-tint: color-mix(in srgb, var(--neutral-open) 22%, var(--card));
+
+  /* — transaction-type accents — */
+  --type-ausgabe: #cf8fb2;
+  --type-ausgabe-tint: #3d2836;
+  --type-einnahme: #4dd3a5;
+  --type-einnahme-tint: #123a2c;
+  --type-spende: #a78bfa;
+  --type-spende-tint: #2a2550;
+  /* on dark, the -text tones ARE the bright accents */
+  --einnahme-text: var(--type-einnahme);
+  --ausgabe-text: var(--type-ausgabe);
+  --spende-text: var(--type-spende);
+  --warn-text: var(--sev-warn-text);
+  --crit-text: var(--sev-critical-text);
+  --einnahme-strong: var(--type-einnahme);
+
+  /* — Beitrags-status ladder — */
+  --st-paid-ink: var(--type-einnahme);
+
+  /* — data-viz — */
+  --dataviz-paid: #b9a3e0;
+  --dataviz-track: rgb(255 255 255 / 0.08);
+  --dataviz-baseline: rgb(255 255 255 / 0.14);
+  --dataviz-crosshair: #6f6685;
+  --dataviz-halo: var(--card);
+  --dataviz-deficit: #e35d82;
+  --dataviz-deficit-strong: #ff6b8f;
+  --dataviz-deficit-tint: #3d2836;
+
+  /* — Gemeinnützigkeits-Sphären (dark) — */
+  --sphere-ideeller: #4dd3a5;
+  --sphere-ideeller-tint: #123a2c;
+  --sphere-zweckbetrieb: #6fa8ff;
+  --sphere-zweckbetrieb-tint: #12233d;
+  --sphere-vermoegen: #e0925f;
+  --sphere-vermoegen-tint: #3a2a1e;
+  --sphere-wirtschaftlich: #c4a2ff;
+  --sphere-wirtschaftlich-tint: #2a2550;
+
+  /* — bespoke component surfaces — */
+  --amount-surface: var(--secondary);
+  --detail-tint: var(--secondary);
+  /* --paper intentionally NOT overridden — DocSheet stays paper-white. */
+  --control: #a99cff;
+  --control-tint: color-mix(in srgb, #8b7fff 16%, var(--card));
+  --key-edge: rgb(0 0 0 / 0.55);
+  --key-soft: 0 2px 5px -2px rgb(0 0 0 / 0.55);
+  --sk-shimmer: rgb(255 255 255 / 0.1);
+
+  /* — shadows (deeper on dark) — */
+  --shadow-card:
+    0 1px 2px rgb(6 3 14 / 0.5), 0 14px 32px -12px rgb(6 3 14 / 0.66);
+  --shadow-lift:
+    0 2px 4px rgb(6 3 14 / 0.5), 0 20px 44px -16px rgb(6 3 14 / 0.72);
+  --shadow-hero: var(--shadow-card);
 }

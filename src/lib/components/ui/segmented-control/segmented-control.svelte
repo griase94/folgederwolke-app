@@ -118,6 +118,7 @@
 			aria-checked={selected}
 			aria-label={opt.label}
 			disabled={opt.disabled}
+			data-value={opt.value}
 			data-state={selected ? "on" : "off"}
 			tabindex={selected ? 0 : -1}
 			onclick={() => handleClick(opt)}

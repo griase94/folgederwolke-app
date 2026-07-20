@@ -128,7 +128,7 @@
 						href={exportHref}
 						data-testid="export-cta"
 						title="Gefilterte und sortierte Liste vollständig herunterladen (alle Seiten)"
-						class="inline-flex h-11 items-center rounded-[10px] border border-(--hairline) bg-white px-3 text-sm font-medium text-ink-700 hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
+						class="inline-flex h-11 items-center rounded-[10px] border border-(--hairline) bg-card px-3 text-sm font-medium text-ink-700 hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
 						>CSV</a
 					>
 					<a
@@ -149,7 +149,7 @@
 		{#if hasActiveFilters}
 			<div
 				data-testid="empty-no-matches"
-				class="flex flex-col items-center gap-3 rounded-[16px] border border-dashed border-(--hairline) bg-white/60 px-6 py-12 text-center"
+				class="flex flex-col items-center gap-3 rounded-[16px] border border-dashed border-(--hairline) bg-card/60 px-6 py-12 text-center"
 			>
 				<p class="text-sm font-medium text-ink-700">Keine Treffer für die aktuellen Filter</p>
 				<!-- eslint-disable svelte/no-navigation-without-resolve -->
@@ -163,7 +163,7 @@
 		{:else}
 			<div
 				data-testid="empty-year"
-				class="flex flex-col items-center gap-2 rounded-[16px] border border-dashed border-(--hairline) bg-white/60 px-6 py-12 text-center"
+				class="flex flex-col items-center gap-2 rounded-[16px] border border-dashed border-(--hairline) bg-card/60 px-6 py-12 text-center"
 			>
 				<p class="text-sm font-medium text-ink-700">Keine Buchungen in {yearLabel}</p>
 			</div>

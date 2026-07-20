@@ -236,7 +236,7 @@
 			maxlength="2000"
 			bind:value={kommentar}
 			oninput={markDirty}
-			class="w-full rounded-[10px] border border-hairline bg-white px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+			class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
 		></textarea>
 	</div>
 </div>

@@ -76,6 +76,8 @@ describe("CI e2e grep coverage (F3)", () => {
     expect(grepTags).toContain("@phase-member-zahlung");
     // Entry-modals redesign + Beleg enforcement boundary suite:
     expect(grepTags).toContain("@phase-entry-modals");
+    // Aurora implementation campaign — F1 foundation (tokens, dark, primitives):
+    expect(grepTags).toContain("@aurora-impl-f1");
   });
 
   it("PWA share_target spec is covered by the CI grep (F3)", () => {
@@ -113,6 +115,8 @@ describe("CI e2e grep coverage (F3)", () => {
     "c7-inbox-filter-actions.spec.ts",
     // Beleg enforcement + modal isolation boundary (entry-modals):
     "entry-modals.spec.ts",
+    // Aurora impl campaign — F1 foundation (dark toggle + env branding):
+    "aurora-impl-f1.spec.ts",
   ];
 
   it("every release-critical spec has at least one tag in the CI grep", () => {

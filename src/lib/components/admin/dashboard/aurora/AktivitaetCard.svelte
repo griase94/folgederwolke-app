@@ -38,7 +38,7 @@
 
 {#if entries.length > 0}
 	<section
-		class="relative rounded-2xl bg-white p-4 shadow-(--shadow-card)"
+		class="relative rounded-2xl bg-card p-4 shadow-(--shadow-card)"
 		aria-labelledby="aktivitaet-heading"
 	>
 		<h2 id="aktivitaet-heading" class="mb-2 text-sm font-semibold tracking-tight text-ink-900">

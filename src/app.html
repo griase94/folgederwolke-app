@@ -29,6 +29,20 @@
         color-scheme: light;
       }
 
+      /*
+        Dark cold-start paint (F1). hooks.server.ts stamps `class="dark"` onto
+        <html> in the SSR response (from the fdw_mode cookie / client hint), so
+        this rule matches before the CSS bundle loads — the first paint is
+        already the dark canvas, no flash. Unlayered here so it beats the app
+        bundle's layered [data-theme] rules for the root `background` paint.
+        Hexes mirror --background / --bg-wash-anchor of the Nacht palette in
+        src/lib/themes/aurora.css (pre-CSS bootstrap can't read theme tokens).
+      */
+      html.dark {
+        background-color: #16111f;
+        color-scheme: dark;
+      }
+
       /* ── Branded launch overlay (Aurora, spec §5) ──────────────────────────
          Aurora wash field + gradient line-art cloud+bolt — matches the iOS
          splash matrix (scripts/build-splash.ts). Removed by +layout.svelte

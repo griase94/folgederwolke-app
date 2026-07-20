@@ -69,7 +69,7 @@
 			{#if locked}
 				<span
 					data-testid="stand-lock-chip"
-					class="inline-flex items-center gap-1 rounded-full border border-(--hairline) bg-white px-2 py-0.5 text-[11px] font-medium normal-case tracking-normal text-ink-500"
+					class="inline-flex items-center gap-1 rounded-full border border-(--hairline) bg-card px-2 py-0.5 text-[11px] font-medium normal-case tracking-normal text-ink-500"
 				>
 					<svg class="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
 						<rect x="3" y="11" width="18" height="11" rx="2" />

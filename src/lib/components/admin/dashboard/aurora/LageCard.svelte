@@ -80,7 +80,7 @@
 	);
 </script>
 
-<section class="rounded-2xl bg-white p-4 shadow-(--shadow-card)" aria-labelledby="lage-heading">
+<section class="rounded-2xl bg-card p-4 shadow-(--shadow-card)" aria-labelledby="lage-heading">
 	<!-- Desktop-only: gives the card the same header rhythm as the Aufgaben
 	     column. Hidden on mobile (single stack) so it doesn't eat the
 	     above-the-fold budget; aria-labelledby still resolves the name. -->

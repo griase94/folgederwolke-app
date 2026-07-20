@@ -13,7 +13,13 @@ import { resolveSession } from "$lib/server/auth/index.js";
 import { registerHandlers } from "$lib/server/events/index.js";
 import { assertProductionEnvSafe } from "$lib/server/env.js";
 import { building } from "$app/environment";
-import { resolveThemeId, THEME_COOKIE } from "$lib/themes/index.js";
+import {
+  resolveThemeId,
+  THEME_COOKIE,
+  MODE_COOKIE,
+  resolveMode,
+  shouldRenderDark,
+} from "$lib/themes/index.js";
 
 // ---------------------------------------------------------------------------
 // One-time startup safety checks
@@ -87,9 +93,21 @@ const authHandle: Handle = async ({ event, resolve }) => {
 // there is a single theme; recorded here so theme #2 doesn't surprise.
 const themeHandle: Handle = async ({ event, resolve }) => {
   const theme = resolveThemeId(event.cookies.get(THEME_COOKIE));
+  // Dark mode (F1): stamp the `.dark` class into the SSR <html> so the first
+  // paint already matches the user's mode — no flash, no CSP-blocked inline
+  // script. For `system` mode the Sec-CH-Prefers-Color-Scheme client hint is
+  // the only server-visible signal (Accept-CH is advertised in securityHandle).
+  const mode = resolveMode(event.cookies.get(MODE_COOKIE));
+  const hint = event.request.headers
+    .get("sec-ch-prefers-color-scheme")
+    ?.toLowerCase();
+  const renderDark = shouldRenderDark(mode, hint === "dark");
   return resolve(event, {
     transformPageChunk: ({ html }) =>
-      html.replace('data-theme="aurora"', `data-theme="${theme}"`),
+      html.replace(
+        'data-theme="aurora"',
+        `data-theme="${theme}"${renderDark ? ' class="dark"' : ""}`,
+      ),
   });
 };
 
@@ -120,6 +138,13 @@ const securityHandle: Handle = async ({ event, resolve }) => {
     "Permissions-Policy",
     "camera=(), microphone=(), geolocation=(), interest-cohort=(), browsing-topics=()",
   );
+
+  // Dark mode (F1): ask the browser to send its colour-scheme preference on
+  // subsequent requests so `system` mode renders flash-free server-side
+  // (Chromium honours this; Firefox/Safari ignore it and fall back to light +
+  // mode-watcher's hydration correction). Vary keeps caches keyed on the hint.
+  response.headers.set("Accept-CH", "Sec-CH-Prefers-Color-Scheme");
+  response.headers.append("Vary", "Sec-CH-Prefers-Color-Scheme");
 
   // Content-Security-Policy is now configured via svelte.config.js kit.csp
   // (mode: 'auto'), which adds nonces/hashes for SvelteKit's own inline

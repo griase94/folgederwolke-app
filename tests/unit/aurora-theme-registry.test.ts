@@ -22,7 +22,8 @@ describe("theme registry (master §2.2)", () => {
         id: "aurora",
         label: "Aurora",
         swatches: ["#ff1e8c", "#a855f7", "#3b82f6"],
-        hasDark: false,
+        // F1 shipped the Nacht dark palette → the switcher offers Hell/Dunkel/System.
+        hasDark: true,
       },
     ]);
   });

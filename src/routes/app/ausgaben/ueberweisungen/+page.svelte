@@ -144,7 +144,7 @@
     data-testid={`copy-${field}`}
     onclick={() => copy(key, value, label)}
     aria-label={`${label} kopieren`}
-    class="inline-flex h-11 items-center gap-1.5 rounded-full border border-(--hairline) bg-white px-3 text-[13px] font-medium text-ink-700 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-9"
+    class="inline-flex h-11 items-center gap-1.5 rounded-full border border-(--hairline) bg-card px-3 text-[13px] font-medium text-ink-700 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-9"
   >
     {#if copiedKey === key}
       <svg class="size-3.5 text-type-einnahme" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -184,7 +184,7 @@
         <select
           id="ueberweisung-zahlungsart"
           bind:value={zahlungsartId}
-          class="h-11 rounded-[10px] border border-(--hairline) bg-white px-2 text-sm md:h-10"
+          class="h-11 rounded-[10px] border border-(--hairline) bg-card px-2 text-sm md:h-10"
         >
           {#each data.zahlungsarten as za (za.id)}
             <option value={za.id}>{za.label}</option>
@@ -208,7 +208,7 @@
     <ul class="mt-4 flex flex-col gap-3">
       {#each data.claims as claim (claim.id)}
         {@const iban = claimIban(claim)}
-        <li class="rounded-2xl bg-white p-4 shadow-(--shadow-card)" data-testid="ueberweisung-claim">
+        <li class="rounded-2xl bg-card p-4 shadow-(--shadow-card)" data-testid="ueberweisung-claim">
           <div class="flex items-baseline justify-between gap-3">
             <div class="min-w-0">
               <p class="truncate font-medium text-ink-900">{claimName(claim)}</p>
@@ -278,7 +278,7 @@
         data-testid="mark-erstattet-alle"
         disabled={posting}
         onclick={() => markErstattet(data.claims.map((c) => c.id))}
-        class="inline-flex h-11 items-center rounded-[10px] border border-(--hairline) bg-white px-4 text-sm font-medium text-primary-text disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
+        class="inline-flex h-11 items-center rounded-[10px] border border-(--hairline) bg-card px-4 text-sm font-medium text-primary-text disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
       >
         Alle als erstattet markieren
       </button>

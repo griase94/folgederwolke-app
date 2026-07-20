@@ -94,8 +94,10 @@
 			aria-hidden="true"
 		/>
 		{#if !collapsed}
-			<span class="line-clamp-2 text-xs/tight font-semibold tracking-[-0.02em] text-ink-900"
-				>{$page.data.vereinName}</span
+			<span
+				class="line-clamp-2 text-xs/tight font-semibold tracking-[-0.02em] text-ink-900"
+				data-testid="brand-wordmark"
+				data-env="VEREIN_NAME">{$page.data.vereinName}</span
 			>
 		{/if}
 	</div>

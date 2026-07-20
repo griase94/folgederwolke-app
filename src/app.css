@@ -74,6 +74,26 @@
   --color-type-spende-tint: var(--color-type-spende-tint);
   --color-dataviz-paid: var(--color-dataviz-paid);
   --color-dataviz-track: var(--color-dataviz-track);
+  /* ── Kit-Contract-Abgleich (F1): new families → Tailwind utilities ──
+     These reference the kit-named base tokens (--sphere-*, --neutral-open,
+     --dataviz-deficit-*, --sev-*-tint) DIRECTLY rather than same-name
+     self-references, so the emitted utilities (bg-sphere-ideeller,
+     text-neutral-open, …) resolve in element scope and inherit the Nacht
+     (.dark) overrides for free. Base tokens live in src/lib/themes/aurora.css. */
+  --color-sphere-ideeller: var(--sphere-ideeller);
+  --color-sphere-ideeller-tint: var(--sphere-ideeller-tint);
+  --color-sphere-zweckbetrieb: var(--sphere-zweckbetrieb);
+  --color-sphere-zweckbetrieb-tint: var(--sphere-zweckbetrieb-tint);
+  --color-sphere-vermoegen: var(--sphere-vermoegen);
+  --color-sphere-vermoegen-tint: var(--sphere-vermoegen-tint);
+  --color-sphere-wirtschaftlich: var(--sphere-wirtschaftlich);
+  --color-sphere-wirtschaftlich-tint: var(--sphere-wirtschaftlich-tint);
+  --color-neutral-open: var(--neutral-open);
+  --color-dataviz-deficit: var(--dataviz-deficit);
+  --color-dataviz-deficit-strong: var(--dataviz-deficit-strong);
+  --color-dataviz-deficit-tint: var(--dataviz-deficit-tint);
+  --color-severity-critical-tint: var(--sev-critical-tint);
+  --color-severity-warn-tint: var(--sev-warn-tint);
   --shadow-card: var(--shadow-card);
   --shadow-glow-brand: var(--glow-brand);
   --radius-sm: calc(var(--radius) * 0.6);

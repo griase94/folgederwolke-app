@@ -15,8 +15,14 @@
 import type { LayoutServerLoad } from "./$types.js";
 import { env, isPublicFormEnabled } from "$lib/server/env.js";
 import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
+import {
+  MODE_COOKIE,
+  resolveMode,
+  THEME_COOKIE,
+  resolveThemeId,
+} from "$lib/themes/index.js";
 
-export const load: LayoutServerLoad = async () => {
+export const load: LayoutServerLoad = async ({ cookies }) => {
   const stammdaten = await readStammdaten();
   return {
     publicFormEnabled: isPublicFormEnabled(),
@@ -24,5 +30,14 @@ export const load: LayoutServerLoad = async () => {
     // Runtime Verein contact email — injected into the public-form consent text
     // (datenschutzText) so the client module stays free of `$env`.
     kontaktEmail: env.VEREIN_KONTAKT_EMAIL,
+    // Dark-mode preference (F1). Seeds mode-watcher's defaultMode so a client
+    // with a set cookie but empty localStorage still resolves the right mode;
+    // the segmented control in Einstellungen reads this as its initial value.
+    mode: resolveMode(cookies.get(MODE_COOKIE)),
+    // Resolved theme id (matches the data-theme the hooks stamp into <html>).
+    // mode-watcher ALSO owns the data-theme attribute; without seeding it with
+    // our theme it would set data-theme="" on hydration and kill every token
+    // ([data-theme="aurora"] stops matching). See +layout.svelte defaultTheme.
+    theme: resolveThemeId(cookies.get(THEME_COOKIE)),
   };
 };

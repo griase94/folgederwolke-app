@@ -134,7 +134,7 @@
 						'inline-flex min-h-11 items-center justify-center rounded-[10px] px-3 py-1.5 text-sm font-medium transition-colors',
 						spendeKind === k
 							? 'bg-primary-strong text-primary-foreground'
-							: 'border border-hairline bg-white text-ink-700 hover:bg-muted/50'
+							: 'border border-hairline bg-card text-ink-700 hover:bg-muted/50'
 					].join(' ')}
 					data-testid={`spendeart-${k}`}
 				>
@@ -172,7 +172,7 @@
 						'inline-flex min-h-11 items-center justify-center rounded-[10px] px-3 py-1.5 text-sm font-medium transition-colors',
 						zweckbindungKind === k
 							? 'bg-primary-strong text-primary-foreground'
-							: 'border border-hairline bg-white text-ink-700 hover:bg-muted/50'
+							: 'border border-hairline bg-card text-ink-700 hover:bg-muted/50'
 					].join(' ')}
 					data-testid={`zweckbindung-${k}`}
 				>
@@ -271,7 +271,7 @@
 	<!-- Sachspende Wertermittlung reveal -->
 	{#if isSach}
 		<fieldset
-			class="space-y-3 rounded-xl border border-hairline bg-white/60 p-4"
+			class="space-y-3 rounded-xl border border-hairline bg-card/60 p-4"
 			data-testid="sachspende-reveal"
 		>
 			<legend class="px-1 text-sm font-medium text-ink-900">Sachspende — Wertermittlung</legend>
@@ -311,7 +311,7 @@
 					value={v('zustand_beschreibung')}
 					oninput={markDirty}
 					data-testid="zustand-beschreibung"
-					class="w-full rounded-[10px] border border-hairline bg-white px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+					class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
 				></textarea>
 				{#if err('zustand_beschreibung')}
 					<p class="text-xs text-severity-critical">{err('zustand_beschreibung')}</p>
@@ -367,7 +367,7 @@
 						'inline-flex min-h-11 items-center justify-center rounded-[10px] px-3 py-1.5 text-sm font-medium transition-colors',
 						spenderMode === k
 							? 'bg-primary-strong text-primary-foreground'
-							: 'border border-hairline bg-white text-ink-700 hover:bg-muted/50'
+							: 'border border-hairline bg-card text-ink-700 hover:bg-muted/50'
 					].join(' ')}
 					data-testid={`spender-mode-${k}`}
 				>

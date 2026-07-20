@@ -4,6 +4,7 @@
  *
  * Tokens: h-11/min-h-11 (44px control height), rounded-[10px] (Aurora radius),
  * border-hairline (Aurora hairline), Aurora focus ring. No hardcoded hex.
+ * Surface is bg-card (not bg-white) so fields invert correctly in dark (F1).
  */
 export const FIELD_CLASS =
-  "h-11 min-h-11 w-full rounded-[10px] border border-hairline bg-white px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1";
+  "h-11 min-h-11 w-full rounded-[10px] border border-hairline bg-card px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1";

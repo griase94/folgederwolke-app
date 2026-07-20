@@ -5,6 +5,7 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import EinstellungenSignOutEverywhereCard from '$lib/components/admin/EinstellungenSignOutEverywhereCard.svelte';
+	import EinstellungenAppearanceControl from '$lib/components/admin/EinstellungenAppearanceControl.svelte';
 	import type { ActionData, PageData } from './$types.js';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -66,6 +67,10 @@
 			<p class="mb-4 text-sm text-muted-foreground">
 				Design für dieses Gerät auswählen.
 			</p>
+			<!-- Hell / Dunkel / System — mode-watcher toggles the .dark class live;
+			     the choice is mirrored to the fdw_mode cookie for flash-free SSR. -->
+			<EinstellungenAppearanceControl initialMode={data.mode} />
+			<hr class="my-5 border-hairline" />
 			<!-- Deliberately NO use:enhance: the <html data-theme> attribute is set
 			     server-side (hooks.server.ts transformPageChunk), so the switch
 			     needs a full page load to take visual effect. A native form POST
