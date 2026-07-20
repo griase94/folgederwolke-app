@@ -56,27 +56,28 @@ function baseProps() {
   };
 }
 
-describe("AusgabeFields — C1 Aurora section layout", () => {
-  it("Betrag field is type=text with inputmode=decimal (not type=number)", () => {
+describe("AusgabeFields — B2 entry-modal-v4 section layout", () => {
+  it("Betrag is the hero AmountField: text+inputmode=decimal display + hidden cents", () => {
     render(AusgabeFields, { props: baseProps() });
+    // The hero AmountField submits integer cents via a hidden name=betragCents…
     const betragInput = document.querySelector('input[name="betragCents"]');
-    // The display input (not the hidden cents input) should be text + inputmode=decimal
+    expect(betragInput).not.toBeNull();
+    expect((betragInput as HTMLInputElement).type).toBe("hidden");
+    // …and its visible display input is text + inputmode=decimal (never type=number).
     const displayInput = document.querySelector(
       'input[inputmode="decimal"]',
     ) as HTMLInputElement | null;
     expect(displayInput).not.toBeNull();
     expect(displayInput?.type).toBe("text");
-    if (betragInput)
-      expect((betragInput as HTMLInputElement).type).toBe("hidden");
   });
 
-  it("renders 3 section cards with Aurora card classes (data-slot=section)", () => {
+  it("renders the Buchung + Zuordnung sections (data-slot=ausgabe-section)", () => {
     render(AusgabeFields, { props: baseProps() });
     const sections = document.querySelectorAll('[data-slot="ausgabe-section"]');
-    expect(sections.length).toBe(3);
+    expect(sections.length).toBe(2);
   });
 
-  it("Beleg section (position 2) comes before Bezahlt-von section (position 3)", () => {
+  it("Buchung comes first (Betrag/Beleg gate) and Zuordnung (Bezahlt-von) second", () => {
     render(AusgabeFields, { props: baseProps() });
     const sections = Array.from(
       document.querySelectorAll('[data-slot="ausgabe-section"]'),
@@ -84,12 +85,25 @@ describe("AusgabeFields — C1 Aurora section layout", () => {
     const headings = sections.map(
       (s) => s.querySelector("h3")?.textContent?.trim() ?? "",
     );
-    expect(headings[0]).toMatch(/Grunddaten/);
-    expect(headings[1]).toMatch(/Beleg/);
-    expect(headings[2]).toMatch(/Bezahlt/);
+    expect(headings[0]).toMatch(/Buchung/);
+    expect(headings[1]).toMatch(/Zuordnung/);
+    // The Beleg-oder-Verzicht gate lives in the Buchung section.
+    expect(
+      sections[0]?.querySelector('[data-testid="beleg-gate"]'),
+    ).not.toBeNull();
+    // The Bezahlt-von union lives in the Zuordnung section.
+    expect(
+      sections[1]?.querySelector('[data-slot="bezahlt-von-grid"]'),
+    ).not.toBeNull();
   });
 
-  it("bezahlt-von buttons are arranged in grid-cols-3 (data-slot=bezahlt-von-grid)", () => {
+  it("Sphäre is a read-only locked field derived from the Kategorie (never a select)", () => {
+    render(AusgabeFields, { props: baseProps() });
+    const locked = document.querySelector('[data-slot="locked-sphere-field"]');
+    expect(locked).not.toBeNull();
+  });
+
+  it("bezahlt-von is a neutral segmented toggle (data-slot=bezahlt-von-grid)", () => {
     render(AusgabeFields, { props: baseProps() });
     const grid = document.querySelector('[data-slot="bezahlt-von-grid"]');
     expect(grid).not.toBeNull();

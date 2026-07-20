@@ -39,11 +39,20 @@
 		/** × / backdrop → navigate to the parent list; guarded if dirty (UX-02). */
 		onClose: () => void;
 		/**
-		 * Per-type accent colour for the slim top gradient strip.
+		 * Per-type accent colour for the slim top gradient strip, the header
+		 * type-badge and the Speichern CTA fill.
 		 * ausgabe = rose/plum, einnahme = green, spende = violet.
 		 * Defaults to `'ausgabe'`.
 		 */
 		accent?: 'ausgabe' | 'einnahme' | 'spende';
+		/**
+		 * Advisory Beleg-/Pflichtfeld readout in the footer (entry-modal-v4
+		 * `.gate-line`): amber „Fehlt noch: …" while required fields are missing,
+		 * green „Alles da." once complete. Purely informational — the server stays
+		 * the enforcer, so the CTA is NOT gated on this (only on `dirty`). Omit to
+		 * hide the readout.
+		 */
+		gateStatus?: { ok: boolean; text: string };
 	}
 </script>
 
@@ -70,6 +79,13 @@
 	import { beforeNavigate } from '$app/navigation';
 	import { focusTrap } from '$lib/actions/focus-trap.js';
 	import { Portal } from 'bits-ui';
+	import MinusIcon from '@lucide/svelte/icons/minus';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import HeartIcon from '@lucide/svelte/icons/heart';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import XIcon from '@lucide/svelte/icons/x';
+	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
+	import CircleCheckIcon from '@lucide/svelte/icons/circle-check-big';
 
 	let {
 		title,
@@ -82,6 +98,7 @@
 		fields,
 		onClose,
 		accent = 'ausgabe',
+		gateStatus,
 	}: EntryFormShellProps = $props();
 
 	// Accent strip CSS class derived from prop (no hardcoded hex — Aurora token).
@@ -92,6 +109,33 @@
 				? 'bg-type-spende'
 				: 'bg-type-ausgabe',
 	);
+
+	// Header type-badge: a tinted squircle + the type glyph (matches CreateSheet:
+	// Ausgabe ↓/Minus · Einnahme ↑/Plus · Spende ♥/Heart).
+	const BadgeIcon = $derived(
+		accent === 'einnahme' ? PlusIcon : accent === 'spende' ? HeartIcon : MinusIcon,
+	);
+	const GateIcon = $derived(gateStatus?.ok ? CircleCheckIcon : TriangleAlertIcon);
+	const badgeClass = $derived(
+		accent === 'einnahme'
+			? 'bg-type-einnahme-tint text-type-einnahme'
+			: accent === 'spende'
+				? 'bg-type-spende-tint text-type-spende'
+				: 'bg-type-ausgabe-tint text-type-ausgabe',
+	);
+
+	// Speichern CTA fill — the SOLID booking-type colour (never the brand
+	// gradient; ANDY-LENS §4). Disabled = flat neutral (kit btn-type:disabled).
+	// In dark mode the type tokens turn light, so the label flips to --background
+	// to hold the AA contrast (kit btn-type-cta.css).
+	const ctaColorClass = $derived(
+		accent === 'einnahme'
+			? 'bg-type-einnahme'
+			: accent === 'spende'
+				? 'bg-type-spende'
+				: 'bg-type-ausgabe',
+	);
+	const ctaDisabled = $derived(!dirty || submitting);
 
 	// ── beforeNavigate dirty-guard (P1-B1 convention) ─────────────────────────
 	// Fires on EVERY navigation away (× → onClose → goto AND browser-back) while
@@ -162,11 +206,20 @@
 			data-slot="entry-header"
 			class="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-hairline bg-background px-5 py-4"
 		>
-			<div class="min-w-0">
-				<h2 id="entry-form-title" class="truncate text-lg font-semibold text-foreground">{title}</h2>
-				{#if statusHint}
-					<p class="mt-0.5 truncate text-sm text-muted-foreground">{statusHint}</p>
-				{/if}
+			<div class="flex min-w-0 items-center gap-3">
+				<span
+					class="flex size-10 shrink-0 items-center justify-center rounded-xl {badgeClass}"
+					data-slot="entry-typebadge"
+					aria-hidden="true"
+				>
+					<BadgeIcon class="size-5" strokeWidth={2.25} />
+				</span>
+				<div class="min-w-0">
+					<h2 id="entry-form-title" class="truncate text-lg font-semibold text-foreground">{title}</h2>
+					{#if statusHint}
+						<p class="mt-0.5 truncate text-sm text-muted-foreground">{statusHint}</p>
+					{/if}
+				</div>
 			</div>
 			<button
 				type="button"
@@ -201,18 +254,54 @@
 				{@render fields()}
 			</div>
 
-			<!-- ── Unified sticky footer: Speichern only (no Verwerfen) ──────────── -->
+			<!--
+				── Sticky footer: gate-line readout + [Abbrechen · typfarbener CTA] ──
+				The CTA carries the SOLID booking-type colour (never the brand
+				gradient — ANDY-LENS §4); disabled = flat neutral. Abbrechen +
+				Speichern share the row equally (flex-1, icon parity — ANDY-LENS §6);
+				on mobile they stack with the CTA on top (flex-col-reverse), full
+				width, safe-area padded. The gate-line readout (amber/green) is
+				advisory only — the CTA gates on `dirty`, the server enforces.
+			-->
 			<footer
 				data-slot="entry-footer"
-				class="sticky bottom-0 z-10 flex items-center justify-end gap-3 border-t border-hairline bg-background px-5 pt-4 pb-[max(env(safe-area-inset-bottom),1rem)]"
+				class="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-hairline bg-background px-5 pt-4 pb-[max(env(safe-area-inset-bottom),1rem)]"
 			>
-				<button
-					type="submit"
-					disabled={!dirty || submitting}
-					class="inline-flex h-11 min-h-11 items-center justify-center rounded-md bg-primary-strong px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-strong/90 disabled:cursor-not-allowed disabled:opacity-50"
-				>
-					{submitLabel}
-				</button>
+				{#if gateStatus}
+					<div
+						class="flex items-center gap-1.5 rounded-[10px] border px-3 py-2 text-xs font-semibold leading-snug {gateStatus.ok
+							? 'border-[color-mix(in_srgb,var(--type-einnahme)_25%,transparent)] bg-type-einnahme-tint text-type-einnahme'
+							: 'border-[color-mix(in_srgb,var(--sev-warn)_30%,transparent)] bg-severity-warn-tint text-severity-warn-text'}"
+						data-slot="entry-gate-line"
+						data-ok={gateStatus.ok}
+						role="status"
+						aria-live="polite"
+					>
+						<GateIcon class="size-4 shrink-0" aria-hidden="true" />
+						{gateStatus.text}
+					</div>
+				{/if}
+				<div class="flex flex-col-reverse gap-3 sm:flex-row">
+					<button
+						type="button"
+						onclick={onClose}
+						class="inline-flex h-11 min-h-11 flex-1 items-center justify-center gap-2 rounded-md border border-hairline bg-card px-4 text-sm font-semibold text-ink-700 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+					>
+						<XIcon class="size-4" aria-hidden="true" />
+						Abbrechen
+					</button>
+					<button
+						type="submit"
+						disabled={ctaDisabled}
+						aria-busy={submitting}
+						class="inline-flex h-11 min-h-11 flex-1 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {ctaDisabled
+							? 'cursor-not-allowed bg-secondary text-ink-500'
+							: `${ctaColorClass} text-primary-foreground shadow-sm hover:brightness-105 active:brightness-95 dark:text-background`}"
+					>
+						<CheckIcon class="size-4" aria-hidden="true" />
+						{submitLabel}
+					</button>
+				</div>
 			</footer>
 		</form>
 	</div>

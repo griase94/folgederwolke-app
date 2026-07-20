@@ -6,8 +6,8 @@
  * Scenarios:
  *   1. ausgaben/neu — submit blocked if neither Beleg arm is satisfied (server
  *      returns 422 and the form stays visible with an error).
- *   2. ausgaben/neu — Belegverzicht arm: ticking "Kein Beleg vorhanden" +
- *      filling Begründung (≥5 chars) lets the form submit successfully.
+ *   2. ausgaben/neu — Belegverzicht arm: picking the "Verzicht begründen"
+ *      segment + filling Begründung (≥5 chars) lets the form submit successfully.
  *   3. manuell-hinzufügen — the Beleg section is present and submit is blocked
  *      (server 422) when neither arm is satisfied.
  *   4. Mobile: the EntryFormShell dialog covers the Topbar and MobileTabBar
@@ -112,12 +112,13 @@ test.describe("@phase-entry-modals Beleg enforcement + modal isolation", () => {
       betrag: "5,00",
     });
 
-    // Trigger the Belegverzicht arm
-    const keinBelegCheckbox = page.getByRole("checkbox", {
-      name: /Kein Beleg vorhanden/i,
+    // Trigger the Belegverzicht arm — entry-modal-v4 renders the Beleg gate as a
+    // segment ("Beleg hochladen" | "Verzicht begründen"), not a checkbox.
+    const verzichtSeg = page.getByRole("radio", {
+      name: /Verzicht begründen/i,
     });
-    await expect(keinBelegCheckbox).toBeVisible({ timeout: 3_000 });
-    await keinBelegCheckbox.check();
+    await expect(verzichtSeg).toBeVisible({ timeout: 3_000 });
+    await verzichtSeg.click();
 
     // Fill mandatory Begründung (≥5 trimmed chars)
     await page

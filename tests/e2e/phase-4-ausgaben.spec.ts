@@ -91,7 +91,8 @@ test.describe("@phase-4-ausgaben Ausgaben tab", () => {
     });
     // Verein is the default bezahlt-von; tick kein-Beleg + Begründung so the
     // §4.1 gate is satisfied without a file upload.
-    await page.getByRole("checkbox", { name: /Kein Beleg vorhanden/i }).check();
+    // entry-modal-v4: the Beleg gate is a segment — pick the Verzicht arm.
+    await page.getByRole("radio", { name: /Verzicht begründen/i }).click();
     await page
       .getByLabel(/Begründung/i)
       .fill("E2E: Beleg liegt nicht digital vor.");
@@ -117,7 +118,8 @@ test.describe("@phase-4-ausgaben Ausgaben tab", () => {
     await page
       .locator('select[name="bezahltVonMemberId"]')
       .selectOption({ index: 1 });
-    await page.getByRole("checkbox", { name: /Kein Beleg vorhanden/i }).check();
+    // entry-modal-v4: the Beleg gate is a segment — pick the Verzicht arm.
+    await page.getByRole("radio", { name: /Verzicht begründen/i }).click();
     await page
       .getByLabel(/Begründung/i)
       .fill("E2E: Mitglied-Auslage ohne Beleg.");
@@ -165,7 +167,8 @@ test.describe("@phase-4-ausgaben Ausgaben tab", () => {
     await page
       .locator('select[name="bezahltVonMemberId"]')
       .selectOption({ index: 1 });
-    await page.getByRole("checkbox", { name: /Kein Beleg vorhanden/i }).check();
+    // entry-modal-v4: the Beleg gate is a segment — pick the Verzicht arm.
+    await page.getByRole("radio", { name: /Verzicht begründen/i }).click();
     await page.getByLabel(/Begründung/i).fill("E2E ohne Beleg.");
     await page.getByRole("button", { name: /Ausgabe anlegen/i }).click();
     await page.waitForURL(/\/app\/ausgaben\/[0-9a-f-]+$/);
@@ -188,10 +191,10 @@ test.describe("@phase-4-ausgaben Ausgaben tab", () => {
         .getByRole("button", { name: /Als Vorlage duplizieren/i })
         .click();
       await page.waitForURL(/\/app\/ausgaben\/neu/);
-      // Bezeichnung carried; the kein-Beleg checkbox is unticked (fresh Beleg).
+      // Bezeichnung carried; the Beleg gate defaults to the Beleg arm (fresh Beleg).
       await expect(page.getByLabel(/Bezeichnung/i)).not.toHaveValue("");
       await expect(
-        page.getByRole("checkbox", { name: /Kein Beleg vorhanden/i }),
+        page.getByRole("radio", { name: /Verzicht begründen/i }),
       ).not.toBeChecked();
     }
   });
@@ -204,7 +207,8 @@ test.describe("@phase-4-ausgaben Ausgaben tab", () => {
       bezeichnung: "E2E EÜR Beitrag",
       betrag: "99.00",
     });
-    await page.getByRole("checkbox", { name: /Kein Beleg vorhanden/i }).check();
+    // entry-modal-v4: the Beleg gate is a segment — pick the Verzicht arm.
+    await page.getByRole("radio", { name: /Verzicht begründen/i }).click();
     await page.getByLabel(/Begründung/i).fill("E2E EÜR.");
     await page.getByRole("button", { name: /Ausgabe anlegen/i }).click();
     await page.waitForURL(/\/app\/ausgaben\/[0-9a-f-]+$/);

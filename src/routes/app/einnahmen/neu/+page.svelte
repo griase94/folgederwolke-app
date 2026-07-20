@@ -12,6 +12,7 @@
 	// the tab tracks `dirty` (gates Speichern + the unsaved-changes guard) and
 	// passes the fields snippet.
 	let dirty = $state(false);
+	let gate = $state<{ ok: boolean; text: string } | undefined>(undefined);
 	// `submitting` flips true on submit (via EntryFormShell's onSubmit) so the
 	// shell's beforeNavigate guard early-returns on the SUCCESSFUL create-redirect
 	// (no spurious "unsaved changes" prompt) AND the Speichern button disables in
@@ -58,6 +59,7 @@
 		values={formValues}
 		errors={fieldErrors}
 		onDirty={() => (dirty = true)}
+		onGate={(g) => (gate = g)}
 	/>
 {/snippet}
 
@@ -70,4 +72,5 @@
 	{dirty}
 	{fields}
 	onClose={close}
+	gateStatus={gate}
 />

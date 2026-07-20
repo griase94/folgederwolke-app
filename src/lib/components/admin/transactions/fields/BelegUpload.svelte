@@ -1,21 +1,29 @@
 <script lang="ts">
 	/**
-	 * BelegUpload — Package B1. Aurora dropzone for Beleg on expense / Auslage forms.
+	 * BelegUpload — Package B1 / Aurora B2. Beleg dropzone for expense / Auslage
+	 * forms, with a Beleg-oder-Verzicht gate.
 	 *
 	 * ARM A (default): large tap target with "Foto aufnehmen" (capture=environment)
 	 * + "Datei wählen", drag-drop, thumbnail+filename+remove button.
 	 *
-	 * ARM B (kein-Beleg escape hatch): "Kein Beleg vorhanden" toggle hides the
-	 * dropzone and reveals a mandatory Begründung textarea (min 5 chars) +
-	 * an amber "Verzicht ist die dokumentierte Ausnahme" note.
+	 * ARM B (kein-Beleg escape hatch): a mandatory Begründung textarea (min 5 chars)
+	 * + an amber "Verzicht ist die dokumentierte Ausnahme" note.
+	 *
+	 * `variant` controls HOW the two arms are switched:
+	 *   - 'checkbox' (default): a "Kein Beleg vorhanden" checkbox reveals ARM B.
+	 *     Kept for the inbox ManualImportSheet + public AuslagenForm (unchanged).
+	 *   - 'segment': the entry-modal-v4 `.gate` — a segmented control
+	 *     ("Beleg hochladen" | "Verzicht begründen") on the shared ui/gate-line
+	 *     primitive. The transaction entry forms (Ausgabe) use this.
 	 *
 	 * Form field names are FIXED (server gate reads them verbatim):
 	 *   beleg         — file input
-	 *   keinBeleg     — checkbox
+	 *   keinBeleg     — checkbox ('checkbox' variant) / hidden mirror ('segment')
 	 *   begruendung   — Begründung textarea
 	 *
-	 * `optional` prop: when true (Einnahme/Spende), suppresses the keinBeleg toggle
-	 * and the required asterisk. `name`/`label` props allow Sachspende reuse.
+	 * `optional` prop: when true (Einnahme/Spende), suppresses the kein-Beleg arm
+	 * and the required asterisk — a plain optional dropzone (no gate at all).
+	 * `name`/`label` props allow Sachspende reuse.
 	 *
 	 * Single-input design: one hidden <input type="file"> carries name=beleg.
 	 * "Foto aufnehmen" temporarily sets capture="environment" before .click();
@@ -23,6 +31,10 @@
 	 * File into that same input via DataTransfer so exactly one non-empty beleg
 	 * part ever reaches the server (fixes the dual-input silent-fail + drop bug).
 	 */
+	import { GateLine } from '$lib/components/ui/gate-line/index.js';
+	import FileCheckIcon from '@lucide/svelte/icons/file-check';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
+
 	interface Props {
 		/** Override the file input name (defaults to 'beleg'). */
 		name?: string;
@@ -32,10 +44,14 @@
 		accept?: string;
 		/** When true: no kein-Beleg arm, no required asterisk (Einnahme/Spende paths). */
 		optional?: boolean;
+		/** Switch UI: 'checkbox' (default) or the entry-modal-v4 'segment' gate. */
+		variant?: 'checkbox' | 'segment';
 		/** Bound: is the kein-Beleg path active. */
 		keinBeleg?: boolean;
 		/** Bound: the Begründung text (kein-Beleg path). */
 		begruendung?: string;
+		/** Fires with true once a Beleg file is present (drives the caller's gate-line). */
+		onHasFile?: (present: boolean) => void;
 		/** Per-field error from a 422. */
 		error?: string;
 	}
@@ -45,10 +61,15 @@
 		label = 'Beleg',
 		accept = 'image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf',
 		optional = false,
+		variant = 'checkbox',
 		keinBeleg = $bindable(false),
 		begruendung = $bindable(''),
+		onHasFile,
 		error,
 	}: Props = $props();
+
+	// Segment state mirrors `keinBeleg` (verzicht = keinBeleg true). Seeded once.
+	let segment = $state<'beleg' | 'verzicht'>(keinBeleg ? 'verzicht' : 'beleg');
 
 	// Thumbnail preview state
 	let previewUrl = $state<string | null>(null);
@@ -72,6 +93,7 @@
 			previewUrl = null;
 		}
 		previewName = file.name;
+		onHasFile?.(true);
 	}
 
 	function onFileChange(e: Event) {
@@ -82,6 +104,7 @@
 		if (previewUrl) URL.revokeObjectURL(previewUrl);
 		previewUrl = null;
 		previewName = null;
+		onHasFile?.(false);
 		if (fileInputEl) fileInputEl.value = '';
 	}
 
@@ -120,130 +143,200 @@
 		}
 		handleFiles(files);
 	}
+
+	// Segment switch (entry-modal-v4 gate). `segment` is already set via bind:value;
+	// here we only run the side effects. Leaving the Beleg arm clears the file so
+	// the server never receives both a file AND keinBeleg=true.
+	function onSegment(v: string) {
+		if (v === 'verzicht') {
+			removeFile();
+			keinBeleg = true;
+		} else {
+			keinBeleg = false;
+		}
+	}
 </script>
 
-<div class="flex flex-col gap-2" data-slot="beleg-upload">
-	<!-- Label row -->
-	<span class="text-sm font-medium text-ink-900">
-		{label}{#if !optional}<span class="text-severity-critical" aria-hidden="true">&nbsp;*</span>{/if}
-	</span>
+{#snippet belegIcon()}
+	<FileCheckIcon class="size-4" aria-hidden="true" />
+{/snippet}
+{#snippet verzichtIcon()}
+	<PencilIcon class="size-4" aria-hidden="true" />
+{/snippet}
 
-	{#if !keinBeleg}
-		<!-- ARM A — dropzone -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div
-			class="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-6 transition-colors
-				{dragOver
-				? 'border-primary bg-primary/5'
-				: error
-					? 'border-severity-critical bg-severity-critical/5'
-					: 'border-hairline bg-card/60 hover:border-primary/40 hover:bg-primary/5'}"
-			ondragover={onDragOver}
-			ondragleave={onDragLeave}
-			ondrop={onDrop}
-			data-slot="beleg-dropzone"
-			aria-invalid={error ? "true" : undefined}
-		>
-			{#if previewName}
-				<!-- Thumbnail + filename + remove -->
-				<div class="flex flex-col items-center gap-2">
-					{#if previewUrl}
-						<img
-							src={previewUrl}
-							alt={previewName}
-							class="h-20 w-20 rounded-lg object-cover shadow-sm"
-						/>
-					{:else}
-						<!-- PDF / non-image file icon placeholder -->
-						<div class="flex h-20 w-20 items-center justify-center rounded-lg bg-muted">
-							<span class="text-3xl" aria-hidden="true">📄</span>
-						</div>
-					{/if}
-					<span class="max-w-[200px] truncate text-sm text-ink-700">{previewName}</span>
-					<button
-						type="button"
-						onclick={removeFile}
-						class="text-xs text-severity-critical-text underline-offset-2 hover:underline"
-					>
-						Entfernen
-					</button>
-				</div>
-			{:else}
-				<!-- Upload prompt -->
-				<p class="text-sm text-ink-500">Beleg hier ablegen oder auswählen</p>
-				<div class="flex flex-wrap justify-center gap-2">
-					<!-- Foto aufnehmen (camera capture — mobile primary action) -->
-					<button
-						type="button"
-						onclick={openCamera}
-						class="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] border border-hairline bg-card px-3 text-sm font-medium text-ink-700 shadow-sm hover:bg-muted/50 active:scale-95"
-					>
-						<span aria-hidden="true">📷</span>
-						Foto aufnehmen
-					</button>
-					<!-- Datei wählen -->
-					<button
-						type="button"
-						onclick={openFilePicker}
-						class="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] border border-hairline bg-card px-3 text-sm font-medium text-ink-700 shadow-sm hover:bg-muted/50 active:scale-95"
-					>
-						Datei wählen
-					</button>
-				</div>
-			{/if}
-		</div>
+{#snippet dropzone()}
+	<!-- ARM A — dropzone -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-6 transition-colors
+			{dragOver
+			? 'border-primary bg-primary/5'
+			: error
+				? 'border-severity-critical bg-severity-critical/5'
+				: 'border-hairline bg-card/60 hover:border-primary/40 hover:bg-primary/5'}"
+		ondragover={onDragOver}
+		ondragleave={onDragLeave}
+		ondrop={onDrop}
+		data-slot="beleg-dropzone"
+		aria-invalid={error ? 'true' : undefined}
+	>
+		{#if previewName}
+			<!-- Thumbnail + filename + remove -->
+			<div class="flex flex-col items-center gap-2">
+				{#if previewUrl}
+					<img
+						src={previewUrl}
+						alt={previewName}
+						class="h-20 w-20 rounded-lg object-cover shadow-sm"
+					/>
+				{:else}
+					<!-- PDF / non-image file icon placeholder -->
+					<div class="flex h-20 w-20 items-center justify-center rounded-lg bg-muted">
+						<span class="text-3xl" aria-hidden="true">📄</span>
+					</div>
+				{/if}
+				<span class="max-w-[200px] truncate text-sm text-ink-700">{previewName}</span>
+				<button
+					type="button"
+					onclick={removeFile}
+					class="text-xs text-severity-critical-text underline-offset-2 hover:underline"
+				>
+					Entfernen
+				</button>
+			</div>
+		{:else}
+			<!-- Upload prompt -->
+			<p class="text-sm text-ink-500">Beleg hier ablegen oder auswählen</p>
+			<div class="flex flex-wrap justify-center gap-2">
+				<!-- Foto aufnehmen (camera capture — mobile primary action) -->
+				<button
+					type="button"
+					onclick={openCamera}
+					class="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] border border-hairline bg-card px-3 text-sm font-medium text-ink-700 shadow-sm hover:bg-muted/50 active:scale-95"
+				>
+					<span aria-hidden="true">📷</span>
+					Foto aufnehmen
+				</button>
+				<!-- Datei wählen -->
+				<button
+					type="button"
+					onclick={openFilePicker}
+					class="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] border border-hairline bg-card px-3 text-sm font-medium text-ink-700 shadow-sm hover:bg-muted/50 active:scale-95"
+				>
+					Datei wählen
+				</button>
+			</div>
+		{/if}
+	</div>
+{/snippet}
 
-		<!-- Single hidden file input — the canonical beleg form field.
-		     openCamera() sets capture="environment" before .click();
-		     openFilePicker() removes it before .click().
-		     Drag-drop syncs via DataTransfer (see onDrop above). -->
-		<input
-			bind:this={fileInputEl}
-			type="file"
-			{name}
-			{accept}
-			onchange={onFileChange}
-			class="hidden"
-			aria-hidden="true"
-			tabindex="-1"
-		/>
-	{/if}
-
-	{#if !optional}
-		<!-- kein-Beleg toggle -->
-		<label class="flex items-center gap-2 text-sm text-ink-700">
-			<input
-				type="checkbox"
-				name="keinBeleg"
-				bind:checked={keinBeleg}
-				value="true"
-				class="size-4 rounded border-hairline accent-primary"
-			/>
-			Kein Beleg vorhanden
+{#snippet begruendungField()}
+	<!-- ARM B — Belegverzicht (friction-ful escape hatch) -->
+	<div class="flex flex-col gap-1.5 rounded-xl border border-hairline bg-severity-warn-tint/60 p-3">
+		<!-- Amber note -->
+		<p class="text-xs font-medium text-severity-warn-text" data-slot="verzicht-note">
+			Verzicht ist die dokumentierte Ausnahme
+		</p>
+		<label for="beleg-begruendung" class="text-sm font-medium text-ink-900">
+			Begründung<span class="text-severity-critical" aria-hidden="true">&nbsp;*</span>
 		</label>
-	{/if}
+		<textarea
+			id="beleg-begruendung"
+			name="begruendung"
+			bind:value={begruendung}
+			required
+			minlength="5"
+			rows="3"
+			placeholder="Warum liegt kein Beleg vor? (mindestens 5 Zeichen)"
+			class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+		></textarea>
+		<p class="text-xs text-ink-500">
+			Ohne Beleg braucht's einen nachvollziehbaren Grund. Er wandert mit ins Prüf-Protokoll.
+		</p>
+	</div>
+{/snippet}
 
-	{#if keinBeleg && !optional}
-		<!-- ARM B — Belegverzicht (friction-ful escape hatch) -->
-		<div class="flex flex-col gap-1.5 rounded-xl border border-hairline bg-amber-50/60 p-3">
-			<!-- Amber note -->
-			<p class="text-xs font-medium text-severity-warn-text" data-slot="verzicht-note">
-				Verzicht ist die dokumentierte Ausnahme
-			</p>
-			<label for="beleg-begruendung" class="text-sm font-medium text-ink-900">
-				Begründung<span class="text-severity-critical" aria-hidden="true">&nbsp;*</span>
+<div class="flex flex-col gap-2" data-slot="beleg-upload">
+	{#if variant === 'segment' && !optional}
+		<!-- ── entry-modal-v4 `.gate`: Beleg | Verzicht segment ────────────────── -->
+		<GateLine
+			{label}
+			required
+			pending="Pflicht: Beleg oder begründeter Verzicht"
+			bind:value={segment}
+			onChange={onSegment}
+			options={[
+				{ value: 'beleg', label: 'Beleg hochladen', icon: belegIcon },
+				{ value: 'verzicht', label: 'Verzicht begründen', icon: verzichtIcon },
+			]}
+			data-testid="beleg-gate"
+		>
+			{#snippet body(value)}
+				{#if value === 'verzicht'}
+					{@render begruendungField()}
+				{:else}
+					{@render dropzone()}
+				{/if}
+			{/snippet}
+		</GateLine>
+
+		<!-- Hidden keinBeleg mirror — the server gate reads this verbatim. -->
+		<input type="hidden" name="keinBeleg" value={keinBeleg ? 'true' : 'false'} />
+
+		<!-- The canonical beleg file input lives inside the Beleg arm only, so a
+		     Verzicht submit never carries a file. Rendered here (not in the snippet)
+		     so it stays wired to fileInputEl regardless of the gate body markup. -->
+		{#if segment === 'beleg'}
+			<input
+				bind:this={fileInputEl}
+				type="file"
+				{name}
+				{accept}
+				onchange={onFileChange}
+				class="hidden"
+				aria-hidden="true"
+				tabindex="-1"
+			/>
+		{/if}
+	{:else}
+		<!-- ── checkbox variant (inbox / public form) + optional dropzone ──────── -->
+		<!-- Label row -->
+		<span class="text-sm font-medium text-ink-900">
+			{label}{#if !optional}<span class="text-severity-critical" aria-hidden="true">&nbsp;*</span>{/if}
+		</span>
+
+		{#if !keinBeleg}
+			{@render dropzone()}
+			<!-- Single hidden file input — the canonical beleg form field. -->
+			<input
+				bind:this={fileInputEl}
+				type="file"
+				{name}
+				{accept}
+				onchange={onFileChange}
+				class="hidden"
+				aria-hidden="true"
+				tabindex="-1"
+			/>
+		{/if}
+
+		{#if !optional}
+			<!-- kein-Beleg toggle -->
+			<label class="flex items-center gap-2 text-sm text-ink-700">
+				<input
+					type="checkbox"
+					name="keinBeleg"
+					bind:checked={keinBeleg}
+					value="true"
+					class="size-4 rounded border-hairline accent-primary"
+				/>
+				Kein Beleg vorhanden
 			</label>
-			<textarea
-				id="beleg-begruendung"
-				name="begruendung"
-				bind:value={begruendung}
-				required
-				minlength="5"
-				rows="3"
-				placeholder="Warum liegt kein Beleg vor? (mindestens 5 Zeichen)"
-				class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-			></textarea>
-		</div>
+		{/if}
+
+		{#if keinBeleg && !optional}
+			{@render begruendungField()}
+		{/if}
 	{/if}
 
 	<!-- Per-field error (Beleg gate / upload failure) -->

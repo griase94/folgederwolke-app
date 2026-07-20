@@ -24,6 +24,9 @@
 	// tick the POST begins) so the shell's beforeNavigate guard skips on the
 	// success redirect AND the Speichern button disables to block a double-submit.
 	let submitting = $state(false);
+	// Advisory gate-line (amber „Fehlt noch …" / green „Alles da.") — the fields
+	// compute it; the shell renders it in the footer.
+	let gate = $state<{ ok: boolean; text: string } | undefined>(undefined);
 
 	// On a failed submit the action echoes the typed values + per-field errors so
 	// the form re-hydrates (Fix 2); otherwise we seed from the load prefill (Fix 1,
@@ -66,6 +69,7 @@
 		values={formValues}
 		errors={fieldErrors}
 		onDirty={() => (dirty = true)}
+		onGate={(g) => (gate = g)}
 		vereinName={$page.data.vereinName}
 	/>
 {/snippet}
@@ -79,4 +83,5 @@
 	{dirty}
 	{fields}
 	{onClose}
+	gateStatus={gate}
 />

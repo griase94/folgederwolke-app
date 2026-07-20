@@ -8,6 +8,7 @@
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	let dirty = $state(false);
+	let gate = $state<{ ok: boolean; text: string } | undefined>(undefined);
 	// EntryFormShell flips `submitting` on the form's submit event (same tick the
 	// POST begins) so its beforeNavigate guard skips on a SUCCESSFUL create redirect
 	// (no spurious "unsaved changes" prompt) AND the Speichern button disables to
@@ -38,6 +39,7 @@
 		{values}
 		{errors}
 		onDirty={() => (dirty = true)}
+		onGate={(g) => (gate = g)}
 	/>
 	{#if form?.error}
 		<p class="mt-3 text-sm text-red-600" data-testid="create-error">{form.error}</p>
@@ -53,4 +55,5 @@
 	{dirty}
 	{fields}
 	onClose={close}
+	gateStatus={gate}
 />
