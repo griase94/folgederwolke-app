@@ -93,7 +93,7 @@ const PARENT_2025 = {
 
 beforeEach(() => {
   listEinnahmenPageMock.mockReset();
-  listEinnahmenPageMock.mockResolvedValue({ rows: [], total: 0 });
+  listEinnahmenPageMock.mockResolvedValue({ rows: [], total: 0, sumCents: 0, monthCount: 0 });
   listEinnahmenKpiMock.mockClear();
   listKategorieOptionsMock.mockClear();
   listMemberOptionsMock.mockClear();
@@ -174,7 +174,7 @@ describe("/app/einnahmen load", () => {
   });
 
   it("clamps an out-of-bounds ?page to the last page (re-queries at the clamped offset)", async () => {
-    listEinnahmenPageMock.mockResolvedValue({ rows: [], total: 120 });
+    listEinnahmenPageMock.mockResolvedValue({ rows: [], total: 120, sumCents: 0, monthCount: 0 });
     const data = (await load(makeLoadEvent("?page=99", PARENT_2025))) as {
       page: number;
     };
