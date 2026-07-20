@@ -41,6 +41,13 @@
 
 	const hasActiveStatusFilter = $derived(data.filters.status !== 'alle');
 
+	// Aggregate of the currently status-filtered set (server-side filtered), for
+	// the quiet info band: "— N Rechnungen · X €".
+	const filterAggregate = $derived({
+		count: data.invoices.length,
+		sumCents: data.invoices.reduce((sum, r) => sum + r.bruttoCents, 0)
+	});
+
 	// Filter chips — counts come from the year-wide server aggregate so they
 	// never shift when a status filter is active. Rechnungen sind Einnahmen:
 	// „offen" bleibt neutral, „überfällig" amber, „bezahlt" grün.
@@ -78,8 +85,9 @@
 			</p>
 		</div>
 		<div class="flex gap-2 max-sm:flex-col">
+			<!-- Secondary link — desktop only; on mobile the single CTA is „Neue Rechnung". -->
 			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-			<Button href="/app/kunden" variant="ghost" class="max-sm:w-full">
+			<Button href="/app/kunden" variant="ghost" class="hidden sm:inline-flex">
 				<svg class="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M2 21v-2a4 4 0 014-4h5a4 4 0 014 4v2M9 7a4 4 0 108 0 4 4 0 00-8 0zM19 8v6M22 11h-6" />
 				</svg>
@@ -107,11 +115,11 @@
 					aria-selected={isActive}
 					data-testid="rechnungen-chip-{chip.status === 'überfällig' ? 'ueberfaellig' : chip.status}"
 					class="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {isActive
-						? 'border-primary/30 bg-primary/10 text-primary-text'
+						? 'border-transparent bg-primary-strong text-primary-foreground shadow-sm'
 						: 'border-border bg-card text-ink-500 hover:border-input hover:text-ink-700'}"
 				>
 					{chip.label}
-					<span class="tabular-nums {isActive ? 'text-primary-text/70' : 'text-ink-300'}">{chip.count}</span>
+					<span class="tabular-nums {isActive ? 'text-primary-foreground/75' : 'text-ink-300'}">{chip.count}</span>
 				</a>
 			{/each}
 		</div>
@@ -134,14 +142,14 @@
 	<!-- Active-filter band (arrived from the dashboard chip) -->
 	{#if hasActiveStatusFilter}
 		<div
-			class="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 text-sm text-ink-700"
+			class="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-secondary/60 px-4 py-2.5 text-sm text-ink-700"
 			role="status"
 			aria-live="polite"
 			data-testid="rechnungen-active-filter"
 		>
-			<svg class="h-4 w-4 shrink-0 text-primary-text" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4M12 8h.01" /></svg>
+			<svg class="h-4 w-4 shrink-0 text-ink-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4M12 8h.01" /></svg>
 			<span class="font-medium">
-				Zeige nur {rechnungenStatusLabel(data.filters.status).toLowerCase()}e Rechnungen aus {data.filters.year}
+				Zeige nur {rechnungenStatusLabel(data.filters.status).toLowerCase()}e Rechnungen aus {data.filters.year}{#if filterAggregate.count > 0}<span class="font-normal text-ink-500">&nbsp;— {filterAggregate.count} {filterAggregate.count === 1 ? 'Rechnung' : 'Rechnungen'} · <span class="tabular-nums">{formatMoney(filterAggregate.sumCents)}</span></span>{/if}
 			</span>
 			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
 			<a href="/app/rechnungen?year={data.filters.year}" class="ml-auto text-xs font-semibold text-primary-text underline-offset-2 hover:underline" data-testid="rechnungen-clear-filter">

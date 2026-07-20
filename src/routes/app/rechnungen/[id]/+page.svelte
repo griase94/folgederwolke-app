@@ -16,7 +16,8 @@
 
 	Behavioural contract preserved verbatim from the pre-Aurora version: the
 	?job= PDF poll loop, the mark-paid / undo-payment / retry-pdf actions,
-	paidFlash/undoneFlash toasts, the 404 page (thrown by the load — no UI
+	?paid=1 / ?undone=1 flash toasts (now read straight off page.url.searchParams,
+	mirroring the list page's onMount), the 404 page (thrown by the load — no UI
 	change needed here), and every existing data-testid.
 -->
 <script lang="ts">
@@ -50,6 +51,21 @@
 	const datumFmt = $derived(fmtIsoDate(inv.rechnungsdatum) ?? inv.rechnungsdatum);
 	const bezahltFmt = $derived(fmtIsoDate(inv.bezahltAm));
 	const faelligFmt = $derived(fmtIsoDate(inv.faelligkeitsDatum));
+
+	// doc-sheet "Rechnung an": customerAddressSnapshot's first line already IS
+	// the customer name (DIN 5008 sender/recipient convention) — drop it so the
+	// bold name above isn't printed twice.
+	const customerAddressExtraLines = $derived.by(() => {
+		if (!inv.customerAddressSnapshot) return [];
+		const lines = inv.customerAddressSnapshot
+			.split(/\r?\n/)
+			.map((l) => l.trim())
+			.filter((l) => l.length > 0);
+		if (lines.length > 0 && lines[0] === inv.customerName) {
+			return lines.slice(1);
+		}
+		return lines;
+	});
 
 	// ── derived payment/lifecycle state ───────────────────────────────────────
 	const status = $derived(deriveInvoiceStatus(inv.bezahltAm, inv.faelligkeitsDatum, data.today));
@@ -126,11 +142,16 @@
 			pollTimer = setInterval(() => void pollOnce(jobId), 1000);
 		}
 
-		if (data.paidFlash) {
+		// Flash after the mark-paid / undo-payment POST + redirect (mirrors the
+		// list page's onMount, which is the verified-working reference). Reading
+		// straight off `page.url.searchParams` — rather than a server-computed
+		// `data.*Flash` boolean — is the same pattern proven to fire there, and
+		// stays correct even if this route is ever reached via a soft client-side
+		// navigation where `data` hasn't been re-derived yet.
+		if (page.url.searchParams.get('paid') === '1') {
 			toast.success('Als bezahlt markiert');
-		}
-		if (data.undoneFlash) {
-			toast.success('Zahlung rückgängig gemacht');
+		} else if (page.url.searchParams.get('undone') === '1') {
+			toast.info('Zahlung zurückgenommen');
 		}
 	});
 
@@ -297,6 +318,9 @@
 
 	<!-- detail-head -->
 	<div class="mb-6 rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
+		<div
+			class="-mx-5 -mt-5 rounded-t-2xl bg-gradient-brand-soft px-5 pt-5 sm:-mx-6 sm:-mt-6 sm:px-6 sm:pt-6"
+		>
 		<div class="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
 			<div class="flex min-w-0 items-start gap-3.5">
 				<span
@@ -332,7 +356,7 @@
 					<h1 class="mt-1 truncate text-2xl font-bold tracking-[-0.02em] text-ink-900">{inv.customerName}</h1>
 					<p class="mt-1 text-sm text-ink-500">
 						{inv.bezeichnung}{#if inv.leistungszeitraum}<span class="mx-1.5 text-ink-300">·</span
-							>{inv.leistungszeitraum}{/if}
+							>Leistung {inv.leistungszeitraum}{/if}
 					</p>
 				</div>
 			</div>
@@ -344,7 +368,7 @@
 				<div class="mt-2 flex sm:justify-end">
 					{#if status === 'bezahlt'}
 						<span
-							class="inline-flex items-center gap-1.5 rounded-full bg-type-einnahme-tint px-2.5 py-1 text-xs font-semibold text-type-einnahme"
+							class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
 						>
 							<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"
 								><circle cx="12" cy="12" r="10" /><path
@@ -385,15 +409,17 @@
 				</div>
 			</div>
 		</div>
+		</div>
+		<div class="mt-5 h-0.5 rounded-full bg-gradient-brand" aria-hidden="true"></div>
 
 		<!-- actions -->
-		<div class="mt-5 flex flex-wrap items-center gap-2.5 border-t border-hairline pt-4">
+		<div class="mt-4 flex flex-wrap items-center gap-2.5">
 			{#if payable && !markPaidOpen}
 				<Button
 					type="button"
 					onclick={openMarkPaid}
 					data-testid="invoice-mark-paid-open"
-					class="max-sm:w-full bg-type-einnahme text-white hover:bg-type-einnahme/90"
+					class="hidden md:inline-flex border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-400/25 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:bg-emerald-500/25"
 				>
 					<svg class="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"
 						><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg
@@ -478,7 +504,7 @@
 	</div>
 
 	<!-- workbench: doc-sheet (left) + rail (right) -->
-	<div class="grid grid-cols-1 gap-6 pb-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+	<div class="grid grid-cols-1 items-start gap-6 pb-6 lg:grid-cols-[minmax(0,1fr)_360px]">
 		<!-- doc-sheet — always-light paper, never inverts in dark mode -->
 		<div
 			class="rounded-2xl border border-neutral-200 bg-white p-6 text-neutral-900 shadow-sm sm:p-8"
@@ -501,14 +527,22 @@
 				<div>
 					<span class="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Aussteller</span>
 					<div class="mt-1.5 text-sm leading-relaxed text-neutral-700">
-						<b class="text-neutral-900">{page.data.vereinName}</b>
+						<b class="text-neutral-900">{data.verein.name}</b>
+						{#each data.verein.adresseLines as line (line)}
+							<br />{line}
+						{/each}
+						{#if data.verein.email}
+							<br />{data.verein.email}
+						{/if}
 					</div>
 				</div>
 				<div>
 					<span class="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Rechnung an</span>
-					<div class="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-neutral-700">
-						<b class="text-neutral-900">{inv.customerName}</b>{#if inv.customerAddressSnapshot}<br
-							/>{inv.customerAddressSnapshot}{/if}
+					<div class="mt-1.5 text-sm leading-relaxed text-neutral-700">
+						<b class="text-neutral-900">{inv.customerName}</b>
+						{#each customerAddressExtraLines as line (line)}
+							<br />{line}
+						{/each}
 					</div>
 				</div>
 			</div>
@@ -605,9 +639,11 @@
 						style="grid-template-columns: 128px minmax(0, 1fr)"
 					>
 						<dt class="text-xs font-medium text-ink-500">Kategorie</dt>
-						<dd class="flex min-w-0 items-center justify-end gap-2 text-right text-[13px] font-semibold text-ink-900">
-							<span class="min-w-0 truncate">{inv.kategorieNameSnapshot}</span>
-							<SphereBadge sphere={inv.sphereSnapshot} />
+						<dd class="min-w-0 text-right text-[13px] font-semibold text-ink-900">
+							<div class="truncate">{inv.kategorieNameSnapshot}</div>
+							<div class="mt-1 flex justify-end">
+								<SphereBadge sphere={inv.sphereSnapshot} />
+							</div>
 						</dd>
 					</div>
 					{#if inv.projectName}
@@ -664,10 +700,12 @@
 						</span>
 						<div class="min-w-0 text-sm">
 							<p class="font-semibold text-type-einnahme">Bezahlt am {bezahltFmt}</p>
-							{#if inv.paidByIncomeBusinessId}
+							{#if inv.paidByIncomeBusinessId && inv.paidByIncomeId}
 								<p class="mt-0.5 text-ink-700">
-									Als Einnahme <span class="font-mono font-semibold text-ink-900"
-										>{inv.paidByIncomeBusinessId}</span
+									Als Einnahme
+									<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+									<a href="/app/einnahmen/{inv.paidByIncomeId}" class="font-mono font-semibold text-type-einnahme hover:underline"
+										>{inv.paidByIncomeBusinessId}</a
 									> verbucht.
 								</p>
 							{/if}
@@ -836,7 +874,7 @@
 		<Button
 			type="button"
 			onclick={openMarkPaidAndScroll}
-			class="w-full bg-type-einnahme text-white hover:bg-type-einnahme/90"
+			class="w-full border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-400/25 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:bg-emerald-500/25"
 		>
 			<svg class="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"
 				><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg

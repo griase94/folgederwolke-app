@@ -26,6 +26,13 @@
 		deriveInvoiceStatus(invoice.bezahltAm, invoice.faelligkeitsDatum, today)
 	);
 
+	const overdueDays = $derived.by(() => {
+		if (status !== 'überfällig' || !invoice.faelligkeitsDatum) return 0;
+		const due = Date.parse(invoice.faelligkeitsDatum + 'T00:00:00Z');
+		const now = Date.parse(today + 'T00:00:00Z');
+		return Math.max(0, Math.round((now - due) / 86_400_000));
+	});
+
 	const rowOpacity = $derived(isSuperseded ? 'opacity-60' : '');
 
 	let dropdownOpen = $state(false);
@@ -56,11 +63,11 @@
 			<div class="mt-2.5 flex items-center justify-between gap-3">
 				<span class="text-[15px] font-bold tabular-nums text-type-einnahme">{formatMoney(invoice.bruttoCents)}</span>
 				{#if status === 'bezahlt'}
-					<span class="inline-flex items-center gap-1 rounded-full bg-type-einnahme-tint px-2.5 py-1 text-xs font-semibold text-type-einnahme" data-testid="invoice-paid-badge">bezahlt</span>
+					<span class="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300" data-testid="invoice-paid-badge">bezahlt</span>
 				{:else if status === 'überfällig'}
-					<span class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-300">überfällig</span>
+					<span class="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-300">überfällig · {overdueDays} {overdueDays === 1 ? 'Tag' : 'Tage'}</span>
 				{:else}
-					<span class="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold text-ink-500">offen</span>
+					<span class="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold text-ink-500">offen</span>
 				{/if}
 			</div>
 		</div>

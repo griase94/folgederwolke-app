@@ -66,20 +66,16 @@
 	function status(r: Rechnung): InvoiceRowStatus {
 		return deriveInvoiceStatus(r.bezahltAm, r.faelligkeitsDatum, data.today);
 	}
-	function dateLabel(r: Rechnung): string {
-		const s = status(r);
-		if (s === 'bezahlt') return `Bezahlt ${fmtDate(r.bezahltAm)}`;
-		if (r.faelligkeitsDatum) return `Fällig ${fmtDate(r.faelligkeitsDatum)}`;
-		return 'ohne Zahlungsziel';
-	}
 	// Shared desktop ledger template so the sorthead and the rows align on ONE
 	// grid (ANDY-LENS §1): NUMMER · BEZEICHNUNG · STATUS · DATUM · BETRAG.
 	const LEDGER_GRID = 'sm:grid-cols-[128px_minmax(0,1fr)_108px_96px_92px]';
 
+	// AA-safe status chips (12px/600 needs ≥4.5:1): bezahlt on darker emerald.
 	const CHIP: Record<InvoiceRowStatus, string> = {
 		offen: 'bg-secondary text-ink-700',
-		überfällig: 'bg-severity-warn-tint text-severity-warn-text',
-		bezahlt: 'bg-type-einnahme-tint text-type-einnahme'
+		überfällig:
+			'border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-300',
+		bezahlt: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
 	};
 	const CHIP_LABEL: Record<InvoiceRowStatus, string> = {
 		offen: 'offen',
@@ -276,8 +272,8 @@
 		<span class="col-start-2 row-start-1 justify-self-end inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold {CHIP[s]} sm:col-start-3 sm:row-start-1 sm:justify-self-start">{CHIP_LABEL[s]}</span>
 		<!-- BEZEICHNUNG (mobile: full width) -->
 		<span class="col-span-2 col-start-1 row-start-2 min-w-0 truncate text-sm font-semibold text-ink-900 sm:col-span-1 sm:col-start-2 sm:row-start-1">{r.bezeichnung}</span>
-		<!-- DATUM -->
-		<span class="col-start-1 row-start-3 text-xs tabular-nums {s === 'überfällig' ? 'font-semibold text-severity-warn-text' : 'text-ink-500'} sm:col-start-4 sm:row-start-1 sm:text-right">{dateLabel(r)}</span>
+		<!-- DATUM (Rechnungsdatum) -->
+		<span class="col-start-1 row-start-3 text-xs tabular-nums text-ink-500 sm:col-start-4 sm:row-start-1 sm:text-right">{fmtDate(r.rechnungsdatum)}</span>
 		<!-- BETRAG -->
 		<span class="col-start-2 row-start-3 justify-self-end text-sm font-bold text-type-einnahme tabular-nums sm:col-start-5 sm:row-start-1">{formatMoney(r.bruttoCents)}</span>
 	</a>

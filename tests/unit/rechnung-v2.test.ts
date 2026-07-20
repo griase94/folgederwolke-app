@@ -11,11 +11,16 @@
  *
  * The committed visual baseline lives at
  *   tests/fixtures/expected/rechnung-v2-beate-uwe.pdf
- * so future renderer changes can be eyeballed via `diff -q`. Its bytes are
- * DETERMINISTIC: the render is fed a fixed `creationDate`, so the only
- * run-to-run timestamp source is pinned. The test NEVER rewrites the baseline
- * on a normal run (that used to churn the fixture 1–2 bytes every `pnpm test`);
- * regenerate it deliberately with `UPDATE_PDF_FIXTURE=1 pnpm test …`.
+ * so future renderer changes can be eyeballed via `diff -q`.
+ *
+ * The fixture stays byte-stable because the test NEVER rewrites it on a normal
+ * run — the write is guarded behind UPDATE_PDF_FIXTURE. That write-guard is the
+ * actual mechanism that stopped the 1–2-byte churn every `pnpm test`. The
+ * render is NOT fully byte-deterministic even with a fixed `creationDate`
+ * (pdf-lib still varies object ids / font-subset ordering run-to-run), so
+ * regenerating with UPDATE_PDF_FIXTURE=1 produces a fresh, differing baseline
+ * each time — that's expected; pinning `creationDate` only removes the wall-clock
+ * timestamp as one source of drift.
  */
 import { describe, it, expect } from "vitest";
 import { writeFile, mkdir } from "node:fs/promises";

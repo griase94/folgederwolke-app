@@ -57,7 +57,13 @@
 	let frontUrl: string | null = $state(null);
 	let backUrl: string | null = $state(null);
 
-	let badge: BadgeState = $state('veraltet');
+	// First-run default is "wird_aktualisiert" (loading), NOT "veraltet"
+	// (stale) — there has never been a good preview to be stale *relative
+	// to* yet, so the amber "Vorschau veraltet" label must not flash on
+	// every fresh page load. `refresh()` (via onMount) flips this to
+	// `aktuell` as soon as the first PDF is in hand; only a genuine failed
+	// round-trip (see `refresh`'s catch branch) puts it back to `veraltet`.
+	let badge: BadgeState = $state('wird_aktualisiert');
 	let lastError: string | null = $state(null);
 
 	// Non-reactive bookkeeping. Wrapping these in $state caused recursive
@@ -284,6 +290,35 @@
 			onload={onBackLoad}
 			aria-hidden="true"
 		></iframe>
+
+		<!-- First-run placeholder: a document-shaped skeleton instead of an
+		     empty white box, shown until the very first PDF has loaded. Sits
+		     after the iframes in DOM order so it paints over the (still
+		     about:blank) front iframe; it's removed the instant frontUrl is
+		     set, revealing the real render underneath. Fixed light-gray tones
+		     (not ink-* tokens) — the paper never inverts in dark mode. -->
+		{#if !frontUrl}
+			<div
+				class="absolute inset-0 flex animate-pulse flex-col bg-white p-8"
+				aria-hidden="true"
+				data-testid="preview-skeleton"
+			>
+				<div class="flex items-start justify-between">
+					<div class="h-3 w-24 rounded bg-neutral-200"></div>
+					<div class="h-9 w-9 rounded bg-neutral-100"></div>
+				</div>
+				<div class="mt-10 h-2.5 w-36 rounded bg-neutral-100"></div>
+				<div class="mt-2 h-2.5 w-28 rounded bg-neutral-100"></div>
+				<div class="mt-10 flex flex-col gap-2">
+					<div class="h-2 w-full rounded bg-neutral-100"></div>
+					<div class="h-2 w-full rounded bg-neutral-100"></div>
+					<div class="h-2 w-5/6 rounded bg-neutral-100"></div>
+				</div>
+				<div class="mt-auto flex justify-end">
+					<div class="h-3 w-24 rounded bg-neutral-200"></div>
+				</div>
+			</div>
+		{/if}
 	</div>
 
 	{#if frontUrl}

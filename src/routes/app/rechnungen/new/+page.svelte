@@ -65,9 +65,22 @@
 
 	{#if data.from === 'projekt' && data.prefillProjectId}
 		<div
-			class="mb-4 rounded-md bg-secondary px-3 py-2 text-xs text-ink-500"
+			class="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-secondary/60 px-4 py-2.5 text-sm text-ink-700"
 			data-testid="invoice-from-projekt"
 		>
+			<svg
+				class="h-4 w-4 shrink-0 text-ink-400"
+				fill="none"
+				viewBox="0 0 24 24"
+				stroke="currentColor"
+				stroke-width="2"
+				aria-hidden="true"
+				><circle cx="12" cy="12" r="10" /><path
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					d="M12 16v-4M12 8h.01"
+				/></svg
+			>
 			Aus Projekt —
 			<a
 				class="font-semibold text-ink-700 underline"
@@ -77,7 +90,23 @@
 			</a>
 		</div>
 	{:else if data.prefillCustomerName}
-		<div class="mb-4 rounded-md bg-secondary px-3 py-2 text-xs text-ink-500" data-testid="invoice-from-customer">
+		<div
+			class="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-secondary/60 px-4 py-2.5 text-sm text-ink-700"
+			data-testid="invoice-from-customer"
+		>
+			<svg
+				class="h-4 w-4 shrink-0 text-ink-400"
+				fill="none"
+				viewBox="0 0 24 24"
+				stroke="currentColor"
+				stroke-width="2"
+				aria-hidden="true"
+				><circle cx="12" cy="12" r="10" /><path
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					d="M12 16v-4M12 8h.01"
+				/></svg
+			>
 			Für <span class="font-semibold text-ink-700">{data.prefillCustomerName}</span>
 		</div>
 	{/if}

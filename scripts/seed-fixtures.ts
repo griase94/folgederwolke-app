@@ -186,6 +186,9 @@ type CustomerFixture = {
   name: string;
   anrede: string;
   addressBlock: string;
+  /** Optional — Kulturkreis Pankow + Altpapier stay email-less on purpose so
+   *  the "Keine E-Mail hinterlegt" flag-warn / send-gate stays demonstrable. */
+  email?: string;
   country?: string;
   /** ISO timestamp when soft-deleted (archiviert). */
   archivedAt?: string;
@@ -198,21 +201,25 @@ const CUSTOMERS: CustomerFixture[] = [
     name: "Cremosa GmbH",
     anrede: "Sehr geehrte Damen und Herren",
     addressBlock: "Cremosa GmbH\nMaximilianstraße 12\n80539 München",
+    email: "kontakt@cremosa.example",
   },
   {
     name: "Maria Huber",
     anrede: "Liebe Frau Huber",
     addressBlock: "Maria Huber\nRosenheimer Straße 45\n81667 München",
+    email: "maria.huber@example.de",
   },
   {
     name: "Kulturkreis Pankow e.V.",
     anrede: "Sehr geehrte Damen und Herren",
     addressBlock: "Kulturkreis Pankow e.V.\nFlorastraße 84\n13187 Berlin",
+    // no email — drives the flag-warn on this (überfällig) customer's detail.
   },
   {
     name: "Musikschule Klangraum",
     anrede: "Sehr geehrte Damen und Herren",
     addressBlock: "Musikschule Klangraum\nLindenallee 7\n80802 München",
+    email: "buero@klangraum.example",
   },
   {
     name: "Altpapier & Söhne",
@@ -293,6 +300,7 @@ export async function seedFixtures(db: Db): Promise<void> {
       name: c.name,
       anrede: c.anrede,
       addressBlock: c.addressBlock,
+      email: c.email ?? null,
       country: c.country ?? "DE",
       deletedAt: c.archivedAt ? new Date(c.archivedAt) : null,
       isFixture: true,
@@ -831,6 +839,9 @@ type InvoiceFixture = {
   bezahltAm?: string;
   /** true → links paid_by_income_id to the isInvoicePayment row (E-2026-905). */
   linksPaymentIncome?: boolean;
+  /** Optional project assignment (resolved by business_id) — shows the
+   *  Projekt-Link in the detail Facts (plate demonstrable for FDW-2026-004). */
+  projectBusinessId?: string;
 };
 
 const INVOICE_FIXTURES: InvoiceFixture[] = [
@@ -875,6 +886,7 @@ const INVOICE_FIXTURES: InvoiceFixture[] = [
     leistungszeitraum: "Mai 2026",
     // fällig in der Vergangenheit → überfällig (der eine amber-Fall der Liste).
     faelligkeitsDatum: "2026-07-06",
+    projectBusinessId: "P-2026-004",
   },
   {
     businessId: "FDW-2026-005",
@@ -1198,6 +1210,25 @@ export async function seedTransactionCorpus(db: Db): Promise<void> {
       "income",
       INVOICE_FIXTURES.map((i) => i.kategorieName),
     );
+    // Resolve any referenced projects (for the invoice → Projekt link).
+    const invoiceProjectIds = [
+      ...new Set(
+        INVOICE_FIXTURES.map((i) => i.projectBusinessId).filter(
+          (v): v is string => !!v,
+        ),
+      ),
+    ];
+    const projectByBusinessId = new Map<string, string>();
+    if (invoiceProjectIds.length > 0) {
+      const projectRows = await db
+        .select({
+          id: schema.projects.id,
+          businessId: schema.projects.businessId,
+        })
+        .from(schema.projects)
+        .where(inArray(schema.projects.businessId, invoiceProjectIds));
+      for (const p of projectRows) projectByBusinessId.set(p.businessId, p.id);
+    }
 
     for (const inv of INVOICE_FIXTURES) {
       const customer = customerByName.get(inv.customerName);
@@ -1218,6 +1249,9 @@ export async function seedTransactionCorpus(db: Db): Promise<void> {
           customerId: customer.id,
           customerNameSnapshot: customer.name,
           customerAddressSnapshot: customer.addressBlock,
+          projectId: inv.projectBusinessId
+            ? (projectByBusinessId.get(inv.projectBusinessId) ?? null)
+            : null,
           nettoCents: inv.nettoCents,
           ustCents: 0n,
           bruttoCents: inv.nettoCents,

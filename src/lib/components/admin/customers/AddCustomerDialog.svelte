@@ -4,6 +4,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import CustomerFormFields from './CustomerFormFields.svelte';
+	import { cn } from '$lib/utils.js';
 
 	let {
 		open = $bindable(false),
@@ -100,7 +101,15 @@
 						<Button variant="outline" type="button" {...props} disabled={loading} class="sm:w-auto">Abbrechen</Button>
 					{/snippet}
 				</Dialog.Close>
-				<Button type="submit" disabled={!canSubmit} data-testid="add-customer-submit" class="sm:w-auto">
+				<Button
+					type="submit"
+					disabled={!canSubmit}
+					data-testid="add-customer-submit"
+					class={cn(
+						'sm:w-auto',
+						'disabled:bg-secondary disabled:text-ink-400 disabled:opacity-100'
+					)}
+				>
 					{#if loading}
 						<svg class="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
 							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />

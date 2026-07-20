@@ -31,6 +31,19 @@
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
 	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 	import { FIELD_CLASS } from '$lib/components/admin/transactions/fields/field-class.js';
+	// Betrag "hero" anatomy (F1 shared primitive, Kit anatomy signature
+	// element) — same tokens the entry-modals Betrag field is built from.
+	// We compose these directly (rather than the AmountField component)
+	// because the b1 e2e contract requires the VISIBLE input to carry
+	// name="nettoEur" holding the de-DE euro string; AmountField's `name`
+	// lives on a hidden cents input instead.
+	import {
+		HERO_WRAP,
+		HERO_WRAP_ERROR,
+		HERO_PREFIX,
+		HERO_INPUT,
+		HERO_SUFFIX
+	} from '$lib/components/ui/hero-field/hero-field-class.js';
 
 	type CustomerOpt = { id: string; name: string; addressBlock: string | null; country?: string };
 	type KategorieOpt = { id: string; name: string };
@@ -219,6 +232,21 @@
 	</div>
 {/snippet}
 
+<!-- Calendar-icon affordance shared by the Eckdaten date trio (Kit anatomy). -->
+{#snippet calendarGlyph()}
+	<svg
+		class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400"
+		fill="none"
+		viewBox="0 0 24 24"
+		stroke="currentColor"
+		stroke-width="2"
+		aria-hidden="true"
+	>
+		<rect x="3" y="4" width="18" height="18" rx="2" />
+		<path stroke-linecap="round" stroke-linejoin="round" d="M16 2v4M8 2v4M3 10h18" />
+	</svg>
+{/snippet}
+
 <!-- Mobile-only segmented toggle -->
 <div class="mb-4 lg:hidden">
 	<div role="tablist" aria-label="Formular oder Vorschau anzeigen" class="flex gap-1 rounded-lg border border-hairline bg-secondary p-1">
@@ -312,26 +340,32 @@
 						<label for="rechnungsdatum" class="mb-1 block text-[13px] font-semibold text-ink-700"
 							>Rechnungsdatum <span class="text-primary-text">*</span></label
 						>
-						<DateField
-							id="rechnungsdatum"
-							name="rechnungsdatum"
-							value={rechnungsdatum}
-							required
-							onchange={(iso) => (rechnungsdatum = iso)}
-							class="text-base sm:text-sm"
-						/>
+						<div class="date-wrap relative">
+							{@render calendarGlyph()}
+							<DateField
+								id="rechnungsdatum"
+								name="rechnungsdatum"
+								value={rechnungsdatum}
+								required
+								onchange={(iso) => (rechnungsdatum = iso)}
+								class="pl-9 text-base sm:text-sm"
+							/>
+						</div>
 					</div>
 					<div>
 						<label for="leistungsDatum" class="mb-1 block text-[13px] font-semibold text-ink-700"
 							>Leistungsdatum</label
 						>
-						<DateField
-							id="leistungsDatum"
-							name="leistungsDatum"
-							value={leistungsDatum}
-							onchange={(iso) => (leistungsDatum = iso)}
-							class="text-base sm:text-sm"
-						/>
+						<div class="date-wrap relative">
+							{@render calendarGlyph()}
+							<DateField
+								id="leistungsDatum"
+								name="leistungsDatum"
+								value={leistungsDatum}
+								onchange={(iso) => (leistungsDatum = iso)}
+								class="pl-9 text-base sm:text-sm"
+							/>
+						</div>
 					</div>
 				</div>
 
@@ -339,13 +373,16 @@
 					<label for="faelligkeitsDatum" class="mb-1 block text-[13px] font-semibold text-ink-700"
 						>Fällig bis</label
 					>
-					<DateField
-						id="faelligkeitsDatum"
-						name="faelligkeitsDatum"
-						value={faelligkeitsDatum}
-						onchange={(iso) => (faelligkeitsDatum = iso)}
-						class="text-base sm:text-sm"
-					/>
+					<div class="date-wrap relative">
+						{@render calendarGlyph()}
+						<DateField
+							id="faelligkeitsDatum"
+							name="faelligkeitsDatum"
+							value={faelligkeitsDatum}
+							onchange={(iso) => (faelligkeitsDatum = iso)}
+							class="pl-9 text-base sm:text-sm"
+						/>
+					</div>
 					<p class="mt-1 text-xs text-ink-500">
 						Leer = ohne Zahlungsziel; überfällig gibt's nur mit Datum.
 					</p>
@@ -403,12 +440,19 @@
 							<p class="mt-1 text-xs font-medium text-severity-critical-text">{fieldError('bezeichnung')}</p>
 						{/if}
 					</div>
-					<div class="sm:w-[160px] sm:shrink-0">
+					<div class="sm:w-[200px] sm:shrink-0">
 						<label for="nettoEur" class="mb-1 block text-[13px] font-semibold text-ink-700"
 							>Betrag <span class="text-primary-text">*</span></label
 						>
-						<div class="relative">
-							<span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-type-einnahme">+</span>
+						<div
+							class={cn(HERO_WRAP, fieldError('nettoCents') && HERO_WRAP_ERROR)}
+							style="--hero-accent: var(--type-einnahme)"
+							data-testid="invoice-betrag-hero"
+						>
+							<span
+								class={cn(HERO_PREFIX, 'text-[21px] font-semibold leading-none')}
+								aria-hidden="true">+</span
+							>
 							<input
 								type="text"
 								inputmode="decimal"
@@ -418,9 +462,9 @@
 								required
 								placeholder="0,00"
 								aria-invalid={fieldError('nettoCents') ? 'true' : undefined}
-								class={cn(FIELD, 'pr-8 pl-6 text-right tabular-nums')}
+								class={cn(HERO_INPUT, 'text-[color:var(--hero-accent)]')}
 							/>
-							<span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-ink-500">€</span>
+							<span class={HERO_SUFFIX} aria-hidden="true">€</span>
 						</div>
 						{#if fieldError('nettoCents')}
 							<p class="mt-1 text-xs font-medium text-severity-critical-text">{fieldError('nettoCents')}</p>

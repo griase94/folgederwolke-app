@@ -52,13 +52,13 @@
 <div class="space-y-0" data-invoice-id={invoice.id}>
 	<!-- eslint-disable svelte/no-navigation-without-resolve -->
 	<div
-		class="group relative flex items-center gap-4 rounded-xl border border-border bg-card px-4 py-3 shadow-sm transition-[box-shadow,border-color] hover:border-input hover:shadow-md {rowOpacity} {markPaidOpen ? 'rounded-b-none' : ''}"
+		class="group relative flex items-center gap-4 px-4 py-3 transition-colors hover:bg-muted/40 {rowOpacity}"
 		data-testid="invoice-row"
 		class:z-10={dropdownOpen}
 	>
 		<a
 			href="/app/rechnungen/{invoice.id}"
-			class="absolute inset-0 z-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+			class="absolute inset-0 z-0 focus-visible:outline-none focus-visible:-outline-offset-2 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
 			aria-label="{invoice.businessId} öffnen"
 		></a>
 
@@ -93,7 +93,7 @@
 		<!-- Status-Chip auf fester Spalte -->
 		<div class="pointer-events-none relative z-[1] hidden w-[168px] shrink-0 justify-start sm:flex">
 			{#if status === 'bezahlt'}
-				<span class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-type-einnahme-tint px-2.5 py-1 text-xs font-semibold text-type-einnahme" data-testid="invoice-paid-badge">
+				<span class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300" data-testid="invoice-paid-badge">
 					<svg class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4" /></svg>
 					bezahlt
 				</span>

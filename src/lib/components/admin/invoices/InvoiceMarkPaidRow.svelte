@@ -111,7 +111,7 @@
 			<Button
 				type="submit"
 				data-testid="invoice-mark-paid-submit"
-				class="bg-type-einnahme text-white hover:bg-type-einnahme/90"
+				class="border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-400/25 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:bg-emerald-500/25"
 			>
 				<svg class="mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
 				Als bezahlt markieren
