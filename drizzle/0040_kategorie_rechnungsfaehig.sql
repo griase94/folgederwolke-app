@@ -1,0 +1,1 @@
+ALTER TABLE "kategorien" ADD COLUMN IF NOT EXISTS "rechnungsfaehig" boolean DEFAULT false NOT NULL;

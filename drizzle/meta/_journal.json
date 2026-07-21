@@ -281,6 +281,13 @@
       "when": 1784629668677,
       "tag": "0039_customers_adresszusatz_land",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1784635108939,
+      "tag": "0040_kategorie_rechnungsfaehig",
+      "breakpoints": true
     }
   ]
 }
