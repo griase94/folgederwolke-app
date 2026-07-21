@@ -267,6 +267,20 @@
       "when": 1782149017991,
       "tag": "0037_dsgvo_donation_pii_carveout",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1784627274811,
+      "tag": "0038_customers_structured_address",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1784629668677,
+      "tag": "0039_customers_adresszusatz_land",
+      "breakpoints": true
     }
   ]
 }

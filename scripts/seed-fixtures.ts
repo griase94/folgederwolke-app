@@ -41,6 +41,7 @@ import type { drizzle } from "drizzle-orm/postgres-js";
 import type postgres from "postgres";
 import * as schema from "../src/lib/server/db/schema/index.js";
 import { canonicalizeEmail } from "../src/lib/domain/email.js";
+import { buildCustomerBriefblock } from "../src/lib/domain/customers.js";
 import { DATENSCHUTZ_VERSION } from "../src/lib/domain/datenschutz.js";
 
 type Db = ReturnType<typeof drizzle<typeof schema>>;
@@ -185,11 +186,18 @@ const PROJECTS: ProjectFixture[] = [
 type CustomerFixture = {
   name: string;
   anrede: string;
-  addressBlock: string;
+  /** Structured postal address (Andy-Feedback 2026-07). `strasse` incl. Hausnr;
+   *  the invoice Briefblock is assembled from these (name is rendered
+   *  separately, so it is NOT part of the address). `adresszusatz` (z. Hd./c/o)
+   *  optional; `land` free-text (default "Deutschland", rendered only ≠ DE). */
+  adresszusatz?: string;
+  strasse: string;
+  plz: string;
+  ort: string;
+  land?: string;
   /** Optional — Kulturkreis Pankow + Altpapier stay email-less on purpose so
    *  the "Keine E-Mail hinterlegt" flag-warn / send-gate stays demonstrable. */
   email?: string;
-  country?: string;
   /** ISO timestamp when soft-deleted (archiviert). */
   archivedAt?: string;
 };
@@ -200,31 +208,41 @@ const CUSTOMERS: CustomerFixture[] = [
   {
     name: "Cremosa GmbH",
     anrede: "Sehr geehrte Damen und Herren",
-    addressBlock: "Cremosa GmbH\nMaximilianstraße 12\n80539 München",
+    strasse: "Maximilianstraße 12",
+    plz: "80539",
+    ort: "München",
     email: "kontakt@cremosa.example",
   },
   {
     name: "Maria Huber",
     anrede: "Liebe Frau Huber",
-    addressBlock: "Maria Huber\nRosenheimer Straße 45\n81667 München",
+    strasse: "Rosenheimer Straße 45",
+    plz: "81667",
+    ort: "München",
     email: "maria.huber@example.de",
   },
   {
     name: "Kulturkreis Pankow e.V.",
     anrede: "Sehr geehrte Damen und Herren",
-    addressBlock: "Kulturkreis Pankow e.V.\nFlorastraße 84\n13187 Berlin",
+    strasse: "Florastraße 84",
+    plz: "13187",
+    ort: "Berlin",
     // no email — drives the flag-warn on this (überfällig) customer's detail.
   },
   {
     name: "Musikschule Klangraum",
     anrede: "Sehr geehrte Damen und Herren",
-    addressBlock: "Musikschule Klangraum\nLindenallee 7\n80802 München",
+    strasse: "Lindenallee 7",
+    plz: "80802",
+    ort: "München",
     email: "buero@klangraum.example",
   },
   {
     name: "Altpapier & Söhne",
     anrede: "Sehr geehrte Damen und Herren",
-    addressBlock: "Altpapier & Söhne\nGewerbestraße 3\n85748 Garching",
+    strasse: "Gewerbestraße 3",
+    plz: "85748",
+    ort: "Garching",
     archivedAt: "2026-02-20T10:00:00Z",
   },
 ];
@@ -299,9 +317,14 @@ export async function seedFixtures(db: Db): Promise<void> {
     await db.insert(schema.customers).values({
       name: c.name,
       anrede: c.anrede,
-      addressBlock: c.addressBlock,
+      adresszusatz: c.adresszusatz ?? null,
+      strasse: c.strasse,
+      plz: c.plz,
+      ort: c.ort,
+      land: c.land ?? "Deutschland",
+      // Denormalized Briefblock mirror (name is rendered separately by the PDF).
+      addressBlock: buildCustomerBriefblock(c),
       email: c.email ?? null,
-      country: c.country ?? "DE",
       deletedAt: c.archivedAt ? new Date(c.archivedAt) : null,
       isFixture: true,
     });
