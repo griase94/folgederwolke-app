@@ -26,8 +26,9 @@
       retry at 800 ms, then a red retry-link.
     - First-paint = warmup: an initial render fires onMount so the user lands
       on a fully-rendered template and the Vercel function is warm by keystroke.
-    - Mobile (< xl): no inline canvas — a "Vorschau anzeigen" button opens the
-      latest blob in a new tab (iOS Safari blocks inline blob:pdf).
+    - The canvas renders at EVERY width (pdfjs paints on mobile too, like
+      BelegViewer); below xl the A4 box is height-capped so the whole page fits
+      without scrolling. "Im neuen Tab öffnen" is the secondary full-res link.
     - a11y: aria-live region summarizing the current preview for screen readers.
     - Memory hygiene: object URLs revoked on replace; pdfjs docs destroyed.
 -->
@@ -320,28 +321,16 @@
 	     point at `blob:` URLs (PDF previews), not app routes; SvelteKit's
 	     resolve() doesn't apply. -->
 
-	<!-- Mobile (< xl): no inline canvas; iOS Safari refuses blob:application/pdf. -->
-	<div class="xl:hidden">
-		{#if blobUrl}
-			<a
-				href={blobUrl}
-				target="_blank"
-				rel="noopener"
-				class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 text-sm font-semibold text-ink-700 hover:bg-secondary"
-			>
-				Vorschau anzeigen
-			</a>
-		{:else}
-			<div class="rounded-lg border border-dashed border-hairline bg-secondary px-3 py-4 text-center text-xs text-ink-500">
-				Vorschau wird vorbereitet …
-			</div>
-		{/if}
-	</div>
-
-	<!-- Desktop (≥ xl): whole A4 page painted to a canvas. Paper is physical
-	     paper (like DocSheet / BelegViewer's PDF canvas) — deliberately bg-white,
-	     NOT the inverting bg-card/bg-background, so it stays light in dark mode. -->
-	<div class="relative hidden aspect-[1/1.414] w-full overflow-hidden rounded-lg border border-border bg-white xl:block">
+	<!-- Whole A4 page painted to a canvas at EVERY width — the canvas renders
+	     everywhere (pdfjs paints on mobile too, exactly like BelegViewer in this
+	     repo; the old "iOS blocks blob:pdf" caveat was an <iframe> limitation).
+	     Below xl (the Vorschau tab on tablet/phone) the box is height-capped
+	     (max-w derived from ~72dvh at A4 ratio) so the ENTIRE page is visible
+	     without scrolling; at xl it fills the sticky preview column. Paper is
+	     physical paper (bg-white, never inverting) — light in dark mode. -->
+	<div
+		class="relative mx-auto aspect-[1/1.414] w-full max-w-[calc(72dvh/1.414)] overflow-hidden rounded-lg border border-border bg-white xl:mx-0 xl:max-w-none"
+	>
 		<canvas
 			bind:this={canvasEl}
 			class="absolute inset-0 h-full w-full"
@@ -390,7 +379,9 @@
 	</div>
 
 	{#if blobUrl}
-		<div class="mt-2 hidden text-right text-xs xl:block">
+		<!-- Secondary link at every width: the full-res PDF in a new tab (the
+		     inline canvas is the primary; this is the "print/zoom" escape hatch). -->
+		<div class="mt-2 text-right text-xs">
 			<a href={blobUrl} target="_blank" rel="noopener" class="text-ink-500 underline hover:text-ink-900">
 				Im neuen Tab öffnen
 			</a>
