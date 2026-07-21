@@ -128,6 +128,38 @@ describe("interpolated Bescheid-Pflichttext ↔ PDF (proof of equivalence)", () 
     );
   });
 
+  // Team-lead sharpening: pin the SELECTIVE-transliteration trap with an
+  // umlaut-carrying interpolation value ("Finanzamt München"). The boilerplate
+  // is transliterated, but the interpolated env value is NOT — the PDF draws it
+  // raw (Helvetica renders ü). A blanket toPdfAscii(preview) would corrupt it
+  // to "Muenchen", which is exactly why the PDF keeps its own raw-interpolation
+  // builder. This locks that a future "simplification" of the PDF to
+  // bmfBescheidText(p).map(toPdfAscii) cannot silently ship (it would corrupt
+  // every umlaut-bearing Finanzamt/Zweck value).
+  it("umlaut interpolation value stays raw in BOTH preview and PDF (selective-transliteration trap)", () => {
+    const umlaut: BmfPflichtfelder = {
+      ...BASE,
+      vereinFinanzamt: "Finanzamt München",
+    };
+    const pdf = bescheidPflichttext(umlaut).join("\n");
+    const preview = bmfBescheidText(toInput(umlaut)).join("\n");
+
+    // Preview + PDF agree byte-for-byte on the interpolated value (umlaut kept).
+    expect(preview).toContain("des Finanzamts München");
+    expect(pdf).toContain("des Finanzamts München");
+    // The PDF did NOT blanket-transliterate: no "Muenchen" leaked in.
+    expect(pdf).not.toContain("Muenchen");
+    // …whereas the boilerplate around it IS ASCII in the PDF / proper in preview.
+    expect(pdf).toContain("Koerperschaftsteuergesetzes");
+    expect(preview).toContain("Körperschaftsteuergesetzes");
+    // The trap itself: a blanket transliteration of the preview WOULD corrupt
+    // the env value — so toPdfAscii(preview) deliberately does NOT equal the PDF
+    // for umlaut args (proving the PDF's raw-interpolation is load-bearing).
+    expect(toPdfAscii("Finanzamts München")).toBe("Finanzamts Muenchen");
+    expect(toPdfAscii(preview)).toContain("Muenchen");
+    expect(toPdfAscii(preview)).not.toBe(pdf);
+  });
+
   it("mirrors the PDF's throw-guards (missing Finanzamt / VZ / Satzung)", () => {
     expect(() =>
       bmfBescheidText({ ...toInput(BASE), vereinFinanzamt: "  " }),
