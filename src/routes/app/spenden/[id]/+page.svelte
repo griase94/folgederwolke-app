@@ -17,6 +17,7 @@
   import FactsList from "$lib/components/admin/transactions/detail/FactsList.svelte";
   import KeyValue from "$lib/components/admin/transactions/detail/KeyValue.svelte";
   import BelegViewer from "$lib/components/files/BelegViewer.svelte";
+  import { IdChip } from "$lib/components/ui/id-chip/index.js";
   import SpendeDetailFields from "$lib/components/admin/transactions/spenden/SpendeDetailFields.svelte";
   import DeleteConfirm from "$lib/components/admin/transactions/detail/DeleteConfirm.svelte";
   import { SPHERE_LABELS, type Sphere } from "$lib/domain/sphere.js";
@@ -49,9 +50,7 @@
   const spendeartLabel = $derived(
     detail.spendeKind === "sachspende" ? "Sachspende" : "Geldspende",
   );
-  const zweckgebunden = $derived(
-    detail.zweckbindungKind === "zweckgebunden",
-  );
+  const zweckgebunden = $derived(detail.zweckbindungKind === "zweckgebunden");
 
   const statusChip = $derived<DetailStatusChip>(
     data.isFestgeschrieben
@@ -75,7 +74,11 @@
 
 {#snippet facts()}
   <FactsList lblWidth="150px">
-    <KeyValue label="Zugewendet am" value={fmtDate(detail.relevanzDatum)} tabular />
+    <KeyValue
+      label="Zugewendet am"
+      value={fmtDate(detail.relevanzDatum)}
+      tabular
+    />
     <KeyValue
       label="Buchungsjahr"
       value={String(detail.yearOfBuchung ?? "—")}
@@ -130,7 +133,10 @@
     }}
   />
   {#if form?.error}
-    <p class="mt-3 text-sm text-[color:var(--sev-critical-text)]" data-testid="save-error">
+    <p
+      class="mt-3 text-sm text-[color:var(--sev-critical-text)]"
+      data-testid="save-error"
+    >
       {form.error}
     </p>
   {/if}
@@ -167,13 +173,15 @@
     {#snippet icon()}<FileCheck class="size-[15px]" />{/snippet}
     {#if issued}
       <div class="flex flex-col gap-3">
-        <div>
-          <div
-            class="text-lg font-extrabold tabular-nums text-ink-900"
+        <div class="flex flex-col items-start gap-1.5">
+          <IdChip
+            value={data.bescheinigungNr ?? ""}
             data-testid="bescheinigung-nr-display"
           >
-            {data.bescheinigungNr}
-          </div>
+            {#snippet icon()}
+              <FileCheck class="size-3.5" aria-hidden="true" />
+            {/snippet}
+          </IdChip>
           <div class="text-[12.5px] text-ink-500">
             {detail.bescheinigungDatum
               ? `ausgestellt am ${fmtDate(detail.bescheinigungDatum)}`
@@ -192,15 +200,20 @@
         <div
           class="flex items-start gap-2 rounded-lg border border-[color:var(--sev-info)]/30 bg-[color:var(--sev-info)]/10 px-3 py-2.5 text-[13px] text-ink-700"
         >
-          <Lock class="mt-0.5 size-4 shrink-0 text-[color:var(--sev-info)]" aria-hidden="true" />
-          <span>Bescheinigt — Korrektur nur über Storno &amp; Neu-Erfassung.</span>
+          <Lock
+            class="mt-0.5 size-4 shrink-0 text-[color:var(--sev-info)]"
+            aria-hidden="true"
+          />
+          <span
+            >Bescheinigt — Korrektur nur über Storno &amp; Neu-Erfassung.</span
+          >
         </div>
       </div>
     {:else if data.bescheinigungEnabled}
       <div class="flex flex-col gap-3">
         <p class="text-[13px] leading-snug text-ink-700">
-          Noch nicht ausgestellt. Name &amp; Anschrift liegen vor — du kannst die
-          Bescheinigung ausstellen.
+          Noch nicht ausgestellt. Name &amp; Anschrift liegen vor — du kannst
+          die Bescheinigung ausstellen.
         </p>
         <!-- eslint-disable svelte/no-navigation-without-resolve -- dynamic app route -->
         <a
@@ -246,8 +259,7 @@
   {facts}
   {fields}
   {beleg}
-  documented={!!detail.belegFileId ||
-    (isSach && !!detail.herkunftsbelegFileId)}
+  documented={!!detail.belegFileId || (isSach && !!detail.herkunftsbelegFileId)}
   certificateIssuable={!issued && data.bescheinigungEnabled}
   {railExtra}
   {saving}
