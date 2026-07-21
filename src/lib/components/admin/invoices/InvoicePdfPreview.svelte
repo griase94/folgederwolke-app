@@ -5,31 +5,67 @@
   POST /api/rechnungen/preview. WYSIWYG: what you see while typing IS the
   file that gets generated.
 
-  UI/UX hardening from the v2 plan review:
-    - Double-buffered <iframe> stack: the inactive iframe receives the new
-      blob URL, swaps in only on its `load` event. Eliminates flicker, page-1
-      snap-back and lost scroll position that single-iframe `src` swaps cause.
-    - Content-hash skip: identical payloads do not fire a fetch (focus
-      blur/refocus is free).
-    - Split debounce: 180 ms trailing for text inputs, immediate for selects
-      and date pickers. Driven by the `quick` prop the parent flips.
-    - Three-state badge: aktuell / wird aktualisiert / veraltet.
-    - Last-good wins: the iframe is never blanked. On non-2xx, previous PDF
-      stays visible and badge flips to amber. One silent retry at 800 ms,
-      then red retry-link.
-    - First-paint = warmup: an initial render fires `onMount` so the user
-      lands on a fully-rendered template (not "Tippe Daten ein…") and the
-      Vercel function instance is warm by keystroke #2.
-    - Mobile (< lg): inline iframe is replaced by a "Vorschau anzeigen"
-      button that opens the latest blob in a new tab. iOS Safari treats
-      inline <iframe src="blob:application/pdf"> as a tap-to-download.
-    - a11y: <iframe title> + aria-live region summarizing the current
-      preview content for screen readers.
-    - Memory hygiene: URL.revokeObjectURL is called on every successful
-      swap. A long session does not leak blob URLs.
+  Andy-Feedback 2026-07: the preview renders the PDF to an on-screen <canvas>
+  via pdfjs-dist (same pipeline as BelegViewer / DocSheet), NOT a browser
+  <iframe> PDF embed. Two reasons, both Andy's:
+    - CHROMELESS: no grey browser PDF-toolbar eating vertical room.
+    - WHOLE PAGE, NO SCROLL: the canvas is painted at a fixed high scale and
+      displayed inside an A4-aspect box (`h-full w-full`) — the entire page is
+      always visible, scaled to fit, in every browser (and in headless CI,
+      where `blob:application/pdf` never renders inside an iframe at all).
+  "Im neuen Tab öffnen" stays for the pixel-exact full viewer.
+
+  UI/UX hardening carried over from the iframe version:
+    - Content-hash skip: identical payloads do not fire a fetch.
+    - Split debounce: 180 ms trailing after the last input change.
+    - Three-state badge: aktuell / wird aktualisiert / veraltet — see
+      invoice-preview-badge.ts. The badge is DERIVED (never mutated in an
+      effect that reads it) so it can't get stuck on "veraltet".
+    - Last-good wins: the canvas is never blanked. On a failed fetch/render the
+      previous page stays painted and the badge flips to amber. One silent
+      retry at 800 ms, then a red retry-link.
+    - First-paint = warmup: an initial render fires onMount so the user lands
+      on a fully-rendered template and the Vercel function is warm by keystroke.
+    - Mobile (< xl): no inline canvas — a "Vorschau anzeigen" button opens the
+      latest blob in a new tab (iOS Safari blocks inline blob:pdf).
+    - a11y: aria-live region summarizing the current preview for screen readers.
+    - Memory hygiene: object URLs revoked on replace; pdfjs docs destroyed.
 -->
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	// Vite worker URL — use ?url suffix (mirrors BelegViewer / file-compress; the
+	// `new URL` trick does NOT resolve node_modules assets). pdfjs-dist is already
+	// in the client bundle via BelegViewer, so this adds no bundle weight.
+	import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+	import * as pdfjs from 'pdfjs-dist';
+	import { previewBadge, type PreviewBadge } from './invoice-preview-badge.js';
+
+	// Minimal structural typing of the pdfjs API we use (mirrors BelegViewer).
+	interface PdfWorkerHost {
+		GlobalWorkerOptions: { workerSrc: string };
+		getDocument: (args: { data: Uint8Array }) => { promise: Promise<PdfDocument> };
+	}
+	interface PdfDocument {
+		numPages: number;
+		getPage(n: number): Promise<PdfPage>;
+		destroy?: () => Promise<void>;
+	}
+	interface PdfRenderTask {
+		promise: Promise<void>;
+		cancel(extraDelay?: number): void;
+	}
+	interface PdfPage {
+		getViewport(opts: { scale: number }): { width: number; height: number };
+		render(args: {
+			canvasContext: CanvasRenderingContext2D;
+			viewport: { width: number; height: number };
+		}): PdfRenderTask;
+		cleanup?: () => void;
+	}
+
+	const pdf = pdfjs as unknown as PdfWorkerHost;
+	// Wire the worker exactly once (idempotent — same shared worker as BelegViewer).
+	pdf.GlobalWorkerOptions.workerSrc = workerSrc;
 
 	type PreviewInput = {
 		customerId: string;
@@ -48,42 +84,52 @@
 
 	let { input }: { input: PreviewInput } = $props();
 
-	type BadgeState = 'aktuell' | 'wird_aktualisiert' | 'veraltet';
+	type BadgeState = PreviewBadge;
 
-	// Two stacked iframes (refs assigned after mount). The "front" one is
-	// visible; we render into "back" then swap on its load event.
-	let frontEl: HTMLIFrameElement | null = $state(null);
-	let backEl: HTMLIFrameElement | null = $state(null);
-	let frontUrl: string | null = $state(null);
-	let backUrl: string | null = $state(null);
+	// Fixed render scale — A4 at scale 2.5 ≈ 1487×2104 px, comfortably crisp when
+	// scaled down into the ~400 px preview column on any DPR. Fixed (not measured)
+	// keeps the pipeline simple and resize-proof; the A4-aspect box does the fit.
+	const RENDER_SCALE = 2.5;
 
-	// First-run default is "wird_aktualisiert" (loading), NOT "veraltet"
-	// (stale) — there has never been a good preview to be stale *relative
-	// to* yet, so the amber "Vorschau veraltet" label must not flash on
-	// every fresh page load. `refresh()` (via onMount) flips this to
-	// `aktuell` as soon as the first PDF is in hand; only a genuine failed
-	// round-trip (see `refresh`'s catch branch) puts it back to `veraltet`.
-	let badge: BadgeState = $state('wird_aktualisiert');
+	let canvasEl: HTMLCanvasElement | null = $state(null);
+	let hasPainted = $state(false); // first successful canvas paint → drop skeleton
+	let renderFailed = $state(false); // pdfjs couldn't paint → show open-in-tab fallback
+
+	// Badge is DERIVED, never mutated in place. The previous version stored
+	// `badge` as $state and flipped it inside the debounce $effect — but that
+	// effect also *read* badge, making badge its own dependency: the moment
+	// `refresh` set badge='aktuell', the effect re-fired and flipped it back to
+	// 'veraltet'. Result: "Vorschau veraltet" showed permanently. Now the badge
+	// is a pure function of facts the effect never reads:
+	//   - `phase`         : loading | idle | error  (owned by refresh)
+	//   - `renderedHash`  : the hash of the input whose bytes are in hand
+	// See invoice-preview-badge.ts for the exact truth table.
+	let phase: 'loading' | 'idle' | 'error' = $state('loading');
+	let renderedHash: string | null = $state(null);
 	let lastError: string | null = $state(null);
 
-	// Non-reactive bookkeeping. Wrapping these in $state caused recursive
-	// effect re-fires in the previous InvoiceLivePreview — leave as plain
-	// locals.
+	// Non-reactive bookkeeping.
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	let inflight: AbortController | null = null;
 	let retryTimer: ReturnType<typeof setTimeout> | null = null;
-	let lastHash: string | null = null;
-	let mobileBlobUrl: string | null = $state(null);
+	let renderTask: PdfRenderTask | null = null;
+	// Latest blob URL — powers the mobile "Vorschau anzeigen" + desktop "Im neuen
+	// Tab öffnen" links. Revoked when replaced (no per-keystroke URL leak).
+	let blobUrl: string | null = $state(null);
 
 	function hash(payload: PreviewInput): string {
-		// djb2 over the serialized payload — collision-resistant enough for a
-		// dedupe gate; the iframe `load` event is the source of truth, not
-		// this hash.
+		// djb2 over the serialized payload — a cheap dedupe gate.
 		const s = JSON.stringify(payload);
 		let h = 5381;
 		for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i);
 		return (h >>> 0).toString(36);
 	}
+
+	// Hash of the CURRENT form input (recomputed reactively) and the DERIVED
+	// badge. `currentHash` is the single reactive dep the badge needs; the
+	// debounce $effect below depends on it too, but never on `badge`/`phase`.
+	const currentHash = $derived(hash(input));
+	const badge: BadgeState = $derived(previewBadge(phase, renderedHash, currentHash));
 
 	async function doRequest(payload: PreviewInput): Promise<Blob | null> {
 		inflight?.abort();
@@ -100,65 +146,91 @@
 		return await res.blob();
 	}
 
-	function swapToBack(): void {
-		// Promote the back iframe to be the visible one.
-		const oldFrontUrl = frontUrl;
-		frontUrl = backUrl;
-		backUrl = null;
-		if (oldFrontUrl) URL.revokeObjectURL(oldFrontUrl);
+	function isCancellation(e: unknown): boolean {
+		return (e as { name?: string } | null)?.name === 'RenderingCancelledException';
+	}
+
+	// Paint page 1 of the PDF bytes onto the desktop canvas at a fit scale.
+	// Returns true on a real paint, false when there's no canvas (mobile / hidden)
+	// or the render was superseded — the caller only flips `renderFailed` on a
+	// genuine error. A prior in-flight render for this canvas is cancelled first
+	// (pdfjs throws on concurrent render() to the same canvas).
+	async function paintToCanvas(buf: ArrayBuffer): Promise<'painted' | 'skipped' | 'failed'> {
+		const canvas = canvasEl;
+		if (!canvas) return 'skipped'; // mobile / not laid out
+		renderTask?.cancel();
+		let doc: PdfDocument | null = null;
+		try {
+			doc = await pdf.getDocument({ data: new Uint8Array(buf) }).promise;
+			const page = await doc.getPage(1);
+			const viewport = page.getViewport({ scale: RENDER_SCALE });
+			const ctx = canvas.getContext('2d');
+			if (!ctx) return 'failed';
+			canvas.width = viewport.width;
+			canvas.height = viewport.height;
+			const task = page.render({ canvasContext: ctx, viewport });
+			renderTask = task;
+			try {
+				await task.promise;
+			} finally {
+				if (renderTask === task) renderTask = null;
+			}
+			page.cleanup?.();
+			return 'painted';
+		} catch (e) {
+			if (isCancellation(e)) return 'skipped'; // superseded by a newer render
+			console.warn('[InvoicePdfPreview] canvas render failed:', e);
+			return 'failed';
+		} finally {
+			void doc?.destroy?.();
+		}
 	}
 
 	async function refresh(payload: PreviewInput, attempt = 0): Promise<void> {
 		const h = hash(payload);
-		if (h === lastHash && attempt === 0) {
-			// Identical input → skip the round-trip but still flip back to
-			// "aktuell" in case a prior debounce flipped us to "veraltet".
-			badge = 'aktuell';
+		if (h === renderedHash && attempt === 0) {
+			// Identical to what's already in hand → skip the round-trip. The derived
+			// badge already reads 'aktuell' (renderedHash === currentHash).
+			phase = 'idle';
 			return;
 		}
-		badge = 'wird_aktualisiert';
+		phase = 'loading';
 		lastError = null;
 		try {
 			const blob = await doRequest(payload);
 			if (!blob) return;
-			lastHash = h;
+			const buf = await blob.arrayBuffer();
+			// Expose the blob to the mobile + open-in-tab links (revoke the prior).
 			const url = URL.createObjectURL(blob);
-			// A prior refresh whose iframe never loaded would have left its
-			// blob URL in `backUrl`. Revoke it here so fast typing doesn't
-			// leak one URL per skipped-load.
-			if (backUrl) URL.revokeObjectURL(backUrl);
-			backUrl = url;
-			// Also expose the latest URL to the mobile "Vorschau anzeigen"
-			// button — same blob, no second render.
-			mobileBlobUrl = url;
-			// Badge flips to `aktuell` as soon as the bytes are in hand — that's
-			// the user-facing signal that "your data is ready". The iframe swap
-			// happens async via the back-iframe's `load` event (see
-			// onBackLoad). Decoupling matters in headless browsers (e.g. CI
-			// Chrome without the PDF plugin) where `blob:application/pdf`
-			// never fires `load` on the iframe; the data is still fresh and
-			// the real-browser user sees it instantly.
-			badge = 'aktuell';
+			if (blobUrl) URL.revokeObjectURL(blobUrl);
+			blobUrl = url;
+			// Bytes are in hand — the data IS ready. Record the hash + settle the
+			// phase now (not after the paint): the badge signals "your data is
+			// ready", and mobile has no canvas to paint. Matches the old design's
+			// "flip when bytes arrive, not on iframe load".
+			renderedHash = h;
+			phase = 'idle';
+			// Paint the desktop canvas (display only — never gates the badge).
+			const result = await paintToCanvas(buf);
+			if (result === 'painted') {
+				hasPainted = true;
+				renderFailed = false;
+			} else if (result === 'failed') {
+				renderFailed = true;
+			}
 		} catch (err) {
 			if ((err as Error).name === 'AbortError') return;
-			// First failure: silent retry after 800 ms.
+			// First failure: silent retry after 800 ms. phase='error' surfaces the
+			// amber "veraltet" while the last-good page stays painted.
 			if (attempt === 0) {
-				badge = 'veraltet';
+				phase = 'error';
 				retryTimer = setTimeout(() => void refresh(payload, 1), 800);
 				return;
 			}
-			// Second failure: surface to the user, keep last-good PDF visible.
-			badge = 'veraltet';
+			// Second failure: surface to the user, keep the last-good page visible.
+			phase = 'error';
 			lastError = (err as Error).message;
 		}
-	}
-
-	function onBackLoad(): void {
-		// Visual-only: promote the freshly-loaded back iframe to be the
-		// visible one. Badge state is owned by `refresh` (already flipped to
-		// `aktuell` when the fetch resolved); don't re-touch it here.
-		if (!backUrl) return;
-		swapToBack();
 	}
 
 	function manualRetry(): void {
@@ -172,15 +244,16 @@
 	});
 
 	$effect(() => {
-		// Reactive dep on every input field — debounce 180 ms.
-		const _ = JSON.stringify(input);
-		void _;
+		// Depend ONLY on the input hash — never on `badge`/`phase`, so this effect
+		// can't re-trigger itself (the old bug). When the input changes,
+		// `currentHash` diverges from `renderedHash` and the derived badge reads
+		// 'veraltet' on its own until the debounced refresh lands a fresh paint.
+		void currentHash;
 		if (timer) clearTimeout(timer);
 		if (retryTimer) {
 			clearTimeout(retryTimer);
 			retryTimer = null;
 		}
-		badge = badge === 'aktuell' ? 'veraltet' : badge;
 		timer = setTimeout(() => void refresh(input), 180);
 	});
 
@@ -188,12 +261,12 @@
 		if (timer) clearTimeout(timer);
 		if (retryTimer) clearTimeout(retryTimer);
 		inflight?.abort();
-		if (frontUrl) URL.revokeObjectURL(frontUrl);
-		if (backUrl) URL.revokeObjectURL(backUrl);
+		renderTask?.cancel();
+		if (blobUrl) URL.revokeObjectURL(blobUrl);
 	});
 
 	// a11y live-region summary — short German sentence covering the bits a
-	// screen-reader user can't get from the PDF embed itself.
+	// screen-reader user can't get from the PDF canvas itself.
 	const ariaSummary = $derived(
 		[
 			input.customerName ? `Kund:in ${input.customerName}` : 'Kund:in fehlt',
@@ -237,11 +310,7 @@
 			class="mb-2 flex items-center justify-between rounded-lg border border-severity-warn/30 bg-severity-warn/10 px-3 py-2 text-xs text-severity-warn-text"
 		>
 			<span>Vorschau gerade nicht möglich — Speichern geht trotzdem.</span>
-			<button
-				type="button"
-				class="font-semibold underline"
-				onclick={manualRetry}
-			>
+			<button type="button" class="font-semibold underline" onclick={manualRetry}>
 				Neu versuchen
 			</button>
 		</div>
@@ -251,11 +320,11 @@
 	     point at `blob:` URLs (PDF previews), not app routes; SvelteKit's
 	     resolve() doesn't apply. -->
 
-	<!-- Mobile (< lg): no inline iframe; iOS Safari refuses blob:application/pdf in <iframe>. -->
-	<div class="lg:hidden">
-		{#if mobileBlobUrl}
+	<!-- Mobile (< xl): no inline canvas; iOS Safari refuses blob:application/pdf. -->
+	<div class="xl:hidden">
+		{#if blobUrl}
 			<a
-				href={mobileBlobUrl}
+				href={blobUrl}
 				target="_blank"
 				rel="noopener"
 				class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 text-sm font-semibold text-ink-700 hover:bg-secondary"
@@ -269,35 +338,34 @@
 		{/if}
 	</div>
 
-	<!-- Desktop (≥ lg): A4 aspect, double-buffered iframes. Paper is physical
-	     paper (like DocSheet / BelegViewer's PDF canvas) — deliberately
-	     bg-white, NOT the inverting bg-card/bg-background, so it stays light
-	     in dark mode (never a black rectangle before the PDF loads). -->
-	<div class="relative hidden aspect-[1/1.414] w-full overflow-hidden rounded-lg border border-border bg-white lg:block">
-		<iframe
-			bind:this={frontEl}
-			title="Rechnung-Vorschau"
-			src={frontUrl ?? 'about:blank'}
+	<!-- Desktop (≥ xl): whole A4 page painted to a canvas. Paper is physical
+	     paper (like DocSheet / BelegViewer's PDF canvas) — deliberately bg-white,
+	     NOT the inverting bg-card/bg-background, so it stays light in dark mode. -->
+	<div class="relative hidden aspect-[1/1.414] w-full overflow-hidden rounded-lg border border-border bg-white xl:block">
+		<canvas
+			bind:this={canvasEl}
 			class="absolute inset-0 h-full w-full"
 			class:opacity-60={badge !== 'aktuell'}
-		></iframe>
-		<iframe
-			bind:this={backEl}
-			title="Rechnung-Vorschau (Buffer)"
-			src={backUrl ?? 'about:blank'}
-			class="absolute inset-0 h-full w-full"
-			style:visibility="hidden"
-			onload={onBackLoad}
-			aria-hidden="true"
-		></iframe>
+			aria-label="Rechnung-Vorschau"
+		></canvas>
 
-		<!-- First-run placeholder: a document-shaped skeleton instead of an
-		     empty white box, shown until the very first PDF has loaded. Sits
-		     after the iframes in DOM order so it paints over the (still
-		     about:blank) front iframe; it's removed the instant frontUrl is
-		     set, revealing the real render underneath. Fixed light-gray tones
-		     (not ink-* tokens) — the paper never inverts in dark mode. -->
-		{#if !frontUrl}
+		{#if renderFailed}
+			<!-- pdfjs couldn't paint (rare: corrupt/huge) — offer the raw viewer. -->
+			<div class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white p-8 text-center">
+				<svg class="h-10 w-10 text-neutral-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h7l5 5v11a2 2 0 01-2 2z" />
+				</svg>
+				<p class="text-xs text-neutral-500">Vorschau konnte nicht gerendert werden.</p>
+				{#if blobUrl}
+					<a href={blobUrl} target="_blank" rel="noopener" class="rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50">
+						Im neuen Tab öffnen
+					</a>
+				{/if}
+			</div>
+		{:else if !hasPainted}
+			<!-- First-run placeholder: a document-shaped skeleton until the first
+			     page paints. Fixed light-gray tones (not ink-* tokens) — the paper
+			     never inverts in dark mode. -->
 			<div
 				class="absolute inset-0 flex animate-pulse flex-col bg-white p-8"
 				aria-hidden="true"
@@ -321,14 +389,9 @@
 		{/if}
 	</div>
 
-	{#if frontUrl}
-		<div class="mt-2 hidden text-right text-xs lg:block">
-			<a
-				href={frontUrl}
-				target="_blank"
-				rel="noopener"
-				class="text-ink-500 underline hover:text-ink-900"
-			>
+	{#if blobUrl}
+		<div class="mt-2 hidden text-right text-xs xl:block">
+			<a href={blobUrl} target="_blank" rel="noopener" class="text-ink-500 underline hover:text-ink-900">
 				Im neuen Tab öffnen
 			</a>
 		</div>

@@ -138,12 +138,14 @@ export const createInvoiceSchema = z
       .regex(ISO_DATE, "Rechnungsdatum im Format JJJJ-MM-TT")
       .optional()
       .transform((v) => v || new Date().toISOString().slice(0, 10)),
+    // Leistungsdatum is MANDATORY (Andy-Feedback 2026-07): every invoice
+    // carries a Leistungsdatum, from which the form derives the compact
+    // Leistungszeitraum month. Empty/absent → clear German error. Zod v4's
+    // unified `error` param covers the missing-key + wrong-type cases.
     leistungsDatum: z
-      .string()
-      .regex(ISO_DATE, "Leistungsdatum im Format JJJJ-MM-TT")
-      .optional()
-      .or(z.literal(""))
-      .transform((v) => (v ? v : null)),
+      .string({ error: "Bitte ein Leistungsdatum wählen" })
+      .min(1, "Bitte ein Leistungsdatum wählen")
+      .regex(ISO_DATE, "Leistungsdatum im Format JJJJ-MM-TT"),
     faelligkeitsDatum: z
       .string()
       .regex(ISO_DATE, "Faelligkeitsdatum im Format JJJJ-MM-TT")
