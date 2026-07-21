@@ -1,7 +1,8 @@
 /**
  * Customer structured-address validation (Andy-Feedback 2026-07). The Zod
- * schema makes Straße/PLZ/Ort MANDATORY and enforces the German 5-digit PLZ
- * rule for country=DE only (AT/CH keep 4-digit PLZ).
+ * schema makes Straße/PLZ/Ort MANDATORY, Adresszusatz optional, and Land a
+ * free-text field (default "Deutschland"). The German 5-digit PLZ rule is
+ * enforced only when Land is Deutschland (AT/CH keep their own formats).
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -14,22 +15,36 @@ const OK = {
   strasse: "Maximilianstraße 12",
   plz: "80539",
   ort: "München",
-  country: "DE",
+  land: "Deutschland",
 };
 
 describe("validateAddCustomer — structured address", () => {
-  it("accepts a complete German address", () => {
-    const r = validateAddCustomer({ ...OK });
+  it("accepts a complete German address (Land defaults to Deutschland)", () => {
+    const r = validateAddCustomer({
+      name: "X",
+      strasse: "A 1",
+      plz: "80331",
+      ort: "München",
+    });
     expect(r.success).toBe(true);
     if (r.success) {
-      expect(r.data.strasse).toBe("Maximilianstraße 12");
-      expect(r.data.plz).toBe("80539");
-      expect(r.data.ort).toBe("München");
+      expect(r.data.strasse).toBe("A 1");
+      expect(r.data.land).toBe("Deutschland");
+      expect(r.data.adresszusatz).toBeUndefined();
     }
   });
 
+  it("keeps an optional Adresszusatz when provided", () => {
+    const r = validateAddCustomer({
+      ...OK,
+      adresszusatz: "z. Hd. Frau Müller",
+    });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.adresszusatz).toBe("z. Hd. Frau Müller");
+  });
+
   it("rejects a missing Straße / PLZ / Ort with German errors", () => {
-    const r = validateAddCustomer({ name: "X", country: "DE" });
+    const r = validateAddCustomer({ name: "X" });
     expect(r.success).toBe(false);
     if (!r.success) {
       expect(r.errors.strasse?.[0]).toMatch(/Straße/i);
@@ -49,11 +64,18 @@ describe("validateAddCustomer — structured address", () => {
   it("allows a 4-digit PLZ for a non-German (AT) customer", () => {
     const r = validateAddCustomer({
       ...OK,
-      country: "AT",
+      land: "Österreich",
       plz: "1010",
       ort: "Wien",
     });
     expect(r.success).toBe(true);
+  });
+
+  it("treats Land case-insensitively for the DE PLZ rule", () => {
+    // "deutschland" lower-case still triggers the 5-digit check.
+    const r = validateAddCustomer({ ...OK, land: "deutschland", plz: "123" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.errors.plz?.[0]).toMatch(/5 Ziffern/i);
   });
 
   it("trims the structured parts", () => {

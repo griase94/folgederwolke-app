@@ -16,13 +16,17 @@ export type CustomerView = {
   id: string;
   name: string;
   anrede: string | null;
-  /** Structured postal address (Andy-Feedback 2026-07). `strasse` incl. Hausnr. */
+  /** Structured postal address (Andy-Feedback 2026-07). `strasse` incl. Hausnr;
+   *  `adresszusatz` (z. Hd./c/o) is optional; `land` is free-text (default
+   *  "Deutschland", rendered only when ≠ Deutschland). */
+  adresszusatz: string | null;
   strasse: string | null;
   plz: string | null;
   ort: string | null;
+  land: string | null;
   /** Legacy free-text address block — superseded by strasse/plz/ort. */
   addressBlock: string | null;
-  /** ISO 3166-1 alpha-2 country code. Defaults to 'DE'. */
+  /** Legacy ISO country code — superseded by the free-text `land`. */
   country: string;
   email: string | null;
   notes: string | null;
@@ -59,8 +63,10 @@ const customerBaseObject = z.object({
   name: z.string().min(1, "Name ist erforderlich").max(200, "Name zu lang"),
   anrede: optionalText(z.string().max(200, "Anrede zu lang")),
   // Structured postal address is MANDATORY (Andy-Feedback 2026-07). `strasse`
-  // includes the Hausnummer. German errors; PLZ format is checked in the refine
-  // below (country-aware — the 5-digit rule is German).
+  // includes the Hausnummer. `adresszusatz` (z. Hd./c/o) is optional; `land` is
+  // free-text (default "Deutschland"). German errors; PLZ format is checked in
+  // the refine below (only enforced 5-digit when land is Deutschland).
+  adresszusatz: optionalText(z.string().max(200, "Adresszusatz zu lang")),
   strasse: z
     .string({ error: "Bitte Straße und Hausnummer angeben" })
     .trim()
@@ -76,29 +82,28 @@ const customerBaseObject = z.object({
     .trim()
     .min(1, "Bitte einen Ort angeben")
     .max(100, "Ort zu lang"),
-  country: z
+  land: z
     .string()
     .optional()
-    .transform((v) => (v && v.trim() ? v.trim().toUpperCase() : "DE"))
-    .pipe(
-      z
-        .string()
-        .regex(/^[A-Z]{2}$/, "Länder-Code muss 2 Buchstaben sein (z.B. DE)"),
-    ),
+    .transform((v) => (v && v.trim() ? v.trim() : "Deutschland"))
+    .pipe(z.string().max(100, "Land zu lang")),
   email: optionalText(
     z.string().email("Ungültige E-Mail").max(254, "E-Mail zu lang"),
   ),
   notes: optionalText(z.string().max(2000, "Notizen zu lang")),
 });
 
-// German PLZ is exactly 5 digits. Enforce that for DE only, so a valid AT/CH
-// (4-digit) address isn't wrongly rejected. Non-DE just needs a non-empty PLZ
-// (checked above). Applied to both add + edit.
+// German PLZ is exactly 5 digits. Enforce that only when the country is
+// Deutschland, so a valid AT/CH (4-digit) address isn't wrongly rejected.
+// Non-DE just needs a non-empty PLZ (checked above). Applied to both add + edit.
 function refinePlz(
-  val: { country: string; plz: string },
+  val: { land: string; plz: string },
   ctx: z.RefinementCtx,
 ): void {
-  if (val.country === "DE" && !/^\d{5}$/.test(val.plz)) {
+  if (
+    val.land.trim().toLowerCase() === "deutschland" &&
+    !/^\d{5}$/.test(val.plz)
+  ) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["plz"],

@@ -188,14 +188,16 @@ type CustomerFixture = {
   anrede: string;
   /** Structured postal address (Andy-Feedback 2026-07). `strasse` incl. Hausnr;
    *  the invoice Briefblock is assembled from these (name is rendered
-   *  separately, so it is NOT part of the address). */
+   *  separately, so it is NOT part of the address). `adresszusatz` (z. Hd./c/o)
+   *  optional; `land` free-text (default "Deutschland", rendered only ≠ DE). */
+  adresszusatz?: string;
   strasse: string;
   plz: string;
   ort: string;
+  land?: string;
   /** Optional — Kulturkreis Pankow + Altpapier stay email-less on purpose so
    *  the "Keine E-Mail hinterlegt" flag-warn / send-gate stays demonstrable. */
   email?: string;
-  country?: string;
   /** ISO timestamp when soft-deleted (archiviert). */
   archivedAt?: string;
 };
@@ -315,13 +317,14 @@ export async function seedFixtures(db: Db): Promise<void> {
     await db.insert(schema.customers).values({
       name: c.name,
       anrede: c.anrede,
+      adresszusatz: c.adresszusatz ?? null,
       strasse: c.strasse,
       plz: c.plz,
       ort: c.ort,
+      land: c.land ?? "Deutschland",
       // Denormalized Briefblock mirror (name is rendered separately by the PDF).
       addressBlock: buildCustomerBriefblock(c),
       email: c.email ?? null,
-      country: c.country ?? "DE",
       deletedAt: c.archivedAt ? new Date(c.archivedAt) : null,
       isFixture: true,
     });

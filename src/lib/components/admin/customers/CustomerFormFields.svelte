@@ -14,7 +14,7 @@
 <script lang="ts">
 	import { Input } from '$lib/components/ui/input/index.js';
 	import type { CustomerView } from '$lib/server/domain/customers.js';
-	import { buildCustomerBriefblock, countryLabel } from '$lib/domain/customers.js';
+	import { buildCustomerBriefblock } from '$lib/domain/customers.js';
 
 	let {
 		idPrefix,
@@ -38,38 +38,26 @@
 	// user types. Seeded once from `values` (edit route / post-fail echo) via a
 	// one-shot hydration $effect — starting the state at a literal avoids the
 	// `state_referenced_locally` warning (CI runs --fail-on-warnings).
+	let adresszusatz = $state('');
 	let strasse = $state('');
 	let plz = $state('');
 	let ort = $state('');
-	let country = $state('DE');
+	let land = $state('Deutschland');
 	let hydrated = false;
 	$effect(() => {
 		if (hydrated) return;
 		hydrated = true;
+		adresszusatz = values?.adresszusatz ?? '';
 		strasse = values?.strasse ?? '';
 		plz = values?.plz ?? '';
 		ort = values?.ort ?? '';
-		country = values?.country ?? 'DE';
+		land = values?.land ?? 'Deutschland';
 	});
 
-	const briefblock = $derived(buildCustomerBriefblock({ strasse, plz, ort }));
-	const previewLines = $derived(
-		briefblock ? briefblock.split('\n') : []
+	const briefblock = $derived(
+		buildCustomerBriefblock({ adresszusatz, strasse, plz, ort, land })
 	);
-
-	const COUNTRIES: Array<[string, string]> = [
-		['DE', 'Deutschland'],
-		['AT', 'Österreich'],
-		['CH', 'Schweiz'],
-		['FR', 'Frankreich'],
-		['IT', 'Italien'],
-		['NL', 'Niederlande'],
-		['BE', 'Belgien'],
-		['LU', 'Luxemburg'],
-		['GB', 'Vereinigtes Königreich'],
-		['US', 'Vereinigte Staaten'],
-		['ES', 'Spanien']
-	];
+	const previewLines = $derived(briefblock ? briefblock.split('\n') : []);
 
 	const textareaClass =
 		'border-input bg-background focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-base leading-relaxed focus-visible:outline-none focus-visible:ring-2 sm:text-sm aria-invalid:border-destructive aria-invalid:ring-destructive/20';
@@ -132,6 +120,22 @@
 		<span class="text-severity-critical">*</span>
 	</div>
 
+	<!-- Adresszusatz (optional) — DIN 5008: eigene Zeile zwischen Name und Straße -->
+	<div class="space-y-1.5">
+		<label for="{idPrefix}-adresszusatz" class="block text-xs font-medium text-ink-600">Adresszusatz (optional)</label>
+		<Input
+			id="{idPrefix}-adresszusatz"
+			name="adresszusatz"
+			bind:value={adresszusatz}
+			data-testid="{idPrefix}-adresszusatz-input"
+			placeholder="z. B. z. Hd. Frau Müller · c/o · Gebäude B"
+			aria-invalid={!!err('adresszusatz')}
+		/>
+		{#if err('adresszusatz')}
+			<p class="text-xs font-medium text-severity-critical">{err('adresszusatz')}</p>
+		{/if}
+	</div>
+
 	<!-- Straße + Hausnr -->
 	<div class="space-y-1.5">
 		<label for="{idPrefix}-strasse" class="block text-xs font-medium text-ink-600">Straße &amp; Hausnr.</label>
@@ -187,6 +191,23 @@
 		<p id="{idPrefix}-ort-err" class="text-xs font-medium text-severity-critical">{err('ort')}</p>
 	{/if}
 
+	<!-- Land (optional, Freitext) — nur ≠ Deutschland erscheint im Briefblock -->
+	<div class="space-y-1.5">
+		<label for="{idPrefix}-land" class="block text-xs font-medium text-ink-600">Land</label>
+		<Input
+			id="{idPrefix}-land"
+			name="land"
+			bind:value={land}
+			data-testid="{idPrefix}-land-input"
+			placeholder="Deutschland"
+			aria-invalid={!!err('land')}
+		/>
+		<p class="text-xs text-ink-500">Nur wenn nicht Deutschland — dann steht das Land mit auf der Rechnung.</p>
+		{#if err('land')}
+			<p class="text-xs font-medium text-severity-critical">{err('land')}</p>
+		{/if}
+	</div>
+
 	<!-- Live-Briefblock: so steht die Adresse auf der Rechnung -->
 	<div class="rounded-lg border border-dashed border-hairline bg-muted/40 px-3 py-2.5" data-testid="{idPrefix}-address-preview">
 		<p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-400">So auf der Rechnung</p>
@@ -194,31 +215,11 @@
 			<address class="text-sm not-italic leading-snug text-ink-700">
 				{#if name.trim()}<div class="font-semibold text-ink-900">{name.trim()}</div>{/if}
 				{#each previewLines as line (line)}<div>{line}</div>{/each}
-				{#if country && country !== 'DE'}<div>{countryLabel(country)}</div>{/if}
 			</address>
 		{:else}
 			<p class="text-sm italic text-ink-400">Adresse eingeben — Vorschau erscheint hier.</p>
 		{/if}
 	</div>
-</div>
-
-<!-- Land -->
-<div class="space-y-1.5">
-	<label for="{idPrefix}-country" class="block text-sm font-medium text-ink-700">Land</label>
-	<select
-		id="{idPrefix}-country"
-		name="country"
-		bind:value={country}
-		class="border-input bg-background focus-visible:ring-ring/50 h-10 w-full rounded-lg border px-3 text-base focus-visible:outline-none focus-visible:ring-2 sm:text-sm"
-	>
-		{#each COUNTRIES as [code, label] (code)}
-			<option value={code}>{label}</option>
-		{/each}
-	</select>
-	<p class="text-xs text-ink-500">Außer Deutschland steht das Land mit auf der Rechnung.</p>
-	{#if err('country')}
-		<p class="text-xs font-medium text-severity-critical">{err('country')}</p>
-	{/if}
 </div>
 
 <!-- E-Mail -->

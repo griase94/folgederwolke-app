@@ -32,10 +32,19 @@ export const customers = pgTable(
      * assembled from these fields. `strasse` includes the Hausnummer.
      * Nullable at the DB level (additive migration; existing rows may lack
      * them) — mandatory is enforced in the Kunden-Modal + Zod.
+     *
+     * `adresszusatz` is an optional line (z. Hd. / c/o / Gebäude) that renders
+     * BETWEEN the name and the Straße in the Briefblock (DIN 5008). `land` is
+     * an optional free-text country line (default "Deutschland"), rendered in
+     * the Briefblock ONLY when it differs from "Deutschland" — German inland
+     * post carries no country line. `land` supersedes the ISO `country` below
+     * (a 20-person Verein doesn't need a country dropdown).
      */
+    adresszusatz: text("adresszusatz"),
     strasse: text("strasse"),
     plz: text("plz"),
     ort: text("ort"),
+    land: text("land").default("Deutschland"),
     /**
      * Legacy free-text address block. Superseded by strasse/plz/ort — kept
      * (additive migration) so the seed can split existing values; new code
@@ -43,10 +52,11 @@ export const customers = pgTable(
      */
     addressBlock: text("address_block"),
     /**
-     * ISO 3166-1 alpha-2 country code. Default 'DE'.
-     * The Rechnung v2 renderer renders the Land line below PLZ Ort ONLY
-     * when this is not 'DE' (German customers don't get a redundant
-     * "Deutschland" line).
+     * Legacy ISO 3166-1 alpha-2 country code (default 'DE'). SUPERSEDED by the
+     * free-text `land` above — kept as a vestigial column (additive-only, no
+     * destructive drop pre-launch). New code reads/writes `land`; this stays
+     * at its 'DE' default and the Rechnung renderer's ISO-country line never
+     * fires (the country now renders from the assembled Briefblock instead).
      */
     country: text("country").notNull().default("DE"),
     email: text("email"),

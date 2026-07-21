@@ -51,24 +51,33 @@ export async function addCustomer(
   }
 
   const db = getDb();
-  const { name, anrede, strasse, plz, ort, country, email, notes } =
+  const { name, anrede, adresszusatz, strasse, plz, ort, land, email, notes } =
     result.data;
 
   // `address_block` is kept as a denormalized mirror of the structured fields
-  // (assembled Briefblock) so the invoice snapshot + list subline keep reading
-  // one field — the structured columns are the input source of truth.
-  const addressBlock = buildCustomerBriefblock({ strasse, plz, ort });
+  // (assembled Briefblock incl. Adresszusatz + non-DE Land) so the invoice
+  // snapshot + list subline keep reading one field — the structured columns are
+  // the input source of truth. The legacy ISO `country` column is left at its
+  // 'DE' default (superseded by the free-text `land`).
+  const addressBlock = buildCustomerBriefblock({
+    adresszusatz,
+    strasse,
+    plz,
+    ort,
+    land,
+  });
 
   const inserted = await db
     .insert(customers)
     .values({
       name,
       anrede: anrede ?? null,
+      adresszusatz: adresszusatz ?? null,
       strasse,
       plz,
       ort,
+      land,
       addressBlock,
-      country: country,
       email: email ?? null,
       notes: notes ?? null,
     })
@@ -99,21 +108,38 @@ export async function editCustomer(
   }
 
   const db = getDb();
-  const { id, name, anrede, strasse, plz, ort, country, email, notes } =
-    result.data;
+  const {
+    id,
+    name,
+    anrede,
+    adresszusatz,
+    strasse,
+    plz,
+    ort,
+    land,
+    email,
+    notes,
+  } = result.data;
 
-  const addressBlock = buildCustomerBriefblock({ strasse, plz, ort });
+  const addressBlock = buildCustomerBriefblock({
+    adresszusatz,
+    strasse,
+    plz,
+    ort,
+    land,
+  });
 
   await db
     .update(customers)
     .set({
       name,
       anrede: anrede ?? null,
+      adresszusatz: adresszusatz ?? null,
       strasse,
       plz,
       ort,
+      land,
       addressBlock,
-      country: country,
       email: email ?? null,
       notes: notes ?? null,
       updatedAt: new Date(),

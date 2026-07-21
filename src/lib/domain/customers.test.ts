@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCustomerBriefblock,
   hasCompleteAddress,
+  isInland,
   countryLabel,
 } from "./customers.js";
 
@@ -14,6 +15,38 @@ describe("buildCustomerBriefblock", () => {
         ort: "München",
       }),
     ).toBe("Maximilianstraße 12\n80539 München");
+  });
+
+  it("puts the Adresszusatz on its own line ABOVE the Straße (DIN 5008)", () => {
+    expect(
+      buildCustomerBriefblock({
+        adresszusatz: "z. Hd. Frau Müller",
+        strasse: "Florastraße 84",
+        plz: "13187",
+        ort: "Berlin",
+      }),
+    ).toBe("z. Hd. Frau Müller\nFlorastraße 84\n13187 Berlin");
+  });
+
+  it("renders the Land line only when it is NOT Deutschland", () => {
+    // Deutschland (any case) → no country line.
+    expect(
+      buildCustomerBriefblock({
+        strasse: "A 1",
+        plz: "80331",
+        ort: "München",
+        land: "Deutschland",
+      }),
+    ).toBe("A 1\n80331 München");
+    // A foreign land → appended as the last line.
+    expect(
+      buildCustomerBriefblock({
+        strasse: "Kärntner Ring 1",
+        plz: "1010",
+        ort: "Wien",
+        land: "Österreich",
+      }),
+    ).toBe("Kärntner Ring 1\n1010 Wien\nÖsterreich");
   });
 
   it("trims parts and drops empty lines", () => {
@@ -36,6 +69,15 @@ describe("buildCustomerBriefblock", () => {
     expect(
       buildCustomerBriefblock({ strasse: null, plz: null, ort: null }),
     ).toBe("");
+  });
+});
+
+describe("isInland", () => {
+  it("recognizes Deutschland case/whitespace-insensitively", () => {
+    expect(isInland("Deutschland")).toBe(true);
+    expect(isInland("  deutschland ")).toBe(true);
+    expect(isInland("Österreich")).toBe(false);
+    expect(isInland(null)).toBe(false);
   });
 });
 
