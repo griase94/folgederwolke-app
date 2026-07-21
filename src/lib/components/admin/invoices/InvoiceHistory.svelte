@@ -18,6 +18,7 @@
 		occurredAt: string;
 		action: 'create' | 'update' | 'delete';
 		actorName: string | null;
+		actorEmail: string | null;
 		payload: Record<string, unknown>;
 	};
 
@@ -103,6 +104,7 @@
 		key: string;
 		occurredAt: string;
 		actorName: string | null;
+		actorEmail: string | null;
 		label: string;
 		labelSuffix: string | null;
 		changedFields: Array<{ field: string; before: unknown; after: unknown }> | null;
@@ -130,6 +132,10 @@
 					label: 'PDF erstellt',
 					labelSuffix: deduped ? '(gleicher Inhalt)' : null
 				};
+			}
+			case 'versendet': {
+				const to = typeof entry.payload?.to === 'string' ? (entry.payload.to as string) : null;
+				return { label: 'Per Mail versendet', labelSuffix: to ? `an ${to}` : null };
 			}
 			case 'paid':
 				return { label: 'Zahlung verbucht', labelSuffix: null };
@@ -176,6 +182,7 @@
 				key: `${e.occurredAt}-${i}`,
 				occurredAt: e.occurredAt,
 				actorName: e.actorName,
+				actorEmail: e.actorEmail,
 				label,
 				labelSuffix,
 				changedFields
@@ -212,7 +219,7 @@
 							{/if}
 						</div>
 						<p class="mt-0.5 text-xs text-ink-500">
-							{item.actorName ?? 'System'} ·
+							{item.actorName ?? item.actorEmail ?? 'System'} ·
 							<time datetime={item.occurredAt}>{fmtDateTime(item.occurredAt)}</time>
 						</p>
 

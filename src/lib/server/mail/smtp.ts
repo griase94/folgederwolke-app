@@ -43,6 +43,15 @@ export const smtp: MailProvider = {
       html: msg.html,
       text: msg.text,
       headers: msg.headers,
+      attachments: msg.attachments?.map((a) => ({
+        filename: a.filename,
+        content: Buffer.from(a.content),
+        contentType: a.contentType,
+        // Inline (cid) attachments are referenced from the HTML as
+        // <img src="cid:..."> — nodemailer marks them Content-Disposition:
+        // inline automatically once a `cid` is present.
+        ...(a.cid ? { cid: a.cid, contentDisposition: "inline" as const } : {}),
+      })),
     });
     return { messageId: info.messageId ?? "" };
   },

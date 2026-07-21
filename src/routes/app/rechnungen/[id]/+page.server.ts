@@ -29,10 +29,12 @@ import { customers } from "$lib/server/db/schema/customers.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { income } from "$lib/server/db/schema/income.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
+import { sentMails } from "$lib/server/db/schema/mails.js";
 import { users } from "$lib/server/db/schema/users.js";
 import {
   markInvoiceAsPaid,
   retryInvoicePdf,
+  sendInvoiceMail,
   supersedeInvoice,
   undoPayment,
 } from "$lib/server/domain/invoices.js";
@@ -56,6 +58,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
     .select({
       inv: invoices,
       customerName: customers.name,
+      customerEmail: customers.email,
       projectName: projects.name,
     })
     .from(invoices)
@@ -116,6 +119,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
       action: auditLog.action,
       payload: auditLog.payload,
       actorName: users.name,
+      actorEmail: users.email,
     })
     .from(auditLog)
     .leftJoin(users, eq(users.id, auditLog.actorUserId))
@@ -127,8 +131,43 @@ export const load: PageServerLoad = async ({ params, url }) => {
     occurredAt: r.occurredAt.toISOString(),
     action: r.action as "create" | "update" | "delete",
     actorName: r.actorName ?? null,
+    // Fall back to the user's e-mail when the display name is unset, so a real
+    // actor never renders as "System" (which is reserved for system actions).
+    actorEmail: r.actorEmail ?? null,
     payload: (r.payload as Record<string, unknown> | null) ?? {},
   }));
+
+  // Versand (G3): latest invoice_versendet sent_mails row → the detail's
+  // "Versendet am … an {email}" fact + the failed/retry state + whether the
+  // send action relabels to "Erneut senden".
+  const [versandRow] = await db
+    .select({
+      sendAttempt: sentMails.sendAttempt,
+      to: sentMails.toDisplay,
+      status: sentMails.status,
+      sentAt: sentMails.sentAt,
+      queuedAt: sentMails.queuedAt,
+    })
+    .from(sentMails)
+    .where(
+      and(
+        eq(sentMails.template, "invoice_versendet"),
+        eq(sentMails.entityKind, "invoice"),
+        eq(sentMails.entityId, id),
+      ),
+    )
+    .orderBy(desc(sentMails.sendAttempt))
+    .limit(1);
+
+  const versand = versandRow
+    ? {
+        to: versandRow.to,
+        status: versandRow.status,
+        sendAttempt: versandRow.sendAttempt,
+        // 'sent' rows carry sent_at; a failed attempt only has queued_at.
+        at: (versandRow.sentAt ?? versandRow.queuedAt).toISOString(),
+      }
+    : null;
 
   const invoice: InvoiceDetail = {
     id: inv.id,
@@ -190,6 +229,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
     predecessor,
     successor,
     auditEntries,
+    versand,
+    customerEmail: row.customerEmail ?? null,
     today,
     verein,
     latestJob: latestJob
@@ -248,6 +289,25 @@ export const actions: Actions = {
       return fail(result.status, { action: "mark-paid", error: result.error });
     }
     throw redirect(303, `/app/rechnungen/${params.id}?paid=1`);
+  },
+
+  // Send the invoice to the customer by email (E-PR3). Guards + send_attempt
+  // + the actual dispatch live in sendInvoiceMail → the invoice.versendet bus
+  // handler. `resend=1` marks a deliberate re-send of an already-sent invoice.
+  "send-mail": async ({ params, request, locals }) => {
+    assertUuidOr404(params.id, "Rechnung nicht gefunden");
+    const actorUserId = locals.session?.user.id ?? null;
+    const formData = await request.formData();
+    const resend = formData.get("resend")?.toString() === "1";
+
+    const result = await sendInvoiceMail(params.id, { resend }, actorUserId);
+    if (!result.ok) {
+      return fail(result.status, { action: "send-mail", error: result.error });
+    }
+    throw redirect(
+      303,
+      `/app/rechnungen/${params.id}?sent=${resend ? "resend" : "1"}`,
+    );
   },
 
   // Same-day-only fat-finger recovery — deletes the linked income row and

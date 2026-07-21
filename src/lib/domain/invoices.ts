@@ -157,6 +157,8 @@ export interface InvoiceHistoryEntry {
   occurredAt: string;
   action: "create" | "update" | "delete";
   actorName: string | null;
+  /** Actor e-mail — fallback label when the display name is unset. */
+  actorEmail: string | null;
   payload: Record<string, unknown>;
 }
 

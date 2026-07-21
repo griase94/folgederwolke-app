@@ -78,6 +78,25 @@ const magicLinkProps = {
   expiresInMinutes: 15,
 };
 
+// InvoiceVersendetMail — the customer-facing "Rechnung versendet" mail. The PDF
+// rides along as an attachment, so there is NO download CTA and NO /app/* link.
+// The base fixture carries anrede + Fälligkeit + full bank data; variant tests
+// below override individual fields to exercise the conditional branches.
+const invoiceVersendetProps = {
+  ...WL_IDENTITY,
+  customerName: "Maria Muster",
+  anrede: "Liebe Maria",
+  invoiceNumber: "FDW-2026-006",
+  bezeichnung: "Kursgebühr Aquarell",
+  bruttoCents: 6000,
+  currency: "EUR",
+  rechnungsdatum: "2026-06-22",
+  faelligkeitsDatum: "2026-07-31",
+  iban: "DE21 7015 0000 0012 3456 78",
+  bic: "SSKMDEMMXXX",
+  empfaenger: "Folge der Wolke e.V.",
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -224,6 +243,110 @@ describe("MagicLink", () => {
 
     expect(text.length).toBeGreaterThan(50);
     expect(text).toContain("lea@example.com");
+    expect(text).toContain(VEREIN_NAME);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// InvoiceVersendetMail
+// ---------------------------------------------------------------------------
+
+describe("InvoiceVersendetMail", () => {
+  it("with anrede + Fälligkeit + bank data renders the full mail", async () => {
+    const { html } = await renderTemplate(
+      "InvoiceVersendetMail",
+      invoiceVersendetProps,
+    );
+
+    expect(html).toContain(VEREIN_NAME);
+    // Personalised greeting uses the verbatim anrede (never "Liebe:r Firmenname").
+    // The anrede may be formal Sie, so the intro is register-neutral ("die
+    // Rechnung", NOT "deine Rechnung") — no Sie/du collision.
+    expect(html).toContain("Liebe Maria,");
+    expect(html).toContain("anbei die Rechnung als PDF");
+    expect(html).not.toContain("anbei deine Rechnung");
+    // Invoice number (also the Verwendungszweck)
+    expect(html).toContain("FDW-2026-006");
+    // Fälligkeit row rendered when the date is set
+    expect(html).toContain("Fällig bis");
+    // Bank-transfer block gate satisfied (iban + bic + empfaenger + EUR); the
+    // IBAN renders in human-readable 4-char groups.
+    expect(html).toContain("IBAN");
+    expect(html).toContain("DE21 7015 0000 0012 3456 78");
+    // PDF is attached, not linked
+    expect(html).toContain("Deine Rechnung hängt als PDF an dieser E-Mail.");
+    // The synthesised "Liebe:r" salutation must never appear
+    expect(html).not.toContain("Liebe:r");
+    // No download CTA / no in-app link — the PDF is an attachment
+    expect(html).not.toContain("herunterladen");
+    expect(html).not.toContain("/app/");
+  });
+
+  it("without anrede falls back to a neutral Hallo! greeting", async () => {
+    const { html } = await renderTemplate("InvoiceVersendetMail", {
+      ...invoiceVersendetProps,
+      anrede: null,
+    });
+
+    expect(html).toContain("Hallo! Anbei deine Rechnung als PDF");
+    // No "Liebe…" salutation anywhere when anrede is null
+    expect(html).not.toContain("Liebe");
+  });
+
+  it("omits the Fälligkeit row when faelligkeitsDatum is null", async () => {
+    const { html } = await renderTemplate("InvoiceVersendetMail", {
+      ...invoiceVersendetProps,
+      faelligkeitsDatum: null,
+    });
+
+    expect(html).not.toContain("Fällig bis");
+    // Sanity: the rest of the mail still renders
+    expect(html).toContain("FDW-2026-006");
+  });
+
+  it("without bank data shows only the Überweisung hint", async () => {
+    const { html } = await renderTemplate("InvoiceVersendetMail", {
+      ...invoiceVersendetProps,
+      iban: undefined,
+      bic: undefined,
+      empfaenger: undefined,
+    });
+
+    // No bank table above, so the hint names the Verwendungszweck inline
+    // (not "oben") and does NOT reference a missing table.
+    expect(html).toContain("Bitte per Überweisung mit dem Verwendungszweck");
+    expect(html).not.toContain("Verwendungszweck oben");
+    // No bank-transfer table without complete bank data
+    expect(html).not.toContain("IBAN");
+  });
+
+  it("renders the Giro-QR as a CID <img> (not a data-URI) when qrPngCid is set", async () => {
+    const { html } = await renderTemplate("InvoiceVersendetMail", {
+      ...invoiceVersendetProps,
+      qrPngCid: "girocode-FDW-2026-006",
+    });
+    // CID reference — never a data-URI (mail clients strip those).
+    expect(html).toContain('src="cid:girocode-FDW-2026-006"');
+    expect(html).not.toContain("data:image");
+    // Giro-Code caption + scan instruction.
+    expect(html).toContain("Giro-Code");
+    expect(html).toContain("QR mit der Banking-App scannen");
+    // Image alt carries the payload essentials for image-blocking clients.
+    expect(html).toContain("SEPA-Überweisung");
+    // The generic Überweisung hint is replaced by the QR block.
+    expect(html).not.toContain(
+      "Einfach per Überweisung mit dem Verwendungszweck oben",
+    );
+  });
+
+  it("plain-text fallback is non-empty and has key German text", async () => {
+    const { text } = await renderTemplate(
+      "InvoiceVersendetMail",
+      invoiceVersendetProps,
+    );
+
+    expect(text.length).toBeGreaterThan(100);
+    expect(text).toContain("FDW-2026-006");
     expect(text).toContain(VEREIN_NAME);
   });
 });

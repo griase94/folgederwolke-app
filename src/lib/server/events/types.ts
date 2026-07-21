@@ -204,6 +204,45 @@ export type Events = {
     sha256: string;
     byteSize: number;
   };
+  /**
+   * An invoice was sent to the customer by email (E-PR3 Versand-Pfad). The
+   * single registered handler (a) downloads the canonical PDF via
+   * getFileStorage() and attaches it, (b) sends the invoice_versendet mail
+   * through sendMail (ADR-0005 idempotency on send_attempt), and (c) writes
+   * the Versand audit anchor for the Verlauf. Unlike the best-effort auslage
+   * mails, this handler RE-THROWS on failure so bus.emit() surfaces an
+   * AggregateError to the caller (sendInvoiceMail) which turns it into a
+   * user-visible "Versand fehlgeschlagen" retry state (§6 G3).
+   *
+   * send_attempt: 0 for the first send; incremented for a deliberate re-send
+   * or a retry after a failed attempt (computed by sendInvoiceMail before emit).
+   */
+  "invoice.versendet": {
+    invoiceId: string;
+    invoiceBusinessId: string;
+    actorUserId: string | null;
+    /** ADR-0005 UNIQUE(template, entity_kind, entity_id, send_attempt). */
+    sendAttempt: number;
+    /** Recipient email (the customer's current address). */
+    to: string;
+    /** files.id of the canonical PDF to attach. */
+    pdfFileId: string;
+    // ── mail props (resolved by sendInvoiceMail) ──
+    customerName: string;
+    /** Verbatim customers.anrede or null → neutral fallback in the template. */
+    anrede: string | null;
+    bezeichnung: string;
+    bruttoCents: number;
+    currency: string;
+    rechnungsdatum: string;
+    faelligkeitsDatum: string | null;
+    /** Verein bank identity for the transfer block (null when unconfigured). */
+    iban: string | null;
+    bic: string | null;
+    /** Recipient name for the transfer block = the Verein name. */
+    empfaenger: string;
+  };
+
   /** A new invoice supersedes an older one (correction). */
   "invoice.superseded": {
     invoiceId: string;
