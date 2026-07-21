@@ -45,6 +45,18 @@ export const kategorien = pgTable(
     anlageGemZeile: integer("anlage_gem_zeile"),
     /** Hidden from dropdowns but kept for legacy parity (referenced by old rows). */
     deactivated: boolean("deactivated").notNull().default(false),
+    /**
+     * Rechnungsfähig (Andy-Feedback 2026-07): whether this Kategorie may be
+     * chosen when issuing an outgoing Rechnung. Only INCOME Kategorien that
+     * represent an invoiceable Leistung are true (Honorar, Kuratierung,
+     * Sponsoring m. Gegenleistung, Workshop, Vermietung Technik, Dienstleistung,
+     * the Sonstige-WGB/Zweckbetrieb catch-alls). Donations, grants, member fees,
+     * interest, cash-desk revenue (Bar/Garderobe/Eintritt/Merch) are false — they
+     * are never invoiced. Expense Kategorien stay false. The invoice form filters
+     * its Kategorie list on this flag (server-side); id-stable so it survives the
+     * later name→id refactor (#115).
+     */
+    rechnungsfaehig: boolean("rechnungsfaehig").notNull().default(false),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

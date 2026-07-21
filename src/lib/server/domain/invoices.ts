@@ -287,6 +287,17 @@ export async function createInvoice(
       .where(eq(kategorien.id, input.kategorieId))
       .limit(1);
     if (kat) {
+      // Server-side eligibility gate (Verifier #154): the form only OFFERS
+      // rechnungsfähige Kategorien, but a hand-crafted POST could send a
+      // non-invoiceable id (donation/grant/interest → wrong sphere booking on
+      // mark-paid). Reject it here so the flag semantics are server-real.
+      if (!kat.rechnungsfaehig) {
+        return {
+          ok: false,
+          status: 422,
+          error: "Diese Kategorie ist für Rechnungen nicht vorgesehen.",
+        };
+      }
       kategorieNameSnapshot = kat.name;
       sphereSnapshot = kat.sphere;
     }
@@ -849,6 +860,18 @@ export async function editInvoice(
       .where(eq(kategorien.id, input.kategorieId))
       .limit(1);
     if (kat) {
+      // Server-side eligibility gate (Verifier #154) with an exception: the
+      // invoice's EXISTING Kategorie stays allowed even if no longer
+      // rechnungsfähig (parity with the edit-load's `or(id=current)`), so a
+      // legacy invoice can still be saved. Only SWITCHING to a non-invoiceable
+      // Kategorie is rejected.
+      if (!kat.rechnungsfaehig && input.kategorieId !== old.kategorieId) {
+        return {
+          ok: false,
+          status: 422,
+          error: "Diese Kategorie ist für Rechnungen nicht vorgesehen.",
+        };
+      }
       kategorieNameSnapshot = kat.name;
       sphereSnapshot = kat.sphere;
     }

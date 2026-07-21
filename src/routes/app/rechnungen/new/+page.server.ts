@@ -80,8 +80,15 @@ export const load: PageServerLoad = async ({ url }) => {
       db
         .select({ id: kategorien.id, name: kategorien.name })
         .from(kategorien)
+        // Only RECHNUNGSFÄHIGE income Kategorien appear in the invoice form
+        // (Andy-Feedback 2026-07): donations/grants/interest/cash-desk revenue
+        // are never invoiced. Server-side gate; no InvoiceForm change needed.
         .where(
-          and(eq(kategorien.kind, "income"), eq(kategorien.deactivated, false)),
+          and(
+            eq(kategorien.kind, "income"),
+            eq(kategorien.deactivated, false),
+            eq(kategorien.rechnungsfaehig, true),
+          ),
         )
         .orderBy(kategorien.sortOrder, kategorien.name),
       db

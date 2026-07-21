@@ -12,7 +12,7 @@
  */
 
 import { error, fail, redirect } from "@sveltejs/kit";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { customers } from "$lib/server/db/schema/customers.js";
@@ -102,8 +102,21 @@ export const load: PageServerLoad = async ({ params }) => {
     db
       .select({ id: kategorien.id, name: kategorien.name })
       .from(kategorien)
+      // Only rechnungsfähige income Kategorien for NEW selections (Andy-Feedback
+      // 2026-07), BUT always keep the invoice's CURRENT Kategorie in the list so
+      // editing a legacy invoice whose Kategorie is now non-invoiceable doesn't
+      // silently drop its selection.
       .where(
-        and(eq(kategorien.kind, "income"), eq(kategorien.deactivated, false)),
+        and(
+          eq(kategorien.kind, "income"),
+          eq(kategorien.deactivated, false),
+          inv.kategorieId
+            ? or(
+                eq(kategorien.rechnungsfaehig, true),
+                eq(kategorien.id, inv.kategorieId),
+              )
+            : eq(kategorien.rechnungsfaehig, true),
+        ),
       )
       .orderBy(kategorien.sortOrder, kategorien.name),
   ]);
