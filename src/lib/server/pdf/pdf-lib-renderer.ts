@@ -15,8 +15,9 @@ import type {
   InvoiceRenderInput,
   InvoiceRenderOutput,
 } from "./invoice.js";
-import { renderRechnungV2, formatDE } from "./templates/rechnung-v2/index.js";
+import { renderRechnungV2 } from "./templates/rechnung-v2/index.js";
 import { addressLines, addressOneLine } from "$lib/server/domain/address.js";
+import { leistungszeitraumFromDatum } from "$lib/domain/datum.js";
 
 export class PdfLibInvoiceRenderer implements InvoicePdfRenderer {
   async render(input: InvoiceRenderInput): Promise<InvoiceRenderOutput> {
@@ -40,13 +41,16 @@ export class PdfLibInvoiceRenderer implements InvoicePdfRenderer {
       },
       rechnungsnummer: input.invoiceNumber,
       rechnungsdatum: input.rechnungsdatum,
-      // § 14 Abs. 4 Nr. 6 UStG fallback when neither leistungszeitraum nor
-      // leistungsDatum is set on a legacy/snapshot input.
+      // Leistungszeitraum (§ 14 Abs. 4 Nr. 6 UStG) is always the compact month
+      // now — the form derives it from the mandatory Leistungsdatum. For a
+      // legacy/snapshot input missing the stored value, fall back to the month
+      // of the Leistungsdatum (never a long sentence — it must fit the head);
+      // "" if neither is present (the template omits the row defensively).
       leistungszeitraum:
         input.leistungszeitraum ??
         (input.leistungsDatum
-          ? formatDE(input.leistungsDatum)
-          : "Leistungsdatum entspricht Rechnungsdatum"),
+          ? leistungszeitraumFromDatum(input.leistungsDatum)
+          : ""),
       bezeichnung: input.bezeichnung,
       leistungsBeschreibung: input.leistungsBeschreibung ?? null,
       nettoCents: input.nettoCents,

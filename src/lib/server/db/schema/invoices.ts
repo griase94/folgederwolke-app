@@ -101,8 +101,9 @@ export const invoices = pgTable(
     leistungsBeschreibung: text("leistungs_beschreibung"),
     /**
      * Leistungszeitraum per § 14 Abs. 4 Nr. 6 UStG. Required on every invoice.
-     * Common values: "Februar 2026", "21.02.2026", or "Leistungsdatum entspricht
-     * Rechnungsdatum". DB enforces NOT NULL + length ≥ 3.
+     * Always the compact month now (Andy-Feedback 2026-07) — e.g. "Februar 2026",
+     * derived by the form from the mandatory Leistungsdatum. DB enforces NOT NULL
+     * + length ≥ 3.
      */
     leistungszeitraum: text("leistungszeitraum").notNull(),
 

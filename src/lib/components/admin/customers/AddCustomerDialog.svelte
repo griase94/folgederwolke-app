@@ -53,7 +53,7 @@
 			</div>
 			<div class="min-w-0">
 				<Dialog.Title class="text-lg font-bold tracking-tight text-ink-900">Kunde anlegen</Dialog.Title>
-				<Dialog.Description class="text-xs text-ink-500">Pflicht ist nur der Name.</Dialog.Description>
+				<Dialog.Description class="text-xs text-ink-500">Name und Adresse sind Pflicht.</Dialog.Description>
 			</div>
 			<Dialog.Close
 				class="ml-auto grid h-9 w-9 shrink-0 place-items-center self-start rounded-lg border border-border text-ink-500 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -87,7 +87,18 @@
 				};
 			}}
 		>
-			<div class="flex max-h-[70vh] flex-col gap-3.5 overflow-y-auto px-5 py-5 max-sm:max-h-[62vh]">
+			<!-- onfocusin + sm scroll-margin keep a clicked/tabbed field ABOVE the
+			     sticky Live-Preview at the modal bottom (Judge-#151): the native
+			     focus-scroll skips partially-visible fields, so we force a
+			     margin-aware scrollIntoView on every focus path. -->
+			<div
+				class="flex max-h-[70vh] flex-col gap-3.5 overflow-y-auto px-5 py-5 max-sm:max-h-[62vh] sm:[&_input]:scroll-mb-40 sm:[&_textarea]:scroll-mb-40"
+				onfocusin={(e) => {
+					const t = e.target;
+					if (t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA'))
+						t.scrollIntoView({ block: 'nearest' });
+				}}
+			>
 				<CustomerFormFields idPrefix="add-cust" {errors} bind:name />
 
 				{#if errors['_']}

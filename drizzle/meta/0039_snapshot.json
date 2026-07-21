@@ -1,6 +1,6 @@
 {
-  "id": "7f9fb91d-6f05-4259-b7de-fa248a4978a2",
-  "prevId": "9698f1fb-004e-49ec-a778-5b87c3b02143",
+  "id": "9de89bef-4a43-46fa-965b-c0ca7764deda",
+  "prevId": "7f9fb91d-6f05-4259-b7de-fa248a4978a2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -646,6 +646,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "adresszusatz": {
+          "name": "adresszusatz",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "strasse": {
           "name": "strasse",
           "type": "text",
@@ -663,6 +669,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "land": {
+          "name": "land",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'Deutschland'"
         },
         "address_block": {
           "name": "address_block",

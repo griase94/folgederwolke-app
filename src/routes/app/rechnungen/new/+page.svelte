@@ -26,7 +26,11 @@
 		kategorieId: values['kategorieId'] ?? '',
 		projectId: values['projectId'] ?? data.prefillProjectId ?? '',
 		rechnungsdatum: values['rechnungsdatum'] ?? data.today,
-		leistungsDatum: values['leistungsDatum'] ?? '',
+		// Leistungsdatum is mandatory (Andy-Feedback 2026-07) — default it to
+		// today so the field is practically never empty; the user overrides it
+		// when the service happened in another month. The form auto-derives the
+		// Leistungszeitraum month from it.
+		leistungsDatum: values['leistungsDatum'] ?? data.today,
 		faelligkeitsDatum: values['faelligkeitsDatum'] ?? '',
 		leistungszeitraum: values['leistungszeitraum'] ?? '',
 		bezeichnung: values['bezeichnung'] ?? '',
