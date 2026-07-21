@@ -30,6 +30,7 @@ import postgres from "postgres";
 import { getDb } from "$lib/server/db/index.js";
 import { runInvoiceJob, sendInvoiceMail } from "$lib/server/domain/invoices.js";
 import { registerHandlers } from "$lib/server/events/index.js";
+import { getLastNoOpMail } from "$lib/server/mail/no-op.js";
 
 registerHandlers();
 
@@ -169,6 +170,26 @@ describe("@aurora-impl-e3 sendInvoiceMail — dispatch + idempotency", () => {
     `)) as unknown as Row<{ payload: { kind: string; to: string } }>;
     expect(audit.length).toBe(1);
     expect(audit[0]!.payload.to).toBe(customerEmail);
+
+    // The wire mail carries BOTH the canonical PDF and the Giro-QR image as a
+    // CID inline attachment (verein.iban/bic/empfaenger are configured in the
+    // test env, so the bank-block gate + QR fire). The HTML references it.
+    const mail = getLastNoOpMail();
+    expect(mail).not.toBeNull();
+    const cid = `girocode-${BUSINESS_ID}`;
+    const pdf = mail!.attachments?.find(
+      (a) => a.contentType === "application/pdf",
+    );
+    const qr = mail!.attachments?.find((a) => a.cid === cid);
+    expect(pdf?.filename).toBe(`${BUSINESS_ID}.pdf`);
+    expect(qr).toBeDefined();
+    expect(qr!.contentType).toBe("image/png");
+    expect(qr!.content.byteLength).toBeGreaterThan(0);
+    // PNG magic bytes — it's a real image, not a stub.
+    expect(Array.from(qr!.content.subarray(0, 4))).toEqual([
+      0x89, 0x50, 0x4e, 0x47,
+    ]);
+    expect(mail!.html).toContain(`cid:${cid}`);
   });
 
   it("re-send WITHOUT confirm is an idempotent no-op (no second row)", async () => {

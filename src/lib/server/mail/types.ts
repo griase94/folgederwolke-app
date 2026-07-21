@@ -25,6 +25,13 @@ export interface MailAttachment {
   filename: string;
   content: Uint8Array;
   contentType: string;
+  /**
+   * Content-ID for an INLINE attachment referenced from the HTML via
+   * `<img src="cid:...">` (e.g. the Giro-QR image). When set, the provider
+   * marks the part inline; the value must match the `cid:` used in the body,
+   * WITHOUT the angle brackets. Omit for regular file attachments (the PDF).
+   */
+  cid?: string;
 }
 
 export interface MailMessage {
@@ -144,10 +151,10 @@ export interface AufwandsspendenBestaetigungProps {
  * The canonical PDF rides along as a provider-layer attachment (E3a) — there
  * is no download CTA and no `/app/*` link in the customer-facing mail.
  *
- * The Giro-QR *image* is deferred to the QR-lib PR; this template renders the
- * bank-transfer block + Überweisung hint (the plate's no-image payment state)
- * so the mail is a real, sendable email today. iban/bic/empfaenger drive the
- * bank-detail table.
+ * The bank-transfer block (iban/bic/empfaenger) is accompanied by the
+ * server-rendered EPC-069 Giro-QR image when `qrPngCid` is set — embedded as a
+ * CID inline attachment (never a data-URI, which many mail clients strip).
+ * When bank data is incomplete the block degrades to the Überweisung hint.
  */
 export interface InvoiceVersendetMailProps {
   customerName: string;
@@ -174,6 +181,12 @@ export interface InvoiceVersendetMailProps {
   bic?: string;
   /** Recipient name for the bank-transfer block — the Verein name. */
   empfaenger?: string;
+  /**
+   * Content-ID of the embedded EPC-069 Giro-QR PNG. Set by the send handler
+   * when iban + bic + empfaenger are present and currency is EUR; the template
+   * renders `<img src="cid:{qrPngCid}">`. Undefined → no QR image (hint only).
+   */
+  qrPngCid?: string;
 }
 
 export interface ApprovalMailProps {

@@ -14,6 +14,8 @@
 import { bus } from "./bus.js";
 import type { EventPayload } from "./types.js";
 import { sendMail } from "$lib/server/mail/index.js";
+import { renderEpc069QrPng } from "$lib/server/mail/giro-qr.js";
+import type { MailAttachment } from "$lib/server/mail/types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { files } from "$lib/server/db/schema/files.js";
@@ -439,6 +441,54 @@ export function registerHandlers(): void {
       const storage = await getFileStorage();
       const pdfBytes = await storage.download(file.storageKey);
 
+      const attachments: MailAttachment[] = [
+        {
+          filename: `${payload.invoiceBusinessId}.pdf`,
+          content: pdfBytes,
+          contentType: "application/pdf",
+        },
+      ];
+
+      // 1b. EPC-069 Giro-QR image — only when the bank-transfer block is
+      // complete (iban + bic + empfaenger + EUR), i.e. the same gate as the
+      // template's bank table. Embedded as a CID inline attachment referenced
+      // by <img src="cid:girocode-<businessId>"> (never a data-URI). The QR
+      // renderer is decode-roundtrip-tested (Andy's reliability criterion).
+      let qrPngCid: string | undefined;
+      if (
+        payload.iban &&
+        payload.bic &&
+        payload.empfaenger &&
+        payload.currency === "EUR"
+      ) {
+        // The QR must never take the whole invoice mail down: a render
+        // failure (e.g. degenerate Stammdaten like a whitespace-only BIC
+        // slipping past the truthy gate) degrades to the bank table, which
+        // carries all the same data — the template's {#if qrPngCid} handles
+        // the absence.
+        try {
+          const qrPng = await renderEpc069QrPng({
+            bic: payload.bic,
+            name: payload.empfaenger,
+            iban: payload.iban,
+            amountCents: payload.bruttoCents,
+            remittance: payload.invoiceBusinessId,
+          });
+          qrPngCid = `girocode-${payload.invoiceBusinessId}`;
+          attachments.push({
+            filename: `girocode-${payload.invoiceBusinessId}.png`,
+            content: qrPng,
+            contentType: "image/png",
+            cid: qrPngCid,
+          });
+        } catch (err) {
+          console.error(
+            `[invoice.versendet] Giro-QR render failed for ${payload.invoiceBusinessId} — sending without QR:`,
+            err,
+          );
+        }
+      }
+
       // 2. Send (idempotent on send_attempt).
       const res = await sendMail({
         template: "invoice_versendet",
@@ -458,14 +508,9 @@ export function registerHandlers(): void {
           iban: payload.iban ?? undefined,
           bic: payload.bic ?? undefined,
           empfaenger: payload.empfaenger,
+          qrPngCid,
         },
-        attachments: [
-          {
-            filename: `${payload.invoiceBusinessId}.pdf`,
-            content: pdfBytes,
-            contentType: "application/pdf",
-          },
-        ],
+        attachments,
       });
 
       // 3. Audit anchor — only for a genuine send (a deduped no-op already has

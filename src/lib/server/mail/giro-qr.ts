@@ -37,6 +37,8 @@
  * Spec: https://www.europeanpaymentscouncil.eu/document-library/guidance-documents/quick-response-code-guidelines-enable-data-capture-initiation
  */
 
+import QRCode from "qrcode";
+
 export interface Epc069Input {
   /** BIC — REQUIRED for EPC 069 v001. Non-empty (after trim). */
   bic: string;
@@ -48,6 +50,15 @@ export interface Epc069Input {
   amountCents: number;
   /** Verwendungszweck — unstructured remittance, max 140 chars (not enforced here). */
   remittance: string;
+  /**
+   * Payload version (line 2). Default "001" (BIC-required) preserves the
+   * existing BeitragsReminder `<pre>` behaviour. The invoice Giro-QR *image*
+   * renderer passes "002" — the EPC-recommended standard for new
+   * implementations (UTF-8, BIC optional, forward-compatible with v001
+   * readers). We always supply a non-empty BIC (gated), so a v002 payload is
+   * maximally scannable either way.
+   */
+  version?: "001" | "002";
 }
 
 /**
@@ -60,7 +71,7 @@ export interface Epc069Input {
  * requires a non-empty BIC.
  */
 export function buildEpc069Payload(input: Epc069Input): string {
-  const { bic, name, iban, amountCents, remittance } = input;
+  const { bic, name, iban, amountCents, remittance, version = "001" } = input;
 
   if (!Number.isInteger(amountCents)) {
     throw new Error(
@@ -87,8 +98,8 @@ export function buildEpc069Payload(input: Epc069Input): string {
 
   const lines = [
     "BCD",
-    "001",
-    "1",
+    version,
+    "1", // Character set 1 = UTF-8
     "SCT",
     bicTrimmed,
     name,
@@ -110,4 +121,44 @@ function formatEuro(cents: number): string {
   const euros = Math.trunc(cents / 100);
   const remainder = cents % 100;
   return `${euros}.${remainder.toString().padStart(2, "0")}`;
+}
+
+/**
+ * Render the EPC-069 "Girocode" for a SEPA credit transfer as a PNG.
+ *
+ * Reliability is the acceptance criterion (Andy). Concretely:
+ *   - error correction level **M (15 %)** — mandated by EPC069-12.
+ *   - the payload is encoded as an explicit UTF-8 **byte** segment (charset
+ *     line "1"), so umlauts in the Empfänger / Verwendungszweck survive
+ *     byte-exact (proven by the decode-roundtrip test), rather than being
+ *     silently down-coded to Latin-1 by the library's string path.
+ *   - a >=4-module quiet zone (`margin`) as the QR spec requires for scanners.
+ *   - brand ink #1a1126 on pure white (~18:1 — effectively black to a
+ *     scanner; the decode-roundtrip test proves it reads), no gradients or
+ *     other colour tricks that could break scanning.
+ *   - version "002" (EPC-recommended for new implementations); BIC is always
+ *     supplied (the caller gates on it), so the code is maximally readable.
+ *
+ * Returns raw PNG bytes for embedding as a CID mail attachment (never a
+ * data-URI — many mail clients strip those).
+ */
+export async function renderEpc069QrPng(
+  input: Epc069Input,
+  opts: { scale?: number; margin?: number } = {},
+): Promise<Uint8Array> {
+  const payload = buildEpc069Payload({
+    ...input,
+    version: input.version ?? "002",
+  });
+  const png = await QRCode.toBuffer(
+    [{ data: Buffer.from(payload, "utf8"), mode: "byte" }],
+    {
+      errorCorrectionLevel: "M",
+      type: "png",
+      margin: opts.margin ?? 4,
+      scale: opts.scale ?? 6,
+      color: { dark: "#1a1126ff", light: "#ffffffff" },
+    },
+  );
+  return new Uint8Array(png);
 }
