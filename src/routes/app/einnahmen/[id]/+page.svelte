@@ -64,7 +64,11 @@
 
 {#snippet facts()}
   <FactsList>
-    <KeyValue label="Geldeingang" value={fmtDate(detail.geldEingangDatum)} tabular />
+    <KeyValue
+      label="Geldeingang"
+      value={fmtDate(detail.geldEingangDatum ?? detail.relevanzDatum)}
+      tabular
+    />
     <KeyValue
       label="Buchungsjahr"
       value={String(detail.yearOfBuchung ?? "—")}

@@ -67,16 +67,14 @@
   );
 
   const isErstattet = $derived(detail.erstattetAm !== null);
+  // Ausgabe workflow states are NEUTRAL in the detail head (ANDY-LENS §4: green
+  // is only the fresh-confirmed moment, never a pending „Zu prüfen").
   const statusChip = $derived<DetailStatusChip>(
     data.isFestgeschrieben
       ? { label: "Festgeschrieben", tone: "neutral", icon: "lock" }
       : isErstattet
         ? { label: "Erstattet", tone: "neutral", icon: "refresh" }
-        : {
-            label: statusPresentation(detail.status ?? "").label,
-            tone: "ok",
-            icon: "check",
-          },
+        : { label: statusPresentation(detail.status ?? "").label, tone: "neutral" },
   );
   const headMeta = $derived(
     isErstattet
@@ -110,7 +108,11 @@
 
 {#snippet facts()}
   <FactsList>
-    <KeyValue label="Datum" value={fmtDate(detail.rechnungsdatum)} tabular />
+    <KeyValue
+      label="Datum"
+      value={fmtDate(detail.rechnungsdatum ?? detail.relevanzDatum)}
+      tabular
+    />
     <KeyValue
       label="Buchungsjahr"
       value={String(detail.yearOfBuchung ?? "—")}

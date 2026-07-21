@@ -103,7 +103,7 @@
 >
 	<div class="h-[3px] bg-gradient-brand" aria-hidden="true"></div>
 	<div class="p-5 sm:p-6">
-		<div class="flex items-start gap-4">
+		<div class="flex flex-wrap items-start gap-x-4 gap-y-2">
 			<!-- type-tinted icon tile -->
 			<div
 				class="grid size-12 shrink-0 place-items-center rounded-xl"
@@ -141,9 +141,11 @@
 				</h1>
 			</div>
 
-			<div class="shrink-0 text-right">
+			<div
+				class="shrink-0 text-right max-sm:order-3 max-sm:basis-full max-sm:pl-16 max-sm:text-left"
+			>
 				<div
-					class="text-[34px] font-extrabold leading-none tracking-[-0.02em] tabular-nums sm:text-[36px]"
+					class="text-[30px] font-extrabold leading-none tracking-[-0.02em] tabular-nums sm:text-[36px]"
 					style="color: var({p.typeVar});"
 					data-slot="detail-amount"
 				>
