@@ -1615,7 +1615,7 @@ export async function markExpenseAsPaid(
   if (!row) return { ok: false, error: "Auslage nicht gefunden" };
 
   // ADR-0006 Nachtrag (payment carve-out): a festgeschriebene Auslage may still
-  // be marked paid — the DB trigger (migration 0038) permits ONLY the payment
+  // be marked paid — the DB trigger (migration 0040) permits ONLY the payment
   // columns {erstattet_am, zahlungsart_id, status, updated_at}. We deliberately
   // do NOT pre-gate on festschreibung here: the trigger is the sole, precise
   // enforcer. The one blocked case is a Verein-direct row with NULL abfluss_datum
@@ -1647,7 +1647,7 @@ export async function markExpenseAsPaid(
       RETURNING id
     `)) as unknown as { id: string }[];
   } catch (err) {
-    // Post-carve-out (0038) the ONLY way this UPDATE trips the trigger is a
+    // Post-carve-out (0040) the ONLY way this UPDATE trips the trigger is a
     // Verein-direct row with NULL abfluss_datum in a festgeschriebenes Jahr:
     // COALESCE would set abfluss = payment date and move the Buchungsjahr, which
     // the trigger rejects (23514). Honest refusal instead of an opaque 500.

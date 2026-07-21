@@ -86,7 +86,7 @@ create) vs supersedeInvoice (re-reads at supersede).
 
 ## Nachtrag — Post-close carve-outs for payment + certificate metadata (2026-07-21)
 
-Migration `0038_expense-paid-carveout.sql` extends the same principle as the
+Migration `0040_expense-paid-carveout.sql` extends the same principle as the
 invoice payment carve-out (0025) to two more non-booking metadata sets. The
 festschreibung row-level UPDATE trigger (`assert_not_festgeschrieben_fn`) now
 carries, on a festgeschriebene row, two additional column-set whitelists. The

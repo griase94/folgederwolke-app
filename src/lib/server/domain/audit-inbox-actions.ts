@@ -836,7 +836,7 @@ export async function markExpenseErstattet(
     return { ok: true, alreadyErstattet: true };
   }
 
-  // NO festschreibung pre-gate (ADR-0006 Nachtrag / migration 0038) — mirrors
+  // NO festschreibung pre-gate (ADR-0006 Nachtrag / migration 0040) — mirrors
   // markExpenseAsPaid (transactions.ts): the payment carve-out lets a
   // festgeschriebene Auslage be reimbursed. The UPDATE below writes only the
   // carve-out column set {erstattet_am, zahlungsart_id, status, updated_at} and
@@ -872,7 +872,7 @@ export async function markExpenseErstattet(
       .where(and(eq(expenses.id, expenseId), isNull(expenses.erstattetAm)))
       .returning({ id: expenses.id });
   } catch (err) {
-    // Post-carve-out (0038) the ONLY 23514 here is a Verein-direct NULL-abfluss
+    // Post-carve-out (0040) the ONLY 23514 here is a Verein-direct NULL-abfluss
     // row in a festgeschriebenes Jahr: COALESCE would set abfluss = chosenDate
     // and move the Buchungsjahr, which the trigger rejects. Degrade to a clean
     // per-row {ok:false,status:409} with an honest message so a single such row

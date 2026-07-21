@@ -122,7 +122,7 @@ describe.skipIf(!dbConfigured)(
       expect(row?.bescheinigungNr).toBe(first.bescheinigungNr);
     });
 
-    // ADR-0006 Nachtrag (certificate carve-out, migration 0038): a
+    // ADR-0006 Nachtrag (certificate carve-out, migration 0040): a
     // Zuwendungsbestätigung may be issued even for a festgeschriebene Spende —
     // allocateBescheinigung no longer 409s, and the DB trigger permits exactly
     // the certificate columns the UPDATE writes. Booking values stay locked.

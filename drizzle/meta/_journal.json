@@ -281,6 +281,13 @@
       "when": 1784629668677,
       "tag": "0039_customers_adresszusatz_land",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1784636249966,
+      "tag": "0040_expense-paid-carveout",
+      "breakpoints": true
     }
   ]
 }

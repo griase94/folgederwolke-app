@@ -1,5 +1,5 @@
 /**
- * ADR-0006 Nachtrag — the Festschreibung trigger carve-outs (migration 0038),
+ * ADR-0006 Nachtrag — the Festschreibung trigger carve-outs (migration 0040),
  * tested at the SQL layer (raw UPDATEs as app_runtime, the role the trigger
  * enforces). Seeding runs via the superuser admin connection (bypasses the
  * trigger) so we can plant festgeschriebene rows.
@@ -46,7 +46,7 @@ async function tryUpdate(query: ReturnType<typeof sql>): Promise<{
 }
 
 describe.skipIf(!dbConfigured)(
-  "Festschreibung carve-out trigger (0038)",
+  "Festschreibung carve-out trigger (0040)",
   () => {
     let admin: ReturnType<typeof postgres>;
     const EXP = "a0000000-0000-4000-8000-000000000e01";

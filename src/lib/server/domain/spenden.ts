@@ -647,7 +647,7 @@ export async function allocateBescheinigung(
     };
   }
   // ADR-0006 Nachtrag (certificate carve-out): a Zuwendungsbestätigung may be
-  // issued even for a festgeschriebene Spende — the DB trigger (migration 0038)
+  // issued even for a festgeschriebene Spende — the DB trigger (migration 0040)
   // permits ONLY the certificate columns {bescheinigung_nr,
   // bescheinigung_ausgestellt_am, bescheinigung_ausgestellt_von_user_id,
   // bescheid_typ, updated_at}, exactly the set the UPDATE below writes. All

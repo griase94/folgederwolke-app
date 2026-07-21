@@ -869,7 +869,7 @@ describe("markExpenseErstattet — idempotency", () => {
     expect(result.status).toBe(422);
   });
 
-  // ADR-0006 Nachtrag (0038 payment carve-out): markExpenseErstattet no longer
+  // ADR-0006 Nachtrag (0040 payment carve-out): markExpenseErstattet no longer
   // pre-gates on festschreibung — the DB trigger is the sole enforcer. A
   // member/extern row (existing abfluss_datum) is reimbursed freely even in a
   // closed year; only a Verein-direct NULL-abfluss row is rejected by the
