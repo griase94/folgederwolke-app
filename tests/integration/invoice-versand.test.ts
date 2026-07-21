@@ -191,6 +191,27 @@ describe("@aurora-impl-e3 sendInvoiceMail — dispatch + idempotency", () => {
     expect(rows.map((r) => r.send_attempt)).toEqual([0, 1]);
   });
 
+  it("retry after a FAILED attempt bumps send_attempt (provider-fail recovery)", async () => {
+    // Simulate a provider outage: the last attempt's sent_mails row is 'failed'
+    // (this is exactly the state sendMail leaves behind when the SMTP provider
+    // throws). A subsequent send must NOT dedup — it must bump to the next
+    // attempt and write a fresh row (§6 G3 "Erneut versuchen").
+    const a = admin();
+    await a`
+      INSERT INTO sent_mails (template, entity_kind, entity_id, send_attempt, to_canonical, to_display, subject, status, failed_at)
+      VALUES ('invoice_versendet', 'invoice', ${invoiceId}::uuid, 2, ${customerEmail}, ${customerEmail}, 'x', 'failed', now())
+    `;
+    const res = await sendInvoiceMail(invoiceId, { resend: false }, null);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.deduped).toBe(false);
+      expect(res.sendAttempt).toBe(3); // latest was attempt 2 (failed) → +1
+    }
+    const rows = await sentMailCount();
+    expect(rows.map((r) => r.send_attempt)).toEqual([0, 1, 2, 3]);
+    expect(rows.find((r) => r.send_attempt === 3)?.status).toBe("sent");
+  });
+
   it("gate: an invoice without a PDF cannot be sent (409)", async () => {
     const db = getDb();
     const customers = (await db.execute(

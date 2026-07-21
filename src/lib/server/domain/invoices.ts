@@ -127,8 +127,11 @@ export const createInvoiceSchema = z
     // E-PR3: Kategorie is mandatory. A Rechnung is revenue, so it must carry a
     // real income Kategorie — this is what lets mark-paid book the matching
     // income row without guessing a sphere. Empty/absent → clear German error.
+    // Zod v4: the unified `error` param covers both the missing-key (required)
+    // and wrong-type cases — a hardened German message either way (never
+    // "expected string, received undefined").
     kategorieId: z
-      .string()
+      .string({ error: "Bitte eine Kategorie für die Rechnung wählen" })
       .uuid("Bitte eine Kategorie für die Rechnung wählen"),
     rechnungsdatum: z
       .string()
@@ -1535,8 +1538,13 @@ export async function sendInvoiceMail(
     };
   }
 
-  // Compute send_attempt from prior invoice_versendet rows for this invoice.
+  // NB: no Festschreibung gate here — sending is DELIBERATELY allowed on a
+  // festgeschriebene Rechnung. Versand writes only a sent_mails row + an audit
+  // anchor; it mutates no booking field (bezahlt_am, kategorie, betrag, …), so
+  // ADR-0006 immutability is not touched. Re-sending a closed-year invoice is a
+  // legitimate operation (e.g. the customer lost the mail).
   const [latest] = await db
+    // Compute send_attempt from prior invoice_versendet rows for this invoice.
     .select({ sendAttempt: sentMails.sendAttempt, status: sentMails.status })
     .from(sentMails)
     .where(
@@ -1588,17 +1596,26 @@ export async function sendInvoiceMail(
       empfaenger: bank.empfaenger,
     });
   } catch (err) {
-    // The bus handler re-throws on a send failure (AggregateError). The
-    // sent_mails row for this attempt is already marked 'failed' by sendMail,
-    // so a subsequent retry bumps to the next attempt.
+    // The bus handler re-throws on failure (AggregateError). The sent_mails row
+    // for this attempt is already marked 'failed' by sendMail, so a subsequent
+    // retry bumps to the next attempt. Distinguish a PDF/storage load failure
+    // (the attachment couldn't be fetched) from a genuine delivery failure so
+    // the UI doesn't mislabel a blob outage as "nicht zugestellt".
     console.error(
       `[invoice.sendInvoiceMail] send failed for ${inv.businessId}:`,
       err,
     );
+    const inner = err instanceof AggregateError ? err.errors : [err];
+    const msgs = inner
+      .map((e) => (e instanceof Error ? e.message : String(e)))
+      .join(" | ");
+    const isPdfLoadFailure = /PDF|storage|download|not found/i.test(msgs);
     return {
       ok: false,
       status: 502,
-      error: `Die Mail an ${to} konnte nicht zugestellt werden`,
+      error: isPdfLoadFailure
+        ? "Die Rechnungs-PDF konnte nicht geladen werden — bitte das PDF neu erzeugen und dann erneut senden."
+        : `Die Mail an ${to} konnte nicht zugestellt werden`,
     };
   }
 

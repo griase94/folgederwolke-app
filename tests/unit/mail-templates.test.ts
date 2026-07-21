@@ -249,9 +249,13 @@ describe("InvoiceVersendetMail — brand strip + content + Versand (E-PR3)", () 
       "InvoiceVersendetMail",
       propsWithIban,
     );
-    // Greeting is the verbatim anrede — never "Liebe:r {Firmenname}".
+    // Greeting is the verbatim anrede — never "Liebe:r {Firmenname}". The intro
+    // is register-neutral ("die Rechnung", not "deine") so a formal-Sie anrede
+    // doesn't collide with a du-form body.
     expect(html).toContain("Liebe Frau Mustermann");
     expect(html).not.toContain("Liebe:r");
+    expect(html).toContain("anbei die Rechnung als PDF");
+    expect(html).not.toContain("anbei deine Rechnung");
     expect(html).toContain("RE-2026-007");
     expect(html).toContain("1.190,00");
     expect(html).toContain("15.05.2026");
@@ -267,8 +271,10 @@ describe("InvoiceVersendetMail — brand strip + content + Versand (E-PR3)", () 
       "InvoiceVersendetMail",
       propsWithIban,
     );
-    // Bank details present …
-    expect(html).toContain("DE43830654089999999999");
+    // Bank details present — IBAN in human-readable 4-char groups (the raw
+    // unspaced form must NOT appear).
+    expect(html).toContain("DE43 8306 5408 9999 9999 99");
+    expect(html).not.toContain("DE43830654089999999999");
     expect(html).toContain("SSKMDEMMXXX");
     // Verwendungszweck = invoice number
     expect(html).toContain("RE-2026-007");

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { page } from '$app/state';
+	import { afterNavigate, replaceState } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import PageShell from '$lib/components/layout/PageShell.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -14,18 +14,29 @@
 
 	let { data }: { data: PageData } = $props();
 
-	onMount(() => {
-		// Flash after the per-row inline mark-paid POST + redirect. Deferred to
-		// the next macrotask: on an SSR direct navigation the page mounts before
-		// the layout's <Toaster> subscribes, so a synchronous toast() is dropped.
-		// setTimeout(0) fires after the mount cycle, once the Toaster listens.
-		setTimeout(() => {
-			if (page.url.searchParams.get('paid') === '1') {
-				toast.success('Als bezahlt markiert');
-			} else if (page.url.searchParams.get('undone') === '1') {
-				toast.info('Zahlung zurückgenommen');
-			}
-		}, 0);
+	// Flash after the per-row inline mark-paid / undo POST + redirect. afterNavigate
+	// (not onMount) so it fires on the client-nav path too; strip the flash param
+	// via shallow replaceState so a reload can't re-fire it (see the detail page
+	// for the full rationale — this was a latent double-flash bug).
+	afterNavigate(() => {
+		const params = page.url.searchParams;
+		let message: string | null = null;
+		let kind: 'success' | 'info' = 'success';
+		if (params.get('paid') === '1') message = 'Als bezahlt markiert';
+		else if (params.get('undone') === '1') {
+			message = 'Zahlung zurückgenommen';
+			kind = 'info';
+		}
+		if (!message) return;
+
+		if (kind === 'info') toast.info(message);
+		else toast.success(message);
+
+		const url = new URL(page.url);
+		url.searchParams.delete('paid');
+		url.searchParams.delete('undone');
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- same-page shallow strip of a flash query param
+		replaceState(url, page.state);
 	});
 
 	let searchQuery = $state('');

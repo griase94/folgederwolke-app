@@ -513,7 +513,7 @@
 			<div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
 				<div>
 					<label for="kategorieId" class="mb-1 block text-[13px] font-semibold text-ink-700"
-						>Kategorie</label
+						>Kategorie <span class="text-primary-text">*</span></label
 					>
 					<select
 						id="kategorieId"

@@ -259,15 +259,20 @@ describe("InvoiceVersendetMail", () => {
     );
 
     expect(html).toContain(VEREIN_NAME);
-    // Personalised greeting uses the verbatim anrede (never "Liebe:r Firmenname")
+    // Personalised greeting uses the verbatim anrede (never "Liebe:r Firmenname").
+    // The anrede may be formal Sie, so the intro is register-neutral ("die
+    // Rechnung", NOT "deine Rechnung") — no Sie/du collision.
     expect(html).toContain("Liebe Maria,");
-    expect(html).toContain("anbei deine Rechnung als PDF");
+    expect(html).toContain("anbei die Rechnung als PDF");
+    expect(html).not.toContain("anbei deine Rechnung");
     // Invoice number (also the Verwendungszweck)
     expect(html).toContain("FDW-2026-006");
     // Fälligkeit row rendered when the date is set
     expect(html).toContain("Fällig bis");
-    // Bank-transfer block gate satisfied (iban + bic + empfaenger + EUR)
+    // Bank-transfer block gate satisfied (iban + bic + empfaenger + EUR); the
+    // IBAN renders in human-readable 4-char groups.
     expect(html).toContain("IBAN");
+    expect(html).toContain("DE21 7015 0000 0012 3456 78");
     // PDF is attached, not linked
     expect(html).toContain("Deine Rechnung hängt als PDF an dieser E-Mail.");
     // The synthesised "Liebe:r" salutation must never appear
@@ -307,7 +312,10 @@ describe("InvoiceVersendetMail", () => {
       empfaenger: undefined,
     });
 
-    expect(html).toContain("Einfach per Überweisung");
+    // No bank table above, so the hint names the Verwendungszweck inline
+    // (not "oben") and does NOT reference a missing table.
+    expect(html).toContain("Bitte per Überweisung mit dem Verwendungszweck");
+    expect(html).not.toContain("Verwendungszweck oben");
     // No bank-transfer table without complete bank data
     expect(html).not.toContain("IBAN");
   });

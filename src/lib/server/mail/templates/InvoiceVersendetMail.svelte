@@ -40,6 +40,14 @@
 	const datumFmt = $derived(fmtDate(rechnungsdatum));
 	const faelligFmt = $derived(faelligkeitsDatum ? fmtDate(faelligkeitsDatum) : null);
 
+	// IBAN in human-readable 4-char groups (DE21 7015 0000 0012 3456 78) —
+	// strip any existing spaces first so a pre-grouped or raw IBAN both work.
+	function formatIban(raw: string | undefined): string {
+		if (!raw) return '';
+		return raw.replace(/\s+/g, '').replace(/(.{4})/g, '$1 ').trim();
+	}
+	const ibanFmt = $derived(formatIban(iban));
+
 	// Personalised greeting: verbatim customers.anrede ("Liebe Maria") when set,
 	// neutral "Hallo!" otherwise. We NEVER synthesise "Liebe:r {Firmenname}"
 	// (mail-invoice.md §1.3) — customerName is kept only for the props contract.
@@ -101,8 +109,11 @@
 									Rechnung {invoiceNumber}
 								</h1>
 
-								<!-- 3. Greeting + one-sentence intro -->
-								<p style="margin:0 0 20px 0;color:#3a3050;">{#if hasAnrede}{anrede}, anbei deine Rechnung als PDF — hier die Eckdaten auf einen Blick:{:else}Hallo! Anbei deine Rechnung als PDF — hier die Eckdaten auf einen Blick:{/if}</p>
+				<!-- 3. Greeting + one-sentence intro. The anrede is verbatim from the
+				     Kunde, which may be formal Sie ("Sehr geehrte Damen und Herren") —
+				     so the shared intro stays register-neutral ("die Rechnung", not
+				     "deine"). Only the "Hallo!" fallback (our own voice) keeps du-form. -->
+								<p style="margin:0 0 20px 0;color:#3a3050;">{#if hasAnrede}{anrede}, anbei die Rechnung als PDF — hier die Eckdaten auf einen Blick:{:else}Hallo! Anbei deine Rechnung als PDF — hier die Eckdaten auf einen Blick:{/if}</p>
 
 								<!-- 4. Detail card -->
 								<table
@@ -266,7 +277,7 @@
 																>
 																<td
 																	style="padding:5px 0;color:#1a1126;text-align:right;vertical-align:top;font-family:'SFMono-Regular',Menlo,Consolas,monospace;white-space:nowrap;font-variant-numeric:tabular-nums;"
-																	>{iban}</td
+																	>{ibanFmt}</td
 																>
 															</tr>
 															<tr>
@@ -302,10 +313,7 @@
 														</tbody>
 													</table>
 												{/if}
-												<p style="margin:0;font-size:13px;color:#3a3050;line-height:1.5;">
-													Einfach per Überweisung mit dem Verwendungszweck oben — so ordnen wir deine
-													Zahlung sofort zu.
-												</p>
+												<p style="margin:0;font-size:13px;color:#3a3050;line-height:1.5;">{#if showBankBlock}Einfach per Überweisung mit dem Verwendungszweck oben — so ordnen wir deine Zahlung sofort zu.{:else}Bitte per Überweisung mit dem Verwendungszweck {invoiceNumber} — so ordnen wir deine Zahlung sofort zu.{/if}</p>
 											</td>
 										</tr>
 									</tbody>

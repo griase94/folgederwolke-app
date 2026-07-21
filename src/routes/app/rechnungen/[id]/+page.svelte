@@ -23,7 +23,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { onMount, onDestroy } from 'svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { invalidateAll, afterNavigate, replaceState } from '$app/navigation';
 	import { enhance } from '$app/forms';
 	import { toast } from 'svelte-sonner';
 	import PageShell from '$lib/components/layout/PageShell.svelte';
@@ -124,6 +124,15 @@
 	let sendResend = $state(false);
 	let sending = $state(false);
 
+	// A failed action (esp. send, fired from the bottom of the page) surfaces its
+	// error in the top banner — scroll it into view so it's never off-screen.
+	let errorBanner: HTMLDivElement | undefined = $state();
+	$effect(() => {
+		if (form && 'error' in form && form.error) {
+			errorBanner?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		}
+	});
+
 	function openSend(): void {
 		sendResend = false;
 		sendConfirmOpen = true;
@@ -166,27 +175,40 @@
 			void pollOnce(jobId);
 			pollTimer = setInterval(() => void pollOnce(jobId), 1000);
 		}
-
-		// Flash after the mark-paid / undo-payment POST + redirect. Deferred to
-		// the next macrotask: on an SSR direct navigation (the real redirect
-		// path) the page mounts before the layout's <Toaster> subscribes, so a
-		// synchronous toast() here is dropped. setTimeout(0) fires after the
-		// whole mount cycle, once the Toaster is listening.
-		setTimeout(() => {
-			const sent = page.url.searchParams.get('sent');
-			if (page.url.searchParams.get('paid') === '1') {
-				toast.success('Als bezahlt markiert');
-			} else if (page.url.searchParams.get('undone') === '1') {
-				toast.info('Zahlung zurückgenommen');
-			} else if (sent === 'resend') {
-				toast.success('Rechnung erneut per Mail gesendet');
-			} else if (sent === '1') {
-				toast.success('Rechnung per Mail gesendet');
-			}
-		}, 0);
 	});
 
 	onDestroy(() => stopPolling());
+
+	// Flash toast after mark-paid / undo-payment / send + redirect. afterNavigate
+	// fires on BOTH the hard-load redirect AND the use:enhance client navigation
+	// (onMount only runs on the former — the send form uses use:enhance, so an
+	// onMount-based flash silently never fires on the real click path). We strip
+	// the flash query param via shallow replaceState so a reload or back/forward
+	// can't re-fire the toast; replaceState is shallow and does NOT re-trigger
+	// afterNavigate, so this can't loop.
+	afterNavigate(() => {
+		const params = page.url.searchParams;
+		const sent = params.get('sent');
+		let message: string | null = null;
+		let kind: 'success' | 'info' = 'success';
+		if (params.get('paid') === '1') message = 'Als bezahlt markiert';
+		else if (params.get('undone') === '1') {
+			message = 'Zahlung zurückgenommen';
+			kind = 'info';
+		} else if (sent === 'resend') message = 'Rechnung erneut per Mail gesendet';
+		else if (sent === '1') message = 'Rechnung per Mail gesendet';
+		if (!message) return;
+
+		if (kind === 'info') toast.info(message);
+		else toast.success(message);
+
+		const url = new URL(page.url);
+		url.searchParams.delete('paid');
+		url.searchParams.delete('undone');
+		url.searchParams.delete('sent');
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- same-page shallow strip of a flash query param
+		replaceState(url, page.state);
+	});
 
 	function openMarkPaid(): void {
 		markPaidOpen = true;
@@ -304,9 +326,11 @@
 		</div>
 	{/if}
 
-	<!-- form error -->
+	<!-- form error — scrolled into view (a failed send fires from the bottom
+	     of the page, so the top banner would otherwise be off-screen) -->
 	{#if form && 'error' in form && form.error}
 		<div
+			bind:this={errorBanner}
 			class="mb-4 rounded-xl border border-severity-critical/30 bg-severity-critical/10 px-4 py-3 text-sm text-severity-critical-text"
 		>
 			{form.error}
@@ -443,8 +467,9 @@
 		</div>
 		<div class="mt-5 h-0.5 rounded-full bg-gradient-brand" aria-hidden="true"></div>
 
-		<!-- actions -->
-		<div class="mt-4 flex flex-wrap items-center gap-2.5">
+		<!-- actions — stacked full-width on mobile (stable order, no 2+1 reflow
+		     flutter when the send label toggles width), inline-wrap on sm+ -->
+		<div class="mt-4 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
 			{#if payable && !markPaidOpen}
 				<Button
 					type="button"
@@ -537,17 +562,23 @@
 			{/if}
 		</div>
 
-		<!-- send gate reason — only while genuinely blocked (never once sent) -->
+		<!-- send gate reason — .gate-line anatomy (amber tint + circle-alert), only
+		     while genuinely blocked (never once sent) -->
 		{#if !isSuperseded && !canSend && !alreadySent}
-			<p
-				class="mt-2 flex items-center gap-1.5 text-xs font-medium text-severity-warn-text"
+			<div
+				class="mt-3 flex items-start gap-2.5 rounded-xl border border-severity-warn/30 bg-severity-warn-tint px-3.5 py-2.5"
 				data-testid="invoice-send-gate-reason"
 			>
-				<svg class="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"
-					><circle cx="12" cy="12" r="10" /><path stroke-linecap="round" d="M12 8v4M12 16h.01" /></svg
+				<span
+					class="mt-px grid h-5 w-5 shrink-0 place-items-center rounded-md bg-severity-warn/15 text-severity-warn-text"
+					aria-hidden="true"
 				>
-				{sendGateReason}
-			</p>
+					<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+						><circle cx="12" cy="12" r="10" /><path stroke-linecap="round" d="M12 8v4M12 16h.01" /></svg
+					>
+				</span>
+				<span class="text-xs font-medium text-severity-warn-text">{sendGateReason}</span>
+			</div>
 		{/if}
 
 		<!-- inline send confirm (modal-confirm intent) — names the recipient -->
@@ -988,7 +1019,12 @@
 									};
 								}}
 							>
-								<Button type="submit" size="sm" variant="outline" disabled={sending} data-testid="invoice-send-retry">
+								<Button
+									type="submit"
+									disabled={sending}
+									data-testid="invoice-send-retry"
+									class="w-full border border-primary-strong bg-primary-strong text-primary-foreground hover:bg-primary-strong/90"
+								>
 									<svg class="mr-1.5 h-4 w-4" class:animate-spin={sending} fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"
 										><path
 											stroke-linecap="round"
@@ -996,7 +1032,7 @@
 											d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
 										/></svg
 									>
-									Erneut versuchen
+									{sending ? 'Wird gesendet …' : 'Erneut versuchen'}
 								</Button>
 							</form>
 						</div>
@@ -1006,9 +1042,9 @@
 								<dt class="text-xs font-medium text-ink-500">Versendet am</dt>
 								<dd class="text-right text-[13px] font-semibold tabular-nums text-ink-900">{versandAtFmt}</dd>
 							</div>
-							<div class="grid grid-cols-[92px_minmax(0,1fr)] items-baseline gap-3 border-t border-hairline py-1.5">
+							<div class="border-t border-hairline py-1.5">
 								<dt class="text-xs font-medium text-ink-500">An</dt>
-								<dd class="min-w-0 truncate text-right text-[13px] font-semibold text-ink-900">{data.versand?.to}</dd>
+								<dd class="mt-0.5 break-all text-[13px] font-semibold text-ink-900">{data.versand?.to}</dd>
 							</div>
 						</dl>
 					{/if}

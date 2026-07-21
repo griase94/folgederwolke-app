@@ -119,6 +119,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
       action: auditLog.action,
       payload: auditLog.payload,
       actorName: users.name,
+      actorEmail: users.email,
     })
     .from(auditLog)
     .leftJoin(users, eq(users.id, auditLog.actorUserId))
@@ -130,6 +131,9 @@ export const load: PageServerLoad = async ({ params, url }) => {
     occurredAt: r.occurredAt.toISOString(),
     action: r.action as "create" | "update" | "delete",
     actorName: r.actorName ?? null,
+    // Fall back to the user's e-mail when the display name is unset, so a real
+    // actor never renders as "System" (which is reserved for system actions).
+    actorEmail: r.actorEmail ?? null,
     payload: (r.payload as Record<string, unknown> | null) ?? {},
   }));
 

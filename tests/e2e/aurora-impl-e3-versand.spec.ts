@@ -65,4 +65,36 @@ test.describe("@aurora-impl-e3 Versand-Pfad", () => {
     await page.locator('select[name="kategorieId"]').selectOption({ index: 1 });
     await expect(submit).toBeEnabled();
   });
+
+  test("flash toast fires on the interactive path and does NOT repeat on reload", async ({
+    page,
+  }) => {
+    await loginAs(page, "admin");
+
+    // Create a fresh invoice (keeps the canon offen/bezahlt counts untouched),
+    // then mark it paid — the mark-paid + flash path shares the afterNavigate
+    // handler with the send flow, so it proves the toast fix without the flaky
+    // PDF-generation dependency. Board Major 1: the flash must fire on the
+    // interactive (use:enhance) redirect AND must not re-fire on reload.
+    await page.goto("/app/rechnungen/new");
+    await page.locator('select[name="customerId"]').selectOption({ index: 1 });
+    await page.locator('input[name="nettoEur"]').fill("80,00");
+    await page.locator('input[name="leistungszeitraum"]').fill("Oktober 2026");
+    await page
+      .locator('input[name="bezeichnung"]')
+      .fill("Toast-Beweis Rechnung Oktober 2026");
+    await page.locator('select[name="kategorieId"]').selectOption({ index: 1 });
+    await page.getByRole("button", { name: "Rechnung erstellen" }).click();
+    await page.waitForURL(/\/app\/rechnungen\/[0-9a-f-]{36}/);
+
+    // Mark paid (interactive) → the flash toast must appear.
+    await page.getByTestId("invoice-mark-paid-open").click();
+    await page.getByTestId("invoice-mark-paid-submit").click();
+    await expect(page.getByText("Als bezahlt markiert")).toBeVisible();
+
+    // The flash query param is stripped (shallow replaceState), so a reload
+    // must NOT re-fire the toast.
+    await page.reload();
+    await expect(page.getByText("Als bezahlt markiert")).toHaveCount(0);
+  });
 });
