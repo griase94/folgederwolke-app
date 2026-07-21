@@ -92,10 +92,11 @@
   let markPaidDatum = $state(today);
   let markPaidZahlartId = $state("");
 
+  // ADR-0006 Nachtrag (payment carve-out): mark-as-paid stays available even in a
+  // festgeschriebenes Jahr — the server permits only the payment columns, and a
+  // Verein-direct row without abfluss_datum is refused there with an honest 409.
   const canMarkPaid = $derived(
-    !data.isFestgeschrieben &&
-      detail.approvedAt !== null &&
-      detail.erstattetAm === null,
+    detail.approvedAt !== null && detail.erstattetAm === null,
   );
 
   function buildPrefillQuery(prefill: Record<string, unknown>): string {
@@ -302,7 +303,7 @@
   {fields}
   {beleg}
   documented={!!detail.belegFileId}
-  headActions={data.isFestgeschrieben ? undefined : headActions}
+  {headActions}
   {saving}
   {dirty}
   bind:mode

@@ -283,7 +283,11 @@ describe.skipIf(!dbConfigured)(
     // an existing abfluss in a locked year, marking paid must be rejected even
     // though the `datum` passed in is in an open year.
 
-    it("markExpenseAsPaid: rejects when existing abfluss_datum is in a festgeschriebenes year", async () => {
+    // ADR-0006 Nachtrag (payment carve-out): an already-dated Auslage (abfluss
+    // in a locked year) MAY be marked paid — the payment columns move while
+    // abfluss_datum (the Buchungsjahr driver) stays byte-equal, so the trigger
+    // permits it. `datum` seeds only erstattet_am; abfluss is preserved (COALESCE).
+    it("markExpenseAsPaid: ALLOWS (carve-out) when existing abfluss_datum is in a festgeschriebenes year", async () => {
       const id = await seedApprovedExpense({
         bizSuffix: "00003",
         abflussDatum: CASH_IN_LOCKED,
@@ -296,15 +300,25 @@ describe.skipIf(!dbConfigured)(
         actorUserId: ACTOR,
       });
 
-      expect(res.ok).toBe(false);
-      if (!res.ok) {
-        expect(res.error).toMatch(
-          new RegExp(`${LOCKED}.*festgeschrieben`, "i"),
-        );
-      }
+      expect(res.ok).toBe(true);
+      // abfluss_datum is preserved (never moved); only the payment columns changed.
+      const [row] = await getDb()
+        .select({
+          abflussDatum: expenses.abflussDatum,
+          erstattetAm: expenses.erstattetAm,
+          status: expenses.status,
+        })
+        .from(expenses)
+        .where(eq(expenses.id, id));
+      expect(row?.abflussDatum).toBe(CASH_IN_LOCKED);
+      expect(row?.erstattetAm).toBe(CASH_IN_OPEN);
+      expect(row?.status).toBe("erstattet");
     });
 
-    it("markExpenseAsPaid: rejects when the new datum falls in a festgeschriebenes year (no existing abfluss)", async () => {
+    // The Verein-direct corner: a NULL-abfluss row's mark-as-paid would SET
+    // abfluss = payment date → move the Buchungsjahr, which the trigger rejects.
+    // markExpenseAsPaid degrades the 23514 to an honest German refusal.
+    it("markExpenseAsPaid: rejects a NULL-abfluss row whose payment date lands in a festgeschriebenes year", async () => {
       const id = await seedApprovedExpense({ bizSuffix: "00004" });
       await lockYear(LOCKED);
 
@@ -316,9 +330,8 @@ describe.skipIf(!dbConfigured)(
 
       expect(res.ok).toBe(false);
       if (!res.ok) {
-        expect(res.error).toMatch(
-          new RegExp(`${LOCKED}.*festgeschrieben`, "i"),
-        );
+        expect(res.error).toMatch(/festgeschrieben/i);
+        expect(res.error).toMatch(/Abfluss-Datum/i);
       }
     });
 

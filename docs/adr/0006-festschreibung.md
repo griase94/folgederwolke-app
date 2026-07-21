@@ -83,3 +83,43 @@ re-SELECTs from `customers` so a Berichtigungspflicht-driven correction
 actually flows into the Storno-Neuausstellung. Documented here so a future
 reader knows snapshot semantics differ between createInvoice (snapshots at
 create) vs supersedeInvoice (re-reads at supersede).
+
+## Nachtrag — Post-close carve-outs for payment + certificate metadata (2026-07-21)
+
+Migration `0038_expense-paid-carveout.sql` extends the same principle as the
+invoice payment carve-out (0025) to two more non-booking metadata sets. The
+festschreibung row-level UPDATE trigger (`assert_not_festgeschrieben_fn`) now
+carries, on a festgeschriebene row, two additional column-set whitelists. The
+migration `CREATE OR REPLACE`s the function on the **live 0037 body**, keeping
+the invoice carve-out (0025) and the DSGVO donor-PII erasure carve-out (F31 / 0037) byte-for-byte; income remains fully locked.
+
+### (a) Expenses — payment columns `{erstattet_am, zahlungsart_id, status, updated_at}`
+
+§ 11 EStG (Abflussprinzip): a reimbursement belongs to the **year the money left
+the account**, not the expense's own year. A Dezember-Auslage reimbursed in
+January books into the new year; if the old year is closed and the new one is
+open, marking it paid must succeed. The carve-out permits ONLY those four
+columns. **Crucially `abfluss_datum` (the `year_of_buchung` driver, migration 0034) stays in the LOCKED set:** a member/extern row already carries its
+Abfluss-Datum, so `markExpenseAsPaid` preserves it (COALESCE) and passes; a
+Verein-direct row with NULL `abfluss_datum` would have `abfluss_datum` set to the
+payment date — moving the Buchungsjahr — so the trigger rejects it and the app
+surfaces an honest German 409 (never marked paid in a closed year without a
+cash-out date). `markExpenseAsPaid` no longer pre-checks festschreibung; the
+trigger is the sole enforcer.
+
+### (b) Donations — certificate columns `{bescheinigung_nr, bescheinigung_ausgestellt_am, bescheinigung_ausgestellt_von_user_id, bescheid_typ, updated_at}`
+
+A Zuwendungsbestätigung can be issued (assigned a B-Nummer + Ausstellungs-
+Metadaten) after the donation's year is closed — a Dezember-Spende certified in
+the following February. Issuance writes only certificate metadata, never a
+booking value; the exact set `allocateBescheinigung` writes is the whitelist.
+All donor-PII, financial, Sachspende/Aufwandsspende/Zweckbindung fields stay
+byte-equal. This branch **coexists** with the F31 PII-erasure branch (two
+independent `donations` IF-blocks; either matching path returns): a
+festgeschriebene Spende thus permits EITHER a GDPR PII erasure OR a certificate
+issuance, never an arbitrary edit. `allocateBescheinigung` no longer 409s on a
+festgeschriebene Spende (the `bescheinigung_nr IS NULL` TOCTOU guard stays).
+
+Both carve-outs are precise column-set whitelists — every booking value
+(Beträge, Kategorie, Sphäre, Daten) and, for donations, all donor PII remain
+locked. income carries no carve-out (any UPDATE on a closed income row → 23514).

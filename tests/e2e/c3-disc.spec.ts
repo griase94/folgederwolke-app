@@ -154,7 +154,7 @@ test.describe("@phase-9 C3-DISC kebab discoverability", () => {
     });
   });
 
-  test("festgeschriebene Auslage offers no Als-bezahlt-markieren action", async ({
+  test("festgeschriebene Auslage STILL offers Als-bezahlt-markieren (ADR-0006 Nachtrag payment carve-out)", async ({
     page,
   }) => {
     await cleanupEligibleExpenses();
@@ -170,9 +170,15 @@ test.describe("@phase-9 C3-DISC kebab discoverability", () => {
     await signIn(page);
     await page.goto(`/app/ausgaben/${id}`);
     await expect(page.getByText(/A-|AUS-/).first()).toBeVisible();
+    // The fest banner explains the carve-out (expense-specific), and the
+    // mark-as-paid action stays available — the server permits only the payment
+    // columns (a Verein-direct NULL-abfluss row is refused there with a 409).
+    await expect(
+      page.locator('[data-slot="detail-festschreibung-notice"]'),
+    ).toContainText(/bleibt möglich/i);
     await expect(
       page.getByRole("button", { name: /Als bezahlt markieren/i }),
-    ).toHaveCount(0);
+    ).toHaveCount(1);
   });
 
   test("MemberRow kebab → Löschen → member is soft-deleted (row stays, pay CTA hidden)", async ({

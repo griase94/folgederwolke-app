@@ -646,13 +646,13 @@ export async function allocateBescheinigung(
       error: "Aufwandsspende-Bescheinigung in Phase 2 verfügbar",
     };
   }
-  if (sp.festgeschriebenAt) {
-    return {
-      ok: false,
-      status: 409,
-      error: "Buchungsjahr ist festgeschrieben (ADR-0006)",
-    };
-  }
+  // ADR-0006 Nachtrag (certificate carve-out): a Zuwendungsbestätigung may be
+  // issued even for a festgeschriebene Spende — the DB trigger (migration 0038)
+  // permits ONLY the certificate columns {bescheinigung_nr,
+  // bescheinigung_ausgestellt_am, bescheinigung_ausgestellt_von_user_id,
+  // bescheid_typ, updated_at}, exactly the set the UPDATE below writes. All
+  // booking + donor-PII values stay locked. So NO festschreibung early-return
+  // here; the `bescheinigung_nr IS NULL` TOCTOU guard on the UPDATE stays.
 
   const spenderName = sp.spenderName?.trim() ?? "";
   const spenderAdresse = sp.spenderAdresse?.trim() ?? "";

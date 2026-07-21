@@ -185,7 +185,12 @@
 						Buchungsjahr {lock.year} ist festgeschrieben
 					</div>
 					<div class="mt-0.5 text-ink-700">
-						Diese Buchung ist unveränderbar.
+						{#if kind === "expense"}
+							Die Buchungswerte sind gesperrt — „Als bezahlt markieren“ bleibt
+							möglich (es ändert nur die Zahlungsangaben, nie das Buchungsjahr).
+						{:else}
+							Diese Buchung ist unveränderbar.
+						{/if}
 					</div>
 				{:else}
 					<div class="font-semibold text-ink-900">
