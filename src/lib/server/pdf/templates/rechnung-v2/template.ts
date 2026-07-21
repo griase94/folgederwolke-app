@@ -311,13 +311,11 @@ export async function renderRechnungV2(
     .map((l) => l.trim())
     .filter(Boolean);
   customerLines.push(...blockLines);
-  // UPU recommendation: foreign destination country in UPPERCASE on the last
-  // address line (and country line only present when country !== DE).
-  if (input.customer.country && input.customer.country.toUpperCase() !== "DE") {
-    customerLines.push(
-      countryLabelForAlpha2(input.customer.country).toUpperCase(),
-    );
-  }
+  // The country/Land line now lives inside `addressBlock` (assembled Briefblock,
+  // rendered only when ≠ Deutschland — Andy-Feedback 2026-07). The legacy
+  // ISO-`country` branch was removed here: it is inert (app rows keep country=DE)
+  // but would otherwise print a SECOND Land line. `customer.country` stays on the
+  // render input for now; the column drop is a later cleanup PR.
 
   let addressY = addressTopY;
   for (const line of customerLines) {

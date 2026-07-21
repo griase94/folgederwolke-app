@@ -94,7 +94,11 @@ export function deriveOrt(addressBlock: string | null): string | null {
   if (lines.length === 0) return null;
   let ort = lines[lines.length - 1]!;
   const hasPlz = /\d{4,5}/.test(ort);
-  if (!hasPlz && lines.length >= 2 && /^\p{L}+$/u.test(ort)) {
+  // A digit-free last line is a country line (e.g. "Österreich", "Vereinigtes
+  // Königreich") — never an Ort in our "PLZ Ort" briefblock — so step up one.
+  // Allow spaces/dots/hyphens/apostrophes so MULTI-WORD countries match too
+  // (the single-word `\p{L}+` missed "Vereinigtes Königreich").
+  if (!hasPlz && lines.length >= 2 && /^[\p{L}][\p{L}\s.'-]*$/u.test(ort)) {
     ort = lines[lines.length - 2]!;
   }
   // "80539 München" → "München"; a line without a leading PLZ stays intact.

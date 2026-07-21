@@ -113,8 +113,10 @@
 	{/if}
 </div>
 
-<!-- Adresse (strukturiert) * + Live-Briefblock -->
-<div class="space-y-2.5 rounded-xl border border-hairline bg-card p-3">
+<!-- Adresse (strukturiert) * + Live-Briefblock. sm:[&_input]:scroll-mb-32 hält
+     ein fokussiertes Adressfeld beim Auto-Scroll ÜBER der sticky Preview (sonst
+     landet es dahinter) — Judge-#151 Major-1. -->
+<div class="space-y-2.5 rounded-xl border border-hairline bg-card p-3 sm:[&_input]:scroll-mb-32">
 	<div class="flex items-center gap-1.5">
 		<span class="text-sm font-semibold text-ink-700">Adresse</span>
 		<span class="text-severity-critical">*</span>
@@ -154,7 +156,7 @@
 		{/if}
 	</div>
 
-	<!-- PLZ + Ort -->
+	<!-- PLZ + Ort (Fehler in der jeweiligen Spalte, nicht vollbreit) -->
 	<div class="grid grid-cols-[minmax(0,7rem)_1fr] gap-2.5">
 		<div class="space-y-1.5">
 			<label for="{idPrefix}-plz" class="block text-xs font-medium text-ink-600">PLZ</label>
@@ -169,6 +171,9 @@
 				aria-invalid={!!err('plz')}
 				aria-describedby={err('plz') ? `${idPrefix}-plz-err` : undefined}
 			/>
+			{#if err('plz')}
+				<p id="{idPrefix}-plz-err" class="text-xs font-medium text-severity-critical">{err('plz')}</p>
+			{/if}
 		</div>
 		<div class="space-y-1.5">
 			<label for="{idPrefix}-ort" class="block text-xs font-medium text-ink-600">Ort</label>
@@ -182,16 +187,13 @@
 				aria-invalid={!!err('ort')}
 				aria-describedby={err('ort') ? `${idPrefix}-ort-err` : undefined}
 			/>
+			{#if err('ort')}
+				<p id="{idPrefix}-ort-err" class="text-xs font-medium text-severity-critical">{err('ort')}</p>
+			{/if}
 		</div>
 	</div>
-	{#if err('plz')}
-		<p id="{idPrefix}-plz-err" class="text-xs font-medium text-severity-critical">{err('plz')}</p>
-	{/if}
-	{#if err('ort')}
-		<p id="{idPrefix}-ort-err" class="text-xs font-medium text-severity-critical">{err('ort')}</p>
-	{/if}
 
-	<!-- Land (optional, Freitext) — nur ≠ Deutschland erscheint im Briefblock -->
+	<!-- Land (optional, Freitext, halbbreit) — nur ≠ Deutschland erscheint im Briefblock -->
 	<div class="space-y-1.5">
 		<label for="{idPrefix}-land" class="block text-xs font-medium text-ink-600">Land</label>
 		<Input
@@ -201,6 +203,7 @@
 			data-testid="{idPrefix}-land-input"
 			placeholder="Deutschland"
 			aria-invalid={!!err('land')}
+			class="sm:max-w-[240px]"
 		/>
 		<p class="text-xs text-ink-500">Nur wenn nicht Deutschland — dann steht das Land mit auf der Rechnung.</p>
 		{#if err('land')}
@@ -208,17 +211,12 @@
 		{/if}
 	</div>
 
-	<!-- Live-Briefblock: so steht die Adresse auf der Rechnung -->
-	<div class="rounded-lg border border-dashed border-hairline bg-muted/40 px-3 py-2.5" data-testid="{idPrefix}-address-preview">
-		<p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-400">So auf der Rechnung</p>
-		{#if previewLines.length > 0}
-			<address class="text-sm not-italic leading-snug text-ink-700">
-				{#if name.trim()}<div class="font-semibold text-ink-900">{name.trim()}</div>{/if}
-				{#each previewLines as line (line)}<div>{line}</div>{/each}
-			</address>
-		{:else}
-			<p class="text-sm italic text-ink-400">Adresse eingeben — Vorschau erscheint hier.</p>
-		{/if}
+	<!-- Mobile-Sheet: inline-Preview im Adressblock (unverändert — sitzt dort perfekt). -->
+	<div
+		class="rounded-lg border border-dashed border-hairline bg-muted/40 px-3 py-2.5 sm:hidden"
+		data-testid="{idPrefix}-address-preview"
+	>
+		{@render addressPreviewBody()}
 	</div>
 </div>
 
@@ -253,3 +251,26 @@
 		>{values?.notes ?? ''}</textarea
 	>
 </div>
+
+<!-- sm+: dieselbe Preview STICKY am unteren Rand des Modal-Scroll-Containers
+     (Judge-#151 Major-1) — sitzt NACH allen Eingaben, überlappt also kein Feld,
+     und bleibt beim Tippen sichtbar. Opak (bg-card) + Schatten, damit gescrollte
+     Felder nicht durchscheinen. Mobile nutzt die inline-Kopie oben. -->
+<div
+	class="hidden sm:sticky sm:bottom-0 sm:z-10 sm:block sm:rounded-lg sm:border sm:border-dashed sm:border-hairline sm:bg-card sm:px-3 sm:py-2.5 sm:shadow-[0_-8px_20px_-12px_rgba(0,0,0,0.3)]"
+	data-testid="{idPrefix}-address-preview-sticky"
+>
+	{@render addressPreviewBody()}
+</div>
+
+{#snippet addressPreviewBody()}
+	<p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-400">So auf der Rechnung</p>
+	{#if previewLines.length > 0}
+		<address class="text-sm not-italic leading-snug text-ink-700">
+			{#if name.trim()}<div class="font-semibold text-ink-900">{name.trim()}</div>{/if}
+			{#each previewLines as line (line)}<div>{line}</div>{/each}
+		</address>
+	{:else}
+		<p class="text-sm italic text-ink-400">Adresse eingeben — Vorschau erscheint hier.</p>
+	{/if}
+{/snippet}

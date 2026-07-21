@@ -4,6 +4,7 @@ import {
   hasCompleteAddress,
   isInland,
   countryLabel,
+  deriveOrt,
 } from "./customers.js";
 
 describe("buildCustomerBriefblock", () => {
@@ -78,6 +79,27 @@ describe("isInland", () => {
     expect(isInland("  deutschland ")).toBe(true);
     expect(isInland("Österreich")).toBe(false);
     expect(isInland(null)).toBe(false);
+  });
+});
+
+describe("deriveOrt (list subline)", () => {
+  it("strips the PLZ from the last line", () => {
+    expect(deriveOrt("Musterstraße 1\n80331 München")).toBe("München");
+  });
+
+  it("steps up past a single-word country line", () => {
+    expect(deriveOrt("Kärntner Ring 1\n1010 Wien\nÖsterreich")).toBe("Wien");
+  });
+
+  it("steps up past a MULTI-WORD country line (the fix)", () => {
+    expect(deriveOrt("Broadway 1\n10001 New York\nVereinigte Staaten")).toBe(
+      "New York",
+    );
+  });
+
+  it("returns null for empty input", () => {
+    expect(deriveOrt(null)).toBeNull();
+    expect(deriveOrt("")).toBeNull();
   });
 });
 
