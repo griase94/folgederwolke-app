@@ -59,6 +59,25 @@ describe("buildEpc069Payload", () => {
     );
   });
 
+  it("defaults to version 001 but honours an explicit version 002", () => {
+    const base = {
+      bic: "SSKMDEMMXXX",
+      name: "Folge der Wolke e.V.",
+      iban: "DE43830654089999999999",
+      amountCents: 6000,
+      remittance: "FDW-2026-006",
+    };
+    // Default preserves the existing BeitragsReminder <pre> behaviour.
+    expect(buildEpc069Payload(base).split("\n")[1]).toBe("001");
+    // The invoice Giro-QR path opts into v002 (EPC-recommended, UTF-8, BIC
+    // optional — forward-compatible with v001 readers). Only line 2 changes.
+    const v2 = buildEpc069Payload({ ...base, version: "002" });
+    expect(v2.split("\n")[1]).toBe("002");
+    expect(v2.split("\n")[0]).toBe("BCD");
+    expect(v2.split("\n")[4]).toBe("SSKMDEMMXXX"); // BIC still present
+    expect(v2.split("\n")[7]).toBe("EUR60.00");
+  });
+
   // EPC 069 v001 REQUIRES a non-empty BIC. Only v002+ allows empty BIC for
   // EEA payments where the IBAN implies the BIC. We ship v001 → must refuse
   // out-of-spec payloads at the builder. (Cycle-2 expert review F1.)

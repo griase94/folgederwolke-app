@@ -320,6 +320,25 @@ describe("InvoiceVersendetMail", () => {
     expect(html).not.toContain("IBAN");
   });
 
+  it("renders the Giro-QR as a CID <img> (not a data-URI) when qrPngCid is set", async () => {
+    const { html } = await renderTemplate("InvoiceVersendetMail", {
+      ...invoiceVersendetProps,
+      qrPngCid: "girocode-FDW-2026-006",
+    });
+    // CID reference — never a data-URI (mail clients strip those).
+    expect(html).toContain('src="cid:girocode-FDW-2026-006"');
+    expect(html).not.toContain("data:image");
+    // Giro-Code caption + scan instruction.
+    expect(html).toContain("Giro-Code");
+    expect(html).toContain("QR mit der Banking-App scannen");
+    // Image alt carries the payload essentials for image-blocking clients.
+    expect(html).toContain("SEPA-Überweisung");
+    // The generic Überweisung hint is replaced by the QR block.
+    expect(html).not.toContain(
+      "Einfach per Überweisung mit dem Verwendungszweck oben",
+    );
+  });
+
   it("plain-text fallback is non-empty and has key German text", async () => {
     const { text } = await renderTemplate(
       "InvoiceVersendetMail",

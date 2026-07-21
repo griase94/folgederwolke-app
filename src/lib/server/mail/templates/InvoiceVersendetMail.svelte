@@ -16,6 +16,7 @@
 		iban,
 		bic,
 		empfaenger,
+		qrPngCid,
 		vereinName = '',
 		adresse = '',
 		vr = '',
@@ -313,7 +314,41 @@
 														</tbody>
 													</table>
 												{/if}
-												<p style="margin:0;font-size:13px;color:#3a3050;line-height:1.5;">{#if showBankBlock}Einfach per Überweisung mit dem Verwendungszweck oben — so ordnen wir deine Zahlung sofort zu.{:else}Bitte per Überweisung mit dem Verwendungszweck {invoiceNumber} — so ordnen wir deine Zahlung sofort zu.{/if}</p>
+												{#if qrPngCid}
+													<!-- Giro-Code: server-rendered EPC-069 SEPA-QR as a CID inline
+													     image (never a data-URI). alt carries the payload essentials
+													     so a client that blocks images still shows Betrag + Zweck. -->
+													<div style="border-top:1px solid #e4d9f0;margin:14px 0 0 0;font-size:1px;line-height:1px;">&nbsp;</div>
+													<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:14px 0 0 0;">
+														<tbody>
+															<tr>
+																<td style="vertical-align:top;padding-right:18px;">
+																	<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #ece7f2;border-radius:10px;background:#ffffff;">
+																		<tbody>
+																			<tr>
+																				<td style="padding:7px;text-align:center;line-height:0;">
+																					<img
+																						src="cid:{qrPngCid}"
+																						width="102"
+																						height="102"
+																						alt="Giro-Code — SEPA-Überweisung, Betrag {bruttoFmt}, Verwendungszweck {invoiceNumber}"
+																						style="display:block;width:102px;height:102px;border:0;"
+																					/>
+																				</td>
+																			</tr>
+																		</tbody>
+																	</table>
+																</td>
+																<td style="vertical-align:top;">
+																	<p style="margin:0 0 4px 0;font-size:11px;font-weight:800;letter-spacing:0.6px;text-transform:uppercase;color:#7c3aed;">Giro-Code</p>
+																	<p style="margin:0;font-size:13px;color:#3a3050;line-height:1.5;">QR mit der Banking-App scannen — Betrag und Verwendungszweck sind schon drin.</p>
+																</td>
+															</tr>
+														</tbody>
+													</table>
+												{:else}
+													<p style="margin:0;font-size:13px;color:#3a3050;line-height:1.5;">{#if showBankBlock}Einfach per Überweisung mit dem Verwendungszweck oben — so ordnen wir deine Zahlung sofort zu.{:else}Bitte per Überweisung mit dem Verwendungszweck {invoiceNumber} — so ordnen wir deine Zahlung sofort zu.{/if}</p>
+												{/if}
 											</td>
 										</tr>
 									</tbody>
