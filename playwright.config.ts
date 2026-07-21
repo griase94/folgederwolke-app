@@ -60,6 +60,14 @@ export default defineConfig({
       // 'https'), making url.origin = 'https://127.0.0.1:4173', while the
       // browser sends 'http://127.0.0.1:4173' → 403. Set ORIGIN explicitly.
       ORIGIN,
+      // Bescheid config so isBescheinigungEnabled()=true for e2e — makes the
+      // Zuwendungsbestätigung happy-path (Werkstatt round-trip → issue → PDF)
+      // exercisable end-to-end. Unit/integration tests are unaffected (they
+      // don't use this webServer; the bescheid integration tests set their own
+      // process.env). Matches the .env.test Finanzamt/Zwecke already present.
+      VEREIN_BESCHEID_TYP: "freistellungsbescheid",
+      VEREIN_BESCHEID_DATUM: "2025-02-04",
+      VEREIN_FREISTELLUNGSBESCHEID_VZ: "2024",
     },
   },
 });

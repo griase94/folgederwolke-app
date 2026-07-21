@@ -47,7 +47,6 @@ const ALLOWLIST = new Set<string>([
   "projekte/[id]/+page.svelte",
   "sheet-resync/+page.svelte",
   "spenden/[id]/+page.svelte",
-  "spenden/[id]/zuwendungsbestaetigung/+page.svelte",
   "spenden/neu/+page.svelte",
 ]);
 

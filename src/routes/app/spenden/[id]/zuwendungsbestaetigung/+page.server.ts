@@ -3,7 +3,8 @@
  *
  * (Phase 6 / Tier C3: MOVED here from /app/transactions/[id]/… — logic
  * unchanged; reuses allocateBescheinigung/extractBmfPflichtfelder from
- * spenden.ts + the BescheinigungsPreview component.)
+ * spenden.ts. B-PR4: the page renders the Werkstatt-Split — BescheinigungDocument
+ * (DocSheet + shared BMF-Wortlaut) + BescheinigungCard Ausstellungs-Rail.)
  *
  * load(): returns Spende + BMF Pflichtfelder preview. Refuses to load if
  *         Bescheinigung is disabled in env (per masterplan §2.2 + §9) so

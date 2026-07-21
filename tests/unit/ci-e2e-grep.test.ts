@@ -94,6 +94,8 @@ describe("CI e2e grep coverage (F3)", () => {
     expect(grepTags).toContain("@aurora-impl-e3");
     // Aurora implementation campaign — B-Kulisse (/neu dialogs over the list stage):
     expect(grepTags).toContain("@aurora-impl-b4kulisse");
+    // Aurora implementation campaign — B-ZB (Zuwendungsbestätigung Werkstatt):
+    expect(grepTags).toContain("@aurora-impl-b-zb");
   });
 
   it("PWA share_target spec is covered by the CI grep (F3)", () => {
@@ -149,6 +151,8 @@ describe("CI e2e grep coverage (F3)", () => {
     "aurora-impl-e3-versand.spec.ts",
     // Aurora impl campaign — B-Kulisse (/neu dialogs over the inert list stage):
     "aurora-impl-b-kulisse.spec.ts",
+    // Aurora impl campaign — B-ZB (Zuwendungsbestätigung Werkstatt round-trip):
+    "aurora-impl-b-zb.spec.ts",
   ];
 
   it("every release-critical spec has at least one tag in the CI grep", () => {
