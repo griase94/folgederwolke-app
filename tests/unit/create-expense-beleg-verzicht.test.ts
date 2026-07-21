@@ -21,7 +21,8 @@ import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
 import { getDb } from "$lib/server/db/index.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { users } from "$lib/server/db/schema/users.js";
-import { eq } from "drizzle-orm";
+import { kategorien } from "$lib/server/db/schema/kategorien.js";
+import { and, eq } from "drizzle-orm";
 
 const DATABASE_URL = process.env["DATABASE_URL"] ?? "";
 const DIRECT_DATABASE_URL = process.env["DIRECT_DATABASE_URL"] ?? "";
@@ -57,10 +58,21 @@ describe.skipIf(!dbConfigured)(
 
     it("expense with no Beleg but a Verzicht-Begründung persists + satisfies the CHECK", async () => {
       const businessId = await allocateBusinessId("A", 2026);
+      const [kat] = await getDb()
+        .select({ id: kategorien.id })
+        .from(kategorien)
+        .where(
+          and(
+            eq(kategorien.kind, "expense"),
+            eq(kategorien.name, "Bankgebühren"),
+          ),
+        )
+        .limit(1);
+      if (!kat) throw new Error("seed missing expense/Bankgebühren");
       const { id } = await createExpense({
         bezeichnung: "Kontoführung",
         betragCents: 490,
-        kategorieNameSnapshot: "Bankgebühren",
+        kategorieId: kat.id,
         bezahltVonKind: "verein",
         bezahltVonDisplay: "Verein",
         // No Beleg file — the Verzicht-Begründung is what satisfies

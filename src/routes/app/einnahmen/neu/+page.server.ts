@@ -7,9 +7,9 @@
  *     attached it's uploaded + its `belegFileId` persisted; if not, the create
  *     still succeeds and NO Begründung is required.
  *   - Sphere is derived server-side INSIDE `createIncome` (spec §4.5, STRICT,
- *     no project override): the action forwards `kategorieNameSnapshot` and lets
- *     the domain layer resolve the kategorie + sphere — a tampered body can't
- *     mis-classify the booking.
+ *     no project override): the action forwards the chosen `kategorieId` (#115)
+ *     and lets the domain layer resolve the kategorie + derive name + sphere —
+ *     a tampered body can't mis-classify the booking.
  *
  * load(): the income kategorie options + active projects (the optional Projekt
  * field). Route conventions follow spenden/+page.server.ts (fail,
@@ -53,7 +53,7 @@ export interface EinnahmeFormValues {
   bezeichnung: string;
   betragEur: string;
   geldEingangDatum: string;
-  kategorieName: string;
+  kategorieId: string;
   projectId: string;
   kommentar: string;
 }
@@ -62,7 +62,7 @@ const EMPTY_VALUES: EinnahmeFormValues = {
   bezeichnung: "",
   betragEur: "",
   geldEingangDatum: "",
-  kategorieName: "",
+  kategorieId: "",
   projectId: "",
   kommentar: "",
 };
@@ -89,8 +89,9 @@ export const load: PageServerLoad = async ({ url, parent }) => {
       .orderBy(projects.name),
   ]);
 
-  // KategoriePicker expects `{ name, sphere, eurZeile? }`.
+  // KategoriePicker expects `{ id, name, sphere, eurZeile? }` (#115: id-valued).
   const kategorien = incomeKategorien.map((k) => ({
+    id: k.id,
     name: k.name,
     sphere: k.sphere,
   }));
@@ -125,16 +126,12 @@ const incomeSchema = z.object({
     .int("Betrag muss ein gültiger Geldbetrag sein.")
     .positive("Betrag muss größer als 0 sein."),
   currency: z.string().default("EUR"),
-  // The picker drives this; createIncome resolves kategorie + sphere from it.
-  kategorieNameSnapshot: z
-    .string()
-    .min(1, "Kategorie muss ausgewählt werden.")
-    .max(200)
-    .refine((v) => v !== "(Unkategorisiert)", {
-      message: "Kategorie muss ausgewählt werden.",
-    }),
-  // Optional kategorie id (createIncome resolves by NAME — id is not honored).
-  kategorieId: z.string().uuid().nullable().optional(),
+  // #115: the picker submits the kategorie ID (authoritative). createIncome
+  // resolves the kategorie + derives the name-snapshot + sphere from the row.
+  // The empty-select case arrives as null (raw maps "" → null) → same message.
+  kategorieId: z
+    .string({ error: "Kategorie muss ausgewählt werden." })
+    .uuid({ error: "Kategorie muss ausgewählt werden." }),
   // `isoCalendarDate` rejects impossible dates (2026-02-30) as a 422 field
   // error instead of letting them reach a Postgres ::date cast → opaque 500.
   geldEingangDatum: isoCalendarDate.nullable().optional(),
@@ -163,7 +160,7 @@ function valuesFromForm(data: FormData): EinnahmeFormValues {
         ? (centsNum / 100).toFixed(2).replace(".", ",")
         : "",
     geldEingangDatum: str("geldEingangDatum"),
-    kategorieName: str("kategorieNameSnapshot"),
+    kategorieId: str("kategorieId"),
     projectId: str("projectId"),
     kommentar: str("kommentar"),
   };
@@ -247,8 +244,7 @@ export const actions = {
         betragCents: parsed.data.betragCents,
         currency: parsed.data.currency,
         geldEingangDatum: parsed.data.geldEingangDatum ?? null,
-        kategorieNameSnapshot: parsed.data.kategorieNameSnapshot,
-        kategorieId: parsed.data.kategorieId ?? null,
+        kategorieId: parsed.data.kategorieId,
         projectId: parsed.data.projectId ?? null,
         kommentar: parsed.data.kommentar ?? null,
         belegFileId,

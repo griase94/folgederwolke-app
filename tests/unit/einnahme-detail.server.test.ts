@@ -45,21 +45,23 @@ const checkFestschreibungGateMock = vi.fn(
   async (_year: number): Promise<GateResult> => ({ ok: true }),
 );
 
-// §4.5: ?/save re-derives the Sphäre from the Kategorie server-side. The mock
-// returns a FIXED sphere ("zweckbetrieb") regardless of any client-posted
-// sphere, so the test can prove the save ignores the body's sphere.
-const resolveKategorieByNameMock = vi.fn(
-  async (_kind: "income", name: string | undefined) => ({
-    id: "kat-x",
-    name: name ?? "Aufnahmegebühr",
-    sphere: "zweckbetrieb" as const,
-  }),
-);
+// A valid seeded income Kategorie id the ?/save picker submits (#115).
+const INCOME_KAT_ID = "44444444-4444-4444-8444-444444444444";
+
+// §4.5 / #115: ?/save re-resolves the Kategorie BY ID + re-derives the Sphäre
+// server-side. The mock returns a FIXED name/sphere ("Honorar"/"zweckbetrieb")
+// regardless of any client-posted sphere, so the test can prove the save
+// ignores the body's sphere and stamps the resolved name.
+const resolveKategorieByIdMock = vi.fn(async (_kind: "income", id: string) => ({
+  id,
+  name: "Honorar",
+  sphere: "zweckbetrieb" as const,
+}));
 
 vi.mock("$lib/server/domain/transactions.js", () => ({
   getTransactionDetail: getTransactionDetailMock,
   checkFestschreibungGate: checkFestschreibungGateMock,
-  resolveKategorieByName: resolveKategorieByNameMock,
+  resolveKategorieById: resolveKategorieByIdMock,
 }));
 
 // load() also fetches kategorie options for the detail fields picker.
@@ -346,6 +348,7 @@ describe("/app/einnahmen/[id] actions", () => {
         bezeichnung: "Spende bar (korr.)",
         betragCents: "5500",
         kommentar: "nachgetragen",
+        kategorieId: INCOME_KAT_ID,
       }),
     );
     expect(r.fail).toBeUndefined();
@@ -359,15 +362,15 @@ describe("/app/einnahmen/[id] actions", () => {
       makeSaveEvent(FREE.id, {
         bezeichnung: "Honorar Workshop",
         betragCents: "12000",
-        kategorieNameSnapshot: "Honorar",
+        kategorieId: INCOME_KAT_ID,
         // A tampered/stale client sphere that must NOT be persisted.
         sphereSnapshot: "wirtschaftlich",
       }),
     );
     expect(r.fail).toBeUndefined();
-    expect(resolveKategorieByNameMock).toHaveBeenCalledWith(
+    expect(resolveKategorieByIdMock).toHaveBeenCalledWith(
       "income",
-      "Honorar",
+      INCOME_KAT_ID,
     );
     // The persisted sphere is the RESOLVED one ("zweckbetrieb"), NOT the
     // tampered body value ("wirtschaftlich"); name comes from the resolver too.
@@ -382,7 +385,11 @@ describe("/app/einnahmen/[id] actions", () => {
       error: "Jahr 2026 ist festgeschrieben",
     });
     const r = await runSave(
-      makeSaveEvent(FREE.id, { bezeichnung: "x", betragCents: "100" }),
+      makeSaveEvent(FREE.id, {
+        bezeichnung: "x",
+        betragCents: "100",
+        kategorieId: INCOME_KAT_ID,
+      }),
     );
     expect(r.fail?.status).toBe(409);
     expect(updateCalls.length).toBe(0);
@@ -390,7 +397,11 @@ describe("/app/einnahmen/[id] actions", () => {
 
   it("?/save rejects when the row itself is festgeschrieben (409, no update)", async () => {
     const r = await runSave(
-      makeSaveEvent(FROZEN.id, { bezeichnung: "x", betragCents: "100" }),
+      makeSaveEvent(FROZEN.id, {
+        bezeichnung: "x",
+        betragCents: "100",
+        kategorieId: INCOME_KAT_ID,
+      }),
     );
     expect(r.fail?.status).toBe(409);
     expect(updateCalls.length).toBe(0);

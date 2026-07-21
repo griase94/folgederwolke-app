@@ -53,7 +53,7 @@
 	interface AusgabeValues {
 		bezeichnung: string;
 		betrag: string;
-		kategorieNameSnapshot: string;
+		kategorieId: string;
 		kommentar: string;
 		projectId: string;
 		bezahltVonKind: 'verein' | 'member' | 'extern';
@@ -121,11 +121,12 @@
 	let bezeichnung = $state(values.bezeichnung);
 	// svelte-ignore state_referenced_locally
 	let kommentar = $state(values.kommentar);
+	// #115: the picker submits the kategorie ID (createExpense resolves by id).
 	// svelte-ignore state_referenced_locally
-	let kategorieName = $state(values.kategorieNameSnapshot);
+	let kategorieId = $state(values.kategorieId);
 	// svelte-ignore state_referenced_locally
 	let kategorieSphere = $state<Sphere>(
-		expenseKategorien.find((k) => k.name === values.kategorieNameSnapshot)?.sphere ?? 'ideeller',
+		expenseKategorien.find((k) => k.id === values.kategorieId)?.sphere ?? 'ideeller',
 	);
 	// svelte-ignore state_referenced_locally
 	let rechnungsdatum = $state(values.rechnungsdatum || (hadError ? '' : today));
@@ -211,7 +212,7 @@
 		if (betragCents === null || betragCents <= 0) m.push('Betrag');
 		if (!rechnungsdatum) m.push('Datum');
 		if (!bezeichnung.trim()) m.push('Bezeichnung');
-		if (!kategorieName) m.push('Kategorie');
+		if (!kategorieId) m.push('Kategorie');
 		if (!belegOk) m.push('Beleg');
 		return m;
 	});
@@ -327,27 +328,26 @@
 			<div class="flex flex-col gap-1.5">
 				<KategoriePicker
 					id="kategorie"
-					name="kategorieNameSnapshot"
 					required
 					hideSphere
 					options={expenseKategorien}
-					value={kategorieName}
-					onChange={(name) => {
-						kategorieName = name;
+					value={kategorieId}
+					onChange={(id) => {
+						kategorieId = id;
 						markDirty();
 					}}
 					onSphere={(s) => (kategorieSphere = s)}
 				/>
 				<!-- Hidden sphere mirror — server re-derives, this is caller-parity only. -->
 				<input type="hidden" name="sphereSnapshot" value={kategorieSphere} />
-				{#if err('kategorieNameSnapshot')}
-					<p class="text-xs text-severity-critical">{err('kategorieNameSnapshot')}</p>
+				{#if err('kategorieId')}
+					<p class="text-xs text-severity-critical">{err('kategorieId')}</p>
 				{/if}
 			</div>
 
 			<!-- Sphäre — read-only, derived from the Kategorie (ADR-0002); appears
 			     once a Kategorie is chosen (no misleading default before then). -->
-			{#if kategorieName}
+			{#if kategorieId}
 				<LockedSphereField sphere={kategorieSphere} />
 			{/if}
 

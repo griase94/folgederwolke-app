@@ -17,7 +17,13 @@ const today = new Date().toISOString().slice(0, 10);
 
 function baseProps() {
   return {
-    kategorien: [{ name: "Mitgliedsbeitrag", sphere: "ideeller" as const }],
+    kategorien: [
+      {
+        id: "11111111-1111-1111-1111-111111111111",
+        name: "Mitgliedsbeitrag",
+        sphere: "ideeller" as const,
+      },
+    ],
     projects: [],
   };
 }

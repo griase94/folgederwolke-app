@@ -27,7 +27,7 @@ import type { Actions, PageServerLoad } from "./$types.js";
 import {
   getTransactionDetail,
   checkFestschreibungGate,
-  resolveKategorieByName,
+  resolveKategorieById,
   isCheckViolation,
 } from "$lib/server/domain/transactions.js";
 import { bookingYearFromCashDate } from "$lib/domain/year.js";
@@ -59,6 +59,7 @@ export const load: PageServerLoad = async ({ params }) => {
       .orderBy(projects.name),
   ]);
   const kategorien = incomeKategorien.map((k) => ({
+    id: k.id,
     name: k.name,
     sphere: k.sphere,
   }));
@@ -76,11 +77,15 @@ const saveIncomeSchema = z.object({
   bezeichnung: z.string().min(1).max(500),
   betragCents: z.coerce.number().int().positive(),
   geldEingangDatum: isoCalendarDate.nullable().optional(),
-  kategorieNameSnapshot: z.string().max(200).optional(),
+  // #115: the picker submits the kategorie ID (authoritative). Empty select
+  // arrives as "" → uuid fails → same German message.
+  kategorieId: z
+    .string({ error: "Kategorie muss ausgewählt werden." })
+    .uuid({ error: "Kategorie muss ausgewählt werden." }),
   // NOTE: `sphereSnapshot` is intentionally NOT accepted from the client (§4.5 —
   // the Sphäre is strictly DERIVED from the Kategorie server-side; a tampered or
   // stale client value must never decouple sphere from Kategorie + mis-bucket
-  // the EÜR). It is re-resolved below via resolveKategorieByName.
+  // the EÜR). It is re-resolved below via resolveKategorieById.
   projectId: z.string().uuid().nullable().optional(),
   kommentar: z.string().max(2000).nullable().optional(),
 });
@@ -145,13 +150,10 @@ export const actions = {
         ? { geldEingangDatum: parsed.data.geldEingangDatum }
         : {};
 
-    // §4.5 — re-derive the Sphäre from the (possibly changed) Kategorie
-    // server-side; never trust a client-posted sphere. Mirrors createIncome +
-    // the Ausgaben detail ?/save.
-    const kat = await resolveKategorieByName(
-      "income",
-      parsed.data.kategorieNameSnapshot ?? detail.kategorieNameSnapshot,
-    );
+    // §4.5 / #115 — re-resolve the Kategorie BY ID and re-derive the name +
+    // Sphäre from the row; never trust a client-posted sphere. Mirrors
+    // createIncome + the Ausgaben detail ?/save.
+    const kat = await resolveKategorieById("income", parsed.data.kategorieId);
 
     try {
       await db

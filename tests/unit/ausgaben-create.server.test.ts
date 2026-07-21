@@ -23,7 +23,7 @@
  * Beleg file OR a "kein Beleg" + Begründung; neither → fail(422).
  *
  * Sphere is DERIVED inside createExpense (spec §4.5, no project override) — the
- * action only forwards the picked kategorieNameSnapshot.
+ * action only forwards the picked kategorieId (#115).
  *
  * Everything is mocked (mirrors the old transactions/neu page.server.test.ts);
  * no real DB. We assert on the args the create/mark mocks captured.
@@ -215,10 +215,13 @@ async function runCreate(event: ActionEvent): Promise<{
   }
 }
 
+// #115: the picker submits a valid Kategorie uuid (the schema uuid-validates it).
+const KATEGORIE_ID = "55555555-5555-4555-8555-555555555555";
+
 const VEREIN_BASE = {
   bezeichnung: "Raummiete März",
   betragCents: "45000",
-  kategorieNameSnapshot: "Verpflegung",
+  kategorieId: KATEGORIE_ID,
   sphereSnapshot: "ideeller",
   rechnungsdatum: "2026-03-01",
   abfluss_datum: "2026-03-02",
@@ -256,10 +259,10 @@ describe("ausgaben/neu ?/create — Verein auto-paid", () => {
 
     expect(createExpenseMock).toHaveBeenCalledTimes(1);
     const createArg = createExpenseMock.mock.calls[0]![0] as {
-      kategorieNameSnapshot: string;
+      kategorieId: string;
       bezahltVonKind: string;
     };
-    expect(createArg.kategorieNameSnapshot).toBe("Verpflegung");
+    expect(createArg.kategorieId).toBe(KATEGORIE_ID);
     expect(createArg.bezahltVonKind).toBe("verein");
 
     // markExpenseAsPaid is POSITIONAL: (id, params). No mail; member notify path
@@ -581,7 +584,7 @@ describe("ausgaben/neu load — duplicate prefill", () => {
   it("parses the duplicate query params into a values object (betragCents → euros)", async () => {
     const data = await runLoad(
       makeLoadEvent(
-        "?bezeichnung=Raummiete+M%C3%A4rz&betragCents=45000&kategorieNameSnapshot=Miete&kommentar=monatlich&bezahltVonKind=member&bezahltVonMemberId=11111111-1111-4111-8111-111111111111",
+        "?bezeichnung=Raummiete+M%C3%A4rz&betragCents=45000&kategorieId=55555555-5555-4555-8555-555555555555&kommentar=monatlich&bezahltVonKind=member&bezahltVonMemberId=11111111-1111-4111-8111-111111111111",
       ),
     );
     const values = data.values as Record<string, unknown>;
@@ -589,7 +592,7 @@ describe("ausgaben/neu load — duplicate prefill", () => {
     expect(values.bezeichnung).toBe("Raummiete März");
     // betragCents is surfaced as a de-DE euros string for the hero display input.
     expect(values.betrag).toBe("450,00");
-    expect(values.kategorieNameSnapshot).toBe("Miete");
+    expect(values.kategorieId).toBe("55555555-5555-4555-8555-555555555555");
     expect(values.kommentar).toBe("monatlich");
     expect(values.bezahltVonKind).toBe("member");
     expect(values.bezahltVonMemberId).toBe(
@@ -631,9 +634,7 @@ describe("ausgaben/neu ?/create — 422 re-hydrates the form", () => {
     expect(result.fail?.status).toBe(422);
     // The submitted values come back so the form re-hydrates instead of wiping.
     expect(result.fail?.data?.values?.bezeichnung).toBe("Teilausgefüllt");
-    expect(result.fail?.data?.values?.kategorieNameSnapshot).toBe(
-      "Verpflegung",
-    );
+    expect(result.fail?.data?.values?.kategorieId).toBe(KATEGORIE_ID);
     // A per-field error is surfaced for the Beleg gate.
     expect(result.fail?.data?.errors?.beleg).toBeTruthy();
   });
@@ -642,7 +643,7 @@ describe("ausgaben/neu ?/create — 422 re-hydrates the form", () => {
     const event = makeEvent({
       ...VEREIN_BASE,
       bezeichnung: "Ohne Kategorie",
-      kategorieNameSnapshot: "(Unkategorisiert)",
+      kategorieId: "(Unkategorisiert)",
       bezahltVonKind: "verein",
       beleg: mkBelegFile(),
     });
@@ -657,6 +658,6 @@ describe("ausgaben/neu ?/create — 422 re-hydrates the form", () => {
     };
     expect(result.fail?.status).toBe(422);
     expect(result.fail?.data?.values?.bezeichnung).toBe("Ohne Kategorie");
-    expect(result.fail?.data?.errors?.kategorieNameSnapshot).toBeTruthy();
+    expect(result.fail?.data?.errors?.kategorieId).toBeTruthy();
   });
 });

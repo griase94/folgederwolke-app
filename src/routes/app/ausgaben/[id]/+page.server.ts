@@ -29,6 +29,7 @@ import {
   markExpenseAsPaid,
   checkFestschreibungGate,
   listZahlungsarten,
+  resolveKategorieById,
   resolveKategorieByName,
 } from "$lib/server/domain/transactions.js";
 import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
@@ -77,16 +78,12 @@ const saveSchema = z.object({
   betragCents: z.coerce.number().int().positive(),
   rechnungsdatum: isoCalendarDate.nullable().optional(),
   kommentar: z.string().max(2000).nullable().optional(),
-  // Mandatory Kategorie (mirrors the create schema): the picker drives the
-  // Sphäre STRICTLY (§4.5), so an empty / sentinel Kategorie is rejected here —
-  // we never persist an uncategorized booking from the edit surface either.
-  kategorieNameSnapshot: z
-    .string()
-    .min(1)
-    .max(200)
-    .refine((v) => v !== "(Unkategorisiert)", {
-      message: "Kategorie muss ausgewählt werden",
-    }),
+  // Mandatory Kategorie (mirrors the create schema): #115 the picker submits an
+  // id; createExpense's edit path re-resolves the kategorie + derives the name +
+  // Sphäre from the row (§4.5). Empty select arrives as null → same message.
+  kategorieId: z
+    .string({ error: "Kategorie muss ausgewählt werden" })
+    .uuid({ error: "Kategorie muss ausgewählt werden" }),
   // NOTE: `sphereSnapshot` is intentionally NOT in this schema — it is DERIVED
   // server-side from the Kategorie (§4.5); a body value is never trusted.
   // NOTE: `zahlungsartId` / `erstattetAm` / `status` are intentionally NOT in
@@ -138,13 +135,10 @@ export const actions = {
     );
     if (!gate.ok) return fail(gate.status, { error: gate.error });
 
-    // §4.5: re-resolve the Kategorie by NAME and derive sphere STRICTLY from it.
-    // The body's sphereSnapshot is never trusted (mirrors createExpense) — a
-    // tampered/stale sphere can't mis-classify the booking.
-    const kat = await resolveKategorieByName(
-      "expense",
-      parsed.data.kategorieNameSnapshot,
-    );
+    // §4.5 / #115: re-resolve the Kategorie BY ID and derive the name-snapshot +
+    // sphere STRICTLY from the row. The body's sphereSnapshot is never trusted
+    // (mirrors createExpense) — a tampered/stale sphere can't mis-classify.
+    const kat = await resolveKategorieById("expense", parsed.data.kategorieId);
 
     // Payment-state guard (Fix 2): once an Auslage is `erstattet` the money has
     // moved, so the tax-relevant axes (Betrag + Kategorie/Sphäre) are frozen —
@@ -234,6 +228,18 @@ export const actions = {
     const detail = await getTransactionDetail(params.id, "expense");
     if (!detail) return fail(404, { error: "Nicht gefunden" });
 
+    // #115: the /neu form pre-selects the Kategorie BY ID, so resolve the stored
+    // snapshot name back to its id (a legitimate name→id fallback). If the
+    // kategorie was since removed/renamed, leave it blank so the user re-picks.
+    let kategorieId: string;
+    try {
+      kategorieId = (
+        await resolveKategorieByName("expense", detail.kategorieNameSnapshot)
+      ).id;
+    } catch {
+      kategorieId = "";
+    }
+
     // Carry ONLY the descriptive fields; RESET the payment state (spec §7.2).
     // No erstattetAm / zahlungsartId / status / approvedAt, and NEVER the Beleg
     // (a recurring Miete needs a fresh receipt each period). The bezahlt-von
@@ -241,8 +247,7 @@ export const actions = {
     const prefill = {
       bezeichnung: detail.bezeichnung,
       betragCents: detail.betragCents,
-      kategorieNameSnapshot: detail.kategorieNameSnapshot,
-      sphereSnapshot: detail.sphereSnapshot,
+      kategorieId,
       kommentar: detail.kommentar,
       projectId: detail.projectId,
       bezahltVonMemberId: detail.bezahltVonMemberId,

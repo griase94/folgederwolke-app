@@ -16,9 +16,11 @@
 	import BelegUpload from '$lib/components/admin/transactions/fields/BelegUpload.svelte';
 	import { FIELD_CLASS } from '$lib/components/admin/transactions/fields/field-class.js';
 	import { parseBetragCents } from '$lib/client/parse-betrag.js';
+	import { bezeichnungsVorschlaege } from '$lib/domain/bezeichnung-vorschlaege.js';
 	import type { Sphere } from '$lib/domain/sphere.js';
 
 	interface KategorieOption {
+		id: string;
 		name: string;
 		sphere: Sphere;
 		eurZeile?: string | number | null;
@@ -29,7 +31,7 @@
 		bezeichnung: string;
 		betragEur: string;
 		geldEingangDatum: string;
-		kategorieName: string;
+		kategorieId: string;
 		projectId: string;
 		kommentar: string;
 	}
@@ -46,7 +48,7 @@
 		bezeichnung: '',
 		betragEur: '',
 		geldEingangDatum: '',
-		kategorieName: '',
+		kategorieId: '',
 		projectId: '',
 		kommentar: '',
 	};
@@ -84,12 +86,13 @@
 	let kommentar = $state(values.kommentar);
 	// svelte-ignore state_referenced_locally
 	let projectId = $state(values.projectId || initialProjectId);
+	// #115: the picker submits the kategorie ID (createIncome resolves by id).
 	// svelte-ignore state_referenced_locally
-	let kategorieName = $state(values.kategorieName);
+	let kategorieId = $state(values.kategorieId);
 	// Sphere is DISPLAY-ONLY; createIncome re-derives it server-side (§4.5).
 	// svelte-ignore state_referenced_locally
 	let sphere = $state<Sphere | ''>(
-		kategorien.find((k) => k.name === values.kategorieName)?.sphere ?? '',
+		kategorien.find((k) => k.id === values.kategorieId)?.sphere ?? '',
 	);
 	// Track parsed cents for the gate readout (seed from prefill).
 	// svelte-ignore state_referenced_locally
@@ -100,6 +103,12 @@
 	function markDirty() {
 		onDirty?.();
 	}
+
+	// #115 Stufe 4: free-text Bezeichnungs-Vorschläge for the chosen Kategorie
+	// (empty for Kategorien without hints → no datalist rendered).
+	const vorschlaege = $derived(
+		bezeichnungsVorschlaege(kategorien.find((k) => k.id === kategorieId)?.name),
+	);
 
 	// Betrag error (m7): 0,00 is client-submittable (gate = present) but flagged.
 	const betragError = $derived(
@@ -113,7 +122,7 @@
 		const m: string[] = [];
 		if (betragCents === null || betragCents <= 0) m.push('Betrag');
 		if (!bezeichnung.trim()) m.push('Bezeichnung');
-		if (!kategorieName) m.push('Kategorie');
+		if (!kategorieId) m.push('Kategorie');
 		return m;
 	});
 	$effect(() => {
@@ -191,10 +200,19 @@
 					maxlength="500"
 					bind:value={bezeichnung}
 					placeholder="z.B. Teilnahmebeitrag, Standgebühr"
+					list={vorschlaege.length ? 'einnahme-bezeichnung-vorschlaege' : undefined}
 					aria-invalid={err('bezeichnung') ? true : undefined}
 					oninput={markDirty}
 					class={FIELD_CLASS}
 				/>
+				{#if vorschlaege.length}
+					<!-- #115 Stufe 4: per-Kategorie hints; the field stays free-text. -->
+					<datalist id="einnahme-bezeichnung-vorschlaege">
+						{#each vorschlaege as v (v)}
+							<option value={v}></option>
+						{/each}
+					</datalist>
+				{/if}
 				{#if err('bezeichnung')}
 					<p class="text-xs text-severity-critical">{err('bezeichnung')}</p>
 				{/if}
@@ -203,19 +221,18 @@
 			<!-- Kategorie (drives Sphäre strictly; sphere shown in the locked field below) -->
 			<div class="flex flex-col gap-1.5">
 				<KategoriePicker
-					name="kategorieNameSnapshot"
 					options={kategorien}
-					value={kategorieName}
+					value={kategorieId}
 					required
 					hideSphere
-					onChange={(name) => {
-						kategorieName = name;
+					onChange={(id) => {
+						kategorieId = id;
 						markDirty();
 					}}
 					onSphere={(s) => (sphere = s)}
 				/>
-				{#if err('kategorieNameSnapshot')}
-					<p class="text-xs text-severity-critical">{err('kategorieNameSnapshot')}</p>
+				{#if err('kategorieId')}
+					<p class="text-xs text-severity-critical">{err('kategorieId')}</p>
 				{/if}
 			</div>
 

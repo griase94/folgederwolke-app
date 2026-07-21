@@ -40,8 +40,8 @@ const CASH_DATE = `${THIS_YEAR}-01-15`;
 
 describe.skipIf(!dbConfigured)("Aurora triplet loader semantics", () => {
   let ACTOR = "";
-  let EXPENSE_KAT = "";
-  let INCOME_KAT = "";
+  let EXPENSE_KAT_ID = "";
+  let INCOME_KAT_ID = "";
   let admin: ReturnType<typeof postgres>;
 
   beforeAll(async () => {
@@ -56,13 +56,13 @@ describe.skipIf(!dbConfigured)("Aurora triplet loader semantics", () => {
       .returning({ id: users.id });
     if (!u) throw new Error("failed to seed actor user");
     ACTOR = u.id;
-    const [ke] = await admin<{ name: string }[]>`
-      SELECT name FROM kategorien WHERE kind = 'expense' LIMIT 1`;
-    const [ki] = await admin<{ name: string }[]>`
-      SELECT name FROM kategorien WHERE kind = 'income' LIMIT 1`;
+    const [ke] = await admin<{ id: string }[]>`
+      SELECT id FROM kategorien WHERE kind = 'expense' LIMIT 1`;
+    const [ki] = await admin<{ id: string }[]>`
+      SELECT id FROM kategorien WHERE kind = 'income' LIMIT 1`;
     if (!ke || !ki) throw new Error("missing seeded expense/income kategorie");
-    EXPENSE_KAT = ke.name;
-    INCOME_KAT = ki.name;
+    EXPENSE_KAT_ID = ke.id;
+    INCOME_KAT_ID = ki.id;
   });
 
   afterAll(async () => {
@@ -93,7 +93,7 @@ describe.skipIf(!dbConfigured)("Aurora triplet loader semantics", () => {
       bezeichnung: "aurora triplet income",
       betragCents: 1111,
       geldEingangDatum: CASH_DATE,
-      kategorieNameSnapshot: INCOME_KAT,
+      kategorieId: INCOME_KAT_ID,
       actorUserId: ACTOR,
       businessId: await allocateBusinessId("E", THIS_YEAR),
     });
@@ -110,7 +110,7 @@ describe.skipIf(!dbConfigured)("Aurora triplet loader semantics", () => {
       bezeichnung: "aurora triplet expense",
       betragCents: 3333,
       abflussDatum: CASH_DATE,
-      kategorieNameSnapshot: EXPENSE_KAT,
+      kategorieId: EXPENSE_KAT_ID,
       bezahltVonKind: "verein",
       bezahltVonDisplay: "Verein",
       belegVerzichtGrund: "test fixture — kein Beleg",
@@ -156,7 +156,7 @@ describe.skipIf(!dbConfigured)("Aurora triplet loader semantics", () => {
       bezeichnung: "aurora prior-year income",
       betragCents: 999,
       geldEingangDatum: `${THIS_YEAR - 1}-12-28`,
-      kategorieNameSnapshot: INCOME_KAT,
+      kategorieId: INCOME_KAT_ID,
       actorUserId: ACTOR,
       businessId: await allocateBusinessId("E", THIS_YEAR - 1),
     });

@@ -71,8 +71,9 @@
     maximumFractionDigits: 2,
   });
 
+  // #115: the picker submits the kategorie ID; seed the selection from the row.
   // svelte-ignore state_referenced_locally
-  let kategorieName = $state(detail.kategorieNameSnapshot);
+  let kategorieSel = $state(detail.kategorieId ?? "");
   // svelte-ignore state_referenced_locally
   let kategorieSphere = $state<Sphere>(detail.sphereSnapshot as Sphere);
   // svelte-ignore state_referenced_locally
@@ -190,25 +191,24 @@
   <div class="flex flex-col gap-1.5">
     <KategoriePicker
       id="d-kategorie"
-      name="kategorieNameSnapshot"
       required
       hideSphere
       options={expenseKategorien}
-      value={kategorieName}
-      onChange={(name) => {
-        kategorieName = name;
+      value={kategorieSel}
+      onChange={(id) => {
+        kategorieSel = id;
         markDirty();
       }}
       onSphere={(s) => (kategorieSphere = s)}
     />
     <input type="hidden" name="sphereSnapshot" value={kategorieSphere} />
-    {#if err("kategorieNameSnapshot")}
-      <p class="text-xs text-severity-critical">{err("kategorieNameSnapshot")}</p>
+    {#if err("kategorieId")}
+      <p class="text-xs text-severity-critical">{err("kategorieId")}</p>
     {/if}
   </div>
 
   <!-- Sphäre — read-only, derived from the Kategorie (ADR-0002). -->
-  {#if kategorieName}
+  {#if kategorieSel}
     <LockedSphereField sphere={kategorieSphere} />
   {/if}
 

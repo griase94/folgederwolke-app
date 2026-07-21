@@ -22,9 +22,11 @@
   import KategoriePicker from "$lib/components/admin/transactions/fields/KategoriePicker.svelte";
   import LockedSphereField from "$lib/components/admin/transactions/fields/LockedSphereField.svelte";
   import { FIELD_CLASS } from "$lib/components/admin/transactions/fields/field-class.js";
+  import { bezeichnungsVorschlaege } from "$lib/domain/bezeichnung-vorschlaege.js";
   import type { Sphere } from "$lib/domain/sphere.js";
 
   interface KategorieOption {
+    id: string;
     name: string;
     sphere: Sphere;
     eurZeile?: string | number | null;
@@ -35,7 +37,8 @@
     bezeichnung: string;
     betragCents: number;
     geldEingangDatum: string | null;
-    kategorieNameSnapshot: string;
+    /** #115: the current row's Kategorie FK — pre-selects the picker by id. */
+    kategorieId: string | null;
     projectId: string | null;
     kommentar: string | null;
     /** Income kategorie options for the picker. */
@@ -56,7 +59,7 @@
     bezeichnung,
     betragCents,
     geldEingangDatum,
-    kategorieNameSnapshot,
+    kategorieId,
     projectId,
     kommentar,
     kategorien,
@@ -81,14 +84,14 @@
 
   // svelte-ignore state_referenced_locally
   let geld = $state(geldEingangDatum ?? "");
+  // #115: the picker submits the kategorie ID; seed the selection from the row.
   // svelte-ignore state_referenced_locally
-  let kategorieName = $state(kategorieNameSnapshot);
+  let kategorieSel = $state(kategorieId ?? "");
   // Seed the sphere from the current Kategorie so the LockedSphereField + the
   // hidden mirror are correct on first render (not only after a Kategorie change).
   // svelte-ignore state_referenced_locally
   let sphere = $state<Sphere>(
-    kategorien.find((k) => k.name === kategorieNameSnapshot)?.sphere ??
-      "ideeller",
+    kategorien.find((k) => k.id === kategorieId)?.sphere ?? "ideeller",
   );
   // svelte-ignore state_referenced_locally
   let projectSel = $state(projectId ?? "");
@@ -96,6 +99,11 @@
   function markDirty() {
     onDirty?.();
   }
+
+  // #115 Stufe 4: free-text Bezeichnungs-Vorschläge for the chosen Kategorie.
+  const vorschlaege = $derived(
+    bezeichnungsVorschlaege(kategorien.find((k) => k.id === kategorieSel)?.name),
+  );
 
   const saveSubmit = () => {
     onSaving?.(true);
@@ -191,9 +199,20 @@
       required
       maxlength="500"
       bind:value={bezeichnung}
+      list={vorschlaege.length
+        ? "einnahme-detail-bezeichnung-vorschlaege"
+        : undefined}
       aria-invalid={err("bezeichnung") ? true : undefined}
       class={FIELD_CLASS}
     />
+    {#if vorschlaege.length}
+      <!-- #115 Stufe 4: per-Kategorie hints; the field stays free-text. -->
+      <datalist id="einnahme-detail-bezeichnung-vorschlaege">
+        {#each vorschlaege as v (v)}
+          <option value={v}></option>
+        {/each}
+      </datalist>
+    {/if}
     {#if err("bezeichnung")}
       <p class="text-xs text-severity-critical">{err("bezeichnung")}</p>
     {/if}
@@ -202,24 +221,23 @@
   <!-- Kategorie (drives Sphäre strictly; sphere shown read-only below) -->
   <div class="flex flex-col gap-1.5">
     <KategoriePicker
-      name="kategorieNameSnapshot"
       options={kategorien}
-      value={kategorieName}
+      value={kategorieSel}
       required
       hideSphere
-      onChange={(name) => {
-        kategorieName = name;
+      onChange={(id) => {
+        kategorieSel = id;
         markDirty();
       }}
       onSphere={(s) => (sphere = s)}
     />
-    {#if err("kategorieNameSnapshot")}
-      <p class="text-xs text-severity-critical">{err("kategorieNameSnapshot")}</p>
+    {#if err("kategorieId")}
+      <p class="text-xs text-severity-critical">{err("kategorieId")}</p>
     {/if}
   </div>
 
   <!-- Sphäre — read-only, derived from the Kategorie (ADR-0002). -->
-  {#if kategorieName}
+  {#if kategorieSel}
     <LockedSphereField sphere={sphere as Sphere} />
   {/if}
 
