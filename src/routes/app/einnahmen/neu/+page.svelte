@@ -3,6 +3,8 @@
 	import { page } from '$app/stores';
 	import EntryFormShell from '$lib/components/admin/transactions/EntryFormShell.svelte';
 	import EinnahmeFields from '$lib/components/admin/transactions/einnahmen/EinnahmeFields.svelte';
+	import EinnahmenListView from '../EinnahmenListView.svelte';
+	import { listQueryString } from '$lib/domain/transaction-filters.js';
 	import type { EinnahmeFormValues } from './+page.server.js';
 	import type { PageData, ActionData } from './$types.js';
 
@@ -34,8 +36,10 @@
 	);
 
 	function close() {
-		// eslint-disable-next-line svelte/no-navigation-without-resolve -- static parent-list route
-		goto('/app/einnahmen');
+		// Kulisse stage continuity: replay the list query so closing returns to the
+		// exact list the user opened from (prefill keys dropped by listQueryString).
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- same-origin list route + query
+		goto(`/app/einnahmen${listQueryString('einnahmen', $page.url.searchParams)}`);
 	}
 </script>
 
@@ -62,6 +66,11 @@
 		onGate={(g) => (gate = g)}
 	/>
 {/snippet}
+
+<!-- Kulisse: the real Einnahmen list is the inert stage behind the dialog. -->
+<div inert aria-hidden="true" data-slot="entry-kulisse">
+	<EinnahmenListView data={data.list} />
+</div>
 
 <EntryFormShell
 	title="Neue Einnahme"

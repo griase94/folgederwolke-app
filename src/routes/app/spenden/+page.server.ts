@@ -16,68 +16,10 @@
  */
 
 import type { PageServerLoad } from "./$types.js";
-import { listSpendenPage } from "$lib/server/domain/transactions.js";
-import { listSpendenKpi } from "$lib/server/domain/spenden-kpi.js";
-import { listMemberOptions } from "$lib/server/domain/transaction-pickers.js";
-import { parseFilterState } from "$lib/domain/transaction-filters.js";
-
-const PAGE_SIZE = 50;
+import { loadSpendenListData } from "./list-load.js";
 
 export const load: PageServerLoad = async ({ url, parent }) => {
+  // The list shape is built by the shared loader (reused by the /neu Kulisse).
   const { yearScope, currentYear } = await parent();
-  const state = parseFilterState("spenden", url.searchParams);
-
-  // PAGE CLAMP (see ausgaben/+page.server.ts) — clamp the requested page into
-  // [1, pages] before it drives the offset; re-query at the clamped offset only
-  // when the request overshot the last page.
-  const requestedPage = Math.max(
-    1,
-    Math.floor(Number(url.searchParams.get("page") ?? "1")) || 1,
-  );
-  // Sort plumbing (§13): the scaffold emits ?sort=<column key>&dir=asc|desc;
-  // listSpendenPage applies the ORDER-BY whitelist (default gebuchtAm desc).
-  const sort = url.searchParams.get("sort") ?? undefined;
-  const dir = url.searchParams.get("dir") === "asc" ? "asc" : "desc";
-  let page = requestedPage;
-  let { rows, total } = await listSpendenPage({
-    state,
-    year: yearScope,
-    limit: PAGE_SIZE,
-    offset: (page - 1) * PAGE_SIZE,
-    sort,
-    dir,
-  });
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  if (page > pages) {
-    page = pages;
-    ({ rows, total } = await listSpendenPage({
-      state,
-      year: yearScope,
-      limit: PAGE_SIZE,
-      offset: (page - 1) * PAGE_SIZE,
-      sort,
-      dir,
-    }));
-  }
-
-  // X-PRAG-04: Spenden has NO kategorie filter (→ []); the Spender filter IS a
-  // member-picker, so it needs the member options.
-  const [kpi, memberOptions] = await Promise.all([
-    listSpendenKpi(yearScope),
-    listMemberOptions(),
-  ]);
-
-  return {
-    tab: "spenden" as const,
-    rows,
-    total,
-    page,
-    pageSize: PAGE_SIZE,
-    filterState: state,
-    yearScope,
-    currentYear,
-    kpi,
-    kategorieOptions: [] as { value: string; label: string }[],
-    memberOptions,
-  };
+  return loadSpendenListData({ url, yearScope, currentYear });
 };

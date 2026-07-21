@@ -32,6 +32,7 @@ import { getDb } from "$lib/server/db/index.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { isNull } from "drizzle-orm";
 import { bookingYearFromCashDate } from "$lib/domain/year.js";
+import { loadEinnahmenListData } from "../list-load.js";
 
 function berlinYear(): number {
   return parseInt(
@@ -70,8 +71,15 @@ const EMPTY_VALUES: EinnahmeFormValues = {
 // load
 // ---------------------------------------------------------------------------
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, parent }) => {
   const db = getDb();
+
+  // Kulisse: /neu renders the real Einnahmen list as an inert backdrop behind
+  // the entry dialog (shared loader → byte-identical backdrop). yearScope comes
+  // from the app layout (parent), exactly like the list route.
+  const { yearScope, currentYear } = await parent();
+  const list = await loadEinnahmenListData({ url, yearScope, currentYear });
+
   const [incomeKategorien, allProjects] = await Promise.all([
     listKategorieOptions("income"),
     db
@@ -99,6 +107,7 @@ export const load: PageServerLoad = async ({ url }) => {
     initialProjectId,
     values: EMPTY_VALUES,
     year: berlinYear(),
+    list,
   };
 };
 

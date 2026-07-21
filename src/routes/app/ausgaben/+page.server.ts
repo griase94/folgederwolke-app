@@ -19,83 +19,19 @@
 import { fail } from "@sveltejs/kit";
 import type { Actions, PageServerLoad } from "./$types.js";
 import {
-  listAusgabenPage,
   getTransactionDetail,
   markExpenseAsPaid,
   checkFestschreibungGate,
 } from "$lib/server/domain/transactions.js";
-import { listAusgabenKpi } from "$lib/server/domain/ausgaben-kpi.js";
-import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
-import { parseFilterState } from "$lib/domain/transaction-filters.js";
-
-const PAGE_SIZE = 50;
+import { loadAusgabenListData } from "./list-load.js";
 
 export const load: PageServerLoad = async ({ url, parent }) => {
   // Year scope from the layout (Phase 3): `yearScope` keeps the ALL_YEARS
   // ("Alle Jahre") sentinel so the unfiltered-across-years list survives; the
-  // WHERE builder + the KPI treat ALL_YEARS as "no year predicate".
+  // WHERE builder + the KPI treat ALL_YEARS as "no year predicate". The list
+  // shape is built by the shared loader (reused by /app/ausgaben/neu's Kulisse).
   const { yearScope, currentYear } = await parent();
-  const state = parseFilterState("ausgaben", url.searchParams);
-
-  // PAGE CLAMP: clamp the requested page into [1, pages] BEFORE it drives the
-  // offset so an out-of-bounds ?page=99 can't show a garbage range. `total` is
-  // only known after a query, so we run once at the low-clamped offset, then
-  // re-query at the clamped offset only when the request overshot the last page.
-  const requestedPage = Math.max(
-    1,
-    Math.floor(Number(url.searchParams.get("page") ?? "1")) || 1,
-  );
-  // Sort plumbing (§13): the scaffold emits ?sort=<column key>&dir=asc|desc.
-  // listAusgabenPage applies an ORDER-BY whitelist, so an unknown key safely
-  // falls back to gebuchtAm desc.
-  const sort = url.searchParams.get("sort") ?? undefined;
-  const dir = url.searchParams.get("dir") === "asc" ? "asc" : "desc";
-  let page = requestedPage;
-  let { rows, total } = await listAusgabenPage({
-    state,
-    year: yearScope,
-    limit: PAGE_SIZE,
-    offset: (page - 1) * PAGE_SIZE,
-    sort,
-    dir,
-  });
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  if (page > pages) {
-    page = pages;
-    ({ rows, total } = await listAusgabenPage({
-      state,
-      year: yearScope,
-      limit: PAGE_SIZE,
-      offset: (page - 1) * PAGE_SIZE,
-      sort,
-      dir,
-    }));
-  }
-
-  // Phase 4: the header KPI pill + kategorie options (bezahltVon is an enum,
-  // so memberOptions stays empty). Bulk pool moved to /app/ausgaben/ueberweisungen.
-  const [kpi, kategorien] = await Promise.all([
-    listAusgabenKpi(yearScope),
-    listKategorieOptions("expense"),
-  ]);
-  const kategorieOptions = kategorien.map((k) => ({
-    value: k.name,
-    label: k.name,
-  }));
-
-  return {
-    tab: "ausgaben" as const,
-    rows,
-    total,
-    page,
-    pageSize: PAGE_SIZE,
-    filterState: state,
-    yearScope,
-    currentYear,
-    kpi,
-    kategorieOptions,
-    memberOptions: [] as { id: string; label: string }[],
-  };
+  return loadAusgabenListData({ url, yearScope, currentYear });
 };
 
 export const actions = {

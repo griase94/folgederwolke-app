@@ -18,74 +18,10 @@
  */
 
 import type { PageServerLoad } from "./$types.js";
-import { listEinnahmenPage } from "$lib/server/domain/transactions.js";
-import { listEinnahmenKpi } from "$lib/server/domain/einnahmen-kpi.js";
-import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
-import { parseFilterState } from "$lib/domain/transaction-filters.js";
-
-const PAGE_SIZE = 50;
+import { loadEinnahmenListData } from "./list-load.js";
 
 export const load: PageServerLoad = async ({ url, parent }) => {
+  // The list shape is built by the shared loader (reused by the /neu Kulisse).
   const { yearScope, currentYear } = await parent();
-  const state = parseFilterState("einnahmen", url.searchParams);
-
-  // PAGE CLAMP (see ausgaben/+page.server.ts) — clamp the requested page into
-  // [1, pages] before it drives the offset; re-query at the clamped offset only
-  // when the request overshot the last page.
-  const requestedPage = Math.max(
-    1,
-    Math.floor(Number(url.searchParams.get("page") ?? "1")) || 1,
-  );
-  // Sort plumbing (§13): the scaffold emits ?sort=<column key>&dir=asc|desc;
-  // listEinnahmenPage applies the ORDER-BY whitelist (default gebuchtAm desc).
-  const sort = url.searchParams.get("sort") ?? undefined;
-  const dir = url.searchParams.get("dir") === "asc" ? "asc" : "desc";
-  let page = requestedPage;
-  let { rows, total } = await listEinnahmenPage({
-    state,
-    year: yearScope,
-    limit: PAGE_SIZE,
-    offset: (page - 1) * PAGE_SIZE,
-    sort,
-    dir,
-  });
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  if (page > pages) {
-    page = pages;
-    ({ rows, total } = await listEinnahmenPage({
-      state,
-      year: yearScope,
-      limit: PAGE_SIZE,
-      offset: (page - 1) * PAGE_SIZE,
-      sort,
-      dir,
-    }));
-  }
-
-  // KPI + kategorie options in parallel (both independent of the row slice).
-  // X-PRAG-04: Einnahmen needs the income kategorie options; no member filter.
-  // listEinnahmenKpi is year-scoped (NOT filtered) — the Sphären-Split header
-  // reflects the whole year, the row table reflects the active filters.
-  const [kpi, kategorien] = await Promise.all([
-    listEinnahmenKpi(yearScope),
-    listKategorieOptions("income"),
-  ]);
-  const kategorieOptions = kategorien.map((k) => ({
-    value: k.name,
-    label: k.name,
-  }));
-
-  return {
-    tab: "einnahmen" as const,
-    rows,
-    total,
-    page,
-    pageSize: PAGE_SIZE,
-    filterState: state,
-    yearScope,
-    currentYear,
-    kpi,
-    kategorieOptions,
-    memberOptions: [] as { id: string; label: string }[],
-  };
+  return loadEinnahmenListData({ url, yearScope, currentYear });
 };
