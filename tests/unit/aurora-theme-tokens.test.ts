@@ -57,6 +57,13 @@ const FROZEN_VALUES: Record<string, string> = {
   "--color-type-spende": "#7c3aed",
   "--color-type-spende-tint": "#efeafb",
   "--color-dataviz-paid": "#a78bcb",
+  // White-label CTA fills (B3 M4): dedicated tokens whose value is frozen at an
+  // AA-safe ≥4.5:1 contrast against white in BOTH light + dark (they are NOT
+  // overridden in the .dark block, unlike --*-ink-aa which flips too light to
+  // carry a white label). Freezing the hex here prevents a silent AA regression.
+  "--cta-ausgabe": "#a64d79",
+  "--cta-einnahme": "#167a58",
+  "--cta-spende": "#7c3aed",
 };
 
 // The F1 token reconcile re-points the app-facing `--color-*` tokens onto the

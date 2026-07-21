@@ -21,6 +21,7 @@
   import BelegViewer from "$lib/components/files/BelegViewer.svelte";
   import AusgabeDetailFields from "$lib/components/admin/transactions/ausgaben/AusgabeDetailFields.svelte";
   import DeleteConfirm from "$lib/components/admin/transactions/detail/DeleteConfirm.svelte";
+  import DateField from "$lib/components/ui/date-field/DateField.svelte";
   import { statusPresentation } from "$lib/domain/transaction-status.js";
   import { SPHERE_LABELS, type Sphere } from "$lib/domain/sphere.js";
   import { formatCentsAsEuro } from "$lib/domain/money.js";
@@ -72,9 +73,14 @@
   const statusChip = $derived<DetailStatusChip>(
     data.isFestgeschrieben
       ? { label: "Festgeschrieben", tone: "neutral", icon: "lock" }
-      : isErstattet
-        ? { label: "Erstattet", tone: "neutral", icon: "refresh" }
-        : { label: statusPresentation(detail.status ?? "").label, tone: "neutral" },
+      : detail.belegFehlt
+        ? { label: "Beleg fehlt", tone: "warn", icon: "alert" }
+        : isErstattet
+          ? { label: "Erstattet", tone: "neutral", icon: "refresh" }
+          : {
+              label: statusPresentation(detail.status ?? "").label,
+              tone: "neutral",
+            },
   );
   const headMeta = $derived(
     isErstattet
@@ -249,32 +255,36 @@
           if (result.type === "success") await invalidateAll();
         };
       }}
-      class="flex flex-wrap items-center gap-2"
+      class="flex flex-col gap-1.5"
     >
-      <input
-        type="date"
-        name="datum"
-        lang="de"
-        bind:value={markPaidDatum}
-        required
-        class="h-9 rounded-lg border border-border bg-card px-2 text-sm"
-      />
-      <select
-        name="zahlartId"
-        bind:value={markPaidZahlartId}
-        class="h-9 rounded-lg border border-border bg-card px-2 text-sm"
-      >
-        <option value="">— Zahlungsart —</option>
-        {#each data.zahlungsarten as z (z.id)}
-          <option value={z.id}>{z.label}</option>
-        {/each}
-      </select>
-      <button
-        type="submit"
-        class="inline-flex h-9 items-center gap-2 rounded-lg bg-[color:var(--type-einnahme)] px-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
-      >
-        <Check class="size-4" aria-hidden="true" />Als bezahlt markieren
-      </button>
+      <div class="flex flex-wrap items-center gap-2">
+        <DateField
+          name="datum"
+          value={markPaidDatum}
+          onchange={(iso) => (markPaidDatum = iso)}
+          required
+          class="h-9 w-36"
+        />
+        <select
+          name="zahlartId"
+          bind:value={markPaidZahlartId}
+          class="h-9 rounded-lg border border-border bg-card px-2 text-sm"
+        >
+          <option value="">— Zahlungsart —</option>
+          {#each data.zahlungsarten as z (z.id)}
+            <option value={z.id}>{z.label}</option>
+          {/each}
+        </select>
+        <button
+          type="submit"
+          class="inline-flex h-9 items-center gap-2 rounded-lg bg-[color:var(--cta-einnahme)] px-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+        >
+          <Check class="size-4" aria-hidden="true" />Als bezahlt markieren
+        </button>
+      </div>
+      <p class="text-[11px] leading-snug text-ink-500">
+        Trägt nur das Zahlungsdatum ein — es wird keine E-Mail verschickt.
+      </p>
     </form>
   {/if}
 {/snippet}
@@ -291,7 +301,8 @@
   {facts}
   {fields}
   {beleg}
-  {headActions}
+  documented={!!detail.belegFileId}
+  headActions={data.isFestgeschrieben ? undefined : headActions}
   {saving}
   {dirty}
   bind:mode

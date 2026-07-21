@@ -170,6 +170,7 @@
   {facts}
   {fields}
   beleg={hasBeleg ? beleg : undefined}
+  documented={hasBeleg}
   headActions={detail.rechnungBusinessId ? headActions : undefined}
   {saving}
   {dirty}
@@ -181,10 +182,15 @@
 
 <DeleteConfirm
   bind:open={deleteOpen}
-  variant="simple"
-  title="Einnahme löschen?"
+  variant={detail.rechnungBusinessId ? "blocked" : "simple"}
+  title={detail.rechnungBusinessId
+    ? "Mit einer Rechnung verknüpft"
+    : "Einnahme löschen?"}
   subtitle={`${detail.businessId} · ${detail.bezeichnung}`}
   reassurance="Diese Einnahme wird dauerhaft entfernt."
+  blockedExplanation={`Diese Einnahme wurde automatisch gebucht, als die Rechnung ${detail.rechnungBusinessId} als bezahlt markiert wurde. Sie lässt sich hier nicht einzeln löschen — nimm zuerst die Zahlung auf der Rechnung zurück, dann verschwindet auch diese Buchung.`}
+  blockedHref={rechnungHref}
+  blockedLinkLabel={`Zur Rechnung ${detail.rechnungBusinessId}`}
   confirmLabel="Löschen"
   onClose={() => (deleteOpen = false)}
 />

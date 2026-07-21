@@ -34,6 +34,7 @@ import {
 import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
 import { getDb } from "$lib/server/db/index.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
+import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { and, eq, isNull } from "drizzle-orm";
 import { bus } from "$lib/server/events/index.js";
@@ -275,6 +276,26 @@ export const actions = {
     }
 
     const db = getDb();
+
+    // Pre-flight: an inbox-approved Auslage is FK-pinned by its submission
+    // (auslagen_submissions.approved_expense_id ON DELETE RESTRICT). Explain the
+    // coupling in plain German + point at the Prüf-Eingang, instead of letting
+    // the DB raise the opaque generic „es bestehen noch Verknüpfungen" (analog to
+    // the Rechnung pointer on the Einnahme side).
+    const linkedSubmission = await db
+      .select({ businessId: auslagenSubmissions.businessId })
+      .from(auslagenSubmissions)
+      .where(eq(auslagenSubmissions.approvedExpenseId, params.id))
+      .limit(1);
+    if (linkedSubmission.length > 0) {
+      const sub = linkedSubmission[0]!;
+      return fail(409, {
+        error: `Diese Ausgabe wurde aus der Einreichung ${sub.businessId} im Prüf-Eingang genehmigt. Sie lässt sich hier nicht löschen — bearbeite dazu die Einreichung im Prüf-Eingang.`,
+        submissionBusinessId: sub.businessId,
+        submissionHref: `/app/inbox/${sub.businessId}`,
+      });
+    }
+
     try {
       // TOCTOU: guard the DELETE with isNull(festgeschriebenAt) so a concurrent
       // Festschreibung between the SELECT and the DELETE can't remove a sealed row.

@@ -155,6 +155,15 @@
      ink) and under a white label (Einnahme CTA fill). Dark keeps the bright tone
      (dark tint + dark CTA label already pass). */
   --einnahme-ink-aa: #167a58;
+  /* Typed CTA fills for WHITE-label buttons (detail Speichern + „Als bezahlt
+     markieren"). Kept dark in BOTH modes — the `.dark --type-*` are intentionally
+     light for ink/accents, so white-on-them fails AA (measured: plum 2.55,
+     violet 2.72, bright green 1.88). These solid fills give white ≥4.5:1
+     everywhere (plum 5.30 / green 5.30 / violet 5.70) and read fine on the dark
+     wash. NOT overridden in the .dark block. */
+  --cta-ausgabe: #a64d79;
+  --cta-einnahme: #167a58;
+  --cta-spende: #7c3aed;
   --warn-text: color-mix(in oklch, var(--sev-warn), #000 30%);
   --crit-text: color-mix(in oklch, var(--sev-critical), #000 8%);
   --einnahme-strong: #17805e;

@@ -49,10 +49,8 @@
   const spendeartLabel = $derived(
     detail.spendeKind === "sachspende" ? "Sachspende" : "Geldspende",
   );
-  const zweckLabel = $derived(
-    detail.zweckbindungKind === "zweckgebunden"
-      ? `Zweckgebunden${detail.zweckbindungText ? ` — ${detail.zweckbindungText}` : ""}`
-      : "Zweckfrei",
+  const zweckgebunden = $derived(
+    detail.zweckbindungKind === "zweckgebunden",
   );
 
   const statusChip = $derived<DetailStatusChip>(
@@ -65,6 +63,9 @@
 
   const bescheinigungHref = $derived(
     `/app/spenden/${detail.id}/zuwendungsbestaetigung`,
+  );
+  const bescheinigungPdfHref = $derived(
+    `/app/spenden/${detail.id}/zuwendungsbestaetigung/pdf`,
   );
 </script>
 
@@ -81,7 +82,15 @@
       tabular
     />
     <KeyValue label="Spendenart" value={spendeartLabel} />
-    <KeyValue label="Zweckbindung" value={zweckLabel} />
+    {#if zweckgebunden}
+      <KeyValue
+        label="Zweckbindung"
+        value={detail.zweckbindungText || "Zweckgebunden"}
+        sub={detail.zweckbindungText ? "zweckgebunden" : undefined}
+      />
+    {:else}
+      <KeyValue label="Zweckbindung" value="Zweckfrei" />
+    {/if}
     <KeyValue label="Kategorie" value={detail.kategorieNameSnapshot} />
     <KeyValue label="Sphäre" sub="aus Spendenart abgeleitet">
       <span
@@ -165,15 +174,19 @@
           >
             {data.bescheinigungNr}
           </div>
-          <div class="text-[12.5px] text-ink-500">Zuwendungsbestätigung ausgestellt</div>
+          <div class="text-[12.5px] text-ink-500">
+            {detail.bescheinigungDatum
+              ? `ausgestellt am ${fmtDate(detail.bescheinigungDatum)}`
+              : "Zuwendungsbestätigung ausgestellt"}
+          </div>
         </div>
         <!-- eslint-disable svelte/no-navigation-without-resolve -- dynamic app route -->
         <a
-          href={bescheinigungHref}
+          href={bescheinigungPdfHref}
           data-testid="bescheinigung-view"
           class="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold text-ink-700 transition-colors hover:bg-muted"
         >
-          <Download class="size-4" aria-hidden="true" />Bescheinigung anzeigen
+          <Download class="size-4" aria-hidden="true" />PDF herunterladen
         </a>
         <!-- eslint-enable svelte/no-navigation-without-resolve -->
         <div
@@ -233,6 +246,8 @@
   {facts}
   {fields}
   {beleg}
+  documented={!!detail.belegFileId ||
+    (isSach && !!detail.herkunftsbelegFileId)}
   {railExtra}
   {saving}
   {dirty}

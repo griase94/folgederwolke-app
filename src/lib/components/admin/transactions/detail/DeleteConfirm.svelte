@@ -1,12 +1,18 @@
 <script lang="ts">
 	/**
-	 * DeleteConfirm — the staged delete dialog (detail-views-v4 §6). Two variants,
+	 * DeleteConfirm — the staged delete dialog (detail-views-v4 §6). Three variants,
 	 * ONE wording desktop↔mobile:
 	 *   - simple: a harmless delete (nothing settled) with a green reassurance.
 	 *   - warn:   a consequential delete (erstattet Ausgabe). „Nicht rückgängig
 	 *             machbar" is the visual peak, the Kasse-Delta is a NEUTRAL ledger
 	 *             fact (never einnahme-green), an audit note, and a ConfirmCheck
 	 *             friction that gates the red button.
+	 *   - blocked: the row is coupled to another entity (e.g. an income row that
+	 *             backs a paid Rechnung) and CANNOT be deleted here. We never
+	 *             promise „wird dauerhaft entfernt" (M6): the dialog explains the
+	 *             coupling up front, links to the coupled entity, and offers NO
+	 *             active red button — only „Schließen". The server RESTRICT stays
+	 *             the real guard; this is the honest pre-flight.
 	 * Centered dialog on desktop, bottom-sheet on mobile (checkbox + red button
 	 * co-visible without scrolling). Submits `action` (?/delete) via enhance;
 	 * the server redirects to the list on success.
@@ -18,12 +24,14 @@
 	import X from "@lucide/svelte/icons/x";
 	import Check from "@lucide/svelte/icons/check";
 	import ShieldCheck from "@lucide/svelte/icons/shield-check";
+	import LinkIcon from "@lucide/svelte/icons/link";
+	import ArrowRight from "@lucide/svelte/icons/arrow-right";
 	import ConfirmCheck from "$lib/components/ui/confirm-check/ConfirmCheck.svelte";
 	import { focusTrap } from "$lib/actions/focus-trap.js";
 
 	interface Props {
 		open?: boolean;
-		variant: "simple" | "warn";
+		variant: "simple" | "warn" | "blocked";
 		title: string;
 		subtitle: string;
 		/** simple: the reassurance line. */
@@ -32,6 +40,12 @@
 		warnLine?: string;
 		/** warn: the Kasse delta as a signed de-DE string (e.g. „+12,00 €"). */
 		deltaValue?: string;
+		/** blocked: why this row is coupled and can't be deleted here. */
+		blockedExplanation?: string;
+		/** blocked: link to the coupled entity (e.g. the Rechnung). */
+		blockedHref?: string;
+		/** blocked: label for the link to the coupled entity. */
+		blockedLinkLabel?: string;
 		confirmLabel?: string;
 		action?: string;
 		onClose: () => void;
@@ -45,6 +59,9 @@
 		reassurance,
 		warnLine,
 		deltaValue,
+		blockedExplanation,
+		blockedHref,
+		blockedLinkLabel,
 		confirmLabel = "Löschen",
 		action = "?/delete",
 		onClose,
@@ -88,11 +105,15 @@
 						class="grid size-11 shrink-0 place-items-center rounded-xl {variant ===
 						'warn'
 							? 'bg-[color:var(--sev-critical-tint)] text-[color:var(--sev-critical-text)]'
-							: 'bg-secondary text-ink-500'}"
+							: variant === 'blocked'
+								? 'bg-[color:var(--sev-info)]/12 text-[color:var(--sev-info)]'
+								: 'bg-secondary text-ink-500'}"
 						aria-hidden="true"
 					>
 						{#if variant === "warn"}
 							<TriangleAlert class="size-6" />
+						{:else if variant === "blocked"}
+							<LinkIcon class="size-5" />
 						{:else}
 							<Trash2 class="size-5" />
 						{/if}
@@ -117,6 +138,26 @@
 							<span>{reassurance}</span>
 						</div>
 					{/if}
+				{:else if variant === "blocked"}
+					<div
+						class="rounded-xl border border-[color:var(--sev-info)]/25 bg-[color:var(--sev-info)]/8 px-4 py-3 text-[13px] text-ink-700"
+					>
+						{#if blockedExplanation}
+							<p>{blockedExplanation}</p>
+						{/if}
+						{#if blockedHref}
+							<!-- eslint-disable svelte/no-navigation-without-resolve -- caller passes a static same-origin route -->
+							<a
+								href={blockedHref}
+								class="mt-3 inline-flex items-center gap-1.5 font-semibold text-[color:var(--sev-info)] hover:underline"
+								data-slot="delete-blocked-link"
+							>
+								{blockedLinkLabel ?? "Zur verknüpften Buchung"}
+								<ArrowRight class="size-3.5" aria-hidden="true" />
+							</a>
+							<!-- eslint-enable svelte/no-navigation-without-resolve -->
+						{/if}
+					</div>
 				{:else}
 					<div
 						class="flex items-start gap-3 rounded-xl border border-[color:var(--sev-critical)]/25 bg-[color:var(--sev-critical-tint)] px-4 py-3"
@@ -151,39 +192,52 @@
 					</ConfirmCheck>
 				{/if}
 
-				<form
-					method="POST"
-					{action}
-					use:enhance={() => {
-						deleting = true;
-						return async ({ result }) => {
-							deleting = false;
-							if (result.type === "failure") {
-								const err = (result.data as { error?: string } | undefined)
-									?.error;
-								toast.error(err ?? "Löschen fehlgeschlagen");
-							}
-							await applyAction(result);
-						};
-					}}
-					class="mt-5 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end"
-				>
-					<button
-						type="button"
-						onclick={onClose}
-						class="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold text-ink-700 transition-colors hover:bg-muted sm:flex-none"
+				{#if variant === "blocked"}
+					<div class="mt-5 flex justify-end">
+						<button
+							type="button"
+							onclick={onClose}
+							class="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold text-ink-700 transition-colors hover:bg-muted sm:flex-none"
+							data-slot="delete-blocked-close"
+						>
+							<X class="size-4" aria-hidden="true" />Schließen
+						</button>
+					</div>
+				{:else}
+					<form
+						method="POST"
+						{action}
+						use:enhance={() => {
+							deleting = true;
+							return async ({ result }) => {
+								deleting = false;
+								if (result.type === "failure") {
+									const err = (result.data as { error?: string } | undefined)
+										?.error;
+									toast.error(err ?? "Löschen fehlgeschlagen");
+								}
+								await applyAction(result);
+							};
+						}}
+						class="mt-5 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end"
 					>
-						<X class="size-4" aria-hidden="true" />Abbrechen
-					</button>
-					<button
-						type="submit"
-						disabled={!canDelete || deleting}
-						class="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-[color:var(--sev-critical)] px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
-						data-slot="delete-confirm-submit"
-					>
-						<Trash2 class="size-4" aria-hidden="true" />{confirmLabel}
-					</button>
-				</form>
+						<button
+							type="button"
+							onclick={onClose}
+							class="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold text-ink-700 transition-colors hover:bg-muted sm:flex-none"
+						>
+							<X class="size-4" aria-hidden="true" />Abbrechen
+						</button>
+						<button
+							type="submit"
+							disabled={!canDelete || deleting}
+							class="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-[color:var(--sev-critical)] px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
+							data-slot="delete-confirm-submit"
+						>
+							<Trash2 class="size-4" aria-hidden="true" />{confirmLabel}
+						</button>
+					</form>
+				{/if}
 			</div>
 		</div>
 	</div>

@@ -47,6 +47,8 @@
 		belegEdit?: Snippet;
 		/** Opens the staged delete confirm. Omitted → no delete affordance. */
 		onDelete?: () => void;
+		/** A Beleg is attached → the GoBD block may claim „belegt" (M8). */
+		documented?: boolean;
 		saving: boolean;
 		dirty: boolean;
 		/** Parent list route (Zurück + crumbs). */
@@ -86,6 +88,7 @@
 		fields,
 		belegEdit,
 		onDelete,
+		documented = true,
 		saving,
 		dirty,
 		listHref,
@@ -129,10 +132,11 @@
 		editBtn?.focus();
 	}
 
+	// AA-safe typed CTA fills (white label ≥4.5:1 in BOTH modes; see aurora.css).
 	const CTA_COLOR: Record<DetailKind, string> = {
-		expense: "bg-[var(--type-ausgabe)]",
-		income: "bg-[var(--einnahme-ink-aa)]",
-		donation: "bg-[var(--type-spende)]",
+		expense: "bg-[var(--cta-ausgabe)]",
+		income: "bg-[var(--cta-einnahme)]",
+		donation: "bg-[var(--cta-spende)]",
 	};
 </script>
 
@@ -181,8 +185,7 @@
 						Buchungsjahr {lock.year} ist festgeschrieben
 					</div>
 					<div class="mt-0.5 text-ink-700">
-						Diese Buchung ist unveränderbar.{#if kind === "expense"} „Als bezahlt
-							markieren" bleibt möglich — es ändert keine Buchungswerte.{/if}
+						Diese Buchung ist unveränderbar.
 					</div>
 				{:else}
 					<div class="font-semibold text-ink-900">
@@ -281,51 +284,58 @@
 						<StatusTimeline entries={detail.timeline} />
 					</div>
 				</DetailCard>
-				<GobdBlock />
+				<GobdBlock {documented} />
 			{/if}
 		</aside>
 	</div>
 
-	<!-- ── Edit dock-foot: [Löschen] … [Abbrechen][Speichern typfarben] ──────── -->
+	<!-- ── Edit dock-foot ──────────────────────────────────────────────────────
+	     Desktop: [Löschen] … [Abbrechen][Speichern typfarben] on one in-flow row.
+	     Mobile (plate §5): „Löschen" in its OWN quiet slot ABOVE a full-width
+	     2-button [Abbrechen][Speichern] bar. In-flow (not sticky) so nothing is
+	     clipped at the viewport, floats over fields, or collides with the
+	     AdminShell tabbar + FAB (the blocker). -->
 	{#if mode === "edit"}
 		<div
-			class="mt-5 flex items-center gap-3 border-t border-hairline pt-4 max-lg:sticky max-lg:bottom-0 max-lg:z-10 max-lg:-mx-4 max-lg:bg-background/95 max-lg:px-4 max-lg:pb-[max(1rem,env(safe-area-inset-bottom))] max-lg:backdrop-blur"
+			class="mt-5 flex flex-col gap-2.5 border-t border-hairline pt-4 lg:flex-row lg:items-center"
 			data-slot="detail-footer"
 		>
 			{#if onDelete}
 				<button
 					type="button"
 					onclick={onDelete}
-					class="inline-flex h-11 items-center gap-2 rounded-lg px-3 text-sm font-semibold text-[color:var(--sev-critical-text)] transition-colors hover:bg-[color:var(--sev-critical)]/10"
+					class="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold text-[color:var(--sev-critical-text)] transition-colors hover:bg-[color:var(--sev-critical)]/10 max-lg:w-full max-lg:border max-lg:border-[color:var(--sev-critical)]/20"
 					data-slot="detail-delete-btn"
 				>
 					<Trash2 class="size-4" aria-hidden="true" />Löschen
 				</button>
 			{/if}
-			<span class="flex-1"></span>
-			<button
-				type="button"
-				onclick={cancelEdit}
-				class="inline-flex h-11 items-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold text-ink-700 transition-colors hover:bg-muted"
-			>
-				<X class="size-4" aria-hidden="true" />Abbrechen
-			</button>
-			<button
-				type="submit"
-				form="detail-form"
-				disabled={!dirty || saving}
-				class="inline-flex h-11 items-center gap-2 rounded-lg px-5 text-sm font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-50 {CTA_COLOR[
-					kind
-				]}"
-				data-slot="detail-save-btn"
-			>
-				{#if saving}
-					<RefreshCw class="size-4 animate-spin" aria-hidden="true" />
-				{:else}
-					<Check class="size-4" aria-hidden="true" />
-				{/if}
-				Speichern
-			</button>
+			<span class="hidden flex-1 lg:block"></span>
+			<div class="flex gap-2.5 max-lg:w-full">
+				<button
+					type="button"
+					onclick={cancelEdit}
+					class="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold text-ink-700 transition-colors hover:bg-muted max-lg:flex-1"
+				>
+					<X class="size-4" aria-hidden="true" />Abbrechen
+				</button>
+				<button
+					type="submit"
+					form="detail-form"
+					disabled={!dirty || saving}
+					class="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-5 text-sm font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-50 max-lg:flex-[1.3] {CTA_COLOR[
+						kind
+					]}"
+					data-slot="detail-save-btn"
+				>
+					{#if saving}
+						<RefreshCw class="size-4 animate-spin" aria-hidden="true" />
+					{:else}
+						<Check class="size-4" aria-hidden="true" />
+					{/if}
+					Speichern
+				</button>
+			</div>
 		</div>
 	{/if}
 </div>

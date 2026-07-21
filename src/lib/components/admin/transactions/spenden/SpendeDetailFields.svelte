@@ -1,32 +1,34 @@
 <!--
   SpendeDetailFields — the editable detail fields for a Spende (spec §10 + §9).
 
-  Rendered inside DetailModalShell's right column. It owns the `#detail-form`
-  (the shell's Speichern button targets `form="detail-form"`), posting the same
-  snake_case fields editSpende validates: Spendenart, Zweckbindung (+ required
-  Text when zweckgebunden), Betrag, Zuwendungsdatum, Spender. The Kategorie is
-  DERIVED server-side (editSpende re-derives it) — no Kategorie picker here.
+  Rendered inside TransactionDetailView's `fields` slot. It owns `#detail-form`
+  (the shell's dock-foot Speichern targets `form="detail-form"`), posting the
+  same snake_case fields editSpende validates: Spendenart, Zweckbindung (+
+  required Text when zweckgebunden), Betrag, Zuwendungsdatum, Spender. The
+  Kategorie is DERIVED server-side (editSpende re-derives it) — no Kategorie
+  picker here.
 
-  For a Sachspende it ALSO shows a READ-ONLY Wertermittlung block (gemeiner Wert
-  / Methode / Zustand) — these are not re-edited inline in v1 (a value change is
-  a Storno+Neu concern); the create form is the authoring surface. The hidden
-  inputs carry the current Sachspende values so the editSpende validation (which
-  requires them for a Sachspende) still passes on a Zweckbindung edit.
+  B3 M3: the edit mode wears the B2 Erfassen-Gerüst — the Betrag+Zuwendungsdatum
+  HERO pair (violet, + prefix), a type-caption, the read-only LockedSphereField,
+  a neutral segmented Zweckbindung toggle, and consistent required asterisks.
 
-  Spendenart is READ-ONLY here: it is FIXED at the row's actual kind (a
-  Geld↔Sach switch is a Storno-class change, not an inline edit). Making it
-  mutable was a save dead-end — toggling Geldspende→Sachspende revealed only the
-  READ-ONLY Wertermittlung block with EMPTY hidden carry-forwards, which
-  editSpende's superRefine rejects (422) with no editable inputs to fix it. The
-  fixed chip keeps `isSach` aligned with the row, so the hidden carry-forwards
-  always mirror real persisted values.
+  Spendenart is READ-ONLY here: a Geld↔Sach switch is a Storno-class change, not
+  an inline edit (mutating it was a 422 dead end — the hidden Wertermittlung
+  carry-forwards would be empty). For a Sachspende it ALSO shows a READ-ONLY
+  Wertermittlung block; the hidden inputs carry the current values so editSpende's
+  required-field validation still passes on a Zweckbindung-only edit.
 -->
 <script lang="ts">
   import { untrack } from "svelte";
   import { applyAction, enhance } from "$app/forms";
   import { toast } from "svelte-sonner";
-  import DateField from "$lib/components/ui/date-field/DateField.svelte";
-  import { parseBetragCents } from "$lib/client/parse-betrag.js";
+  import {
+    AmountField,
+    DateField as HeroDateField,
+  } from "$lib/components/ui/hero-field/index.js";
+  import LockedSphereField from "$lib/components/admin/transactions/fields/LockedSphereField.svelte";
+  import { FIELD_CLASS } from "$lib/components/admin/transactions/fields/field-class.js";
+  import type { Sphere } from "$lib/domain/sphere.js";
   import type { TransactionDetail } from "$lib/server/domain/transactions.js";
 
   interface Props {
@@ -35,7 +37,7 @@
     onDirty?: () => void;
     /** Bubbled so the page can feed the shell's `saving` flag during a ?/save. */
     onSaving?: (v: boolean) => void;
-    /** FIX B (review): fired on a successful ?/save so the page can reset `dirty`. */
+    /** Fired on a successful ?/save so the page can reset `dirty` + drop to read. */
     onSaved?: () => void;
   }
 
@@ -51,9 +53,7 @@
   const isSach = $derived(spendeKind === "sachspende");
   const spendeArtLabel = $derived(isSach ? "Sachspende" : "Geldspende");
 
-  // Initial snapshot from the loaded detail — the form fields seed ONCE (a
-  // detail modal does not hot-swap its row), so we read the props untracked to
-  // make the initial-value intent explicit (no reactivity-capture warning).
+  // Initial snapshot from the loaded detail — the form fields seed ONCE.
   const initialZweckbindung: ZweckbindungKind = untrack(() =>
     detail.zweckbindungKind === "zweckgebunden" ? "zweckgebunden" : "zweckfrei",
   );
@@ -64,22 +64,19 @@
   let zweckbindungKind = $state<ZweckbindungKind>(initialZweckbindung);
   let zugewendetAm = $state(initialZugewendet);
 
-  // Betrag: de-DE editable text (type=text + inputmode=decimal + parseBetragCents),
-  // mirroring AusgabeDetailFields — so the value reads "2.500,00" (comma decimal,
-  // ADR-0003) rather than the period-formatted "2500.00" a type=number forces.
-  // Seeded de-DE; the hidden betragCents is derived via parseBetragCents (NOT
-  // parseFloat, which breaks on the de-DE comma).
-  let betragEur = $state(
-    untrack(() =>
-      (detail.betragCents / 100).toLocaleString("de-DE", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }),
-    ),
+  // Betrag hero seed: de-DE display string (comma decimal, ADR-0003). The
+  // AmountField owns the hidden name=betragCents integer-cents mirror.
+  const betragSeed = untrack(() =>
+    (detail.betragCents / 100).toLocaleString("de-DE", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }),
   );
-  const betragCentsOut = $derived(
-    betragEur ? String(parseBetragCents(betragEur) || "") : "",
-  );
+
+  // The persisted sphere, shown read-only (Spenden derive their sphere from the
+  // Spendenart server-side; this is context, never a chooser).
+  // svelte-ignore state_referenced_locally
+  const sphereEffective = detail.sphereEffective as Sphere;
 
   const ZWECKBINDUNGEN: readonly [ZweckbindungKind, string][] = [
     ["zweckfrei", "Zweckfrei"],
@@ -95,10 +92,6 @@
     return errors[key]?.[0] ?? null;
   }
 
-  // T4 (review): enhance the ?/save so a failed editSpende (422 superRefine, 409
-  // festgeschrieben/bescheinigt, …) surfaces a toast in the modal instead of
-  // silently replacing the page. The page's inline `form.error` banner +
-  // per-field `errors` still render via applyAction's `form` update.
   const saveSubmit = () => {
     onSaving?.(true);
     return async ({
@@ -108,12 +101,11 @@
     }) => {
       onSaving?.(false);
       if (result.type === "success") {
-        // FIX B (review): confirm save + reset dirty so Speichern stays disabled.
         toast.success("Änderungen gespeichert");
         onSaved?.();
       } else if (result.type === "failure") {
-        const err = (result.data as { error?: string } | undefined)?.error;
-        toast.error(err ?? "Fehler beim Speichern");
+        const e = (result.data as { error?: string } | undefined)?.error;
+        toast.error(e ?? "Fehler beim Speichern");
       }
       await applyAction(result);
     };
@@ -131,24 +123,63 @@
   id="detail-form"
   method="POST"
   action="?/save"
-  class="flex flex-col gap-5"
+  class="flex flex-col gap-4"
+  oninput={markDirty}
+  onchange={markDirty}
   use:enhance={saveSubmit}
 >
   <input type="hidden" name="id" value={detail.id} />
   <!-- Member-vs-extern: the detail edit keeps the existing Spender identity
-	     (no re-pick in v1) — carry it forward so editSpende validation passes. -->
-  <input
-    type="hidden"
-    name="member_id"
-    value={detail.bezahltVonMemberId ?? ""}
-  />
+       (no re-pick in v1) — carry it forward so editSpende validation passes. -->
+  <input type="hidden" name="member_id" value={detail.bezahltVonMemberId ?? ""} />
 
-  <!-- Spendenart — READ-ONLY chip. A Geld↔Sach switch is a Storno-class change,
-	     not an inline edit (it would otherwise be an unfixable 422 dead end). -->
+  <!-- Betrag-Hero + Zuwendungsdatum-Hero (identical anatomy; side-by-side). -->
   <div>
-    <p class="text-foreground mb-1.5 block text-sm font-medium">Spendenart</p>
+    <div class="grid grid-cols-2 gap-2 sm:gap-3">
+      <div class="flex flex-col gap-1.5">
+        <label for="detail-betrag" class="text-sm font-medium text-ink-900">
+          {isSach ? "Gemeiner Wert (§ 9 BewG)" : "Betrag"}
+          <span class="text-severity-critical" aria-hidden="true">*</span>
+        </label>
+        <AmountField
+          id="detail-betrag"
+          name="betragCents"
+          value={betragSeed}
+          type="spende"
+          sign="plus"
+          required
+          onchange={() => markDirty()}
+        />
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <label for="detail-zugewendet" class="text-sm font-medium text-ink-900">
+          Zuwendungsdatum
+          <span class="text-severity-critical" aria-hidden="true">*</span>
+        </label>
+        <HeroDateField
+          id="detail-zugewendet"
+          name="zugewendet_am"
+          value={zugewendetAm}
+          required
+          onchange={(iso) => {
+            zugewendetAm = iso;
+            markDirty();
+          }}
+        />
+      </div>
+    </div>
+    <p class="mt-2 flex items-center gap-1.5 text-xs text-ink-500">
+      <span class="size-1.5 rounded-full bg-type-spende" aria-hidden="true"
+      ></span>
+      Wird als <b class="font-semibold text-ink-700">Spende</b> mit Plus gebucht.
+    </p>
+  </div>
+
+  <!-- Spendenart — READ-ONLY chip. A Geld↔Sach switch is a Storno-class change. -->
+  <div class="flex flex-col gap-1.5">
+    <span class="text-sm font-medium text-ink-900">Spendenart</span>
     <span
-      class="border-border bg-muted/50 text-muted-foreground inline-flex items-center rounded-full border px-2.5 py-0.5 text-sm font-medium"
+      class="inline-flex w-fit items-center rounded-full border border-hairline bg-secondary px-2.5 py-1 text-sm font-medium text-ink-700"
       data-testid="detail-spendeart-chip"
     >
       {spendeArtLabel}
@@ -156,26 +187,37 @@
     <input type="hidden" name="spende_kind" value={spendeKind} />
   </div>
 
-  <!-- Zweckbindung -->
-  <fieldset>
-    <legend class="text-foreground mb-1.5 block text-sm font-medium"
-      >Zweckbindung</legend
+  <!-- Sphäre — read-only context (derived from the Spendenart server-side). -->
+  <LockedSphereField
+    sphere={sphereEffective}
+    hint="Spenden gehören in den ideellen Bereich — nicht direkt wählbar."
+  />
+
+  <!-- Zweckbindung — neutral segmented toggle (never brand pink). -->
+  <fieldset class="flex flex-col gap-1.5">
+    <legend class="text-sm font-medium text-ink-900">Zweckbindung</legend>
+    <div
+      class="flex gap-1 rounded-[10px] border border-hairline bg-secondary p-1"
+      role="radiogroup"
+      aria-label="Zweckbindung"
     >
-    <div class="flex flex-wrap gap-2">
       {#each ZWECKBINDUNGEN as [k, l] (k)}
+        {@const on = zweckbindungKind === k}
         <button
           type="button"
+          role="radio"
+          aria-checked={on}
           onclick={() => {
             zweckbindungKind = k;
             markDirty();
           }}
-          class={[
-            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-            zweckbindungKind === k
-              ? "bg-primary-strong text-primary-foreground"
-              : "bg-muted text-muted-foreground hover:text-foreground",
-          ].join(" ")}
           data-testid={`detail-zweckbindung-${k}`}
+          class={[
+            "inline-flex min-h-10 flex-1 items-center justify-center rounded-[7px] px-3 py-2 text-sm font-medium transition-colors",
+            on
+              ? "bg-card text-ink-900 shadow-sm ring-1 ring-hairline"
+              : "bg-transparent text-ink-500 hover:text-ink-900",
+          ].join(" ")}
         >
           {l}
         </button>
@@ -183,139 +225,101 @@
     </div>
     <input type="hidden" name="zweckbindung_kind" value={zweckbindungKind} />
     {#if isZweckgebunden}
-      <div class="mt-2 space-y-1">
+      <div class="mt-1 flex flex-col gap-1.5">
         <label
           for="detail-zweckbindung-text"
-          class="text-foreground block text-sm font-medium"
+          class="text-sm font-medium text-ink-900"
         >
-          Zweckbindungs-Text <span class="text-red-500" aria-hidden="true"
-            >*</span
-          >
+          Zweckbindungs-Text
+          <span class="text-severity-critical" aria-hidden="true">*</span>
         </label>
         <input
           id="detail-zweckbindung-text"
           name="zweckbindung_text"
           type="text"
           value={detail.zweckbindungText ?? ""}
-          oninput={markDirty}
           required
-          class="border-border bg-background focus:ring-primary w-full rounded-md border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
+          class={FIELD_CLASS}
         />
         {#if err("zweckbindung_text")}
-          <p class="text-xs text-red-600">{err("zweckbindung_text")}</p>
+          <p class="text-xs text-severity-critical">
+            {err("zweckbindung_text")}
+          </p>
         {/if}
       </div>
     {/if}
   </fieldset>
 
-  <!-- Betrag -->
-  <div>
-    <label
-      for="detail-betrag"
-      class="text-foreground mb-1 block text-sm font-medium"
-    >
-      {isSach ? "Gemeiner Wert (€, § 9 BewG)" : "Betrag (€)"}
-    </label>
-    <div class="relative">
-      <span
-        class="text-muted-foreground absolute top-1/2 left-3 -translate-y-1/2 text-sm"
-        >€</span
+  <!-- Spender -->
+  <fieldset class="flex flex-col gap-3">
+    <legend class="text-sm font-medium text-ink-900">Spender:in</legend>
+    <div class="flex flex-col gap-1.5">
+      <label for="detail-spender-name" class="text-sm font-medium text-ink-900"
+        >Name</label
       >
-      <!-- de-DE editable text (type=text + inputmode=decimal); $derived
-           betragCentsOut carries the parseBetragCents-derived hidden cents. -->
       <input
-        id="detail-betrag"
+        id="detail-spender-name"
+        name="spender_name"
         type="text"
-        inputmode="decimal"
-        required
-        bind:value={betragEur}
-        placeholder="0,00"
-        oninput={markDirty}
-        class="border-border bg-background focus:ring-primary w-full rounded-md border py-2 pr-3 pl-8 text-sm tabular-nums focus:ring-2 focus:outline-none"
+        placeholder="Name"
+        value={detail.spenderName ?? ""}
+        class={FIELD_CLASS}
       />
-      <input type="hidden" name="betragCents" value={betragCentsOut} />
     </div>
-  </div>
-
-  <!-- Zuwendungsdatum -->
-  <div class="space-y-1.5">
-    <label
-      for="detail-zugewendet"
-      class="text-foreground block text-sm font-medium"
-    >
-      Zuwendungsdatum
-    </label>
-    <DateField
-      id="detail-zugewendet"
-      name="zugewendet_am"
-      value={zugewendetAm}
-      onchange={(iso) => {
-        zugewendetAm = iso;
-        markDirty();
-      }}
-    />
-  </div>
-
-  <!-- Spender (display + edit of free-text identity for extern) -->
-  <fieldset class="space-y-2">
-    <legend class="text-foreground mb-1.5 block text-sm font-medium"
-      >Spender</legend
-    >
-    <input
-      name="spender_name"
-      type="text"
-      placeholder="Name"
-      value={detail.spenderName ?? ""}
-      oninput={markDirty}
-      class="border-border bg-background focus:ring-primary w-full rounded-md border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
-    />
-    <input
-      name="spender_adresse"
-      type="text"
-      placeholder="Adresse"
-      value={detail.spenderAdresse ?? ""}
-      oninput={markDirty}
-      class="border-border bg-background focus:ring-primary w-full rounded-md border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
-    />
-    <input
-      name="spender_email"
-      type="email"
-      placeholder="E-Mail (optional)"
-      value={detail.spenderEmail ?? ""}
-      oninput={markDirty}
-      class="border-border bg-background focus:ring-primary w-full rounded-md border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
-    />
+    <div class="flex flex-col gap-1.5">
+      <label
+        for="detail-spender-adresse"
+        class="text-sm font-medium text-ink-900">Adresse</label
+      >
+      <input
+        id="detail-spender-adresse"
+        name="spender_adresse"
+        type="text"
+        placeholder="Straße, PLZ Ort"
+        value={detail.spenderAdresse ?? ""}
+        class={FIELD_CLASS}
+      />
+    </div>
+    <div class="flex flex-col gap-1.5">
+      <label for="detail-spender-email" class="text-sm font-medium text-ink-900">
+        E-Mail <span class="text-xs font-normal text-ink-500">(optional)</span>
+      </label>
+      <input
+        id="detail-spender-email"
+        name="spender_email"
+        type="email"
+        placeholder="name@example.org"
+        value={detail.spenderEmail ?? ""}
+        class={FIELD_CLASS}
+      />
+    </div>
   </fieldset>
 
   <!-- Sachspende: READ-ONLY Wertermittlung view + hidden carry-forward inputs. -->
   {#if isSach}
     <section
-      class="border-border bg-muted/30 space-y-2 rounded-md border p-3 text-sm"
+      class="flex flex-col gap-2 rounded-xl border border-hairline bg-secondary/40 p-3 text-sm"
       data-testid="detail-sachspende-wertermittlung"
     >
-      <h3 class="text-foreground text-sm font-medium">
+      <h3 class="text-sm font-semibold text-ink-900">
         Sachspende — Wertermittlung
       </h3>
-      <dl
-        class="text-muted-foreground grid grid-cols-[auto_1fr] gap-x-3 gap-y-1"
-      >
+      <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-ink-500">
         <dt>Methode</dt>
-        <dd class="text-foreground">
+        <dd class="text-ink-900">
           {detail.wertermittlungMethode
             ? (methodeLabel[detail.wertermittlungMethode] ??
               detail.wertermittlungMethode)
             : "–"}
         </dd>
         <dt>Zustand</dt>
-        <dd class="text-foreground">{detail.zustandBeschreibung ?? "–"}</dd>
+        <dd class="text-ink-900">{detail.zustandBeschreibung ?? "–"}</dd>
         {#if detail.betriebsvermoegen}
           <dt>Herkunft</dt>
-          <dd class="text-foreground">aus Betriebsvermögen</dd>
+          <dd class="text-ink-900">aus Betriebsvermögen</dd>
         {/if}
       </dl>
     </section>
-    <!-- Carry the current Sachspende facts so editSpende's required-field
-		     validation passes on a non-Wertermittlung edit (e.g. Zweckbindung). -->
     <input
       type="hidden"
       name="wertermittlung_methode"

@@ -133,8 +133,10 @@
 						{@render chip(statusChip)}
 					{/if}
 				</div>
+				<!-- Mobile wraps to 2 lines (Andy rule: no truncate on mobile titles);
+				     desktop truncates to one line. -->
 				<h1
-					class="mt-1 truncate text-[21px] font-bold tracking-[-0.01em] text-ink-900"
+					class="mt-1 text-[21px] font-bold tracking-[-0.01em] text-ink-900 max-sm:line-clamp-2 sm:truncate"
 					title={title}
 				>
 					{title}
