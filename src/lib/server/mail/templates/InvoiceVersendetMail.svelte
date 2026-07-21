@@ -339,7 +339,7 @@
 																		</tbody>
 																	</table>
 																</td>
-																<td style="vertical-align:top;">
+																<td style="vertical-align:middle;">
 																	<p style="margin:0 0 4px 0;font-size:11px;font-weight:800;letter-spacing:0.6px;text-transform:uppercase;color:#7c3aed;">Giro-Code</p>
 																	<p style="margin:0;font-size:13px;color:#3a3050;line-height:1.5;">QR mit der Banking-App scannen — Betrag und Verwendungszweck sind schon drin.</p>
 																</td>

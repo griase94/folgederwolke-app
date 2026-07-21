@@ -133,7 +133,9 @@ function formatEuro(cents: number): string {
  *     byte-exact (proven by the decode-roundtrip test), rather than being
  *     silently down-coded to Latin-1 by the library's string path.
  *   - a >=4-module quiet zone (`margin`) as the QR spec requires for scanners.
- *   - pure ink-on-white, no colour tricks, so contrast never breaks scanning.
+ *   - brand ink #1a1126 on pure white (~18:1 — effectively black to a
+ *     scanner; the decode-roundtrip test proves it reads), no gradients or
+ *     other colour tricks that could break scanning.
  *   - version "002" (EPC-recommended for new implementations); BIC is always
  *     supplied (the caller gates on it), so the code is maximally readable.
  *

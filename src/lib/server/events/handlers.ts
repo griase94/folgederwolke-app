@@ -461,20 +461,32 @@ export function registerHandlers(): void {
         payload.empfaenger &&
         payload.currency === "EUR"
       ) {
-        const qrPng = await renderEpc069QrPng({
-          bic: payload.bic,
-          name: payload.empfaenger,
-          iban: payload.iban,
-          amountCents: payload.bruttoCents,
-          remittance: payload.invoiceBusinessId,
-        });
-        qrPngCid = `girocode-${payload.invoiceBusinessId}`;
-        attachments.push({
-          filename: `girocode-${payload.invoiceBusinessId}.png`,
-          content: qrPng,
-          contentType: "image/png",
-          cid: qrPngCid,
-        });
+        // The QR must never take the whole invoice mail down: a render
+        // failure (e.g. degenerate Stammdaten like a whitespace-only BIC
+        // slipping past the truthy gate) degrades to the bank table, which
+        // carries all the same data — the template's {#if qrPngCid} handles
+        // the absence.
+        try {
+          const qrPng = await renderEpc069QrPng({
+            bic: payload.bic,
+            name: payload.empfaenger,
+            iban: payload.iban,
+            amountCents: payload.bruttoCents,
+            remittance: payload.invoiceBusinessId,
+          });
+          qrPngCid = `girocode-${payload.invoiceBusinessId}`;
+          attachments.push({
+            filename: `girocode-${payload.invoiceBusinessId}.png`,
+            content: qrPng,
+            contentType: "image/png",
+            cid: qrPngCid,
+          });
+        } catch (err) {
+          console.error(
+            `[invoice.versendet] Giro-QR render failed for ${payload.invoiceBusinessId} — sending without QR:`,
+            err,
+          );
+        }
       }
 
       // 2. Send (idempotent on send_attempt).
