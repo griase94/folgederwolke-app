@@ -51,6 +51,21 @@
 		</div>
 	{/if}
 
+	{#if data.spende.festgeschriebenAt && !data.alreadyIssued}
+		<!-- ADR-0006 Nachtrag (certificate carve-out): issuing is allowed in a
+		     festgeschriebenes Jahr — it writes only the Bescheinigungs-Metadaten,
+		     never a booking value. Honest hint, not a lock. -->
+		<div
+			class="mb-4 rounded-xl border border-[color:var(--sev-info)]/30 bg-[color:var(--sev-info)]/10 px-4 py-3 text-sm text-ink-700"
+			role="status"
+			data-testid="bescheinigung-festgeschrieben-hint"
+		>
+			Das Buchungsjahr ist festgeschrieben. Die Bescheinigung vergibt nur die
+			Nummer und das Ausstellungsdatum &ndash; sie &auml;ndert keine
+			Buchungswerte der Spende.
+		</div>
+	{/if}
+
 	{#if data.extractError}
 		<div class="mb-4 rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900">
 			{data.extractError}

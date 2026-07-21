@@ -25,7 +25,6 @@ import { zahlungsarten } from "$lib/server/db/schema/zahlungsarten.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { bus } from "$lib/server/events/index.js";
 import type { YearScope } from "$lib/domain/year.js";
-import { bookingYearFromCashDate } from "$lib/domain/year.js";
 import { isUuid } from "$lib/domain/uuid.js";
 import type { FilterState } from "$lib/domain/transaction-filters.js";
 import {
@@ -1614,33 +1613,16 @@ export async function markExpenseAsPaid(
   }[];
   const row = rows[0];
   if (!row) return { ok: false, error: "Auslage nicht gefunden" };
-  if (row.festgeschrieben_at !== null) {
-    return {
-      ok: false,
-      error: "Auslage ist festgeschrieben — Bezahlt-Markierung verweigert",
-    };
-  }
 
-  // Settings-based Festschreibung gate (ADR-0006), aligned to the cash-derived
-  // year. The UPDATE below preserves an existing abfluss_datum (COALESCE) and
-  // otherwise writes `datum`; year_of_buchung recomputes from that effective
-  // abfluss (migration 0034). Gate on year(COALESCE(existing abfluss, datum)):
-  // this matches the DB trigger for the common case (abfluss present → it is
-  // preserved, so old and new year both equal year(abfluss); or abfluss NULL →
-  // it takes `datum`). It does NOT replicate the trigger's UPDATE-time
-  // LEAST(year_for_booking(gebucht_am), year(datum)) for the corner case of a
-  // NULL-abfluss row whose gebucht_am sits in a CLOSED year while `datum` is in
-  // an open one — every route caller pre-gates on year_of_buchung (which equals
-  // year_for_booking(gebucht_am) for such a row) and blocks it first, but the
-  // 23514 catch on the UPDATE below is the backstop if this is ever called
-  // without that pre-gate.
-  const effectiveAbfluss = row.abfluss_datum ?? params.datum;
-  const gate = await checkFestschreibungGate(
-    bookingYearFromCashDate(effectiveAbfluss),
-  );
-  if (!gate.ok) {
-    return { ok: false, error: gate.error };
-  }
+  // ADR-0006 Nachtrag (payment carve-out): a festgeschriebene Auslage may still
+  // be marked paid — the DB trigger (migration 0040) permits ONLY the payment
+  // columns {erstattet_am, zahlungsart_id, status, updated_at}. We deliberately
+  // do NOT pre-gate on festschreibung here: the trigger is the sole, precise
+  // enforcer. The one blocked case is a Verein-direct row with NULL abfluss_datum
+  // (the COALESCE below would set abfluss = payment date → move the Buchungsjahr,
+  // which the trigger's locked-abfluss check rejects); that surfaces as the
+  // 23514 catch → honest 409 below. A member/extern row (abfluss already set)
+  // keeps its date via COALESCE and passes the carve-out.
 
   // Guard the write with `erstattet_am IS NULL` and RETURNING so an
   // already-erstattet row updates 0 rows (we lost no money — the row was
@@ -1665,13 +1647,15 @@ export async function markExpenseAsPaid(
       RETURNING id
     `)) as unknown as { id: string }[];
   } catch (err) {
-    // Backstop for the corner case the gate above can't see (NULL-abfluss row
-    // whose gebucht_am is in a closed year): the trigger raises 23514. Degrade
-    // it to a clean refusal instead of an opaque 500 (mirrors markExpenseErstattet).
+    // Post-carve-out (0040) the ONLY way this UPDATE trips the trigger is a
+    // Verein-direct row with NULL abfluss_datum in a festgeschriebenes Jahr:
+    // COALESCE would set abfluss = payment date and move the Buchungsjahr, which
+    // the trigger rejects (23514). Honest refusal instead of an opaque 500.
     if (isCheckViolation(err)) {
       return {
         ok: false,
-        error: "Auslage ist festgeschrieben — Bezahlt-Markierung verweigert",
+        error:
+          "Diese Ausgabe hat kein Abfluss-Datum und liegt in einem festgeschriebenen Jahr — „Als bezahlt markieren“ würde das Buchungsjahr ändern und ist daher nicht möglich.",
       };
     }
     throw err;

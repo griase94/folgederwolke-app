@@ -285,8 +285,8 @@
     {
       "idx": 40,
       "version": "7",
-      "when": 1784635108939,
-      "tag": "0040_kategorie_rechnungsfaehig",
+      "when": 1784636249966,
+      "tag": "0040_expense-paid-carveout",
       "breakpoints": true
     }
   ]

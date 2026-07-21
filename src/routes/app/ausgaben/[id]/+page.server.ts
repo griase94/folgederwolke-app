@@ -212,15 +212,11 @@ export const actions = {
       return fail(422, { error: "Ungültige Eingabe" });
     }
 
-    // Festschreibung gate before mutating (markExpenseAsPaid also row-checks,
-    // but the settings gate must run for the pre-close window too).
-    const detail = await getTransactionDetail(params.id, "expense");
-    if (!detail) return fail(404, { error: "Nicht gefunden" });
-    const gate = await checkFestschreibungGate(
-      detail.yearOfBuchung ?? new Date().getFullYear(),
-    );
-    if (!gate.ok) return fail(gate.status, { error: gate.error });
-
+    // NO festschreibung pre-gate here (ADR-0006 Nachtrag / migration 0038): the
+    // payment carve-out means a festgeschriebene Auslage MAY be marked paid, so
+    // the route must NOT block on the year. markExpenseAsPaid + the DB trigger
+    // are the enforcers — they permit only the payment columns and return the
+    // honest German 409 for the Verein-direct NULL-abfluss case (surfaced below).
     // Positional, no-mail path (kebab/detail quick action).
     const result = await markExpenseAsPaid(params.id, {
       datum: parsed.data.datum,
