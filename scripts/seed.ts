@@ -35,6 +35,8 @@ type KatRow = {
   sphere: "ideeller" | "vermoegen" | "zweckbetrieb" | "wirtschaftlich";
   eurZeile?: number | null;
   anlageGemZeile?: number | null;
+  /** Rechnungsfähig (Andy-Feedback 2026-07) — only invoiceable income Kategorien. */
+  rechnungsfaehig?: boolean;
 };
 
 const AUSGABEN_KATEGORIEN: KatRow[] = [
@@ -80,9 +82,18 @@ const AUSGABEN_KATEGORIEN: KatRow[] = [
   { name: "Sonstige Ausgabe (WGB)", sphere: "wirtschaftlich" },
 ];
 
+// rechnungsfaehig=true = darf im Rechnungsformular gewählt werden (Andy-Feedback
+// 2026-07). Nur fakturierbare Leistungen; Spenden/Zuschüsse/Beiträge/Zinsen +
+// Barkasse (Bar/Eintritt/Garderobe/Merch) bleiben false. „Vermietung Technik"
+// + „Dienstleistung (allgemein)" sind Andys zwei neue Kategorien.
 const EINNAHMEN_KATEGORIEN: KatRow[] = [
   { name: "Aufnahmegebühr", sphere: "ideeller" },
   { name: "Bar-Umsatz", sphere: "wirtschaftlich" },
+  {
+    name: "Dienstleistung (allgemein)",
+    sphere: "wirtschaftlich",
+    rechnungsfaehig: true,
+  },
   { name: "Eintritt", sphere: "zweckbetrieb" },
   { name: "Garderobe", sphere: "zweckbetrieb" },
   // Donation-derivation kategorien — names must exactly match
@@ -91,14 +102,43 @@ const EINNAHMEN_KATEGORIEN: KatRow[] = [
   { name: "Geldspende zweckfrei", sphere: "ideeller" },
   { name: "Geldspende zweckgebunden", sphere: "ideeller" },
   { name: "Sachspende", sphere: "ideeller" },
-  { name: "Honorar künstlerische Leistung", sphere: "zweckbetrieb" },
-  { name: "Kuratierung & Künstlerische Leitung", sphere: "zweckbetrieb" },
+  {
+    name: "Honorar künstlerische Leistung",
+    sphere: "zweckbetrieb",
+    rechnungsfaehig: true,
+  },
+  {
+    name: "Kuratierung & Künstlerische Leitung",
+    sphere: "zweckbetrieb",
+    rechnungsfaehig: true,
+  },
   { name: "Merch-Verkauf", sphere: "wirtschaftlich" },
   { name: "Sonstige Einnahme (Ideell)", sphere: "ideeller" },
-  { name: "Sonstige Einnahme (WGB)", sphere: "wirtschaftlich" },
-  { name: "Sonstige Einnahme (Zweckbetrieb)", sphere: "zweckbetrieb" },
-  { name: "Sponsoring (mit Gegenleistung)", sphere: "wirtschaftlich" },
-  { name: "Workshop / Kursgebühr", sphere: "zweckbetrieb" },
+  {
+    name: "Sonstige Einnahme (WGB)",
+    sphere: "wirtschaftlich",
+    rechnungsfaehig: true,
+  },
+  {
+    name: "Sonstige Einnahme (Zweckbetrieb)",
+    sphere: "zweckbetrieb",
+    rechnungsfaehig: true,
+  },
+  {
+    name: "Sponsoring (mit Gegenleistung)",
+    sphere: "wirtschaftlich",
+    rechnungsfaehig: true,
+  },
+  {
+    name: "Vermietung Technik",
+    sphere: "wirtschaftlich",
+    rechnungsfaehig: true,
+  },
+  {
+    name: "Workshop / Kursgebühr",
+    sphere: "zweckbetrieb",
+    rechnungsfaehig: true,
+  },
   { name: "Zinsen", sphere: "vermoegen" },
   { name: "Zuschuss (zweckfrei)", sphere: "ideeller" },
   { name: "Zuschuss (zweckgebunden)", sphere: "ideeller" },
@@ -202,12 +242,16 @@ async function main() {
           sphere: k.sphere,
           eurZeile: k.eurZeile ?? null,
           anlageGemZeile: k.anlageGemZeile ?? null,
+          rechnungsfaehig: k.rechnungsfaehig ?? false,
           sortOrder: i,
         })
         .onConflictDoUpdate({
           target: [schema.kategorien.kind, schema.kategorien.name],
           set: {
             sphere: k.sphere,
+            // Re-seed keeps the flag in sync (existing rows default false from
+            // the migration; the upsert sets the true ones on every seed run).
+            rechnungsfaehig: k.rechnungsfaehig ?? false,
             sortOrder: i,
             updatedAt: new Date(),
           },
