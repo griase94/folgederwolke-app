@@ -19,6 +19,7 @@
 	import Check from "@lucide/svelte/icons/check";
 	import ShieldCheck from "@lucide/svelte/icons/shield-check";
 	import ConfirmCheck from "$lib/components/ui/confirm-check/ConfirmCheck.svelte";
+	import { focusTrap } from "$lib/actions/focus-trap.js";
 
 	interface Props {
 		open?: boolean;
@@ -69,6 +70,14 @@
 			role="dialog"
 			aria-modal="true"
 			aria-labelledby="delete-confirm-title"
+			tabindex="-1"
+			use:focusTrap
+			onkeydown={(e) => {
+				if (e.key === "Escape" && !deleting) {
+					e.preventDefault();
+					onClose();
+				}
+			}}
 		>
 			{#if variant === "warn"}
 				<div class="h-[3px] bg-[color:var(--sev-critical)]" aria-hidden="true"></div>
