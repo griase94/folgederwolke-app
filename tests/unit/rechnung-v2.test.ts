@@ -211,10 +211,11 @@ describe("Rechnung v2 — fixture renders", () => {
     await writeOut("long-bezeichnung", bytes);
   });
 
-  // Renamed from "empty-zeitraum" — empty Leistungszeitraum is now illegal
-  // (§ 14 Abs. 4 Nr. 6 UStG). The renderer is exercised with the legal
-  // fallback "Leistungsdatum entspricht Rechnungsdatum" instead.
-  it("renders with the §31 UStDV fallback when service date = invoice date", async () => {
+  // Leistungszeitraum is always the compact month now (Andy-Feedback 2026-07):
+  // the old long same-day sentence is gone — it never fit the PDF head. The
+  // form derives the month from the mandatory Leistungsdatum; the renderer
+  // just prints it.
+  it("renders with the compact month Leistungszeitraum", async () => {
     const bytes = await renderRechnungV2({
       verein: VEREIN_FIXTURE,
       customer: {
@@ -224,7 +225,7 @@ describe("Rechnung v2 — fixture renders", () => {
       },
       rechnungsnummer: "FDW-2026-010",
       rechnungsdatum: "2026-05-20",
-      leistungszeitraum: "Leistungsdatum entspricht Rechnungsdatum",
+      leistungszeitraum: "Mai 2026",
       bezeichnung: "Künstlerische Beratung am 20.05.2026",
       leistungsBeschreibung: null,
       nettoCents: 30000,

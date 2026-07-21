@@ -135,6 +135,8 @@ const validInput = {
   // E-PR3: Kategorie is mandatory on the invoice form/schema.
   kategorieId: KATEGORIE_ID,
   rechnungsdatum: "2026-05-15",
+  // Andy-Feedback 2026-07: Leistungsdatum is mandatory now.
+  leistungsDatum: "2026-05-15",
   bezeichnung: "Webseite Q2 2026",
   leistungszeitraum: "Mai 2026",
   nettoCents: 50000,
