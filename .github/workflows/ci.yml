@@ -156,7 +156,7 @@ jobs:
         # --shard splits the grep-selected specs across the matrix; each shard
         # runs serially on its own postgres service + webServer (playwright
         # workers:1, fullyParallel:false), so shards stay mutually isolated.
-        run: pnpm test:e2e --grep '@phase-0|@phase-1|@phase-2|@phase-3|@phase-3-routing|@phase-4-ausgaben|@phase-5-einnahmen|@phase-6-spenden|@phase-8|@phase-9|@smoke|@phase-aurora-1|@phase-aurora-slice2|@phase-aurora-slice3|@phase-aurora-slice4|@phase-aurora-inbox|@phase-aurora-slice5|@phase-member-zahlung|@phase-entry-modals|@aurora-impl-f1|@aurora-impl-f2|@aurora-impl-b1|@aurora-impl-e1|@aurora-impl-e2|@aurora-impl-e3' --shard=${{ matrix.shard }}/3
+        run: pnpm test:e2e --grep '@phase-0|@phase-1|@phase-2|@phase-3|@phase-3-routing|@phase-4-ausgaben|@phase-5-einnahmen|@phase-6-spenden|@phase-8|@phase-9|@smoke|@phase-aurora-1|@phase-aurora-slice2|@phase-aurora-slice3|@phase-aurora-slice4|@phase-aurora-inbox|@phase-aurora-slice5|@phase-member-zahlung|@phase-entry-modals|@aurora-impl-f1|@aurora-impl-f2|@aurora-impl-b1|@aurora-impl-e1|@aurora-impl-e2|@aurora-impl-b2|@aurora-impl-e3' --shard=${{ matrix.shard }}/3
 
   # Single required status check named "e2e" (branch protection requires the
   # literal context "e2e"). It aggregates the matrix: succeeds only if every

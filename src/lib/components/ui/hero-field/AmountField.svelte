@@ -118,6 +118,6 @@
 		data-testid="amount-field-input"
 		class={cn(HERO_INPUT, 'text-[color:var(--hero-accent)]', sign === 'none' && 'pl-4')}
 	/>
-	<span class="flex-none grid place-items-center pl-1.5 pr-4 text-[18px] font-bold text-[color:var(--hero-accent)]" aria-hidden="true">€</span>
+	<span class="flex-none grid place-items-center pl-1 pr-2.5 text-[18px] font-bold text-[color:var(--hero-accent)] sm:pl-1.5 sm:pr-4" aria-hidden="true">€</span>
 	<input type="hidden" {name} value={cents ?? ''} />
 </div>

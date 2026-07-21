@@ -149,6 +149,12 @@
   --einnahme-text: color-mix(in oklch, var(--type-einnahme), #000 22%);
   --ausgabe-text: color-mix(in oklch, var(--type-ausgabe), #000 12%);
   --spende-text: color-mix(in oklch, var(--type-spende), #000 8%);
+  /* AA-safe einnahme green (F6 --open-ink pattern): the vibrant --type-einnahme
+     (#1f9e76) is only ~3:1 as ink on its tint AND under white on a solid fill —
+     both fail WCAG AA. This darker green is ≥4.5:1 both on #e6f6ee (gate-line.ok
+     ink) and under a white label (Einnahme CTA fill). Dark keeps the bright tone
+     (dark tint + dark CTA label already pass). */
+  --einnahme-ink-aa: #167a58;
   --warn-text: color-mix(in oklch, var(--sev-warn), #000 30%);
   --crit-text: color-mix(in oklch, var(--sev-critical), #000 8%);
   --einnahme-strong: #17805e;
@@ -308,6 +314,9 @@
   --warn-text: var(--sev-warn-text);
   --crit-text: var(--sev-critical-text);
   --einnahme-strong: var(--type-einnahme);
+  /* dark: the bright green already passes as ink on the dark tint AND as a CTA
+     fill under a dark (--background) label — keep it. */
+  --einnahme-ink-aa: var(--type-einnahme);
 
   /* — Beitrags-status ladder — */
   --st-paid-ink: var(--type-einnahme);

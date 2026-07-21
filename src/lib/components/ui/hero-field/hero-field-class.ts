@@ -21,13 +21,16 @@ export const HERO_WRAP_ERROR =
   "border-severity-critical " +
   "focus-within:shadow-[0_0_0_4px_color-mix(in_srgb,var(--sev-critical)_16%,transparent)]";
 
-/** The 20px accent prefix zone (16px left inset, 10px gap to the value). */
+/** The 20px accent prefix zone. Insets tighten on mobile (10px/6px vs 16px/10px)
+ *  so a full date (TT.MM.JJJJ) never clips in the side-by-side hero at 390px. */
 export const HERO_PREFIX =
-  "flex-none grid place-items-center w-5 ml-4 mr-2.5 text-[color:var(--hero-accent)]";
+  "flex-none grid place-items-center w-5 ml-2.5 mr-1.5 sm:ml-4 sm:mr-2.5 text-[color:var(--hero-accent)]";
 
-/** The value input — identical metric in both fields (24/800 tabular, right). */
+/** The value input — identical metric in both fields (right-aligned tabular
+ *  extrabold). 18px on mobile so a full date fits the side-by-side hero cell at
+ *  390px (ANDY-LENS §2 — never clip the value); 24px from the sm breakpoint up. */
 export const HERO_INPUT =
-  "flex-1 min-w-0 border-0 bg-transparent p-0 text-[24px] font-extrabold leading-none " +
+  "flex-1 min-w-0 border-0 bg-transparent p-0 text-[18px] sm:text-[24px] font-extrabold leading-none " +
   "tabular-nums tracking-[-0.01em] text-right outline-none " +
   "placeholder:text-ink-300 placeholder:font-semibold";
 

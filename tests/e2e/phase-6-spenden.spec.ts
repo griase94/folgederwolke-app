@@ -53,12 +53,14 @@ async function signIn(page: import("@playwright/test").Page): Promise<void> {
   ]);
 }
 
-/** Fill the shared Betrag (€) display input → drives the hidden cents field. */
+/** Fill the shared Betrag (€) hero display input → drives the hidden cents field. */
 async function fillBetrag(
   page: import("@playwright/test").Page,
   euros: string,
 ): Promise<void> {
-  await page.fill('[data-testid="betrag-eur-input"]', euros);
+  // entry-modal-v4: Betrag is the shared hero AmountField; its visible display
+  // input carries id="betrag-display" (the hidden name=betragCents mirrors it).
+  await page.fill("#betrag-display", euros);
 }
 
 /** Fill the DateField (TT.MM.JJJJ display) from an ISO date + blur to commit. */

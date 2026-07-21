@@ -102,45 +102,64 @@
 		revalidate();
 	}
 
-	// Sync external prop changes (parent reset / controlled binding).
+	// Sync external prop changes (parent reset / controlled binding). Guard on
+	// `!invalid`: a controlled parent that mirrors our onchange sets `value=""`
+	// when we commit an INVALID date — without this guard that empty prop would
+	// re-run the sync and WIPE the raw "30.02.2026" the user must see + fix (B1).
 	$effect(() => {
-		if (normalisedProp !== lastSynced) {
+		if (normalisedProp !== lastSynced && !invalid) {
 			lastSynced = normalisedProp;
 			iso = normalisedProp;
 			display = isoToDisplay(normalisedProp);
-			invalid = false;
 			inputEl?.setCustomValidity('');
 		}
 	});
 
 	const ariaInvalid = $derived(invalid || ariaInvalidProp === true);
+
+	// German inline error (the entry form runs `novalidate`, so no English browser
+	// bubble is reachable). We KEEP the raw typed value — "30.02.2026" is never
+	// wiped back to the placeholder on blur — and name the problem in German.
+	const humanDateError = $derived.by(() => {
+		const t = display.trim();
+		const m = t.match(/^(\d{1,2})\.(\d{1,2})\./);
+		if (m) return `${m[1]}.${m[2]}. — dieses Datum gibt's nicht.`;
+		return "Bitte ein gültiges Datum eingeben (TT.MM.JJJJ).";
+	});
 </script>
 
-<div
-	class={cn(HERO_WRAP, ariaInvalid && HERO_WRAP_ERROR, className)}
-	style="--hero-accent: var(--ink-500)"
-	data-slot="date-field"
-	data-testid="date-field"
->
-	<span class={HERO_PREFIX} aria-hidden="true">
-		<CalendarIcon class="size-5" />
-	</span>
-	<input
-		{id}
-		type="text"
-		inputmode="decimal"
-		autocomplete="off"
-		placeholder="TT.MM.JJJJ"
-		bind:this={inputEl}
-		bind:value={display}
-		oninput={revalidate}
-		onblur={onBlur}
-		{required}
-		{disabled}
-		aria-invalid={ariaInvalid ? 'true' : undefined}
-		aria-describedby={ariaDescribedBy}
-		data-testid="date-field-input"
-		class={cn(HERO_INPUT, 'pr-4 text-[color:var(--ink-900)]')}
-	/>
-	<input type="hidden" {name} value={iso} />
+<div class="flex flex-col gap-1.5">
+	<div
+		class={cn(HERO_WRAP, ariaInvalid && HERO_WRAP_ERROR, className)}
+		style="--hero-accent: var(--ink-500)"
+		data-slot="date-field"
+		data-testid="date-field"
+	>
+		<span class={HERO_PREFIX} aria-hidden="true">
+			<CalendarIcon class="size-5" />
+		</span>
+		<input
+			{id}
+			type="text"
+			inputmode="decimal"
+			autocomplete="off"
+			placeholder="TT.MM.JJJJ"
+			bind:this={inputEl}
+			bind:value={display}
+			oninput={revalidate}
+			onblur={onBlur}
+			{required}
+			{disabled}
+			aria-invalid={ariaInvalid ? 'true' : undefined}
+			aria-describedby={ariaDescribedBy}
+			data-testid="date-field-input"
+			class={cn(HERO_INPUT, 'pr-2.5 text-[color:var(--ink-900)] sm:pr-4')}
+		/>
+		<input type="hidden" {name} value={iso} />
+	</div>
+	{#if invalid && display.trim() !== ''}
+		<span class="text-xs text-severity-critical" data-slot="date-field-error" role="alert">
+			{humanDateError}
+		</span>
+	{/if}
 </div>

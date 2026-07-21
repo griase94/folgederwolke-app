@@ -1,16 +1,24 @@
 <script lang="ts">
 	/**
-	 * AusgabeFields — Package C1. Aurora 3-section redesign.
+	 * AusgabeFields — Aurora B2 (entry-modal-v4).
 	 *
-	 * Sections: Grunddaten / Beleg (position 2) / Bezahlt-von
-	 * Each section is a light card (rounded-xl border-hairline bg-card/60 p-4).
+	 * Two sections per the plate: Buchung / Zuordnung.
+	 *   Buchung  : Betrag-Hero + Rechnungsdatum-Hero (identical anatomy, ANDY-LENS
+	 *              §2) + type-caption, Abfluss-Datum, Bezeichnung, Kategorie →
+	 *              LockedSphereField (derived, read-only), Beleg-oder-Verzicht gate.
+	 *   Zuordnung: Projekt, Bezahlt-von (ADR-0007 union) + „Schon bezahlt?" reveal.
 	 *
-	 * Betrag → type=text inputmode=decimal + parseBetragCents (ADR-0003).
-	 * FIELD_CLASS throughout. Bezahlt-von → grid-cols-3.
-	 * PRESERVE bind:value local-state pattern (EinnahmeFields bind-regression lesson).
+	 * Betrag is the shared hero AmountField (emits integer cents via name=betragCents,
+	 * ADR-0003). The Sphäre is derived STRICTLY from the Kategorie (ADR-0002) and shown
+	 * read-only — never a chooser, no project override in the entry path.
+	 *
+	 * PRESERVE the bind:value local-state pattern (EinnahmeFields bind-regression
+	 * lesson): every editable field is local $state seeded once from `values`.
 	 */
-	import DateField from '$lib/components/ui/date-field/DateField.svelte';
+	import { AmountField, DateField as HeroDateField } from '$lib/components/ui/hero-field/index.js';
+	import CompactDateField from '$lib/components/ui/date-field/DateField.svelte';
 	import KategoriePicker from '$lib/components/admin/transactions/fields/KategoriePicker.svelte';
+	import LockedSphereField from '$lib/components/admin/transactions/fields/LockedSphereField.svelte';
 	import BelegUpload from '$lib/components/admin/transactions/fields/BelegUpload.svelte';
 	import { FIELD_CLASS } from '$lib/components/admin/transactions/fields/field-class.js';
 	import { parseBetragCents } from '$lib/client/parse-betrag.js';
@@ -40,8 +48,7 @@
 	/**
 	 * Form re-hydration shape (mirrors `AusgabeFormValues` in +page.server.ts).
 	 * Seeds the form on BOTH the duplicate-as-template prefill (load) and a 422
-	 * re-hydrate (?/create echoes the submitted values back) so input is never
-	 * wiped.
+	 * re-hydrate (?/create echoes the submitted values back) so input is never wiped.
 	 */
 	interface AusgabeValues {
 		bezeichnung: string;
@@ -63,6 +70,12 @@
 		begruendung: string;
 	}
 
+	/** Advisory footer gate readout (entry-modal-v4 `.gate-line`). */
+	interface GateStatus {
+		ok: boolean;
+		text: string;
+	}
+
 	interface Props {
 		members: MemberRow[];
 		expenseKategorien: KategorieRow[];
@@ -74,10 +87,9 @@
 		errors?: Record<string, string[]>;
 		/** Bubbled up so the page can track dirtiness for the shell footer. */
 		onDirty?: () => void;
-		/**
-		 * White-label (Phase 1): runtime Verein name for the bezahlt-von
-		 * display snapshot. Falls back to "Verein" when absent.
-		 */
+		/** Bubbled up so the shell footer can show the amber/green gate-line. */
+		onGate?: (status: GateStatus) => void;
+		/** White-label (Phase 1): runtime Verein name for the bezahlt-von snapshot. */
 		vereinName?: string;
 	}
 
@@ -89,6 +101,7 @@
 		values,
 		errors,
 		onDirty,
+		onGate,
 		vereinName = 'Verein',
 	}: Props = $props();
 
@@ -98,18 +111,16 @@
 		return errors?.[field]?.[0] ?? null;
 	}
 
-	// A 422 re-hydrate carries an `errors` map; a FRESH form (or a duplicate
-	// prefill) does not. We only default the dates to `today` on a fresh form —
-	// on a failed submit we keep the echoed value (incl. an empty string when
-	// DateField cleared an invalid date), so the user sees exactly what to fix
-	// instead of the field silently snapping back to today. Read once at init
-	// (the form doesn't hot-swap its props).
+	// A 422 re-hydrate carries an `errors` map; a fresh form (or prefill) does not.
+	// Default dates to `today` only on a fresh form. Read once at init.
 	// svelte-ignore state_referenced_locally
 	const hadError = !!errors;
 
-	// ── Descriptive fields (stable across bezahlt-von switches — UX-07) ───────
-	// All seeded from `values` so a duplicate prefill / 422 re-hydrate restores
-	// what the user (or the source booking) had.
+	// ── Descriptive fields (seeded from `values`) ─────────────────────────────
+	// svelte-ignore state_referenced_locally
+	let bezeichnung = $state(values.bezeichnung);
+	// svelte-ignore state_referenced_locally
+	let kommentar = $state(values.kommentar);
 	// svelte-ignore state_referenced_locally
 	let kategorieName = $state(values.kategorieNameSnapshot);
 	// svelte-ignore state_referenced_locally
@@ -123,17 +134,19 @@
 	// svelte-ignore state_referenced_locally
 	let projectId = $state(values.projectId);
 
+	// Betrag → shared hero AmountField (emits cents via name=betragCents). Track the
+	// parsed cents locally for the gate readout; seed from the prefill so a
+	// duplicate-as-template doesn't read as "Fehlt Betrag".
+	// svelte-ignore state_referenced_locally
+	let betragCents = $state<number | null>(
+		values.betrag ? (parseBetragCents(values.betrag) || null) : null,
+	);
+
 	// ── bezahlt-von branching ─────────────────────────────────────────────────
 	// svelte-ignore state_referenced_locally
 	let bezahltVonKind = $state<'verein' | 'member' | 'extern'>(values.bezahltVonKind);
 	// svelte-ignore state_referenced_locally
 	let selectedMemberId = $state(values.bezahltVonMemberId);
-
-	// Extern recipient fields backed by local $state + bind:value (mirror
-	// selectedMemberId) so typed data SURVIVES a bezahlt-von mode toggle (UX-07
-	// §7.2). The inputs live inside an {#if} that re-mounts on toggle; as
-	// uncontrolled `value={…}` inputs that would reset what the user typed, so we
-	// persist it here instead.
 	// svelte-ignore state_referenced_locally
 	let externName = $state(values.externName);
 	// svelte-ignore state_referenced_locally
@@ -147,6 +160,11 @@
 		if (bezahltVonKind === 'member' && selectedMember) {
 			return `${selectedMember.vorname} ${selectedMember.nachname}`.trim();
 		}
+		// Extern MUST post the typed name — an empty hidden would map to null on
+		// the server and (with the schema default firing only on `undefined`) fail
+		// the parse with an invisible „Ungültige Eingabe" wall, gate still green,
+		// so the extern-IBAN check downstream would never even run.
+		if (bezahltVonKind === 'extern') return externName.trim();
 		return '';
 	});
 
@@ -158,30 +176,12 @@
 	// svelte-ignore state_referenced_locally
 	let erstattetAm = $state(values.erstattetAm || today);
 
-	// ── Beleg (kein-Beleg → Begründung reveal lives in BelegUpload) ───────────
+	// ── Beleg gate (segment: Beleg | Verzicht) ────────────────────────────────
 	// svelte-ignore state_referenced_locally
 	let keinBeleg = $state(values.keinBeleg);
 	// svelte-ignore state_referenced_locally
 	let begruendung = $state(values.begruendung);
-
-	// Descriptive text fields are bound to LOCAL state (seeded from `values`),
-	// NOT rendered as controlled `value={values.x}`. A bare `value={…}` re-asserts
-	// the (empty) prop on the next reactive re-render — e.g. when toggling Kein-
-	// Beleg or bezahlt-von — silently WIPING what the user typed, which then trips
-	// the `required` HTML5 gate and blocks the native submit. bind:value keeps the
-	// typed text as the source of truth (parity with the date/kategorie fields).
-	// svelte-ignore state_referenced_locally
-	let bezeichnung = $state(values.bezeichnung);
-	// svelte-ignore state_referenced_locally
-	let kommentar = $state(values.kommentar);
-
-	// Betrag: type=text + inputmode=decimal + parseBetragCents (C1).
-	// Local $state preserves typed text across re-renders (bind-regression lesson).
-	// svelte-ignore state_referenced_locally
-	let betragEur = $state(values.betrag);
-	const betragCents = $derived(
-		betragEur ? String(parseBetragCents(betragEur) || '') : '',
-	);
+	let hasBelegFile = $state(false);
 
 	$effect(() => {
 		if (!zahlungsartId && zahlungsarten.length > 0) {
@@ -192,17 +192,115 @@
 	function markDirty() {
 		onDirty?.();
 	}
+
+	// Betrag error (m7): a client value of 0,00 (or ≤0) is client-VALID enough to
+	// submit (the gate treats it as present) but flagged with a red frame + hint;
+	// the server returns the authoritative de-DE 422. A server echo wins.
+	const betragError = $derived(
+		err('betragCents') ??
+			(betragCents !== null && betragCents <= 0 ? 'Betrag muss größer als 0 sein.' : null),
+	);
+
+	// ── Gate readout: every required field present + valid (M4 + Wrinkle a). A
+	// Betrag ≤ 0 counts as missing so the gate never reads „Alles da." next to a
+	// red 0,00 field; the server-422 roundtrip is proven via a server-only rule
+	// (extern-IBAN format), not a client-valid 0,00. ─────────────────────────────
+	const belegOk = $derived(hasBelegFile || (keinBeleg && begruendung.trim().length >= 5));
+	const missing = $derived.by(() => {
+		const m: string[] = [];
+		if (betragCents === null || betragCents <= 0) m.push('Betrag');
+		if (!rechnungsdatum) m.push('Datum');
+		if (!bezeichnung.trim()) m.push('Bezeichnung');
+		if (!kategorieName) m.push('Kategorie');
+		if (!belegOk) m.push('Beleg');
+		return m;
+	});
+	$effect(() => {
+		onGate?.(
+			missing.length
+				? { ok: false, text: `Fehlt noch: ${missing.join(', ')}.` }
+				: { ok: true, text: 'Alles da.' },
+		);
+	});
 </script>
 
 <div class="flex flex-col gap-4" oninput={markDirty} onchange={markDirty}>
-
-	<!-- ── Section 1: Grunddaten ─────────────────────────────────────────────── -->
-	<section
-		class="rounded-xl border border-hairline bg-card/60 p-4"
-		data-slot="ausgabe-section"
-	>
-		<h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-500">Grunddaten</h3>
+	<!-- ── Section 1: Buchung ─────────────────────────────────────────────────── -->
+	<section class="rounded-xl border border-hairline bg-card/60 p-4" data-slot="ausgabe-section">
+		<h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-500">Buchung</h3>
 		<div class="flex flex-col gap-3">
+			<!-- Betrag-Hero + Rechnungsdatum-Hero (identical anatomy; side-by-side even
+			     on mobile per the plate — ANDY-LENS §2). -->
+			<div>
+				<div class="grid grid-cols-2 gap-2 sm:gap-3">
+					<div class="flex flex-col gap-1.5">
+						<label for="betrag-display" class="text-sm font-medium text-ink-900">
+							Betrag <span class="text-severity-critical" aria-hidden="true">*</span>
+						</label>
+						<AmountField
+							id="betrag-display"
+							name="betragCents"
+							value={values.betrag}
+							type="ausgabe"
+							sign="minus"
+							aria-invalid={betragError ? true : undefined}
+							onchange={(c) => {
+								betragCents = c;
+								markDirty();
+							}}
+						/>
+						{#if betragError}
+							<p class="text-xs text-severity-critical">{betragError}</p>
+						{/if}
+					</div>
+					<div class="flex flex-col gap-1.5">
+						<label for="rechnungsdatum" class="text-sm font-medium text-ink-900">
+							Rechnungsdatum <span class="text-severity-critical" aria-hidden="true">*</span>
+						</label>
+						<HeroDateField
+							id="rechnungsdatum"
+							name="rechnungsdatum"
+							value={rechnungsdatum}
+							required
+							aria-invalid={err('rechnungsdatum') ? true : undefined}
+							onchange={(iso) => {
+								rechnungsdatum = iso;
+								markDirty();
+							}}
+						/>
+						{#if err('rechnungsdatum')}
+							<p class="text-xs text-severity-critical">{err('rechnungsdatum')}</p>
+						{/if}
+					</div>
+				</div>
+				<p class="mt-2 flex items-center gap-1.5 text-xs text-ink-500">
+					<span class="size-1.5 rounded-full bg-type-ausgabe" aria-hidden="true"></span>
+					Wird als <b class="font-semibold text-ink-700">Ausgabe</b> mit Minus gebucht.
+				</p>
+			</div>
+
+			<!-- Abfluss-Datum (payment date → Buchungsjahr) -->
+			<div class="flex flex-col gap-1.5">
+				<label for="abfluss_datum" class="text-sm font-medium text-ink-900">
+					Abfluss-Datum <span class="text-severity-critical" aria-hidden="true">*</span>
+				</label>
+				<CompactDateField
+					id="abfluss_datum"
+					name="abfluss_datum"
+					value={abflussDatum}
+					required
+					onchange={(iso) => {
+						abflussDatum = iso;
+						markDirty();
+					}}
+				/>
+				<span class="text-xs text-ink-500">
+					Wann das Geld abgeflossen ist — bestimmt das Buchungsjahr (oft = Rechnungsdatum).
+				</span>
+				{#if err('abfluss_datum')}
+					<p class="text-xs text-severity-critical">{err('abfluss_datum')}</p>
+				{/if}
+			</div>
 
 			<!-- Bezeichnung -->
 			<div class="flex flex-col gap-1.5">
@@ -225,76 +323,13 @@
 				{/if}
 			</div>
 
-			<!-- Betrag (type=text inputmode=decimal → hidden cents) -->
-			<div class="flex flex-col gap-1.5">
-				<label for="betrag-display" class="text-sm font-medium text-ink-900">
-					Betrag (€) <span class="text-severity-critical" aria-hidden="true">*</span>
-				</label>
-				<div class="relative">
-					<span class="absolute top-1/2 left-3 -translate-y-1/2 text-sm text-ink-400" aria-hidden="true">€</span>
-					<input
-						id="betrag-display"
-						type="text"
-						inputmode="decimal"
-						required
-						bind:value={betragEur}
-						placeholder="0,00"
-						aria-invalid={err('betragCents') ? true : undefined}
-						class="{FIELD_CLASS} pl-7"
-					/>
-					<input type="hidden" name="betragCents" value={betragCents} />
-				</div>
-				{#if err('betragCents')}
-					<p class="text-xs text-severity-critical">{err('betragCents')}</p>
-				{/if}
-			</div>
-
-			<!-- Rechnungsdatum + Abfluss-Datum -->
-			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-				<div class="flex flex-col gap-1.5">
-					<label for="rechnungsdatum" class="text-sm font-medium text-ink-900">
-						Rechnungsdatum <span class="text-severity-critical" aria-hidden="true">*</span>
-					</label>
-					<DateField
-						id="rechnungsdatum"
-						name="rechnungsdatum"
-						value={rechnungsdatum}
-						required
-						onchange={(iso) => {
-							rechnungsdatum = iso;
-							markDirty();
-						}}
-					/>
-					{#if err('rechnungsdatum')}
-						<p class="text-xs text-severity-critical">{err('rechnungsdatum')}</p>
-					{/if}
-				</div>
-				<div class="flex flex-col gap-1.5">
-					<label for="abfluss_datum" class="text-sm font-medium text-ink-900">
-						Abfluss-Datum <span class="text-severity-critical" aria-hidden="true">*</span>
-					</label>
-					<DateField
-						id="abfluss_datum"
-						name="abfluss_datum"
-						value={abflussDatum}
-						required
-						onchange={(iso) => {
-							abflussDatum = iso;
-							markDirty();
-						}}
-					/>
-					{#if err('abfluss_datum')}
-						<p class="text-xs text-severity-critical">{err('abfluss_datum')}</p>
-					{/if}
-				</div>
-			</div>
-
-			<!-- Kategorie (drives Sphäre strictly, §4.5) -->
+			<!-- Kategorie (drives Sphäre strictly; sphere shown in the locked field below) -->
 			<div class="flex flex-col gap-1.5">
 				<KategoriePicker
 					id="kategorie"
 					name="kategorieNameSnapshot"
 					required
+					hideSphere
 					options={expenseKategorien}
 					value={kategorieName}
 					onChange={(name) => {
@@ -310,19 +345,193 @@
 				{/if}
 			</div>
 
+			<!-- Sphäre — read-only, derived from the Kategorie (ADR-0002); appears
+			     once a Kategorie is chosen (no misleading default before then). -->
+			{#if kategorieName}
+				<LockedSphereField sphere={kategorieSphere} />
+			{/if}
+
+			<!-- Beleg-oder-Verzicht gate (Pflicht) -->
+			<BelegUpload
+				variant="segment"
+				bind:keinBeleg
+				bind:begruendung
+				onHasFile={(v) => (hasBelegFile = v)}
+				error={err('beleg') ?? undefined}
+			/>
+		</div>
+	</section>
+
+	<!-- ── Section 2: Zuordnung ───────────────────────────────────────────────── -->
+	<section class="rounded-xl border border-hairline bg-card/60 p-4" data-slot="ausgabe-section">
+		<h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-500">Zuordnung</h3>
+		<div class="flex flex-col gap-3">
 			<!-- Projekt (optional) -->
 			{#if projects.length > 0}
 				<div class="flex flex-col gap-1.5">
-					<label for="projectId" class="text-sm font-medium text-ink-900">Projekt</label>
-					<select
-						id="projectId"
-						name="projectId"
-						bind:value={projectId}
-						class={FIELD_CLASS}
-					>
+					<label for="projectId" class="text-sm font-medium text-ink-900">Projekt (optional)</label>
+					<select id="projectId" name="projectId" bind:value={projectId} class={FIELD_CLASS}>
 						<option value="">— Kein Projekt —</option>
 						{#each projects as p (p.id)}
 							<option value={p.id}>{p.name}</option>
+						{/each}
+					</select>
+				</div>
+			{/if}
+
+			<!-- Bezahlt von (ADR-0007 union) — neutral segmented toggle (never brand pink) -->
+			<div class="flex flex-col gap-1.5">
+				<span class="text-sm font-medium text-ink-900">Bezahlt von</span>
+				<div
+					class="flex gap-1 rounded-[10px] border border-hairline bg-secondary p-1"
+					role="radiogroup"
+					aria-label="Bezahlt von"
+					data-slot="bezahlt-von-grid"
+				>
+					{#each [['verein', 'Verein'], ['member', 'Mitglied'], ['extern', 'Extern']] as [k, l] (k)}
+						{@const on = bezahltVonKind === k}
+						<button
+							type="button"
+							role="radio"
+							aria-checked={on}
+							onclick={() => {
+								bezahltVonKind = k as 'verein' | 'member' | 'extern';
+								markDirty();
+							}}
+							data-testid={`bezahlt-von-${k}`}
+							data-state={on ? 'on' : 'off'}
+							class={[
+								'inline-flex min-h-10 flex-1 items-center justify-center rounded-[7px] px-3 py-2 text-sm font-medium transition-colors',
+								on
+									? 'bg-card text-ink-900 shadow-sm ring-1 ring-hairline'
+									: 'bg-transparent text-ink-500 hover:text-ink-900',
+							].join(' ')}
+						>
+							{l}
+						</button>
+					{/each}
+				</div>
+			</div>
+
+			<input type="hidden" name="bezahltVonKind" value={bezahltVonKind} data-testid="bezahlt-von-kind" />
+			<input type="hidden" name="bezahltVonDisplay" value={bezahltVonDisplay()} />
+
+			<div>
+				{#if bezahltVonKind === 'verein'}
+					<div
+						data-testid="verein-autopaid-note"
+						class="rounded-[10px] border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-green-900/50 dark:bg-green-950/40 dark:text-green-200"
+					>
+						Direkt vom Verein bezahlt — wird sofort als <strong>erstattet</strong> verbucht (Abfluss-Datum
+						oben).
+					</div>
+				{:else if bezahltVonKind === 'member'}
+					<select name="bezahltVonMemberId" bind:value={selectedMemberId} class={FIELD_CLASS}>
+						<option value="">Mitglied auswählen…</option>
+						{#each members as m (m.id)}
+							<option value={m.id}>{m.nachname}, {m.vorname}</option>
+						{/each}
+					</select>
+				{:else}
+					<!-- M8: real labels (the * lives on the label, never in the placeholder). -->
+					<div class="flex flex-col gap-3">
+						<div class="flex flex-col gap-1.5">
+							<label for="externName" class="text-sm font-medium text-ink-900">
+								Name <span class="text-severity-critical" aria-hidden="true">*</span>
+							</label>
+							<input
+								id="externName"
+								name="externName"
+								type="text"
+								placeholder="Name der externen Person"
+								bind:value={externName}
+								data-testid="extern-name-input"
+								class={FIELD_CLASS}
+							/>
+						</div>
+						<div class="flex flex-col gap-1.5">
+							<label for="externIban" class="text-sm font-medium text-ink-900">
+								IBAN <span class="text-severity-critical" aria-hidden="true">*</span>
+							</label>
+							<input
+								id="externIban"
+								name="externIban"
+								type="text"
+								placeholder="DE00 0000 0000 0000 0000 00"
+								bind:value={externIban}
+								class="{FIELD_CLASS} font-mono"
+							/>
+						</div>
+						<div class="flex flex-col gap-1.5">
+							<label for="externEmail" class="text-sm font-medium text-ink-900">
+								E-Mail <span class="text-xs font-normal text-muted-foreground">(optional)</span>
+							</label>
+							<input
+								id="externEmail"
+								name="externEmail"
+								type="email"
+								placeholder="name@example.org"
+								bind:value={externEmail}
+								class={FIELD_CLASS}
+							/>
+						</div>
+					</div>
+				{/if}
+			</div>
+
+			<!-- ── Admin "Schon bezahlt?" reveal (member/extern only) ─────────────── -->
+			{#if bezahltVonKind !== 'verein'}
+				<div class="rounded-[10px] border border-hairline bg-muted/30 px-3 py-2.5">
+					<label class="flex items-center gap-2 text-sm font-medium text-ink-900">
+						<input
+							type="checkbox"
+							name="schonBezahlt"
+							value="true"
+							bind:checked={schonBezahlt}
+							onchange={markDirty}
+							class="size-4 rounded border-hairline accent-primary"
+							data-testid="schon-bezahlt-toggle"
+						/>
+						Schon bezahlt? (Erstattung sofort verbuchen + benachrichtigen)
+					</label>
+
+					{#if schonBezahlt}
+						<div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+							<div class="flex flex-col gap-1.5">
+								<label for="zahlungsartId" class="text-sm font-medium text-ink-900">
+									Zahlungsart <span class="text-severity-critical" aria-hidden="true">*</span>
+								</label>
+								<select id="zahlungsartId" name="zahlungsartId" bind:value={zahlungsartId} class={FIELD_CLASS}>
+									{#each zahlungsarten as z (z.id)}
+										<option value={z.id}>{z.label}</option>
+									{/each}
+								</select>
+							</div>
+							<div class="flex flex-col gap-1.5">
+								<label for="erstattetAm" class="text-sm font-medium text-ink-900">
+									Erstattungsdatum <span class="text-severity-critical" aria-hidden="true">*</span>
+								</label>
+								<CompactDateField
+									id="erstattetAm"
+									name="erstattetAm"
+									value={erstattetAm}
+									onchange={(iso) => {
+										erstattetAm = iso;
+										markDirty();
+									}}
+								/>
+							</div>
+						</div>
+					{/if}
+				</div>
+			{:else}
+				<!-- Verein path: optional Zahlungsart picker. -->
+				<div class="flex flex-col gap-1.5">
+					<label for="zahlungsartId-verein" class="text-sm font-medium text-ink-900">Zahlungsart</label>
+					<select id="zahlungsartId-verein" name="zahlungsartId" bind:value={zahlungsartId} class={FIELD_CLASS}>
+						<option value="">— Keine —</option>
+						{#each zahlungsarten as z (z.id)}
+							<option value={z.id}>{z.label}</option>
 						{/each}
 					</select>
 				</div>
@@ -337,175 +546,9 @@
 					rows={2}
 					maxlength={2000}
 					bind:value={kommentar}
-					class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+					class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 sm:text-sm"
 				></textarea>
 			</div>
 		</div>
-	</section>
-
-	<!-- ── Section 2: Beleg (position 2, mandatory) ─────────────────────────── -->
-	<section
-		class="rounded-xl border border-hairline bg-card/60 p-4"
-		data-slot="ausgabe-section"
-	>
-		<h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-500">Beleg</h3>
-		<BelegUpload bind:keinBeleg bind:begruendung error={err('beleg') ?? undefined} />
-	</section>
-
-	<!-- ── Section 3: Bezahlt-von ─────────────────────────────────────────────── -->
-	<section
-		class="rounded-xl border border-hairline bg-card/60 p-4"
-		data-slot="ausgabe-section"
-	>
-		<h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-500">Bezahlt von</h3>
-
-		<!-- grid-cols-3 toggle buttons -->
-		<div class="grid grid-cols-3 gap-2" data-slot="bezahlt-von-grid">
-			{#each [['verein', 'Verein'], ['member', 'Mitglied'], ['extern', 'Extern']] as [k, l] (k)}
-				<button
-					type="button"
-					onclick={() => {
-						bezahltVonKind = k as 'verein' | 'member' | 'extern';
-						markDirty();
-					}}
-					aria-pressed={bezahltVonKind === k}
-					data-testid={`bezahlt-von-${k}`}
-					class={[
-						'inline-flex min-h-11 items-center justify-center rounded-[10px] px-3 py-1.5 text-sm font-medium transition-colors',
-						bezahltVonKind === k
-							? 'bg-primary-strong text-primary-foreground'
-							: 'border border-hairline bg-card text-ink-700 hover:bg-muted/50',
-					].join(' ')}
-				>
-					{l}
-				</button>
-			{/each}
-		</div>
-
-		<input type="hidden" name="bezahltVonKind" value={bezahltVonKind} data-testid="bezahlt-von-kind" />
-		<input type="hidden" name="bezahltVonDisplay" value={bezahltVonDisplay()} />
-
-		<div class="mt-3">
-			{#if bezahltVonKind === 'verein'}
-				<!-- Verein auto-paid panel — visually distinct (calm green note) so it
-				     reads differently from the "Schon bezahlt" reveal (avoid mode-error). -->
-				<div
-					data-testid="verein-autopaid-note"
-					class="rounded-[10px] border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-green-900/50 dark:bg-green-950/40 dark:text-green-200"
-				>
-					Direkt vom Verein bezahlt — wird sofort als <strong>erstattet</strong> verbucht (Abfluss-Datum
-					oben).
-				</div>
-			{:else if bezahltVonKind === 'member'}
-				<select
-					name="bezahltVonMemberId"
-					bind:value={selectedMemberId}
-					class={FIELD_CLASS}
-				>
-					<option value="">Mitglied auswählen…</option>
-					{#each members as m (m.id)}
-						<option value={m.id}>{m.nachname}, {m.vorname}</option>
-					{/each}
-				</select>
-			{:else}
-				<div class="flex flex-col gap-2">
-					<input
-						name="externName"
-						type="text"
-						placeholder="Name"
-						bind:value={externName}
-						data-testid="extern-name-input"
-						class={FIELD_CLASS}
-					/>
-					<input
-						name="externIban"
-						type="text"
-						placeholder="IBAN"
-						bind:value={externIban}
-						class="{FIELD_CLASS} font-mono"
-					/>
-					<input
-						name="externEmail"
-						type="email"
-						placeholder="E-Mail (optional)"
-						bind:value={externEmail}
-						class={FIELD_CLASS}
-					/>
-				</div>
-			{/if}
-		</div>
-
-		<!-- ── Admin "Schon bezahlt?" reveal (member/extern only) ───────────────
-		     Role gate (§7.2 admin-only): this toggle (and the Verein auto-pay
-		     panel) need no client-side isAdmin gate — `/app/*` is admin-only BY
-		     CONVENTION. -->
-		{#if bezahltVonKind !== 'verein'}
-			<div class="mt-3 rounded-[10px] border border-hairline bg-muted/30 px-3 py-2.5">
-				<label class="flex items-center gap-2 text-sm font-medium text-ink-900">
-					<input
-						type="checkbox"
-						name="schonBezahlt"
-						value="true"
-						bind:checked={schonBezahlt}
-						onchange={markDirty}
-						class="size-4 rounded border-hairline accent-primary"
-						data-testid="schon-bezahlt-toggle"
-					/>
-					Schon bezahlt? (Erstattung sofort verbuchen + benachrichtigen)
-				</label>
-
-				{#if schonBezahlt}
-					<div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-						<div class="flex flex-col gap-1.5">
-							<label for="zahlungsartId" class="text-sm font-medium text-ink-900">
-								Zahlungsart <span class="text-severity-critical" aria-hidden="true">*</span>
-							</label>
-							<select
-								id="zahlungsartId"
-								name="zahlungsartId"
-								bind:value={zahlungsartId}
-								class={FIELD_CLASS}
-							>
-								{#each zahlungsarten as z (z.id)}
-									<option value={z.id}>{z.label}</option>
-								{/each}
-							</select>
-						</div>
-						<div class="flex flex-col gap-1.5">
-							<label for="erstattetAm" class="text-sm font-medium text-ink-900">
-								Erstattungsdatum <span class="text-severity-critical" aria-hidden="true">*</span>
-							</label>
-							<DateField
-								id="erstattetAm"
-								name="erstattetAm"
-								value={erstattetAm}
-								onchange={(iso) => {
-									erstattetAm = iso;
-									markDirty();
-								}}
-							/>
-						</div>
-					</div>
-				{/if}
-			</div>
-		{:else}
-			<!-- Verein path: optional Zahlungsart picker. -->
-			<div class="mt-3 flex flex-col gap-1.5">
-				<label for="zahlungsartId-verein" class="text-sm font-medium text-ink-900">
-					Zahlungsart
-				</label>
-				<select
-					id="zahlungsartId-verein"
-					name="zahlungsartId"
-					bind:value={zahlungsartId}
-					class={FIELD_CLASS}
-				>
-					<option value="">— Keine —</option>
-					{#each zahlungsarten as z (z.id)}
-						<option value={z.id}>{z.label}</option>
-					{/each}
-				</select>
-			</div>
-		{/if}
 	</section>
 </div>
