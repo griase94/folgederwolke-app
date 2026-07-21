@@ -59,10 +59,11 @@
   );
   const spendeHref = $derived(`/app/spenden/${spende.id}`);
   const buchungsjahr = $derived(spende.zugewendetAm?.slice(0, 4) ?? "");
-  // First name for the warm issued-Erfolgs-Callout (brand voice); falls back to
-  // a neutral phrasing when no spender name is on file.
-  const spenderVorname = $derived(
-    spende.spenderName?.trim().split(/\s+/)[0] || "die spendende Person",
+  // Full spender name for the warm issued-Erfolgs-Callout (brand voice). NOT a
+  // first-name split — a corporate donor ("Getränke Huber") would otherwise
+  // read "Damit kann Getränke …". Falls back when no name is on file.
+  const spenderDisplay = $derived(
+    spende.spenderName?.trim() || "die spendende Person",
   );
 
   // The document renders only when config is present (enabled) — a
@@ -223,7 +224,7 @@
           callout={{
             tone: "ok",
             title: `Bescheinigung ${spende.bescheinigungNr} ausgestellt`,
-            body: `Damit kann ${spenderVorname} die Zuwendung absetzen — schön ordentlich. Das PDF liegt im Datei-Archiv.`,
+            body: `Damit kann ${spenderDisplay} die Zuwendung absetzen — schön ordentlich. Das PDF liegt im Datei-Archiv.`,
           }}
         >
           {#snippet consequence()}
