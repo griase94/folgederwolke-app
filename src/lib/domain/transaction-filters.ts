@@ -221,6 +221,38 @@ export function serializeFilterState(tab: TabKey, state: FilterState): string {
   return p.toString();
 }
 
+/**
+ * The URL param keys a flat list actually consumes: the search term (`q`), the
+ * sort/pagination/year params the load reads, the amount-range bounds, and every
+ * FILTER_REGISTRY key for the tab. Returns the `?…`-prefixed subset of `params`
+ * limited to those keys (or `""` when none).
+ *
+ * B-Kulisse stage continuity: the „Neu" CTA carries this onto /neu (so the
+ * backdrop opens in the user's sort/filter) and the dialog replays it on close
+ * (so the returned list keeps it). Every /neu PREFILL key (bezeichnung,
+ * betragCents, kategorieNameSnapshot, projectId, bezahltVon*, extern*) is NOT a
+ * list key and is therefore dropped — `projectId` is prefill-only, never a
+ * filter, so there is no filter-vs-prefill collision to special-case.
+ */
+export function listQueryString(tab: TabKey, params: URLSearchParams): string {
+  const allowed = new Set<string>([
+    "q",
+    "sort",
+    "dir",
+    "page",
+    "year",
+    "betragMin",
+    "betragMax",
+    ...FILTER_REGISTRY[tab].map((f) => f.key),
+  ]);
+  const out = new URLSearchParams();
+  for (const [k, v] of params) {
+    if (allowed.has(k)) out.append(k, v);
+  }
+  const s = out.toString();
+  return s ? `?${s}` : "";
+}
+
 function monthOptions() {
   const names = [
     "Jan",

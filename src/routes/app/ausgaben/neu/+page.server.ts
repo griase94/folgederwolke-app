@@ -47,6 +47,7 @@ import { asc, isNull } from "drizzle-orm";
 import { handleAuslageUpload } from "$lib/server/files/handleAuslageUpload.js";
 import { bookingYearFromCashDate } from "$lib/domain/year.js";
 import { validateIban } from "$lib/server/domain/iban.js";
+import { loadAusgabenListData } from "../list-load.js";
 
 function berlinYear(): number {
   return parseInt(
@@ -149,8 +150,16 @@ function parsePrefill(searchParams: URLSearchParams): AusgabeFormValues {
 // load
 // ---------------------------------------------------------------------------
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, parent }) => {
   const db = getDb();
+
+  // Kulisse (B-Kulisse): /neu renders the real Ausgaben list as an inert
+  // backdrop behind the entry dialog, so a deep-link lands on „list + open
+  // dialog" and a click from the list keeps the list as the stage. Same shared
+  // loader the list route uses → byte-identical backdrop. yearScope comes from
+  // the app layout (parent), exactly like the list route.
+  const { yearScope, currentYear } = await parent();
+  const list = await loadAusgabenListData({ url, yearScope, currentYear });
 
   // C1-PRJ-A: `?projectId=` deep-links into this form with the project
   // preselected. Validated UUID shape here; the action's Zod re-validates.
@@ -208,6 +217,7 @@ export const load: PageServerLoad = async ({ url }) => {
     prefillProjectId,
     values,
     year: berlinYear(),
+    list,
   };
 };
 

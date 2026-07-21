@@ -30,6 +30,7 @@
 	import InvoicePdfPreview from './InvoicePdfPreview.svelte';
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
 	import { parseBetragCents } from '$lib/client/parse-betrag.js';
+	import { leistungszeitraumFromDatum } from '$lib/domain/datum.js';
 	import { FIELD_CLASS } from '$lib/components/admin/transactions/fields/field-class.js';
 	// Betrag "hero" anatomy (F1 shared primitive, Kit anatomy signature
 	// element) — same tokens the entry-modals Betrag field is built from.
@@ -105,6 +106,15 @@
 	let leistungsBeschreibung = $state('');
 	let nettoEur = $state('');
 
+	// ── Leistungszeitraum auto-derive (Andy-Feedback 2026-07: derive, don't ask) ─
+	// The Leistungszeitraum mirrors the (now mandatory) Leistungsdatum as the
+	// compact German month ("Februar 2026") — never a long sentence, so it
+	// always fits the PDF head. It stays editable: the moment the user types
+	// their own value the field is "dirty" and we stop auto-updating (their
+	// override wins and is never overwritten). A stored/edited value hydrated
+	// from `initial` counts as dirty so editing an existing invoice preserves it.
+	let leistungszeitraumDirty = $state(false);
+
 	// One-shot hydration of form state from props. The previous unconditional
 	// $effect (no guard) re-ran on every reactive update and overwrote whatever
 	// the user had typed back to `initial`. We hydrate exactly once on first
@@ -123,6 +133,18 @@
 		bezeichnung = initial.bezeichnung;
 		leistungsBeschreibung = initial.leistungsBeschreibung;
 		nettoEur = initial.nettoEur;
+		// A pre-filled Leistungszeitraum (edit route or post-fail values) is a
+		// user/stored value → treat as dirty so auto-derive never clobbers it.
+		leistungszeitraumDirty = initial.leistungszeitraum.trim() !== '';
+	});
+
+	// Auto-derive: when Leistungsdatum changes and the user hasn't taken over
+	// the Zeitraum field, mirror the month in. Reads leistungsDatum +
+	// leistungszeitraumDirty and writes leistungszeitraum only — never reads
+	// leistungszeitraum, so it can't self-trigger.
+	$effect(() => {
+		if (!hydrated || leistungszeitraumDirty) return;
+		leistungszeitraum = leistungsDatum ? leistungszeitraumFromDatum(leistungsDatum) : '';
 	});
 
 	let submitting = $state(false);
@@ -215,6 +237,7 @@
 	const gateMissing = $derived(
 		[
 			!customerId ? 'Kund:in wählen' : null,
+			!leistungsDatum ? 'Leistungsdatum wählen' : null,
 			nettoCents <= 0 ? 'Betrag eintragen' : null,
 			!kategorieId ? 'Kategorie wählen' : null
 		].filter((m): m is string => m !== null)
@@ -249,7 +272,7 @@
 {/snippet}
 
 <!-- Mobile-only segmented toggle -->
-<div class="mb-4 lg:hidden">
+<div class="mb-4 xl:hidden">
 	<div role="tablist" aria-label="Formular oder Vorschau anzeigen" class="flex gap-1 rounded-lg border border-hairline bg-secondary p-1">
 		<button
 			type="button"
@@ -278,7 +301,7 @@
 	</div>
 </div>
 
-<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start">
+<div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px] xl:items-start">
 	<!-- ── Form ───────────────────────────────────────────────────────── -->
 	<form
 		method="POST"
@@ -290,7 +313,7 @@
 				submitting = false;
 			};
 		}}
-		class={cn('flex flex-col gap-5', mobileView === 'vorschau' ? 'hidden lg:flex' : '')}
+		class={cn('flex flex-col gap-5', mobileView === 'vorschau' ? 'hidden xl:flex' : '')}
 	>
 		<!-- 1 · Wer bekommt sie? -->
 		<div class="rounded-2xl border border-border bg-card p-5 shadow-sm">
@@ -355,7 +378,7 @@
 					</div>
 					<div>
 						<label for="leistungsDatum" class="mb-1 block text-[13px] font-semibold text-ink-700"
-							>Leistungsdatum</label
+							>Leistungsdatum <span class="text-primary-text">*</span></label
 						>
 						<div class="date-wrap relative">
 							{@render calendarGlyph()}
@@ -363,10 +386,14 @@
 								id="leistungsDatum"
 								name="leistungsDatum"
 								value={leistungsDatum}
+								required
 								onchange={(iso) => (leistungsDatum = iso)}
 								class="pl-9 text-base sm:text-sm"
 							/>
 						</div>
+						{#if fieldError('leistungsDatum')}
+							<p class="mt-1 text-xs font-medium text-severity-critical-text">{fieldError('leistungsDatum')}</p>
+						{/if}
 					</div>
 				</div>
 
@@ -398,6 +425,7 @@
 						id="leistungszeitraum"
 						name="leistungszeitraum"
 						bind:value={leistungszeitraum}
+							oninput={() => (leistungszeitraumDirty = true)}
 						minlength="3"
 						maxlength="200"
 						required
@@ -406,7 +434,7 @@
 						class={FIELD}
 					/>
 					<p class="mt-1 text-xs text-ink-500">
-						Pflicht nach § 14 Abs. 4 Nr. 6 UStG — z.&nbsp;B. „Februar 2026" oder „Leistungsdatum entspricht Rechnungsdatum".
+						Ergibt sich aus dem Leistungsdatum (§ 14 Abs. 4 Nr. 6 UStG) — anpassbar, z.&nbsp;B. „Februar 2026".
 					</p>
 					{#if fieldError('leistungszeitraum')}
 						<p class="mt-1 text-xs font-medium text-severity-critical-text">{fieldError('leistungszeitraum')}</p>
@@ -419,58 +447,59 @@
 		<div class="rounded-2xl border border-border bg-card p-5 shadow-sm">
 			{@render sectionHeader(3, 'Was steht drauf?')}
 
-			<div class="rounded-[10px] border border-hairline">
-				<div class="flex flex-col gap-3.5 p-3.5 sm:flex-row sm:items-start">
-					<div class="min-w-0 flex-1">
-						<label for="bezeichnung" class="mb-1 block text-[13px] font-semibold text-ink-700"
-							>Bezeichnung <span class="text-primary-text">*</span></label
+			<!-- Bezeichnung gets its own full-width row (it's free text and needs the
+			     room); the Betrag hero sits compact underneath (its content is a
+			     short number). Field width follows content type — Andy-Feedback. -->
+			<div class="flex flex-col gap-3.5 rounded-[10px] border border-hairline p-3.5">
+				<div>
+					<label for="bezeichnung" class="mb-1 block text-[13px] font-semibold text-ink-700"
+						>Bezeichnung <span class="text-primary-text">*</span></label
+					>
+					<input
+						type="text"
+						id="bezeichnung"
+						name="bezeichnung"
+						bind:value={bezeichnung}
+						required
+						minlength="5"
+						maxlength="200"
+						placeholder="z. B. Auftritt 12.05.2026"
+						aria-invalid={fieldError('bezeichnung') ? 'true' : undefined}
+						class={FIELD}
+					/>
+					{#if fieldError('bezeichnung')}
+						<p class="mt-1 text-xs font-medium text-severity-critical-text">{fieldError('bezeichnung')}</p>
+					{/if}
+				</div>
+				<div class="w-full sm:max-w-[220px]">
+					<label for="nettoEur" class="mb-1 block text-[13px] font-semibold text-ink-700"
+						>Betrag <span class="text-primary-text">*</span></label
+					>
+					<div
+						class={cn(HERO_WRAP, fieldError('nettoCents') && HERO_WRAP_ERROR)}
+						style="--hero-accent: var(--type-einnahme)"
+						data-testid="invoice-betrag-hero"
+					>
+						<span
+							class={cn(HERO_PREFIX, 'text-[21px] font-semibold leading-none')}
+							aria-hidden="true">+</span
 						>
 						<input
 							type="text"
-							id="bezeichnung"
-							name="bezeichnung"
-							bind:value={bezeichnung}
+							inputmode="decimal"
+							id="nettoEur"
+							name="nettoEur"
+							bind:value={nettoEur}
 							required
-							minlength="5"
-							maxlength="200"
-							placeholder="z. B. Auftritt 12.05.2026"
-							aria-invalid={fieldError('bezeichnung') ? 'true' : undefined}
-							class={FIELD}
+							placeholder="0,00"
+							aria-invalid={fieldError('nettoCents') ? 'true' : undefined}
+							class={cn(HERO_INPUT, 'text-[color:var(--hero-accent)]')}
 						/>
-						{#if fieldError('bezeichnung')}
-							<p class="mt-1 text-xs font-medium text-severity-critical-text">{fieldError('bezeichnung')}</p>
-						{/if}
+						<span class={HERO_SUFFIX} aria-hidden="true">€</span>
 					</div>
-					<div class="sm:w-[200px] sm:shrink-0">
-						<label for="nettoEur" class="mb-1 block text-[13px] font-semibold text-ink-700"
-							>Betrag <span class="text-primary-text">*</span></label
-						>
-						<div
-							class={cn(HERO_WRAP, fieldError('nettoCents') && HERO_WRAP_ERROR)}
-							style="--hero-accent: var(--type-einnahme)"
-							data-testid="invoice-betrag-hero"
-						>
-							<span
-								class={cn(HERO_PREFIX, 'text-[21px] font-semibold leading-none')}
-								aria-hidden="true">+</span
-							>
-							<input
-								type="text"
-								inputmode="decimal"
-								id="nettoEur"
-								name="nettoEur"
-								bind:value={nettoEur}
-								required
-								placeholder="0,00"
-								aria-invalid={fieldError('nettoCents') ? 'true' : undefined}
-								class={cn(HERO_INPUT, 'text-[color:var(--hero-accent)]')}
-							/>
-							<span class={HERO_SUFFIX} aria-hidden="true">€</span>
-						</div>
-						{#if fieldError('nettoCents')}
-							<p class="mt-1 text-xs font-medium text-severity-critical-text">{fieldError('nettoCents')}</p>
-						{/if}
-					</div>
+					{#if fieldError('nettoCents')}
+						<p class="mt-1 text-xs font-medium text-severity-critical-text">{fieldError('nettoCents')}</p>
+					{/if}
 				</div>
 			</div>
 
@@ -510,7 +539,10 @@
 		<!-- 4 · Zuordnung -->
 		<div class="rounded-2xl border border-border bg-card p-5 shadow-sm">
 			{@render sectionHeader(4, 'Zuordnung')}
-			<div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+			<!-- Kategorie + Projekt stack (Andy-Feedback): at narrow form-column
+			     widths a side-by-side pair clipped long Kategorie/Projekt names.
+			     Stacked full-width selects never truncate. -->
+			<div class="flex flex-col gap-3.5">
 				<div>
 					<label for="kategorieId" class="mb-1 block text-[13px] font-semibold text-ink-700"
 						>Kategorie <span class="text-primary-text">*</span></label
@@ -546,54 +578,63 @@
 			</div>
 		</div>
 
-		<!-- Footer: id-chip + Abbrechen/CTA — sticky full-width on mobile -->
+		<!-- Footer — Kit anatomy (matches EntryFormShell): integrated gate-line →
+		     [Abbrechen · typfarbener CTA] right-aligned → quiet Nr.-meta under
+		     the CTA. Sticky full-width below xl, static in the column at xl. -->
 		<div
-			class="sticky bottom-0 z-10 -mx-4 flex flex-col flex-wrap gap-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:flex-row sm:items-center sm:gap-4 lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0 lg:backdrop-blur-none"
+			data-testid="invoice-footer"
+			class="sticky bottom-0 z-10 -mx-4 flex flex-col gap-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur xl:static xl:mx-0 xl:border-0 xl:bg-transparent xl:px-0 xl:py-0 xl:backdrop-blur-none"
 		>
-			<span class="inline-flex items-center gap-1.5 rounded-full border border-border bg-secondary px-2.5 py-1 text-xs font-semibold text-ink-500">
-				<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M15 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7z" /><path stroke-linecap="round" stroke-linejoin="round" d="M14 2v4a2 2 0 002 2h4M10 9H8m8 4H8m8 4H8" />
-				</svg>
-				Nr. wird vergeben: <span class="font-mono font-semibold text-ink-700">{invoiceNumberPreview}</span>
-			</span>
-			<div class="flex gap-2 sm:ml-auto">
-				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-				<Button type="button" href={cancelHref} variant="ghost" class="flex-1 sm:flex-none">Abbrechen</Button>
-				<Button
-					type="submit"
-					disabled={ctaDisabled}
-					data-testid="invoice-submit"
-					class={cn(
-						'flex-1 sm:flex-none',
-						gateDisabled && !submitting
-							? 'bg-secondary text-ink-500 opacity-100 hover:bg-secondary disabled:opacity-100'
-							: ''
-					)}
-				>
-					{submitting ? submitLabelPending : submitLabel}
-				</Button>
-			</div>
 			{#if gateDisabled && !submitting}
 				<div
-					class="flex items-start gap-2.5 rounded-xl border border-severity-warn/30 bg-severity-warn-tint px-3.5 py-2.5 sm:basis-full sm:order-last"
+					class="flex items-center gap-1.5 rounded-[10px] border border-[color-mix(in_srgb,var(--sev-warn)_30%,transparent)] bg-severity-warn-tint px-3 py-2 text-xs font-semibold leading-snug text-severity-warn-text"
+					role="status"
 					aria-live="polite"
+					data-testid="invoice-gate-line"
 				>
-					<span
-						class="mt-px grid h-5 w-5 shrink-0 place-items-center rounded-md bg-severity-warn/15 text-severity-warn-text"
-						aria-hidden="true"
+					<svg class="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"
+						><circle cx="12" cy="12" r="10" /><path stroke-linecap="round" d="M12 8v4M12 16h.01" /></svg
 					>
-						<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
-							><circle cx="12" cy="12" r="10" /><path stroke-linecap="round" d="M12 8v4M12 16h.01" /></svg
-						>
-					</span>
-					<span class="text-xs font-medium text-severity-warn-text">Fehlt noch: {gateMissing.join(' · ')}.</span>
+					Fehlt noch: {gateMissing.join(' · ')}.
 				</div>
 			{/if}
+			<div class="flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
+				<!-- eslint-disable svelte/no-navigation-without-resolve — cancelHref is an
+				     internal app route ("/app/rechnungen" or a detail path), passed by
+				     the route as a static prop; no resolve() needed. -->
+				<a
+					href={cancelHref}
+					class="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md border border-hairline bg-card px-4 text-sm font-semibold text-ink-700 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 sm:w-auto"
+				>
+					Abbrechen
+				</a>
+				<!-- eslint-enable svelte/no-navigation-without-resolve -->
+				<button
+					type="submit"
+					disabled={ctaDisabled}
+					aria-busy={submitting}
+					data-testid="invoice-submit"
+					class="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-auto {ctaDisabled
+						? 'cursor-not-allowed bg-secondary text-ink-500'
+						: 'bg-type-einnahme text-primary-foreground shadow-sm hover:brightness-105 active:brightness-95 dark:text-background'}"
+				>
+					{#if !ctaDisabled}
+						<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"
+							><path stroke-linecap="round" stroke-linejoin="round" d="M20 6L9 17l-5-5" /></svg
+						>
+					{/if}
+					{submitting ? submitLabelPending : submitLabel}
+				</button>
+			</div>
+			<p class="text-xs text-ink-500 sm:text-right">
+				Nr. wird beim Speichern vergeben:
+				<span class="font-mono font-semibold text-ink-700">{invoiceNumberPreview}</span>
+			</p>
 		</div>
 	</form>
 
 	<!-- ── Live preview ──────────────────────────────────────────────── -->
-	<div class={cn('lg:sticky lg:top-6', mobileView === 'formular' ? 'hidden lg:block' : '')}>
+	<div class={cn('xl:sticky xl:top-6', mobileView === 'formular' ? 'hidden xl:block' : '')}>
 		<InvoicePdfPreview input={previewInput} />
 	</div>
 </div>

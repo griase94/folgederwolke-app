@@ -14,6 +14,8 @@
 	import { page } from '$app/stores';
 	import EntryFormShell from '$lib/components/admin/transactions/EntryFormShell.svelte';
 	import AusgabeFields from '$lib/components/admin/transactions/ausgaben/AusgabeFields.svelte';
+	import AusgabenListView from '../AusgabenListView.svelte';
+	import { listQueryString } from '$lib/domain/transaction-filters.js';
 	import type { AusgabeFormValues } from './+page.server.js';
 	import type { PageData, ActionData } from './$types.js';
 
@@ -43,8 +45,11 @@
 	);
 
 	function onClose() {
+		// Kulisse stage continuity: replay the list query (sort/filter/search/year)
+		// so closing returns to the exact list the user opened from — prefill keys
+		// (projectId, bezeichnung, …) are dropped by listQueryString.
 		// eslint-disable-next-line svelte/no-navigation-without-resolve
-		goto('/app/ausgaben');
+		goto(`/app/ausgaben${listQueryString('ausgaben', $page.url.searchParams)}`);
 	}
 </script>
 
@@ -73,6 +78,16 @@
 		vereinName={$page.data.vereinName}
 	/>
 {/snippet}
+
+<!--
+	Kulisse (B-Kulisse): the real Ausgaben list renders as the stage behind the
+	entry dialog. `inert` + aria-hidden make it a non-interactive, screen-reader-
+	silent backdrop — the portaled EntryFormShell scrim dims it and owns all
+	focus/interaction. Deep-link and click-from-list both land here identically.
+-->
+<div inert aria-hidden="true" data-slot="entry-kulisse">
+	<AusgabenListView data={data.list} />
+</div>
 
 <EntryFormShell
 	title="Neue Ausgabe"

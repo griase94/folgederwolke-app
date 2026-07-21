@@ -17,7 +17,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
 const repoRoot = resolve(__dirname, "..", "..");
 const appRoutesDir = resolve(repoRoot, "src", "routes", "app");
@@ -66,6 +66,30 @@ function relPosix(file: string): string {
   return relative(appRoutesDir, file).split("\\").join("/");
 }
 
+/**
+ * A page renders through PageShell if it names it directly OR delegates to a
+ * co-located `<TabListView>` that owns the PageShell (B-Kulisse: the list body
+ * is extracted so the same markup can also be the inert /neu Kulisse backdrop).
+ * We follow that ONE import hop and verify the view really uses PageShell, so
+ * the transitive guarantee stays as strong as the direct check.
+ */
+function rendersThroughPageShell(file: string): boolean {
+  const src = readFileSync(file, "utf8");
+  if (src.includes("PageShell")) return true;
+  const m = src.match(/from\s+["'](\.\/[A-Za-z0-9_-]*ListView\.svelte)["']/);
+  const viewRel = m?.[1];
+  if (viewRel) {
+    try {
+      return readFileSync(resolve(dirname(file), viewRel), "utf8").includes(
+        "PageShell",
+      );
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 describe("PageShell allowlist (spec §4 enforcement — shrinking allowlist)", () => {
   const pages = [...walkPages(appRoutesDir)];
 
@@ -78,8 +102,7 @@ describe("PageShell allowlist (spec §4 enforcement — shrinking allowlist)", (
     for (const file of pages) {
       const rel = relPosix(file);
       if (ALLOWLIST.has(rel)) continue;
-      const src = readFileSync(file, "utf8");
-      if (!src.includes("PageShell")) {
+      if (!rendersThroughPageShell(file)) {
         offenders.push(
           `${rel}: new/converted routes must render through PageShell (master §2.3)`,
         );

@@ -214,6 +214,7 @@ describe("Phase 12 — editInvoice + audit-log history", () => {
       customerId: seeded.customerId,
       kategorieId: seeded.kategorieId,
       rechnungsdatum: "2098-04-05",
+      leistungsDatum: "2098-04-05",
       leistungszeitraum: "April 2098",
       bezeichnung: "Geänderte Bezeichnung v2",
       nettoCents: 90000,
@@ -316,6 +317,7 @@ describe("Phase 12 — editInvoice + audit-log history", () => {
         customerId: seeded.customerId,
         kategorieId: seeded.kategorieId,
         rechnungsdatum: "2098-04-05",
+        leistungsDatum: "2098-04-05",
         leistungszeitraum: "April 2098",
         bezeichnung: "Stabile Bezeichnung",
         nettoCents: 60000,
@@ -345,6 +347,7 @@ describe("Phase 12 — editInvoice + audit-log history", () => {
         customerId: seeded.customerId,
         kategorieId: seeded.kategorieId,
         rechnungsdatum: "2098-04-05",
+        leistungsDatum: "2098-04-05",
         leistungszeitraum: "April 2098",
         bezeichnung: "Stabile Bezeichnung",
         nettoCents: 60000, // unchanged — only edit metadata, not content

@@ -76,7 +76,7 @@ export interface RechnungV2Input {
   };
   rechnungsnummer: string;
   rechnungsdatum: string;
-  /** Required per § 14 Abs. 4 Nr. 6 UStG. Use "Leistungsdatum entspricht Rechnungsdatum" when service date = invoice date. */
+  /** Required per § 14 Abs. 4 Nr. 6 UStG — the compact month ("Februar 2026"), derived from the Leistungsdatum. */
   leistungszeitraum: string;
   bezeichnung: string;
   leistungsBeschreibung: string | null;

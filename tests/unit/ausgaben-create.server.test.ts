@@ -130,6 +130,24 @@ function makeDbFake() {
 vi.mock("$lib/server/db/index.js", () => ({ getDb: () => makeDbFake() }));
 vi.mock("$lib/server/db/schema/members.js", () => ({ members: {} }));
 vi.mock("$lib/server/db/schema/projects.js", () => ({ projects: {} }));
+// The /neu load renders the real list as an inert Kulisse backdrop via the
+// shared loader (B-Kulisse). These prefill/create tests don't exercise the
+// backdrop, so stub the loader — it isolates the load's list-query DB work.
+vi.mock("../../src/routes/app/ausgaben/list-load.js", () => ({
+  loadAusgabenListData: vi.fn(async () => ({
+    tab: "ausgaben",
+    rows: [],
+    total: 0,
+    page: 1,
+    pageSize: 50,
+    filterState: { enums: {}, members: {}, amount: {}, booleans: {} },
+    yearScope: 2026,
+    currentYear: 2026,
+    kpi: {},
+    kategorieOptions: [],
+    memberOptions: [],
+  })),
+}));
 
 // ---------------------------------------------------------------------------
 // SUT — imported AFTER the mocks
@@ -540,12 +558,16 @@ describe("ausgaben/neu ?/create — Extern payer (empty-display regression)", ()
 interface LoadEvent {
   locals: { session: { user: { id: string } } | null };
   url: URL;
+  parent: () => Promise<{ yearScope: number; currentYear: number }>;
 }
 
 function makeLoadEvent(search: string): LoadEvent {
   return {
     locals: { session: { user: { id: "user-1" } } },
     url: new URL(`http://test.local/app/ausgaben/neu${search}`),
+    // The /neu load reads yearScope from the app layout (parent) for the Kulisse
+    // backdrop; the prefill under test is independent of it.
+    parent: async () => ({ yearScope: 2026, currentYear: 2026 }),
   };
 }
 
