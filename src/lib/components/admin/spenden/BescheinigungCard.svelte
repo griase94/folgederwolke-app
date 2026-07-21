@@ -22,7 +22,6 @@
     type ChecklistRow,
   } from "$lib/components/ui/checklist/index.js";
   import { IdChip } from "$lib/components/ui/id-chip/index.js";
-  import GobdBlock from "$lib/components/admin/transactions/detail/GobdBlock.svelte";
   import FileCheck from "@lucide/svelte/icons/file-check";
   import ShieldCheck from "@lucide/svelte/icons/shield-check";
   import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
@@ -173,7 +172,18 @@
 
     {#if gobd}
       <div class="rc-sec">
-        <GobdBlock documented={false} />
+        <div class="gobd-line">
+          <span class="gobd-ic">
+            <ShieldCheck class="size-[18px]" aria-hidden="true" />
+          </span>
+          <div class="gobd-body">
+            <div class="gobd-k">GoBD-sicher dokumentiert</div>
+            <p class="gobd-s">
+              Die Ausstellung wird mit SHA-Prüfsumme im Audit-Log verankert
+              (unveränderbar).
+            </p>
+          </div>
+        </div>
       </div>
     {/if}
   {/if}
@@ -325,5 +335,37 @@
       color-mix(in srgb, var(--secondary) 60%, var(--card)) 50%,
       var(--secondary) 100%
     );
+  }
+  /* GoBD trust — future-tense pre-issue ("wird verankert"), no beleg-flavoured
+     transaction-detail copy (this is about the issuance act, not a Beleg). */
+  .gobd-line {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 14px;
+    border: 1px solid var(--hairline);
+    background: color-mix(in srgb, var(--secondary) 50%, transparent);
+  }
+  .gobd-ic {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    flex: none;
+    border-radius: 9px;
+    background: var(--card);
+    color: var(--type-einnahme);
+  }
+  .gobd-k {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-900);
+  }
+  .gobd-s {
+    margin: 2px 0 0;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--ink-500);
   }
 </style>

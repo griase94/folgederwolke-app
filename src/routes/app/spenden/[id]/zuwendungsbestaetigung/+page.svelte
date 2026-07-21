@@ -59,6 +59,11 @@
   );
   const spendeHref = $derived(`/app/spenden/${spende.id}`);
   const buchungsjahr = $derived(spende.zugewendetAm?.slice(0, 4) ?? "");
+  // First name for the warm issued-Erfolgs-Callout (brand voice); falls back to
+  // a neutral phrasing when no spender name is on file.
+  const spenderVorname = $derived(
+    spende.spenderName?.trim().split(/\s+/)[0] || "die spendende Person",
+  );
 
   // The document renders only when config is present (enabled) — a
   // legally-deficient cert must never be previewed as valid. When enabled the
@@ -111,6 +116,16 @@
   function buildChecklist(): ChecklistRow[] {
     if (!preview) return [];
     const rows: ChecklistRow[] = [];
+    // Server refuses Aufwandsspende issuance (Phase 2). Mirror that block here so
+    // the CTA-gate can never click into an invisible 422 (checklist ↔ server
+    // parity). No fixHref — the block is by design, not a missing field.
+    if (spende.spendeKind === "aufwandsspende") {
+      rows.push({
+        ok: false,
+        label: "Zuwendungsart bescheinigbar",
+        sub: "Aufwandsspenden werden erst in einer späteren Ausbaustufe bescheinigt.",
+      });
+    }
     const hasAnschrift =
       !!preview.spenderName?.trim() && !!preview.spenderAdresse?.trim();
     rows.push({
@@ -120,6 +135,17 @@
         ? preview.spenderName
         : "Anschrift fehlt in der Spende — ohne sie keine Bescheinigung.",
       fixHref: hasAnschrift ? undefined : spendeHref,
+      fixLabel: "Spende bearbeiten",
+    });
+    // Server requires zugewendetAm (Tag der Zuwendung) — a NULL date is a 422.
+    const hasDatum = !!spende.zugewendetAm;
+    rows.push({
+      ok: hasDatum,
+      label: "Tag der Zuwendung",
+      sub: hasDatum
+        ? formatGermanDate(spende.zugewendetAm ?? "")
+        : "Zuwendungsdatum fehlt in der Spende.",
+      fixHref: hasDatum ? undefined : spendeHref,
       fixLabel: "Spende bearbeiten",
     });
     const hasBetrag =
@@ -151,7 +177,10 @@
       });
     }
     rows.push({
-      ok: !!preview.steuerbegueZwecke?.trim() && enabled,
+      // Gate only on the value itself — the Bescheid row above owns the
+      // config-present gate, so a missing Freistellungsbescheid must not also
+      // paint an otherwise-present Zweck red.
+      ok: !!preview.steuerbegueZwecke?.trim(),
       label: "Steuerbegünstigter Zweck",
       sub: preview.steuerbegueZwecke || "—",
     });
@@ -194,7 +223,7 @@
           callout={{
             tone: "ok",
             title: `Bescheinigung ${spende.bescheinigungNr} ausgestellt`,
-            body: "Damit kann die spendende Person ihre Zuwendung absetzen. Das PDF liegt im Datei-Archiv.",
+            body: `Damit kann ${spenderVorname} die Zuwendung absetzen — schön ordentlich. Das PDF liegt im Datei-Archiv.`,
           }}
         >
           {#snippet consequence()}
@@ -274,8 +303,8 @@
         }}
         callout={{
           tone: "crit",
-          title: "Vorschau konnte nicht erzeugt werden",
-          body: extractError,
+          title: "Eine Pflichtangabe der Spende ist unvollständig",
+          body: `${extractError}. Ergänze die fehlende Angabe (Anschrift der spendenden Person oder Zuwendungsdatum) in der Spende, dann lässt sich die Vorschau erzeugen.`,
         }}
       >
         {#snippet cta()}
@@ -287,8 +316,52 @@
     </div>
   {:else}
     <!-- ── Ready / festgeschrieben (AUSSTELLBAR) ─────────────────────────── -->
+    <!-- The ?/generate form, reused desktop-in-card + mobile-in-sticky-foot.
+         Distinct button testids so a strict locator matches exactly one. -->
+    {#snippet issueForm(btnTestid: string)}
+      <form
+        method="POST"
+        action="?/generate"
+        use:enhance={() => {
+          submitting = true;
+          return async ({ result, update }) => {
+            submitting = false;
+            await update();
+            await invalidateAll();
+            if (result.type === "success") {
+              window.open(pdfHref, "_blank", "noopener");
+            }
+          };
+        }}
+      >
+        <Button
+          type="submit"
+          class="w-full"
+          disabled={submitting || !checklistComplete}
+          data-testid={btnTestid}
+        >
+          {#if submitting}
+            <Loader class="size-4 animate-spin" aria-hidden="true" />Wird
+            ausgestellt …
+          {:else}
+            <FileCheck class="size-4" aria-hidden="true" />Bescheinigung
+            ausstellen
+          {/if}
+        </Button>
+      </form>
+      {#if form?.action === "generate" && form?.error}
+        <p
+          class="mt-2 text-[13px] leading-snug text-[color:var(--sev-critical-text)]"
+          role="alert"
+          data-testid="bescheinigung-error"
+        >
+          {form.error}
+        </p>
+      {/if}
+    {/snippet}
+
     <div
-      class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(340px,0.72fr)]"
+      class="grid grid-cols-1 gap-5 pb-28 md:grid-cols-1 md:pb-0 lg:grid-cols-[minmax(0,1.5fr)_minmax(340px,0.72fr)]"
     >
       <div class="order-2 min-w-0 lg:order-1">
         <BescheinigungDocument preview={docPreview!} />
@@ -338,39 +411,25 @@
                 ändert keine Buchungswerte.</span
               >
             {/if}
-            <form
-              method="POST"
-              action="?/generate"
-              use:enhance={() => {
-                submitting = true;
-                return async ({ result, update }) => {
-                  submitting = false;
-                  await update();
-                  await invalidateAll();
-                  if (result.type === "success") {
-                    window.open(pdfHref, "_blank", "noopener");
-                  }
-                };
-              }}
-            >
-              <Button
-                type="submit"
-                class="w-full"
-                disabled={submitting || !checklistComplete}
-                data-testid="issue-bescheinigung-btn"
-              >
-                {#if submitting}
-                  <Loader class="size-4 animate-spin" aria-hidden="true" />Wird
-                  ausgestellt …
-                {:else}
-                  <FileCheck class="size-4" aria-hidden="true" />Bescheinigung
-                  ausstellen
-                {/if}
-              </Button>
-            </form>
+            <!-- Desktop CTA lives in the card; on mobile it moves to the
+                 sticky action-foot below (so it clears the long checklist). -->
+            <div class="hidden md:block">
+              {@render issueForm("issue-bescheinigung-btn")}
+            </div>
           {/snippet}
         </BescheinigungCard>
       </aside>
+    </div>
+
+    <!-- Mobile sticky action-foot: the CTA sits above the AdminShell tab-bar,
+         safe-area padded, with the consequence one-liner (plate .action-foot). -->
+    <div
+      class="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] z-30 flex flex-col gap-1.5 border-t border-hairline bg-background/95 px-4 py-3 backdrop-blur-sm md:hidden"
+    >
+      {@render issueForm("issue-bescheinigung-btn-mobile")}
+      <p class="text-center text-[11px] leading-snug text-ink-500">
+        Vergibt die endgültige Nummer und sperrt die Spende für Änderungen.
+      </p>
     </div>
   {/if}
 </PageShell>

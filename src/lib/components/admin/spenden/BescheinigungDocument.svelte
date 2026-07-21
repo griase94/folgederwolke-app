@@ -3,8 +3,7 @@
 	verbatim, what the Zuwendungsbestätigung PDF will say. Composes the DocSheet
 	paper primitive with the shared BMF-Wortlaut (bmfTitel/bmfSubtitle/
 	bmfBescheidText/…) so the on-screen text and the issued PDF cannot drift
-	(proof: bescheinigung-wortlaut.test.ts). Replaces the old ungestyled
-	BescheinigungsPreview dl-list.
+	(proof: bescheinigung-wortlaut.test.ts).
 
 	Secondary on-paper text uses the DocSheet-exposed --dp-* vars (dark ink on
 	light paper in BOTH themes); NEVER theme text tokens (they invert + vanish).
@@ -17,6 +16,7 @@
     bmfSubtitle,
     bmfVerzichtSatz,
     bmf50Hinweis,
+    bmfHaftungHinweis,
     bmfBescheidText,
     formatGermanDate,
   } from "$lib/domain/bescheinigung-wortlaut.js";
@@ -66,6 +66,9 @@
   }: { preview: BescheinigungPreview; "data-testid"?: string } = $props();
 
   const isSach = $derived(preview.spendeKind === "sachspende");
+  // A real Bescheinigungs-Nr. (B-JJJJ-NNN) vs the pre-issue placeholder the load
+  // supplies ("(noch nicht vergeben)").
+  const hasNr = $derived(/^B-\d{4}-\d+/.test(preview.bescheinigungNr));
   const bescheidText = $derived(
     bmfBescheidText({
       bescheidTyp: preview.bescheidTyp,
@@ -94,6 +97,13 @@
   subtitle={bmfSubtitle()}
   data-testid={testId}
 >
+  <p class="doc-idline">
+    Bescheinigungs-Nr.
+    {#if hasNr}<b>{preview.bescheinigungNr}</b>{:else}<span
+        class="doc-idpending">wird beim Ausstellen vergeben</span
+      >{/if}
+  </p>
+
   <div class="doc-rule strong"></div>
 
   <div class="doc-cols">
@@ -140,8 +150,8 @@
     <span class="da-val">{formatCentsAsEuro(BigInt(preview.betragCents))}</span>
   </div>
   <p class="doc-words">
-    In Worten: <b>{preview.betragInWorten}</b>{#if isSach}
-      · {formatGermanDate(preview.spendeDatum)}{/if}
+    In Worten: <b>{preview.betragInWorten}</b
+    >{#if isSach}&nbsp;·&nbsp;{formatGermanDate(preview.spendeDatum)}{/if}
   </p>
 
   {#if preview.zweckbindungKind === "zweckgebunden" && preview.zweckbindungText}
@@ -167,6 +177,7 @@
     </div>
   </div>
   <p class="doc-note">{bmf50Hinweis()}</p>
+  <p class="doc-note">{bmfHaftungHinweis()}</p>
 </DocSheet>
 
 <style>
@@ -180,6 +191,20 @@
   }
   .doc-rule.strong {
     border-top-color: var(--dp-line2);
+  }
+  .doc-idline {
+    margin: 8px 0 0;
+    font-size: 12.5px;
+    color: var(--dp-ink2);
+  }
+  .doc-idline b {
+    font-weight: 700;
+    color: var(--dp-ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .doc-idpending {
+    color: var(--dp-faint);
+    font-style: italic;
   }
   .doc-block {
     margin: 14px 0;

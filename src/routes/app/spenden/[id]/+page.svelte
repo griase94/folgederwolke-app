@@ -260,7 +260,10 @@
   {fields}
   {beleg}
   documented={!!detail.belegFileId || (isSach && !!detail.herkunftsbelegFileId)}
-  certificateIssuable={!issued && data.bescheinigungEnabled}
+  certificateIssuable={!issued &&
+    data.bescheinigungEnabled &&
+    detail.spendeKind !== "aufwandsspende" &&
+    !!detail.relevanzDatum}
   {railExtra}
   {saving}
   {dirty}
