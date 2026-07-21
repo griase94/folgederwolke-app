@@ -196,7 +196,16 @@
 					}}
 				>
 					<input type="hidden" name="id" value={customer.id} />
-					<div class="flex max-h-[70vh] flex-col gap-3.5 overflow-y-auto px-5 py-5 max-sm:max-h-[62vh]">
+					<!-- onfocusin + sm scroll-margin keep a clicked/tabbed field ABOVE the
+					     sticky Live-Preview at the modal bottom (Judge-#151). -->
+					<div
+						class="flex max-h-[70vh] flex-col gap-3.5 overflow-y-auto px-5 py-5 max-sm:max-h-[62vh] sm:[&_input]:scroll-mb-40 sm:[&_textarea]:scroll-mb-40"
+						onfocusin={(e) => {
+							const t = e.target;
+							if (t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA'))
+								t.scrollIntoView({ block: 'nearest' });
+						}}
+					>
 						<CustomerFormFields idPrefix="edit-cust" values={customer} {errors} bind:name />
 						{#if errors['_']}
 							<p class="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{errors['_']?.[0]}</p>

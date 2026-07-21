@@ -59,6 +59,25 @@
 	);
 	const previewLines = $derived(briefblock ? briefblock.split('\n') : []);
 
+	// Judge-#151: when the sticky preview GROWS (a line appears — e.g. the
+	// foreign-Land line), re-scroll the currently-focused field into view so the
+	// upward-growing preview can't creep over the field being typed in. Keyed on
+	// the LINE COUNT (memoised derived) so it only fires when a line appears or
+	// disappears, not on every keystroke. block:'nearest' + the container's
+	// scroll-margin keep the field above the preview.
+	const previewLineCount = $derived(previewLines.length);
+	$effect(() => {
+		void previewLineCount;
+		if (typeof document === 'undefined') return;
+		const active = document.activeElement;
+		if (
+			active instanceof HTMLElement &&
+			(active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')
+		) {
+			active.scrollIntoView({ block: 'nearest' });
+		}
+	});
+
 	const textareaClass =
 		'border-input bg-background focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-base leading-relaxed focus-visible:outline-none focus-visible:ring-2 sm:text-sm aria-invalid:border-destructive aria-invalid:ring-destructive/20';
 </script>
