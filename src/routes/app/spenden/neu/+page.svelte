@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import EntryFormShell from '$lib/components/admin/transactions/EntryFormShell.svelte';
 	import SpendeFields from '$lib/components/admin/transactions/spenden/SpendeFields.svelte';
+	import SpendenListView from '../SpendenListView.svelte';
 	import type { ActionData, PageData } from './$types.js';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -45,6 +46,11 @@
 		<p class="mt-3 text-sm text-red-600" data-testid="create-error">{form.error}</p>
 	{/if}
 {/snippet}
+
+<!-- Kulisse: the real Spenden list is the inert stage behind the dialog. -->
+<div inert aria-hidden="true" data-slot="entry-kulisse">
+	<SpendenListView data={data.list} />
+</div>
 
 <EntryFormShell
 	title="Neue Spende"

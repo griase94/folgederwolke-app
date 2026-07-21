@@ -25,6 +25,7 @@ import { checkFestschreibungGate } from "$lib/server/domain/transactions.js";
 import { deriveDonationKategorieName } from "$lib/domain/spenden-kategorie.js";
 import { handleAuslageUpload } from "$lib/server/files/handleAuslageUpload.js";
 import { bookingYearFromCashDate } from "$lib/domain/year.js";
+import { loadSpendenListData } from "../list-load.js";
 
 // The distinct derived-Kategorie names a Spende can book into (Sachspende
 // collapses regardless of Zweckbindung). Used to resolve each one's
@@ -38,8 +39,15 @@ const DONATION_KATEGORIE_NAMES = [
   ]),
 ];
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ url, parent }) => {
   const db = getDb();
+
+  // Kulisse: /neu renders the real Spenden list as an inert backdrop behind the
+  // entry dialog (shared loader → byte-identical backdrop). yearScope comes from
+  // the app layout (parent), exactly like the list route.
+  const { yearScope, currentYear } = await parent();
+  const list = await loadSpendenListData({ url, yearScope, currentYear });
+
   const [memberRows, projectRows, katRows] = await Promise.all([
     db
       .select({
@@ -89,6 +97,7 @@ export const load: PageServerLoad = async () => {
       }).format(new Date()),
       10,
     ),
+    list,
   };
 };
 

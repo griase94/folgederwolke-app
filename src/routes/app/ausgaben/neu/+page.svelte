@@ -14,6 +14,7 @@
 	import { page } from '$app/stores';
 	import EntryFormShell from '$lib/components/admin/transactions/EntryFormShell.svelte';
 	import AusgabeFields from '$lib/components/admin/transactions/ausgaben/AusgabeFields.svelte';
+	import AusgabenListView from '../AusgabenListView.svelte';
 	import type { AusgabeFormValues } from './+page.server.js';
 	import type { PageData, ActionData } from './$types.js';
 
@@ -73,6 +74,16 @@
 		vereinName={$page.data.vereinName}
 	/>
 {/snippet}
+
+<!--
+	Kulisse (B-Kulisse): the real Ausgaben list renders as the stage behind the
+	entry dialog. `inert` + aria-hidden make it a non-interactive, screen-reader-
+	silent backdrop — the portaled EntryFormShell scrim dims it and owns all
+	focus/interaction. Deep-link and click-from-list both land here identically.
+-->
+<div inert aria-hidden="true" data-slot="entry-kulisse">
+	<AusgabenListView data={data.list} />
+</div>
 
 <EntryFormShell
 	title="Neue Ausgabe"

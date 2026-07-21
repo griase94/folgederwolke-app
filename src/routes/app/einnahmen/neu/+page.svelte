@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import EntryFormShell from '$lib/components/admin/transactions/EntryFormShell.svelte';
 	import EinnahmeFields from '$lib/components/admin/transactions/einnahmen/EinnahmeFields.svelte';
+	import EinnahmenListView from '../EinnahmenListView.svelte';
 	import type { EinnahmeFormValues } from './+page.server.js';
 	import type { PageData, ActionData } from './$types.js';
 
@@ -62,6 +63,11 @@
 		onGate={(g) => (gate = g)}
 	/>
 {/snippet}
+
+<!-- Kulisse: the real Einnahmen list is the inert stage behind the dialog. -->
+<div inert aria-hidden="true" data-slot="entry-kulisse">
+	<EinnahmenListView data={data.list} />
+</div>
 
 <EntryFormShell
 	title="Neue Einnahme"
