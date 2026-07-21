@@ -167,21 +167,16 @@ describe("markExpenseAsPaid", () => {
     expect(rows[0]!.status).toBe("erstattet");
   });
 
-  it("refuses when the expense row is festgeschrieben", async () => {
-    const expenseId = await seedExpense();
-    await getDb().execute(sql`
-      UPDATE expenses SET festgeschrieben_at = NOW() WHERE id = ${expenseId}::uuid
-    `);
-    const res = await markExpenseAsPaid(expenseId, {
-      datum: "2025-05-15",
-      zahlartId: null,
-      actorUserId: ACTOR_USER_ID,
-    });
-    expect(res.ok).toBe(false);
-    if (!res.ok) {
-      expect(res.error).toMatch(/festgeschrieben/i);
-    }
-  });
+  // NOTE (ADR-0006 Nachtrag / migration 0038): markExpenseAsPaid no longer
+  // pre-checks the row's `festgeschrieben_at` stamp — the settings-based DB
+  // trigger is the sole enforcer, permitting only the payment columns on a
+  // festgeschriebene Auslage. The fest behaviour (payment carve-out ALLOWED
+  // when abfluss is already set; a Verein-direct NULL-abfluss row REJECTED with
+  // an honest 409) is tested authoritatively in
+  // festschreibung-cash-year-gate.test.ts (settings-locked, both cases) and at
+  // the trigger level in festschreibung-carveout.test.ts. The old row-stamp
+  // shortcut assertion is therefore removed — the mechanism it exercised no
+  // longer exists.
 
   it("rejects an invalid date format", async () => {
     const expenseId = await seedExpense();

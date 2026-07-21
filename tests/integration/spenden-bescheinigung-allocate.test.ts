@@ -24,6 +24,7 @@
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
+import postgres from "postgres";
 
 const DATABASE_URL = process.env["DATABASE_URL"] ?? "";
 const DIRECT_DATABASE_URL = process.env["DIRECT_DATABASE_URL"] ?? "";
@@ -119,6 +120,51 @@ describe.skipIf(!dbConfigured)(
         .where(eq(donations.id, id))
         .limit(1);
       expect(row?.bescheinigungNr).toBe(first.bescheinigungNr);
+    });
+
+    // ADR-0006 Nachtrag (certificate carve-out, migration 0040): a
+    // Zuwendungsbestätigung may be issued even for a festgeschriebene Spende —
+    // allocateBescheinigung no longer 409s, and the DB trigger permits exactly
+    // the certificate columns the UPDATE writes. Booking values stay locked.
+    it("issues on a festgeschriebene Spende (certificate carve-out)", async () => {
+      const admin = postgres(DIRECT_DATABASE_URL, { prepare: false, max: 1 });
+      try {
+        // Clear any prior lock, create a 2015 Spende, THEN lock 2015 (so the
+        // create itself is never blocked). Locking via superuser bypasses the
+        // monotonic settings guard.
+        await admin`UPDATE settings SET value = 'null'::jsonb WHERE key = 'festgeschrieben_bis'`;
+        const r = await createSpende(
+          {
+            spende_kind: "geldspende",
+            zweckbindung_kind: "zweckfrei",
+            zugewendet_am: "2015-06-01",
+            betragCents: "5000",
+            spender_name: "Frieda Fest",
+            spender_adresse: "Nebenstr. 2, 10115 Berlin",
+          },
+          ACTOR,
+        );
+        expect(r.ok).toBe(true);
+        const id = r.donationId as string;
+
+        await admin`
+          INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', ${admin.json(2015)})
+          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
+
+        const res = await allocateBescheinigung(id, ACTOR);
+        expect(res.ok).toBe(true);
+        expect(res.bescheinigungNr).toMatch(/^B-\d{4}-\d{3,}$/);
+
+        const [row] = await getDb()
+          .select({ bescheinigungNr: donations.bescheinigungNr })
+          .from(donations)
+          .where(eq(donations.id, id))
+          .limit(1);
+        expect(row?.bescheinigungNr).toBe(res.bescheinigungNr);
+      } finally {
+        await admin`UPDATE settings SET value = 'null'::jsonb WHERE key = 'festgeschrieben_bis'`;
+        await admin.end();
+      }
     });
   },
 );

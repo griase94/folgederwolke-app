@@ -248,6 +248,7 @@
   {beleg}
   documented={!!detail.belegFileId ||
     (isSach && !!detail.herkunftsbelegFileId)}
+  certificateIssuable={!issued && data.bescheinigungEnabled}
   {railExtra}
   {saving}
   {dirty}
