@@ -1484,6 +1484,16 @@ export async function resolveKategorieById(
   return row;
 }
 
+/**
+ * True when `err` is the "Kategorie not found" throw from resolveKategorieById /
+ * resolveKategorieByName. Lets the transaction routes degrade a stale/tampered
+ * kategorieId to a clean fail(400) instead of an opaque 500 (#115 F1 / parity
+ * with the inbox approve path).
+ */
+export function isKategorieNotFoundError(err: unknown): boolean {
+  return err instanceof Error && err.message.startsWith("Kategorie not found:");
+}
+
 export async function createDonation(
   input: CreateDonationInput,
 ): Promise<{ id: string; businessId: string }> {

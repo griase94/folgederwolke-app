@@ -55,6 +55,8 @@ vi.mock("$lib/server/domain/transactions.js", () => ({
   listZahlungsarten: async () => [
     { id: "za-bank", kind: "bank", label: "Banküberweisung" },
   ],
+  isKategorieNotFoundError: (e: unknown) =>
+    e instanceof Error && e.message.startsWith("Kategorie not found:"),
 }));
 
 type ErstattetResult =
@@ -659,5 +661,29 @@ describe("ausgaben/neu ?/create — 422 re-hydrates the form", () => {
     expect(result.fail?.status).toBe(422);
     expect(result.fail?.data?.values?.bezeichnung).toBe("Ohne Kategorie");
     expect(result.fail?.data?.errors?.kategorieId).toBeTruthy();
+  });
+
+  it("F1: createExpense's 'Kategorie not found' throw → fail(400), no 500", async () => {
+    // A valid-shaped but stale/removed kategorieId passes the schema, then
+    // createExpense's resolveKategorieById throws — the route must degrade to a
+    // clean 400 (re-hydrating the form), never an opaque 500.
+    createExpenseMock.mockRejectedValueOnce(
+      new Error(
+        "Kategorie not found: expense/99999999-9999-4999-8999-999999999999",
+      ),
+    );
+    const event = makeEvent({
+      ...VEREIN_BASE,
+      kategorieId: "99999999-9999-4999-8999-999999999999",
+      bezahltVonKind: "verein",
+      bezahltVonDisplay: "Folge der Wolke e.V.",
+      zahlungsartId: ZAHLART_ID,
+      beleg: mkBelegFile(),
+    });
+    const result = (await runCreate(event)) as {
+      fail?: { status?: number; data?: { error?: string } };
+    };
+    expect(result.fail?.status).toBe(400);
+    expect(result.fail?.data?.error).toMatch(/nicht gefunden/i);
   });
 });

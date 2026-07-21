@@ -37,6 +37,8 @@ const checkFestschreibungGateMock = vi.fn(
 vi.mock("$lib/server/domain/transactions.js", () => ({
   createIncome: createIncomeMock,
   checkFestschreibungGate: checkFestschreibungGateMock,
+  isKategorieNotFoundError: (e: unknown) =>
+    e instanceof Error && e.message.startsWith("Kategorie not found:"),
 }));
 
 const allocateBusinessIdMock = vi.fn(

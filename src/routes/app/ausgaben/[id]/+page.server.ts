@@ -31,6 +31,7 @@ import {
   listZahlungsarten,
   resolveKategorieById,
   resolveKategorieByName,
+  isKategorieNotFoundError,
 } from "$lib/server/domain/transactions.js";
 import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
 import { getDb } from "$lib/server/db/index.js";
@@ -138,7 +139,18 @@ export const actions = {
     // §4.5 / #115: re-resolve the Kategorie BY ID and derive the name-snapshot +
     // sphere STRICTLY from the row. The body's sphereSnapshot is never trusted
     // (mirrors createExpense) — a tampered/stale sphere can't mis-classify.
-    const kat = await resolveKategorieById("expense", parsed.data.kategorieId);
+    // F1: a stale/removed id throws → degrade to a clean 400, never a 500.
+    let kat: Awaited<ReturnType<typeof resolveKategorieById>>;
+    try {
+      kat = await resolveKategorieById("expense", parsed.data.kategorieId);
+    } catch (err) {
+      if (isKategorieNotFoundError(err)) {
+        return fail(400, {
+          error: "Kategorie nicht gefunden — bitte neu wählen",
+        });
+      }
+      throw err;
+    }
 
     // Payment-state guard (Fix 2): once an Auslage is `erstattet` the money has
     // moved, so the tax-relevant axes (Betrag + Kategorie/Sphäre) are frozen —

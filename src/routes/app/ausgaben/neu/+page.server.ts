@@ -36,6 +36,7 @@ import {
   markExpenseAsPaid,
   checkFestschreibungGate,
   listZahlungsarten,
+  isKategorieNotFoundError,
 } from "$lib/server/domain/transactions.js";
 import { markExpenseErstattet } from "$lib/server/domain/audit-inbox-actions.js";
 import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
@@ -548,6 +549,17 @@ export const actions = {
         "location" in err
       ) {
         throw err;
+      }
+      // F1: a stale/removed kategorieId throws inside createExpense → clean 400
+      // (re-hydrating the form) instead of an opaque 500.
+      if (isKategorieNotFoundError(err)) {
+        return fail(400, {
+          error: "Kategorie nicht gefunden — bitte neu wählen",
+          values: valuesFromForm(data),
+          errors: {
+            kategorieId: ["Kategorie nicht gefunden — bitte neu wählen"],
+          },
+        });
       }
       console.error("[ausgaben/neu/create]", err);
       return fail(500, { error: "Interner Fehler beim Speichern" });

@@ -62,6 +62,8 @@ vi.mock("$lib/server/domain/transactions.js", () => ({
   getTransactionDetail: getTransactionDetailMock,
   checkFestschreibungGate: checkFestschreibungGateMock,
   resolveKategorieById: resolveKategorieByIdMock,
+  isKategorieNotFoundError: (e: unknown) =>
+    e instanceof Error && e.message.startsWith("Kategorie not found:"),
 }));
 
 // load() also fetches kategorie options for the detail fields picker.

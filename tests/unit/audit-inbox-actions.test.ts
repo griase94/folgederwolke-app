@@ -219,7 +219,7 @@ function makeDbFake() {
               : true,
           );
         } else if (ctx.table === "kategorien") {
-          // resolveKategorieById does where(and(eq(kind,…), eq(name,…))).
+          // resolveKategorieById does where(and(eq(kind,…), eq(id,…))).
           // The `and(...)` mock collapses to its first arg (the kind eq), so
           // we filter by kind only — the store holds a single expense
           // kategorie, so this is unambiguous.
@@ -457,7 +457,7 @@ vi.mock("$lib/server/db/schema/zahlungsarten.js", () => ({
 }));
 
 // approveSubmission resolves the chosen Kategorie via
-// select().from(kategorien).where(and(eq(kind), eq(name))). Mock the schema
+// select().from(kategorien).where(and(eq(kind), eq(id))). Mock the schema
 // shape so the fake's `from` tags the table correctly.
 vi.mock("$lib/server/db/schema/kategorien.js", () => ({
   kategorien: {

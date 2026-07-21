@@ -122,6 +122,8 @@ vi.mock("$lib/server/domain/transactions.js", () => ({
   listZahlungsarten: listZahlungsartenMock,
   resolveKategorieById: resolveKategorieByIdMock,
   resolveKategorieByName: resolveKategorieByNameMock,
+  isKategorieNotFoundError: (e: unknown) =>
+    e instanceof Error && e.message.startsWith("Kategorie not found:"),
 }));
 
 // load() also fetches expense kategorie options + the active-projects list for
@@ -501,5 +503,28 @@ describe("ausgaben/[id] ?/save", () => {
     );
     const result = (await actions["save"]!(event)) as { status?: number };
     expect(result.status).toBe(401);
+  });
+
+  it("F1: a stale/removed kategorieId → fail(400), never a 500 (no update)", async () => {
+    getTransactionDetailMock.mockResolvedValueOnce(GEPRUEFT_DETAIL);
+    // resolveKategorieById throws its "Kategorie not found:" error for a valid-
+    // shaped but non-existent id; the route must degrade to a clean 400.
+    resolveKategorieByIdMock.mockRejectedValueOnce(
+      new Error(
+        "Kategorie not found: expense/99999999-9999-4999-8999-999999999999",
+      ),
+    );
+    const event = makeActionEvent("exp-1", {
+      bezeichnung: "Raummiete April",
+      betragCents: "46000",
+      kategorieId: "99999999-9999-4999-8999-999999999999",
+    });
+    const result = (await actions["save"]!(event)) as {
+      status?: number;
+      data?: { error?: string };
+    };
+    expect(result.status).toBe(400);
+    expect(result.data?.error).toMatch(/nicht gefunden/i);
+    expect(updateSetMock).not.toHaveBeenCalled();
   });
 });

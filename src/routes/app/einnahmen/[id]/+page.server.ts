@@ -28,6 +28,7 @@ import {
   getTransactionDetail,
   checkFestschreibungGate,
   resolveKategorieById,
+  isKategorieNotFoundError,
   isCheckViolation,
 } from "$lib/server/domain/transactions.js";
 import { bookingYearFromCashDate } from "$lib/domain/year.js";
@@ -152,8 +153,19 @@ export const actions = {
 
     // §4.5 / #115 — re-resolve the Kategorie BY ID and re-derive the name +
     // Sphäre from the row; never trust a client-posted sphere. Mirrors
-    // createIncome + the Ausgaben detail ?/save.
-    const kat = await resolveKategorieById("income", parsed.data.kategorieId);
+    // createIncome + the Ausgaben detail ?/save. F1: a stale/removed id throws →
+    // degrade to a clean 400, never a 500.
+    let kat: Awaited<ReturnType<typeof resolveKategorieById>>;
+    try {
+      kat = await resolveKategorieById("income", parsed.data.kategorieId);
+    } catch (err) {
+      if (isKategorieNotFoundError(err)) {
+        return fail(400, {
+          error: "Kategorie nicht gefunden — bitte neu wählen",
+        });
+      }
+      throw err;
+    }
 
     try {
       await db
