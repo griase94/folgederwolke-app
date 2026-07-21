@@ -1,10 +1,11 @@
 // KategoriePicker.test.ts
 //
 // Contract test for the shared Kategorie field every transaction entry form uses.
-// The sphere is derived STRICTLY from the chosen kategorie via `kategorieSphere`
-// (Phase 1) — NO project sphere_default override here (that lives in the domain
-// write path, ADR-0008). Choosing an option:
-//   - calls `onChange(name)`
+// The option value is the kategorie ID (#115, id-authoritative); the sphere is
+// derived STRICTLY from the chosen option's `sphere` (Phase 1) — NO project
+// sphere_default override here (that lives in the domain write path, ADR-0008).
+// Choosing an option:
+//   - calls `onChange(id)`
 //   - calls `onSphere(derivedSphere)`
 //   - drives the SphereBadge (palette §13).
 // The "Anlage EÜR Zeile {n}" hint is rendered ONLY when the chosen option carries
@@ -19,14 +20,27 @@ import type { Sphere } from "$lib/domain/sphere.js";
 
 afterEach(() => cleanup());
 
+const EINTRITT_ID = "22222222-2222-2222-2222-222222222222";
+const MERCH_ID = "33333333-3333-3333-3333-333333333333";
+
 const options: {
+  id: string;
   name: string;
   sphere: Sphere;
   eurZeile?: string | number | null;
 }[] = [
-  { name: "Büromaterial", sphere: "ideeller" }, // eurZeile absent (pre-launch reality)
-  { name: "Eintritt", sphere: "zweckbetrieb", eurZeile: null }, // explicit null
-  { name: "Merch-Einkauf", sphere: "wirtschaftlich", eurZeile: "5" }, // Zeile provided
+  {
+    id: "11111111-1111-1111-1111-111111111111",
+    name: "Büromaterial",
+    sphere: "ideeller",
+  }, // eurZeile absent (pre-launch reality)
+  { id: EINTRITT_ID, name: "Eintritt", sphere: "zweckbetrieb", eurZeile: null }, // explicit null
+  {
+    id: MERCH_ID,
+    name: "Merch-Einkauf",
+    sphere: "wirtschaftlich",
+    eurZeile: "5",
+  }, // Zeile provided
 ];
 
 describe("KategoriePicker", () => {
@@ -37,11 +51,11 @@ describe("KategoriePicker", () => {
       props: { options, value: "", onChange, onSphere },
     });
 
-    // Select "Eintritt" → onChange("Eintritt") + onSphere("zweckbetrieb").
+    // Select "Eintritt" (by id) → onChange(EINTRITT_ID) + onSphere("zweckbetrieb").
     const select = screen.getByRole("combobox", { name: /Kategorie/i });
-    await fireEvent.change(select, { target: { value: "Eintritt" } });
+    await fireEvent.change(select, { target: { value: EINTRITT_ID } });
 
-    expect(onChange).toHaveBeenCalledWith("Eintritt");
+    expect(onChange).toHaveBeenCalledWith(EINTRITT_ID);
     expect(onSphere).toHaveBeenCalledWith("zweckbetrieb");
   });
 
@@ -49,7 +63,7 @@ describe("KategoriePicker", () => {
     render(KategoriePicker, {
       props: {
         options,
-        value: "Eintritt",
+        value: EINTRITT_ID,
         onChange: vi.fn(),
         onSphere: vi.fn(),
       },
@@ -62,7 +76,7 @@ describe("KategoriePicker", () => {
     render(KategoriePicker, {
       props: {
         options,
-        value: "Merch-Einkauf", // eurZeile: "5"
+        value: MERCH_ID, // eurZeile: "5"
         onChange: vi.fn(),
         onSphere: vi.fn(),
       },
@@ -74,7 +88,7 @@ describe("KategoriePicker", () => {
     render(KategoriePicker, {
       props: {
         options,
-        value: "Eintritt", // eurZeile: null
+        value: EINTRITT_ID, // eurZeile: null
         onChange: vi.fn(),
         onSphere: vi.fn(),
       },
@@ -101,7 +115,7 @@ describe("KategoriePicker", () => {
     render(KategoriePicker, {
       props: {
         options,
-        value: "Eintritt",
+        value: EINTRITT_ID,
         onChange: vi.fn(),
         onSphere: vi.fn(),
       },

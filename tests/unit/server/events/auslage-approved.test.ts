@@ -208,7 +208,7 @@ function makeDbFake() {
             },
           ];
         } else if (ctx.table === "kategorien") {
-          // resolveKategorieByName does where(and(eq(kind,…), eq(name,…)));
+          // resolveKategorieById does where(and(eq(kind,…), eq(name,…)));
           // the `and:(a)=>a` mock collapses to the kind eq, so filter by the
           // single where field → the one seeded expense kategorie.
           rows = [...kategorienStore.values()].filter((r) =>
@@ -443,7 +443,7 @@ describe("approveSubmission → auslage.approved event", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
 
     expect(result.ok).toBe(true);
@@ -467,7 +467,7 @@ describe("approveSubmission → auslage.approved event", () => {
     await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
     const firstCount = emitMock.mock.calls.filter(
       (c) => c[0] === "auslage.approved",
@@ -480,7 +480,7 @@ describe("approveSubmission → auslage.approved event", () => {
     await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
 
     const secondCount = emitMock.mock.calls.filter(
@@ -496,7 +496,7 @@ describe("approveSubmission → auslage.approved event", () => {
     await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
     const firstPayload = emitMock.mock.calls.find(
       (c) => c[0] === "auslage.approved",
@@ -528,7 +528,7 @@ describe("approveSubmission → auslage.approved event", () => {
     await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
     const secondPayload = emitMock.mock.calls.find(
       (c) => c[0] === "auslage.approved",

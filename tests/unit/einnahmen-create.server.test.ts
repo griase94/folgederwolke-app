@@ -10,7 +10,7 @@
  *     WITH a Beleg persists its `belegFileId`; a submission WITHOUT one succeeds
  *     (NO Begründung required).
  *   - Sphere is derived server-side INSIDE `createIncome` (spec §4.5, no project
- *     override) — the action forwards `kategorieNameSnapshot` and lets the
+ *     override) — the action forwards `kategorieId` (#115) and lets the
  *     domain layer resolve kategorie + sphere.
  *   - festschreibung-gated: a gate failure → `fail(gate.status)`, createIncome
  *     NOT called.
@@ -37,6 +37,8 @@ const checkFestschreibungGateMock = vi.fn(
 vi.mock("$lib/server/domain/transactions.js", () => ({
   createIncome: createIncomeMock,
   checkFestschreibungGate: checkFestschreibungGateMock,
+  isKategorieNotFoundError: (e: unknown) =>
+    e instanceof Error && e.message.startsWith("Kategorie not found:"),
 }));
 
 const allocateBusinessIdMock = vi.fn(
@@ -130,7 +132,8 @@ const VALID = {
   bezeichnung: "Mitgliedsbeitrag Max",
   betragCents: "5000",
   geldEingangDatum: "2026-05-01",
-  kategorieNameSnapshot: "Aufnahmegebühr",
+  // #115: the picker submits a valid Kategorie uuid (the schema uuid-validates).
+  kategorieId: "66666666-6666-4666-8666-666666666666",
 };
 
 beforeEach(() => {
@@ -160,15 +163,16 @@ describe("/app/einnahmen/neu — create action (freie Einnahme → createIncome)
     const arg = createIncomeMock.mock.calls[0]![0] as {
       bezeichnung: string;
       betragCents: number;
-      kategorieNameSnapshot: string;
+      kategorieId: string;
       geldEingangDatum?: string | null;
       businessId: string;
       actorUserId: string;
     };
     expect(arg.bezeichnung).toBe(VALID.bezeichnung);
     expect(arg.betragCents).toBe(5000);
-    // Action forwards the picked kategorie NAME; createIncome derives sphere.
-    expect(arg.kategorieNameSnapshot).toBe(VALID.kategorieNameSnapshot);
+    // #115: the action forwards the picked kategorie ID; createIncome resolves
+    // it + derives the name + sphere from the row.
+    expect(arg.kategorieId).toBe(VALID.kategorieId);
     expect(arg.geldEingangDatum).toBe(VALID.geldEingangDatum);
     expect(arg.actorUserId).toBe("user-test-1");
 

@@ -98,7 +98,7 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     // Pick a Kategorie — since M2 there is NO preselect, so without this the CTA
     // would be disabled for BOTH Kategorie AND Beleg and the assertion would
     // prove nothing specifically about Beleg.
-    const kategorie = page.locator('select[name="kategorieNameSnapshot"]');
+    const kategorie = page.locator('select[name="kategorieId"]');
     const optionCount = await kategorie.locator("option").count();
     if (optionCount > 1) {
       const val = await kategorie

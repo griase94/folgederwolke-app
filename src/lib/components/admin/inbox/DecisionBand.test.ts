@@ -14,12 +14,15 @@ vi.mock("$app/forms", () => ({ enhance: () => ({ destroy() {} }) }));
 
 import DecisionBand from "./DecisionBand.svelte";
 
+const BUERO_ID = "11111111-1111-1111-1111-111111111111";
+const REISE_ID = "22222222-2222-2222-2222-222222222222";
+
 const baseProps = {
   submissionId: "id-1",
   ausId: "AUS-2026-007",
   kategorieOptions: [
-    { name: "Bürobedarf", sphere: "wirtschaftlich" as const },
-    { name: "Reisekosten", sphere: "ideeller" as const },
+    { id: BUERO_ID, name: "Bürobedarf", sphere: "wirtschaftlich" as const },
+    { id: REISE_ID, name: "Reisekosten", sphere: "ideeller" as const },
   ],
   festgeschriebenBis: null as number | null,
   currentYear: 2026,
@@ -58,7 +61,7 @@ describe("DecisionBand", () => {
   it("choosing a Kategorie reveals the Sphäre chip and clears the missing list", async () => {
     render(DecisionBand, { props: baseProps });
     await fireEvent.change(screen.getByLabelText("Kategorie"), {
-      target: { value: "Bürobedarf" },
+      target: { value: BUERO_ID },
     });
     expect(screen.getByTestId("decision-sphere").textContent).toMatch(/Sphäre/);
     expect(

@@ -51,8 +51,8 @@ describe.skipIf(!dbConfigured)(
   "booking-year derivation from cash-flow date",
   () => {
     let ACTOR = "";
-    let EXPENSE_KAT = "";
-    let INCOME_KAT = "";
+    let EXPENSE_KAT_ID = "";
+    let INCOME_KAT_ID = "";
     let admin: ReturnType<typeof postgres>;
 
     // Track ids created via direct insert (donations bescheinigung case) so we
@@ -73,16 +73,16 @@ describe.skipIf(!dbConfigured)(
       if (!u) throw new Error("failed to seed actor user");
       ACTOR = u.id;
 
-      // Resolve real seeded kategorie names (createExpense/createIncome resolve
-      // by name, so pass a name that the seed installed).
-      const [ke] = await admin<{ name: string }[]>`
-      SELECT name FROM kategorien WHERE kind = 'expense' LIMIT 1`;
-      const [ki] = await admin<{ name: string }[]>`
-      SELECT name FROM kategorien WHERE kind = 'income' LIMIT 1`;
+      // Resolve real seeded kategorie ids (#115: createExpense/createIncome
+      // resolve by id, so pass an id that the seed installed).
+      const [ke] = await admin<{ id: string }[]>`
+      SELECT id FROM kategorien WHERE kind = 'expense' LIMIT 1`;
+      const [ki] = await admin<{ id: string }[]>`
+      SELECT id FROM kategorien WHERE kind = 'income' LIMIT 1`;
       if (!ke || !ki)
         throw new Error("missing seeded expense/income kategorie");
-      EXPENSE_KAT = ke.name;
-      INCOME_KAT = ki.name;
+      EXPENSE_KAT_ID = ke.id;
+      INCOME_KAT_ID = ki.id;
     });
 
     afterAll(async () => {
@@ -137,7 +137,7 @@ describe.skipIf(!dbConfigured)(
         bezeichnung: "prior-year abfluss",
         betragCents: 1000,
         abflussDatum: PRIOR_CASH_DATE,
-        kategorieNameSnapshot: EXPENSE_KAT,
+        kategorieId: EXPENSE_KAT_ID,
         bezahltVonKind: "verein",
         bezahltVonDisplay: "Verein",
         belegVerzichtGrund: "test fixture — kein Beleg",
@@ -157,7 +157,7 @@ describe.skipIf(!dbConfigured)(
         bezeichnung: "prior-year eingang",
         betragCents: 2000,
         geldEingangDatum: PRIOR_CASH_DATE,
-        kategorieNameSnapshot: INCOME_KAT,
+        kategorieId: INCOME_KAT_ID,
         actorUserId: ACTOR,
         businessId,
       });
@@ -199,7 +199,7 @@ describe.skipIf(!dbConfigured)(
         bezeichnung: "null abfluss",
         betragCents: 1000,
         abflussDatum: null,
-        kategorieNameSnapshot: EXPENSE_KAT,
+        kategorieId: EXPENSE_KAT_ID,
         bezahltVonKind: "verein",
         bezahltVonDisplay: "Verein",
         belegVerzichtGrund: "test fixture — kein Beleg",
@@ -222,7 +222,7 @@ describe.skipIf(!dbConfigured)(
         bezeichnung: "null eingang",
         betragCents: 2000,
         geldEingangDatum: null,
-        kategorieNameSnapshot: INCOME_KAT,
+        kategorieId: INCOME_KAT_ID,
         actorUserId: ACTOR,
         businessId,
       });

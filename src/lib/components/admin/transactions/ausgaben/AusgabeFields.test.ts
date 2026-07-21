@@ -18,7 +18,7 @@ function baseValues() {
   return {
     bezeichnung: "",
     betrag: "",
-    kategorieNameSnapshot: "",
+    kategorieId: "",
     kommentar: "",
     projectId: "",
     bezahltVonKind: "extern" as const,
@@ -104,9 +104,9 @@ describe("AusgabeFields — B2 entry-modal-v4 section layout", () => {
       document.querySelector('[data-slot="locked-sphere-field"]'),
     ).toBeNull();
     cleanup();
-    // With a Kategorie seeded, the derived Sphäre appears as a read-only field.
+    // With a Kategorie seeded (by id), the derived Sphäre appears as read-only.
     const props = baseProps();
-    props.values = { ...props.values, kategorieNameSnapshot: "Bürobedarf" };
+    props.values = { ...props.values, kategorieId: "k1" };
     render(AusgabeFields, { props });
     expect(
       document.querySelector('[data-slot="locked-sphere-field"]'),

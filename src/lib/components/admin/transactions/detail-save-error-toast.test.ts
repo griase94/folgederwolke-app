@@ -124,10 +124,16 @@ describe("EinnahmeDetailFields — ?/save failure surfaces a toast", () => {
         bezeichnung: "Test",
         betragCents: 1250,
         geldEingangDatum: null,
-        kategorieNameSnapshot: "Spende",
+        kategorieId: "22222222-2222-2222-2222-222222222222",
         projectId: null,
         kommentar: null,
-        kategorien: [{ name: "Spende", sphere: "ideeller" }],
+        kategorien: [
+          {
+            id: "22222222-2222-2222-2222-222222222222",
+            name: "Spende",
+            sphere: "ideeller",
+          },
+        ],
         projects: [],
       },
     });

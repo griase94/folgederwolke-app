@@ -61,6 +61,8 @@ export interface TransactionRow {
   sphereSnapshot: string;
   sphereEffective: string;
   kategorieNameSnapshot: string;
+  /** #115: the Kategorie FK — lets the edit forms pre-select the picker by id. */
+  kategorieId: string | null;
   /** expense only */
   status: string | null;
   erstattetAm: string | null;
@@ -913,6 +915,7 @@ export async function getTransactionDetail(
       sphereSnapshot: r.sphereSnapshot,
       sphereEffective: r.sphereOverride ?? r.sphereSnapshot,
       kategorieNameSnapshot: r.kategorieNameSnapshot,
+      kategorieId: r.kategorieId ?? null,
       status: r.status,
       erstattetAm: r.erstattetAm ?? null,
       bezahltVonDisplay: r.bezahltVonDisplay,
@@ -988,6 +991,7 @@ export async function getTransactionDetail(
       sphereSnapshot: r.sphereSnapshot,
       sphereEffective: r.sphereSnapshot,
       kategorieNameSnapshot: r.kategorieNameSnapshot,
+      kategorieId: r.kategorieId ?? null,
       status: null,
       erstattetAm: null,
       bezahltVonDisplay: null,
@@ -1048,6 +1052,7 @@ export async function getTransactionDetail(
       sphereSnapshot: r.sphereSnapshot,
       sphereEffective: r.sphereSnapshot,
       kategorieNameSnapshot: r.kategorieNameSnapshot,
+      kategorieId: r.kategorieId ?? null,
       status: null,
       erstattetAm: null,
       bezahltVonDisplay: r.spenderName ?? null,
@@ -1252,11 +1257,11 @@ export interface CreateExpenseInput {
    */
   abflussDatum?: string | null;
   kommentar?: string | null;
-  kategorieId?: string | null;
-  kategorieNameSnapshot: string;
-  // P1-T7 (spec §4.5): sphere is now DERIVED from the resolved kategorie —
-  // STRICT (no project override). Accepted-but-ignored for caller parity.
-  sphereSnapshot?: "ideeller" | "vermoegen" | "zweckbetrieb" | "wirtschaftlich";
+  // #115: the chosen Kategorie is now identified BY ID (authoritative). The
+  // name/sphere snapshots are DERIVED server-side from the resolved row —
+  // never trusted from the caller. resolveKategorieByName stays for donation
+  // derivation / invoice mark-paid fallback / importer, not this write path.
+  kategorieId: string;
   bezahltVonKind: "verein" | "member" | "extern";
   bezahltVonMemberId?: string | null;
   bezahltVonDisplay: string;
@@ -1281,11 +1286,11 @@ export interface CreateIncomeInput {
   geldEingangDatum?: string | null;
   rechnungsdatum?: string | null;
   kommentar?: string | null;
-  kategorieId?: string | null;
-  kategorieNameSnapshot: string;
-  // P1-T7 (spec §4.5): sphere is now DERIVED from the resolved kategorie —
-  // STRICT (no project override). Accepted-but-ignored for caller parity.
-  sphereSnapshot?: "ideeller" | "vermoegen" | "zweckbetrieb" | "wirtschaftlich";
+  // #115: the chosen Kategorie is now identified BY ID (authoritative). The
+  // name/sphere snapshots are DERIVED server-side from the resolved row —
+  // never trusted from the caller. resolveKategorieByName stays for donation
+  // derivation / invoice mark-paid fallback / importer, not this write path.
+  kategorieId: string;
   projectId?: string | null;
   // P1-T7 (spec §4.6): the `income.beleg_file_id` column already existed but
   // createIncome dropped it — persist it so "Beleg optional" on the Einnahmen
@@ -1332,15 +1337,11 @@ export async function createExpense(
   input: CreateExpenseInput,
 ): Promise<{ id: string; businessId: string }> {
   const db = getDb();
-  // P1-T7 (spec §4.5): resolve a non-null kategorie by NAME and derive sphere
-  // STRICTLY from it (no project override). Closes the null-kategorie_id path
-  // before the NOT NULL constraint lands in a later task. NOTE: `input.kategorieId`
-  // is intentionally NOT honored — resolution is name-authoritative, so a future
-  // caller can't assume by-id wins.
-  const kat = await resolveKategorieByName(
-    "expense",
-    input.kategorieNameSnapshot,
-  );
+  // #115 (spec §4.5): resolve the Kategorie BY ID (authoritative) and derive
+  // both the name-snapshot AND the sphere STRICTLY from the resolved row (no
+  // project override, no caller-supplied name/sphere). resolveKategorieById
+  // throws on a miss / kind-mismatch so a stale or cross-kind id can't book.
+  const kat = await resolveKategorieById("expense", input.kategorieId);
   const [row] = await db
     .insert(expenses)
     .values({
@@ -1392,15 +1393,11 @@ export async function createIncome(
   input: CreateIncomeInput,
 ): Promise<{ id: string; businessId: string }> {
   const db = getDb();
-  // P1-T7 (spec §4.5): resolve a non-null kategorie by NAME and derive sphere
-  // STRICTLY from it (no project override). Closes the null-kategorie_id path
-  // before the NOT NULL constraint lands in a later task. NOTE: `input.kategorieId`
-  // is intentionally NOT honored — resolution is name-authoritative, so a future
-  // caller can't assume by-id wins.
-  const kat = await resolveKategorieByName(
-    "income",
-    input.kategorieNameSnapshot,
-  );
+  // #115 (spec §4.5): resolve the Kategorie BY ID (authoritative) and derive
+  // both the name-snapshot AND the sphere STRICTLY from the resolved row (no
+  // project override, no caller-supplied name/sphere). resolveKategorieById
+  // throws on a miss / kind-mismatch so a stale or cross-kind id can't book.
+  const kat = await resolveKategorieById("income", input.kategorieId);
   const [row] = await db
     .insert(income)
     .values({
@@ -1457,6 +1454,44 @@ export async function resolveKategorieByName(
     .limit(1);
   if (!row) throw new Error(`Kategorie not found: ${kind}/${name}`);
   return row;
+}
+
+/**
+ * #115: resolve a Kategorie by (kind, id) → { id, sphere, name }. This is the
+ * authoritative resolver for the transaction ENTRY write path (createExpense/
+ * createIncome + the edit + inbox-approve routes) now that the picker submits
+ * an id. The `kind` guard rejects a cross-kind id (an income id on an expense),
+ * mirroring resolveKategorieByName. Throws on a miss so a stale/tampered id
+ * surfaces as a 4xx instead of silently booking "(Unkategorisiert)".
+ * resolveKategorieByName stays for name-keyed paths (donation derivation,
+ * invoice mark-paid fallback, importer).
+ */
+export async function resolveKategorieById(
+  kind: "expense" | "income",
+  id: string,
+): Promise<{ id: string; sphere: Sphere; name: string }> {
+  const db = getDb();
+  const [row] = await db
+    .select({
+      id: kategorien.id,
+      sphere: kategorien.sphere,
+      name: kategorien.name,
+    })
+    .from(kategorien)
+    .where(and(eq(kategorien.kind, kind), eq(kategorien.id, id)))
+    .limit(1);
+  if (!row) throw new Error(`Kategorie not found: ${kind}/${id}`);
+  return row;
+}
+
+/**
+ * True when `err` is the "Kategorie not found" throw from resolveKategorieById /
+ * resolveKategorieByName. Lets the transaction routes degrade a stale/tampered
+ * kategorieId to a clean fail(400) instead of an opaque 500 (#115 F1 / parity
+ * with the inbox approve path).
+ */
+export function isKategorieNotFoundError(err: unknown): boolean {
+  return err instanceof Error && err.message.startsWith("Kategorie not found:");
 }
 
 export async function createDonation(

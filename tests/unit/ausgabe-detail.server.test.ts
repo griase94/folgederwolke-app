@@ -36,6 +36,7 @@ const ERSTATTET_DETAIL = {
   sphereSnapshot: "ideeller",
   sphereEffective: "ideeller",
   kategorieNameSnapshot: "Miete",
+  kategorieId: "11111111-1111-4111-8111-111111111111" as string | null,
   status: "erstattet" as string,
   erstattetAm: "2026-03-05" as string | null,
   bezahltVonDisplay: "Folge der Wolke e.V.",
@@ -95,8 +96,21 @@ const listZahlungsartenMock = vi.fn(async () => [
 // here so the test can prove the body's tampered sphere is overridden.
 const resolveKategorieByNameMock = vi.fn(
   async (_kind: "expense", name: string) => ({
-    id: "kat-miete",
+    id:
+      name === "Bürobedarf"
+        ? "33333333-3333-4333-8333-333333333333"
+        : "11111111-1111-4111-8111-111111111111",
     name,
+    sphere: "wirtschaftlich" as const,
+  }),
+);
+// #115: ?/save now resolves BY ID. Map the two ids used in the tests back to
+// their names so the erstattet Kategorie-change guard (name compare) still fires.
+const resolveKategorieByIdMock = vi.fn(
+  async (_kind: "expense", id: string) => ({
+    id,
+    name:
+      id === "33333333-3333-4333-8333-333333333333" ? "Bürobedarf" : "Miete",
     sphere: "wirtschaftlich" as const,
   }),
 );
@@ -106,14 +120,22 @@ vi.mock("$lib/server/domain/transactions.js", () => ({
   markExpenseAsPaid: markExpenseAsPaidMock,
   checkFestschreibungGate: checkFestschreibungGateMock,
   listZahlungsarten: listZahlungsartenMock,
+  resolveKategorieById: resolveKategorieByIdMock,
   resolveKategorieByName: resolveKategorieByNameMock,
+  isKategorieNotFoundError: (e: unknown) =>
+    e instanceof Error && e.message.startsWith("Kategorie not found:"),
 }));
 
 // load() also fetches expense kategorie options + the active-projects list for
 // the editable detail fields. Mock both so load() stays DB-light.
 vi.mock("$lib/server/domain/transaction-pickers.js", () => ({
   listKategorieOptions: async (kind: "expense") => [
-    { id: "kat-miete", kind, name: "Miete", sphere: "ideeller" },
+    {
+      id: "11111111-1111-4111-8111-111111111111",
+      kind,
+      name: "Miete",
+      sphere: "ideeller",
+    },
   ],
 }));
 
@@ -227,6 +249,7 @@ beforeEach(() => {
   markExpenseAsPaidMock.mockClear();
   checkFestschreibungGateMock.mockClear();
   resolveKategorieByNameMock.mockClear();
+  resolveKategorieByIdMock.mockClear();
   updateSetMock.mockClear();
   updateWhereMock.mockClear();
   busEmitMock.mockClear();
@@ -309,7 +332,7 @@ describe("ausgaben/[id] ?/duplicate", () => {
     // Descriptive fields carry over (the point of duplicate-as-template).
     expect(prefill.bezeichnung).toBe("Raummiete März");
     expect(prefill.betragCents).toBe(45000);
-    expect(prefill.kategorieNameSnapshot).toBe("Miete");
+    expect(prefill.kategorieId).toBe("11111111-1111-4111-8111-111111111111");
   });
 });
 
@@ -325,7 +348,7 @@ describe("ausgaben/[id] ?/save", () => {
       betragCents: "46000",
       rechnungsdatum: "2026-04-01",
       kommentar: "monatlich",
-      kategorieNameSnapshot: "Miete",
+      kategorieId: "11111111-1111-4111-8111-111111111111",
     });
     const result = (await actions["save"]!(event)) as { ok?: boolean };
     expect(result.ok).toBe(true);
@@ -340,7 +363,7 @@ describe("ausgaben/[id] ?/save", () => {
     const event = makeActionEvent("exp-1", {
       bezeichnung: "Raummiete April",
       betragCents: "46000",
-      kategorieNameSnapshot: "Miete",
+      kategorieId: "11111111-1111-4111-8111-111111111111",
     });
     await actions["save"]!(event);
     const setArg = updateSetMock.mock.calls[0]![0] as Record<string, unknown>;
@@ -358,7 +381,7 @@ describe("ausgaben/[id] ?/save", () => {
       bezeichnung: "Raummiete März (Korrektur Schreibweise)",
       betragCents: "45000", // unchanged
       kommentar: "monatlich, korrigiert",
-      kategorieNameSnapshot: "Miete", // unchanged
+      kategorieId: "11111111-1111-4111-8111-111111111111", // unchanged
     });
     const result = (await actions["save"]!(event)) as { ok?: boolean };
     expect(result.ok).toBe(true);
@@ -373,7 +396,7 @@ describe("ausgaben/[id] ?/save", () => {
     const event = makeActionEvent("exp-1", {
       bezeichnung: "Raummiete März",
       betragCents: "46000",
-      kategorieNameSnapshot: "Miete",
+      kategorieId: "11111111-1111-4111-8111-111111111111",
     });
     const result = (await actions["save"]!(event)) as {
       status?: number;
@@ -388,7 +411,7 @@ describe("ausgaben/[id] ?/save", () => {
     const event = makeActionEvent("exp-1", {
       bezeichnung: "Raummiete März",
       betragCents: "45000", // unchanged
-      kategorieNameSnapshot: "Bürobedarf",
+      kategorieId: "33333333-3333-4333-8333-333333333333",
     });
     const result = (await actions["save"]!(event)) as { status?: number };
     expect(result.status).toBe(409);
@@ -402,12 +425,15 @@ describe("ausgaben/[id] ?/save", () => {
     const event = makeActionEvent("exp-1", {
       bezeichnung: "Raummiete April",
       betragCents: "46000",
-      kategorieNameSnapshot: "Miete",
+      kategorieId: "11111111-1111-4111-8111-111111111111",
       sphereSnapshot: "ideeller",
     });
     const result = (await actions["save"]!(event)) as { ok?: boolean };
     expect(result.ok).toBe(true);
-    expect(resolveKategorieByNameMock).toHaveBeenCalledWith("expense", "Miete");
+    expect(resolveKategorieByIdMock).toHaveBeenCalledWith(
+      "expense",
+      "11111111-1111-4111-8111-111111111111",
+    );
     const setArg = updateSetMock.mock.calls[0]![0] as {
       sphereSnapshot: string;
       kategorieNameSnapshot: string;
@@ -422,7 +448,7 @@ describe("ausgaben/[id] ?/save", () => {
     const event = makeActionEvent("exp-1", {
       bezeichnung: "Raummiete April",
       betragCents: "46000",
-      kategorieNameSnapshot: "Miete",
+      kategorieId: "11111111-1111-4111-8111-111111111111",
     });
     await actions["save"]!(event);
     expect(updateWhereMock).toHaveBeenCalledTimes(1);
@@ -432,22 +458,22 @@ describe("ausgaben/[id] ?/save", () => {
     expect(whereArg).toContain("isNull");
   });
 
-  it("rejects an empty Kategorie with 422 (mandatory-Kategorie refine)", async () => {
+  it("rejects an empty Kategorie with 422 (mandatory-Kategorie)", async () => {
     const event = makeActionEvent("exp-1", {
       bezeichnung: "Raummiete April",
       betragCents: "46000",
-      kategorieNameSnapshot: "",
+      kategorieId: "",
     });
     const result = (await actions["save"]!(event)) as { status?: number };
     expect(result.status).toBe(422);
     expect(updateSetMock).not.toHaveBeenCalled();
   });
 
-  it("rejects the (Unkategorisiert) sentinel Kategorie with 422", async () => {
+  it("rejects a non-uuid Kategorie id with 422 (#115: id must be a real uuid)", async () => {
     const event = makeActionEvent("exp-1", {
       bezeichnung: "Raummiete April",
       betragCents: "46000",
-      kategorieNameSnapshot: "(Unkategorisiert)",
+      kategorieId: "(Unkategorisiert)",
     });
     const result = (await actions["save"]!(event)) as { status?: number };
     expect(result.status).toBe(422);
@@ -462,7 +488,7 @@ describe("ausgaben/[id] ?/save", () => {
     const event = makeActionEvent("exp-1", {
       bezeichnung: "Hack",
       betragCents: "1",
-      kategorieNameSnapshot: "Miete",
+      kategorieId: "11111111-1111-4111-8111-111111111111",
     });
     const result = (await actions["save"]!(event)) as { status?: number };
     expect(result.status).toBe(409);
@@ -477,5 +503,28 @@ describe("ausgaben/[id] ?/save", () => {
     );
     const result = (await actions["save"]!(event)) as { status?: number };
     expect(result.status).toBe(401);
+  });
+
+  it("F1: a stale/removed kategorieId → fail(400), never a 500 (no update)", async () => {
+    getTransactionDetailMock.mockResolvedValueOnce(GEPRUEFT_DETAIL);
+    // resolveKategorieById throws its "Kategorie not found:" error for a valid-
+    // shaped but non-existent id; the route must degrade to a clean 400.
+    resolveKategorieByIdMock.mockRejectedValueOnce(
+      new Error(
+        "Kategorie not found: expense/99999999-9999-4999-8999-999999999999",
+      ),
+    );
+    const event = makeActionEvent("exp-1", {
+      bezeichnung: "Raummiete April",
+      betragCents: "46000",
+      kategorieId: "99999999-9999-4999-8999-999999999999",
+    });
+    const result = (await actions["save"]!(event)) as {
+      status?: number;
+      data?: { error?: string };
+    };
+    expect(result.status).toBe(400);
+    expect(result.data?.error).toMatch(/nicht gefunden/i);
+    expect(updateSetMock).not.toHaveBeenCalled();
   });
 });
