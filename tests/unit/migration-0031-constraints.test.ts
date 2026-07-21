@@ -34,6 +34,8 @@ import { users } from "$lib/server/db/schema/users.js";
 import { files } from "$lib/server/db/schema/files.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { donations } from "$lib/server/db/schema/donations.js";
+import { kategorien } from "$lib/server/db/schema/kategorien.js";
+import { and } from "drizzle-orm";
 import postgres from "postgres";
 
 const DATABASE_URL = process.env["DATABASE_URL"] ?? "";
@@ -43,6 +45,8 @@ const dbConfigured = DATABASE_URL.length > 0 && DIRECT_DATABASE_URL.length > 0;
 // expenses/donations FKs (created_by_user_id, beleg_file_id) require real rows.
 let ACTOR = "";
 let BELEG_FILE_ID = "";
+// #115: createExpense resolves the Kategorie by id — resolve a real seeded one.
+let BUEROBEDARF_ID = "";
 
 describe.skipIf(!dbConfigured)("migration 0031 constraints", () => {
   beforeAll(async () => {
@@ -77,6 +81,16 @@ describe.skipIf(!dbConfigured)("migration 0031 constraints", () => {
       .returning({ id: files.id });
     if (!f) throw new Error("failed to seed beleg file");
     BELEG_FILE_ID = f.id;
+
+    const [kat] = await getDb()
+      .select({ id: kategorien.id })
+      .from(kategorien)
+      .where(
+        and(eq(kategorien.kind, "expense"), eq(kategorien.name, "Bürobedarf")),
+      )
+      .limit(1);
+    if (!kat) throw new Error("seed missing expense/Bürobedarf");
+    BUEROBEDARF_ID = kat.id;
   });
 
   afterAll(async () => {
@@ -144,7 +158,7 @@ describe.skipIf(!dbConfigured)("migration 0031 constraints", () => {
       createExpense({
         bezeichnung: "Kein Beleg, keine Begründung",
         betragCents: 1000,
-        kategorieNameSnapshot: "Bürobedarf",
+        kategorieId: BUEROBEDARF_ID,
         bezahltVonKind: "verein",
         bezahltVonDisplay: "Verein",
         belegFileId: null,
@@ -160,7 +174,7 @@ describe.skipIf(!dbConfigured)("migration 0031 constraints", () => {
       createExpense({
         bezeichnung: "Mit Beleg",
         betragCents: 1000,
-        kategorieNameSnapshot: "Bürobedarf",
+        kategorieId: BUEROBEDARF_ID,
         bezahltVonKind: "verein",
         bezahltVonDisplay: "Verein",
         belegFileId: BELEG_FILE_ID,

@@ -219,7 +219,7 @@ function makeDbFake() {
               : true,
           );
         } else if (ctx.table === "kategorien") {
-          // resolveKategorieByName does where(and(eq(kind,…), eq(name,…))).
+          // resolveKategorieById does where(and(eq(kind,…), eq(id,…))).
           // The `and(...)` mock collapses to its first arg (the kind eq), so
           // we filter by kind only — the store holds a single expense
           // kategorie, so this is unambiguous.
@@ -457,7 +457,7 @@ vi.mock("$lib/server/db/schema/zahlungsarten.js", () => ({
 }));
 
 // approveSubmission resolves the chosen Kategorie via
-// select().from(kategorien).where(and(eq(kind), eq(name))). Mock the schema
+// select().from(kategorien).where(and(eq(kind), eq(id))). Mock the schema
 // shape so the fake's `from` tags the table correctly.
 vi.mock("$lib/server/db/schema/kategorien.js", () => ({
   kategorien: {
@@ -516,10 +516,10 @@ beforeEach(() => {
   uniqueViolationOnNextInsert = false;
   checkViolationOnNextExpenseUpdate = false;
 
-  // The gate resolves the CHOSEN Kategorie by name. The drizzle fake's
+  // #115: the gate resolves the CHOSEN Kategorie BY ID. The drizzle fake's
   // kategorien branch filters by kind only (the `and(...)` mock drops the
-  // name eq), so keep EXACTLY ONE expense kategorie in the store so
-  // resolveKategorieByName is unambiguous.
+  // id eq), so keep EXACTLY ONE expense kategorie in the store so
+  // resolveKategorieById is unambiguous.
   kategorienStore.set("kat-buero", {
     id: "kat-buero",
     kind: "expense",
@@ -543,7 +543,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
 
     expect(result.ok).toBe(true);
@@ -569,14 +569,14 @@ describe("approveSubmission — idempotency", () => {
     const first = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
     if (!first.ok) throw new Error("first call failed");
 
     const second = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
 
     expect(second.ok).toBe(true);
@@ -603,7 +603,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
 
     expect(result.ok).toBe(false);
@@ -615,7 +615,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: "does-not-exist",
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -629,7 +629,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
 
     expect(result.ok).toBe(false);
@@ -651,7 +651,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -668,7 +668,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
 
     expect(result.ok).toBe(true);
@@ -690,7 +690,7 @@ describe("approveSubmission — idempotency", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "  ",
+      kategorieId: "  ",
     });
 
     expect(result.ok).toBe(false);
@@ -701,14 +701,14 @@ describe("approveSubmission — idempotency", () => {
 
   it("returns a graceful 400 (not a 500) when the chosen Kategorie no longer exists", async () => {
     // Simulate a stale/renamed Kategorie: empty the store so the name resolves
-    // to nothing. resolveKategorieByName THROWS; the gate must catch → 400.
+    // to nothing. resolveKategorieById THROWS; the gate must catch → 400.
     kategorienStore.clear();
     const sub = makeSubmission({ businessId: "AUS-2026-103" });
 
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
 
     expect(result.ok).toBe(false);
@@ -918,12 +918,12 @@ describe("approveSubmission — concurrent race (A1)", () => {
       approveSubmission({
         submissionId: sub.id,
         actorUserId: "admin-1",
-        kategorieName: "Bürobedarf",
+        kategorieId: "kat-buero",
       }),
       approveSubmission({
         submissionId: sub.id,
         actorUserId: "admin-2",
-        kategorieName: "Bürobedarf",
+        kategorieId: "kat-buero",
       }),
     ]);
 

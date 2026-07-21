@@ -28,7 +28,7 @@ async function fillBase(
 ): Promise<void> {
   await page.locator("#bezeichnung").fill(opts.bezeichnung);
   await page.locator("#betrag-display").fill(opts.betrag);
-  const select = page.locator('select[name="kategorieNameSnapshot"]');
+  const select = page.locator('select[name="kategorieId"]');
   const val = await select.locator("option").nth(1).getAttribute("value");
   if (val) await select.selectOption(val);
 }

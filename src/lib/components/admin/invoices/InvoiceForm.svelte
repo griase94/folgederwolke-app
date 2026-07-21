@@ -555,7 +555,7 @@
 						aria-invalid={fieldError('kategorieId') ? 'true' : undefined}
 						class={FIELD}
 					>
-						<option value="" disabled>Kategorie wählen …</option>
+						<option value="" disabled>Kategorie wählen…</option>
 						{#each kategorien as k (k.id)}
 							<option value={k.id}>{k.name}</option>
 						{/each}

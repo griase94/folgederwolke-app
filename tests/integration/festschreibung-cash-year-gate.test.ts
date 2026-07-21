@@ -422,7 +422,7 @@ describe.skipIf(!dbConfigured)(
       const res = await approveSubmission({
         submissionId: subId,
         actorUserId: ACTOR,
-        kategorieName: EXPENSE_KAT_NAME,
+        kategorieId: EXPENSE_KAT_ID,
       });
 
       // The landing year is the CURRENT year (abfluss null → gebucht_am=now()),
@@ -442,7 +442,7 @@ describe.skipIf(!dbConfigured)(
       const res = await approveSubmission({
         submissionId: subId,
         actorUserId: ACTOR,
-        kategorieName: EXPENSE_KAT_NAME,
+        kategorieId: EXPENSE_KAT_ID,
       });
 
       expect(res.ok).toBe(false);

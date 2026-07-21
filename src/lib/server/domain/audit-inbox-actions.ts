@@ -28,7 +28,7 @@ import { members } from "$lib/server/db/schema/members.js";
 import { sentMails } from "$lib/server/db/schema/mails.js";
 import { bus } from "$lib/server/events/index.js";
 import { allocateBusinessId } from "$lib/server/domain/id-allocator.js";
-import { resolveKategorieByName } from "$lib/server/domain/transactions.js";
+import { resolveKategorieById } from "$lib/server/domain/transactions.js";
 import {
   composeBezahltVonDisplay,
   type BezahltVon,
@@ -227,8 +227,8 @@ function buchungsjahrForSubmission(): number {
 export interface ApproveSubmissionInput {
   submissionId: string;
   actorUserId: string;
-  /** Spec §4.6: the treasurer-chosen expense Kategorie NAME-snapshot (required). */
-  kategorieName: string;
+  /** Spec §4.6 / #115: the treasurer-chosen expense Kategorie ID (required). */
+  kategorieId: string;
 }
 
 export type ApproveSubmissionResult =
@@ -274,12 +274,12 @@ export type ApproveSubmissionResult =
 export async function approveSubmission(
   input: ApproveSubmissionInput,
 ): Promise<ApproveSubmissionResult> {
-  const { submissionId, actorUserId, kategorieName } = input;
+  const { submissionId, actorUserId, kategorieId } = input;
   if (!submissionId) {
     return { ok: false, status: 400, error: "Fehlende Submission-ID" };
   }
-  const chosenKategorieName = kategorieName?.trim();
-  if (!chosenKategorieName) {
+  const chosenKategorieId = kategorieId?.trim();
+  if (!chosenKategorieId) {
     return { ok: false, status: 400, error: "Bitte eine Kategorie wählen" };
   }
 
@@ -358,14 +358,14 @@ export async function approveSubmission(
   const expenseBusinessId = submission.businessId;
   const bezahltVonKind = submission.bezahltVonKind;
 
-  // Spec §4.6/§4.5: resolve the chosen Kategorie by NAME (authoritative) and
-  // derive sphere strictly from it — never a project default, never hardcoded.
-  // resolveKategorieByName THROWS on a miss; catch it so a renamed/stale
-  // Kategorie yields a clean 400 (surfaced as a toast), never a 500. Resolved
-  // outside the tx — the picked name is validated up-front, not per-row.
-  let kat: Awaited<ReturnType<typeof resolveKategorieByName>>;
+  // Spec §4.6/§4.5 / #115: resolve the chosen Kategorie BY ID (authoritative)
+  // and derive sphere strictly from it — never a project default, never
+  // hardcoded. resolveKategorieById THROWS on a miss / kind-mismatch; catch it
+  // so a stale/tampered id yields a clean 400 (surfaced as a toast), never a
+  // 500. Resolved outside the tx — the picked id is validated up-front.
+  let kat: Awaited<ReturnType<typeof resolveKategorieById>>;
   try {
-    kat = await resolveKategorieByName("expense", chosenKategorieName);
+    kat = await resolveKategorieById("expense", chosenKategorieId);
   } catch (err) {
     if (
       err instanceof Error &&

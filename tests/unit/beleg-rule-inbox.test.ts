@@ -488,7 +488,7 @@ describe("approveSubmission — copies belegVerzichtGrund (A4)", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
 
     expect(result.ok).toBe(true);
@@ -510,7 +510,7 @@ describe("approveSubmission — copies belegVerzichtGrund (A4)", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
 
     expect(result.ok).toBe(true);
@@ -539,7 +539,7 @@ describe("approveSubmission — NULL/NULL row maps 23514 → 409 (A4)", () => {
     const result = await approveSubmission({
       submissionId: sub.id,
       actorUserId: "admin-1",
-      kategorieName: "Bürobedarf",
+      kategorieId: "kat-buero",
     });
 
     expect(result.ok).toBe(false);

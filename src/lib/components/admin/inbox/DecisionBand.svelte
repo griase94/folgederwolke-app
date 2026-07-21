@@ -13,7 +13,7 @@
   Gating (FormFooter semantics, master §2.6, inlined because the spec's button
   row is bespoke): live "Fehlt noch: Kategorie" + Freigeben /70 until chosen;
   pressing early focuses the picker (server 400 backstop). ADR-0002: sphere is
-  re-derived server-side — we send only kategorieName; onSphere is display-only.
+  re-derived server-side — we send only kategorieId; onSphere is display-only.
 
   Festschreibung: approve 409 → LockBanner (currentYear), NOT a toast (spec §3).
 -->
@@ -42,7 +42,7 @@
 		currentYear: number;
 	} = $props();
 
-	let kategorieName = $state('');
+	let kategorieId = $state('');
 	let sphere = $state<Sphere | null>(null);
 	let approving = $state(false);
 	let rejectOpen = $state(false);
@@ -60,7 +60,7 @@
 				: null
 	);
 
-	const missing = $derived(kategorieName ? [] : ['Kategorie']);
+	const missing = $derived(kategorieId ? [] : ['Kategorie']);
 	let pickerEl = $state<HTMLElement | null>(null);
 
 	function focusPicker(): void {
@@ -128,10 +128,9 @@
 		<div bind:this={pickerEl} data-slot="decision-picker">
 			<KategoriePicker
 				id="approve-kategorie"
-				name="kategorieName"
 				options={kategorieOptions}
-				value={kategorieName}
-				onChange={(n) => (kategorieName = n)}
+				value={kategorieId}
+				onChange={(id) => (kategorieId = id)}
 				onSphere={(s) => (sphere = s)}
 				hideLabel
 				hideSphere

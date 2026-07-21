@@ -54,7 +54,7 @@ const baseProps = {
   bezeichnung: "Mitgliedsbeitrag",
   betragCents: 6000,
   geldEingangDatum: "2026-03-01",
-  kategorieNameSnapshot: "Beiträge",
+  kategorieId: "11111111-1111-1111-1111-111111111111",
   projectId: null,
   kommentar: null,
   kategorien: [],

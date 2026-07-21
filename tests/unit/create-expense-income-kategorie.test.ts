@@ -2,8 +2,8 @@
  * @vitest-environment node
  *
  * Verifies that `createExpense` and `createIncome` RESOLVE a non-null Kategorie
- * from `kategorieNameSnapshot` and DERIVE `sphereSnapshot` strictly from the
- * resolved kategorie (no project override, spec §4.5). Also verifies the
+ * BY ID (#115) and DERIVE both the name-snapshot AND `sphereSnapshot` strictly
+ * from the resolved kategorie (no project override, spec §4.5). Also verifies the
  * §4.6 amendment: `createIncome` now persists `belegFileId` (the column existed
  * but the fn previously dropped it — Phase 5 "Beleg optional" depends on it).
  *
@@ -25,7 +25,22 @@ import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
 import { users } from "$lib/server/db/schema/users.js";
 import { files } from "$lib/server/db/schema/files.js";
-import { eq } from "drizzle-orm";
+import { kategorien } from "$lib/server/db/schema/kategorien.js";
+import { and, eq } from "drizzle-orm";
+
+/** #115: createExpense/createIncome now resolve BY ID — look up the seeded id. */
+async function kategorieId(
+  kind: "expense" | "income",
+  name: string,
+): Promise<string> {
+  const [row] = await getDb()
+    .select({ id: kategorien.id })
+    .from(kategorien)
+    .where(and(eq(kategorien.kind, kind), eq(kategorien.name, name)))
+    .limit(1);
+  if (!row) throw new Error(`seed missing kategorie ${kind}/${name}`);
+  return row.id;
+}
 
 const DATABASE_URL = process.env["DATABASE_URL"] ?? "";
 const DIRECT_DATABASE_URL = process.env["DIRECT_DATABASE_URL"] ?? "";
@@ -102,7 +117,7 @@ describe.skipIf(!dbConfigured)(
       const { id } = await createExpense({
         bezeichnung: "Kontoführung",
         betragCents: 490,
-        kategorieNameSnapshot: "Bankgebühren",
+        kategorieId: await kategorieId("expense", "Bankgebühren"),
         bezahltVonKind: "verein",
         bezahltVonDisplay: "Verein",
         // createExpense persists ONLY belegFileId (it never reads a
@@ -131,7 +146,7 @@ describe.skipIf(!dbConfigured)(
       const { id } = await createIncome({
         bezeichnung: "Tickets",
         betragCents: 124000,
-        kategorieNameSnapshot: "Eintritt",
+        kategorieId: await kategorieId("income", "Eintritt"),
         actorUserId: ACTOR,
         businessId,
       });
@@ -154,7 +169,7 @@ describe.skipIf(!dbConfigured)(
       const { id } = await createIncome({
         bezeichnung: "Tickets mit Beleg",
         betragCents: 5000,
-        kategorieNameSnapshot: "Eintritt",
+        kategorieId: await kategorieId("income", "Eintritt"),
         belegFileId: BELEG_FILE_ID,
         actorUserId: ACTOR,
         businessId,

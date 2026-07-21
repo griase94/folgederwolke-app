@@ -26,7 +26,7 @@ const dbConfigured = DATABASE_URL.length > 0 && DIRECT_DATABASE_URL.length > 0;
 
 describe.skipIf(!dbConfigured)("Aurora per-project Buchungen counts", () => {
   let ACTOR = "";
-  let EXPENSE_KAT = "";
+  let EXPENSE_KAT_ID = "";
   let PROJECT_ID = "";
   let admin: ReturnType<typeof postgres>;
 
@@ -42,10 +42,10 @@ describe.skipIf(!dbConfigured)("Aurora per-project Buchungen counts", () => {
       .returning({ id: users.id });
     if (!u) throw new Error("failed to seed actor user");
     ACTOR = u.id;
-    const [ke] = await admin<{ name: string }[]>`
-      SELECT name FROM kategorien WHERE kind = 'expense' LIMIT 1`;
+    const [ke] = await admin<{ id: string }[]>`
+      SELECT id FROM kategorien WHERE kind = 'expense' LIMIT 1`;
     if (!ke) throw new Error("missing seeded expense kategorie");
-    EXPENSE_KAT = ke.name;
+    EXPENSE_KAT_ID = ke.id;
     const [p] = await admin<{ id: string }[]>`
       SELECT id FROM projects WHERE deleted_at IS NULL LIMIT 1`;
     if (!p) throw new Error("seed contains no active project");
@@ -71,7 +71,7 @@ describe.skipIf(!dbConfigured)("Aurora per-project Buchungen counts", () => {
       bezeichnung: "aurora project booking",
       betragCents: 1500,
       abflussDatum: `${year}-01-20`,
-      kategorieNameSnapshot: EXPENSE_KAT,
+      kategorieId: EXPENSE_KAT_ID,
       bezahltVonKind: "verein",
       bezahltVonDisplay: "Verein",
       belegVerzichtGrund: "test fixture — kein Beleg",

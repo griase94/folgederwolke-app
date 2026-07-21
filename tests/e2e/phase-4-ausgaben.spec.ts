@@ -69,7 +69,7 @@ async function fillBaseFields(
   await page.locator("#betrag-display").fill(opts.betrag);
   // A fresh Ausgabe no longer preselects a Kategorie (M2), and the Speichern CTA
   // is gated on every required field being present (M4) — so always pick one.
-  const kat = page.locator('select[name="kategorieNameSnapshot"]');
+  const kat = page.locator('select[name="kategorieId"]');
   if (opts.kategorie) {
     await kat.selectOption({ label: opts.kategorie });
   } else {

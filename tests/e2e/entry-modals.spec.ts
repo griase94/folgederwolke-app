@@ -31,7 +31,7 @@ async function fillBaseAusgabeFields(
   // Betrag (text input with inputmode=decimal)
   await page.locator("#betrag-display").fill(opts.betrag);
   // Pick any expense Kategorie so the form is otherwise complete
-  const select = page.locator('select[name="kategorieNameSnapshot"]');
+  const select = page.locator('select[name="kategorieId"]');
   const count = await select.locator("option").count();
   if (count > 1) {
     // pick the second option (first non-placeholder)

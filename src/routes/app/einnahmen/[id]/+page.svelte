@@ -115,7 +115,7 @@
     bezeichnung={detail.bezeichnung}
     betragCents={detail.betragCents}
     geldEingangDatum={detail.geldEingangDatum}
-    kategorieNameSnapshot={detail.kategorieNameSnapshot}
+    kategorieId={detail.kategorieId}
     projectId={detail.projectId}
     kommentar={detail.kommentar}
     kategorien={data.kategorien}

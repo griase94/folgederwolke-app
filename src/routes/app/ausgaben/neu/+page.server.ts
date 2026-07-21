@@ -36,6 +36,7 @@ import {
   markExpenseAsPaid,
   checkFestschreibungGate,
   listZahlungsarten,
+  isKategorieNotFoundError,
 } from "$lib/server/domain/transactions.js";
 import { markExpenseErstattet } from "$lib/server/domain/audit-inbox-actions.js";
 import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
@@ -69,7 +70,7 @@ function berlinYear(): number {
 export interface AusgabeFormValues {
   bezeichnung: string;
   betrag: string;
-  kategorieNameSnapshot: string;
+  kategorieId: string;
   kommentar: string;
   projectId: string;
   bezahltVonKind: "verein" | "member" | "extern";
@@ -89,7 +90,7 @@ export interface AusgabeFormValues {
 const EMPTY_VALUES: AusgabeFormValues = {
   bezeichnung: "",
   betrag: "",
-  kategorieNameSnapshot: "",
+  kategorieId: "",
   kommentar: "",
   projectId: "",
   bezahltVonKind: "verein",
@@ -135,7 +136,7 @@ function parsePrefill(searchParams: URLSearchParams): AusgabeFormValues {
     ...EMPTY_VALUES,
     bezeichnung: searchParams.get("bezeichnung") ?? "",
     betrag: centsToEuros(searchParams.get("betragCents")),
-    kategorieNameSnapshot: searchParams.get("kategorieNameSnapshot") ?? "",
+    kategorieId: searchParams.get("kategorieId") ?? "",
     kommentar: searchParams.get("kommentar") ?? "",
     projectId: searchParams.get("projectId") ?? "",
     bezahltVonKind,
@@ -205,8 +206,8 @@ export const load: PageServerLoad = async ({ url, parent }) => {
     // Einnahme; the Gate-Line then lists the missing Kategorie. We deliberately do
     // NOT preselect the smart-default (M2): a preselected Kategorie silently picks
     // the Sphäre for the user (ADR-0002) and reads as already-decided. Only a
-    // duplicate-as-template query carries a Kategorie in.
-    kategorieNameSnapshot: prefill.kategorieNameSnapshot || "",
+    // duplicate-as-template query carries a Kategorie in (as an id, #115).
+    kategorieId: prefill.kategorieId || "",
   };
 
   return {
@@ -242,13 +243,12 @@ const expenseSchema = z.object({
     .int("Betrag muss ein gültiger Geldbetrag sein.")
     .positive("Betrag muss größer als 0 sein."),
   currency: z.string().default("EUR"),
-  kategorieNameSnapshot: z
-    .string()
-    .min(1, "Kategorie muss ausgewählt werden.")
-    .max(200)
-    .refine((v) => v !== "(Unkategorisiert)", {
-      message: "Kategorie muss ausgewählt werden.",
-    }),
+  // #115: the picker submits the kategorie ID (authoritative). createExpense
+  // resolves the kategorie + derives the name-snapshot + sphere from the row.
+  // The empty-select case arrives as null (raw maps "" → null) → same message.
+  kategorieId: z
+    .string({ error: "Kategorie muss ausgewählt werden." })
+    .uuid({ error: "Kategorie muss ausgewählt werden." }),
   // Sphere is re-derived inside createExpense (§4.5); accepted-but-ignored for
   // caller parity. Kept in the schema so a tampered/absent value never breaks.
   sphereSnapshot: z.enum(sphereValues).optional(),
@@ -310,7 +310,7 @@ function valuesFromForm(data: FormData): AusgabeFormValues {
     bezeichnung: str("bezeichnung"),
     // Echo the typed euros back (the hidden betragCents mirrors it client-side).
     betrag: centsToEuros(str("betragCents")),
-    kategorieNameSnapshot: str("kategorieNameSnapshot"),
+    kategorieId: str("kategorieId"),
     kommentar: str("kommentar"),
     projectId: str("projectId"),
     bezahltVonKind,
@@ -462,8 +462,8 @@ export const actions = {
       }
 
       // `A-` prefix for admin direct entries (AUS- is reserved for the public
-      // Auslage form → inbox flow). createExpense derives kategorie + sphere
-      // strictly from the picked name (§4.5) and persists abfluss_datum.
+      // Auslage form → inbox flow). createExpense resolves kategorie + derives
+      // the sphere strictly from the picked id (§4.5) and persists abfluss_datum.
       const businessId = await allocateBusinessId("A", year);
       const { bezahltVonKind } = parsed.data;
       const result = await createExpense({
@@ -473,7 +473,7 @@ export const actions = {
         rechnungsdatum: parsed.data.rechnungsdatum,
         abflussDatum: parsed.data.abfluss_datum,
         kommentar: parsed.data.kommentar ?? null,
-        kategorieNameSnapshot: parsed.data.kategorieNameSnapshot,
+        kategorieId: parsed.data.kategorieId,
         bezahltVonKind,
         bezahltVonMemberId: parsed.data.bezahltVonMemberId ?? null,
         bezahltVonDisplay:
@@ -549,6 +549,17 @@ export const actions = {
         "location" in err
       ) {
         throw err;
+      }
+      // F1: a stale/removed kategorieId throws inside createExpense → clean 400
+      // (re-hydrating the form) instead of an opaque 500.
+      if (isKategorieNotFoundError(err)) {
+        return fail(400, {
+          error: "Kategorie nicht gefunden — bitte neu wählen",
+          values: valuesFromForm(data),
+          errors: {
+            kategorieId: ["Kategorie nicht gefunden — bitte neu wählen"],
+          },
+        });
       }
       console.error("[ausgaben/neu/create]", err);
       return fail(500, { error: "Interner Fehler beim Speichern" });
