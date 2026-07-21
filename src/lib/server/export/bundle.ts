@@ -13,6 +13,7 @@ import { generateSpendenliste } from "./spendenliste-csv.js";
 import { generateBelegIndex } from "./beleg-index.js";
 import { generateGobdZ3Xml, generateGobdReadme } from "./gobd-z3.js";
 import type { GobdExportInput } from "./gobd-z3.js";
+import { bundleFilenames } from "../eur/bundle-manifest.js";
 
 /**
  * C1-M3 — One Bescheinigung-PDF attachment per donation that has one.
@@ -109,23 +110,26 @@ export async function buildJahresabschlussBundle(
   } = input;
 
   const zip = new JSZip();
+  // Single source of the ZIP entry names — the export screens read the same
+  // manifest, so a screen can't advertise a name the ZIP lacks (§4.5).
+  const names = bundleFilenames(year);
 
   // 01 — EÜR PDF
   if (eurPdfBytes && eurPdfBytes.length > 0) {
-    zip.file(`01_EÜR-${year}.pdf`, eurPdfBytes);
+    zip.file(names.eurPdf, eurPdfBytes);
   }
 
   // 02 — Anlage Gem CSV
   const anlageGemCsv = generateAnlageGemCsv(eur);
-  zip.file(`02_Anlage-Gem-${year}.csv`, anlageGemCsv);
+  zip.file(names.anlageGemCsv, anlageGemCsv);
 
   // 03 — Spendenliste CSV
   const spendenliste = generateSpendenliste(spenden);
-  zip.file(`03_Spendenliste-${year}.csv`, spendenliste);
+  zip.file(names.spendenlisteCsv, spendenliste);
 
   // 04 — Beleg-Index CSV
   const belegIndex = generateBelegIndex(belege);
-  zip.file(`04_Beleg-Index-${year}.csv`, belegIndex);
+  zip.file(names.belegIndexCsv, belegIndex);
 
   // 05 — GoBD-Z3 IDEA-XML (optional)
   if (input.includeGobdZ3 !== false) {
@@ -150,15 +154,15 @@ export async function buildJahresabschlussBundle(
     };
     const gobdXml = generateGobdZ3Xml(gobdInput);
     const gobdReadme = generateGobdReadme({ year, vereinName });
-    const gobdFolder = zip.folder(`05_GoBD-Z3-${year}`);
-    gobdFolder?.file(`gobd_z3_${year}.xml`, gobdXml);
-    gobdFolder?.file("README.md", gobdReadme);
+    const gobdFolder = zip.folder(names.gobdFolder);
+    gobdFolder?.file(names.gobdXml, gobdXml);
+    gobdFolder?.file(names.gobdReadme, gobdReadme);
   }
 
   // 06 — Bescheinigung PDFs (C1-M3). One subfolder per year, one PDF per
   // donation with an issued Bescheinigung.
   if (input.bescheinigungPdfs && input.bescheinigungPdfs.length > 0) {
-    const folder = zip.folder(`06_Bescheinigungen-${year}`);
+    const folder = zip.folder(names.bescheinigungenFolder);
     for (const att of input.bescheinigungPdfs) {
       folder?.file(att.filename, att.bytes);
     }
