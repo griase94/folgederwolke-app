@@ -61,8 +61,15 @@ const IMMUTABLE_DIR = join(
 // split), so this is legitimate cumulative growth, not an accidental
 // eager-import. Measured total 1 998.2 KiB → limit set to new actual + ~2.9 %
 // headroom, sized to also absorb the in-flight B2 Erfassen-Kette (#143).
+//
+// Re-anchored 2026-07-21 (B3 Detail-Kette #146): the B2 headroom was consumed
+// by B2 (#143), E3 Versand (#145), the Giro-QR mail slot (#147) and B3's
+// board-fix batch (edit mode adopting the Erfassen scaffolding, staged-delete
+// modals). Largest chunk STILL 410.2 KiB (no eager-import signature), growth
+// spread across small route chunks. Measured total 2 061.3 KiB → limit set to
+// new actual + ~3.7 % headroom.
 const LARGEST_CHUNK_LIMIT = 462_000; // 462 KB
-const TOTAL_JS_LIMIT = 2_108_000; // ~2 059 KiB (actual 1 998.2 KiB + headroom)
+const TOTAL_JS_LIMIT = 2_190_000; // ~2 138.7 KiB (actual 2 061.3 KiB + headroom)
 
 // ---------- helpers -------------------------------------------------------- //
 
