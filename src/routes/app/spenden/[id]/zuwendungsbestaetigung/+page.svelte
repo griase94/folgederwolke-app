@@ -56,7 +56,7 @@
 		     festgeschriebenes Jahr — it writes only the Bescheinigungs-Metadaten,
 		     never a booking value. Honest hint, not a lock. -->
 		<div
-			class="mb-4 rounded-lg border border-sky-300 bg-sky-50 px-4 py-3 text-sm text-sky-900"
+			class="mb-4 rounded-xl border border-[color:var(--sev-info)]/30 bg-[color:var(--sev-info)]/10 px-4 py-3 text-sm text-ink-700"
 			role="status"
 			data-testid="bescheinigung-festgeschrieben-hint"
 		>

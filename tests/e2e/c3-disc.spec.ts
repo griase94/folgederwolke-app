@@ -181,6 +181,81 @@ test.describe("@phase-9 C3-DISC kebab discoverability", () => {
     ).toHaveCount(1);
   });
 
+  // Click-roundtrips (Judge assert-sharpening): a button that RENDERS is not a
+  // button that WORKS — drive the actual ?/mark-paid POST through the trigger.
+  // Both need the settings lock (not just the row stamp) so the trigger guards;
+  // reset it in finally so sibling e2e never see a stray festgeschrieben_bis.
+  test("fest Ausgabe MIT abfluss → mark-paid Klick → Erstattet (carve-out durchgelassen)", async ({
+    page,
+  }) => {
+    await cleanupEligibleExpenses();
+    const { id } = await seedEligibleExpense();
+    const { default: postgres } = await import("postgres");
+    const app = postgres(process.env["DATABASE_URL"] ?? "", {
+      prepare: false,
+      max: 1,
+    });
+    const su = postgres(process.env["DIRECT_DATABASE_URL"] ?? "", {
+      prepare: false,
+      max: 1,
+    });
+    try {
+      // Row carries its own Abfluss-Datum (member/extern style) + is fest.
+      await app`UPDATE expenses SET abfluss_datum = CURRENT_DATE, festgeschrieben_at = NOW() WHERE id = ${id}`;
+      // Lock the current year via superuser (bypasses the monotonic settings guard).
+      await su`INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', to_jsonb(EXTRACT(YEAR FROM CURRENT_DATE)::int)) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
+
+      await signIn(page);
+      await page.goto(`/app/ausgaben/${id}`);
+      await page
+        .getByRole("button", { name: /Als bezahlt markieren/i })
+        .click();
+      // abfluss unchanged (COALESCE) → carve-out permits it → status Erstattet.
+      await expect(page.getByText(/Erstattet/i).first()).toBeVisible({
+        timeout: 8_000,
+      });
+    } finally {
+      await su`UPDATE settings SET value = 'null'::jsonb WHERE key = 'festgeschrieben_bis'`;
+      await app.end();
+      await su.end();
+    }
+  });
+
+  test("fest Ausgabe OHNE abfluss → mark-paid Klick → ehrliche 409-Meldung", async ({
+    page,
+  }) => {
+    await cleanupEligibleExpenses();
+    const { id } = await seedEligibleExpense(); // Verein-direct, NULL abfluss
+    const { default: postgres } = await import("postgres");
+    const app = postgres(process.env["DATABASE_URL"] ?? "", {
+      prepare: false,
+      max: 1,
+    });
+    const su = postgres(process.env["DIRECT_DATABASE_URL"] ?? "", {
+      prepare: false,
+      max: 1,
+    });
+    try {
+      await app`UPDATE expenses SET festgeschrieben_at = NOW() WHERE id = ${id}`;
+      await su`INSERT INTO settings (key, value) VALUES ('festgeschrieben_bis', to_jsonb(EXTRACT(YEAR FROM CURRENT_DATE)::int)) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`;
+
+      await signIn(page);
+      await page.goto(`/app/ausgaben/${id}`);
+      await page
+        .getByRole("button", { name: /Als bezahlt markieren/i })
+        .click();
+      // Setting abfluss would move the Buchungsjahr → trigger blocks → honest 409.
+      await expect(page.getByText(/kein Abfluss-Datum/i)).toBeVisible({
+        timeout: 8_000,
+      });
+      await expect(page.getByText(/Erstattet/i)).toHaveCount(0);
+    } finally {
+      await su`UPDATE settings SET value = 'null'::jsonb WHERE key = 'festgeschrieben_bis'`;
+      await app.end();
+      await su.end();
+    }
+  });
+
   test("MemberRow kebab → Löschen → member is soft-deleted (row stays, pay CTA hidden)", async ({
     page,
   }) => {

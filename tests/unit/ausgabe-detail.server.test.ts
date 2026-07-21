@@ -260,13 +260,16 @@ describe("ausgaben/[id] load", () => {
 // ---------------------------------------------------------------------------
 
 describe("ausgaben/[id] ?/mark-paid", () => {
-  it("reuses markExpenseAsPaid(id, { datum, zahlartId, actorUserId }) + festschreibung gate", async () => {
+  it("reuses markExpenseAsPaid(id, { datum, zahlartId, actorUserId }) — NO festschreibung pre-gate (ADR-0006 Nachtrag payment carve-out)", async () => {
     const event = makeActionEvent("exp-1", {
       datum: "2026-03-06",
       zahlartId: "22222222-2222-4222-8222-222222222222",
     });
     const result = (await actions["mark-paid"]!(event)) as { ok?: boolean };
-    expect(checkFestschreibungGateMock).toHaveBeenCalled();
+    // The route must NOT pre-gate on festschreibung — the carve-out lets a
+    // festgeschriebene Auslage be marked paid; markExpenseAsPaid + the DB
+    // trigger are the enforcers.
+    expect(checkFestschreibungGateMock).not.toHaveBeenCalled();
     expect(markExpenseAsPaidMock).toHaveBeenCalledTimes(1);
     const [id, params] = markExpenseAsPaidMock.mock.calls[0]! as [
       string,

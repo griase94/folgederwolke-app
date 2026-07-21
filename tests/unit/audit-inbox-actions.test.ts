@@ -103,6 +103,12 @@ let nextExpenseId = 1;
 // the "winner already committed in another connection" case.
 let uniqueViolationOnNextInsert = false;
 
+// Toggled by the carve-out test to force the next expenses.update to throw a
+// SQLSTATE 23514 (check_violation) — simulates the festschreibung trigger
+// rejecting a Verein-direct NULL-abfluss reimburse (COALESCE would move the
+// Buchungsjahr) so the honest per-row 409 degradation can be unit-tested.
+let checkViolationOnNextExpenseUpdate = false;
+
 function makeSubmission(overrides: Partial<SubmissionRow> = {}): SubmissionRow {
   const id = overrides.id ?? `sub-${Math.random().toString(36).slice(2, 10)}`;
   const row: SubmissionRow = {
@@ -333,6 +339,15 @@ function makeDbFake() {
         return chain;
       },
       returning() {
+        if (tableKind === "expenses" && checkViolationOnNextExpenseUpdate) {
+          checkViolationOnNextExpenseUpdate = false;
+          // The festschreibung trigger raises USING ERRCODE = 'check_violation'.
+          const err = new Error(
+            `new row for relation "expenses" violates check constraint (festschreibung trigger)`,
+          ) as Error & { code?: string };
+          err.code = "23514";
+          return Promise.reject(err);
+        }
         return Promise.resolve(applyUpdate());
       },
       then(resolve: (n: number) => unknown) {
@@ -499,6 +514,7 @@ beforeEach(() => {
   festBisOverride = null;
   nextExpenseId = 1;
   uniqueViolationOnNextInsert = false;
+  checkViolationOnNextExpenseUpdate = false;
 
   // The gate resolves the CHOSEN Kategorie by name. The drizzle fake's
   // kategorien branch filters by kind only (the `and(...)` mock drops the
@@ -853,8 +869,17 @@ describe("markExpenseErstattet — idempotency", () => {
     expect(result.status).toBe(422);
   });
 
-  it("blocks when the Buchungsjahr is festgeschrieben", async () => {
-    festBisOverride = 2026;
+  // ADR-0006 Nachtrag (0038 payment carve-out): markExpenseErstattet no longer
+  // pre-gates on festschreibung — the DB trigger is the sole enforcer. A
+  // member/extern row (existing abfluss_datum) is reimbursed freely even in a
+  // closed year; only a Verein-direct NULL-abfluss row is rejected by the
+  // trigger (COALESCE would move the Buchungsjahr). That rejection surfaces as
+  // SQLSTATE 23514, which this helper degrades to an honest per-row 409 so the
+  // `?/bulk-mark-erstattet` batch loop reports a partial failure, never a 500.
+  // (The trigger itself is covered end-to-end in the integration suite —
+  // festschreibung-cash-year-gate + festschreibung-carveout.)
+  it("degrades the trigger's 23514 to an honest per-row 409 (NULL-abfluss in a closed year)", async () => {
+    checkViolationOnNextExpenseUpdate = true;
     const exp = makeExpense({ gebuchtAm: new Date("2026-04-01T12:00:00Z") });
     const result = await markExpenseErstattet({
       expenseId: exp.id,
@@ -865,6 +890,12 @@ describe("markExpenseErstattet — idempotency", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.status).toBe(409);
+    expect(result.error).toMatch(/Abfluss-Datum/);
+    // A blocked row must NOT emit an erstattet event (no partial audit write).
+    expect(emitMock).not.toHaveBeenCalledWith(
+      "expense.erstattet",
+      expect.anything(),
+    );
   });
 });
 

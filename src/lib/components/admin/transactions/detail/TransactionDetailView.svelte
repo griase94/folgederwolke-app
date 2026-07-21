@@ -49,6 +49,9 @@
 		onDelete?: () => void;
 		/** A Beleg is attached → the GoBD block may claim „belegt" (M8). */
 		documented?: boolean;
+		/** Donation only: festgeschrieben but a Zuwendungsbestätigung can still be
+		 * issued (ADR-0006 Nachtrag). Flips the fest-banner note to say so. */
+		certificateIssuable?: boolean;
 		saving: boolean;
 		dirty: boolean;
 		/** Parent list route (Zurück + crumbs). */
@@ -89,6 +92,7 @@
 		belegEdit,
 		onDelete,
 		documented = true,
+		certificateIssuable = false,
 		saving,
 		dirty,
 		listHref,
@@ -188,6 +192,9 @@
 						{#if kind === "expense"}
 							Die Buchungswerte sind gesperrt — „Als bezahlt markieren“ bleibt
 							möglich (es ändert nur die Zahlungsangaben, nie das Buchungsjahr).
+						{:else if kind === "donation" && certificateIssuable}
+							Die Buchungswerte sind gesperrt — eine Zuwendungsbestätigung kann
+							weiterhin ausgestellt werden.
 						{:else}
 							Diese Buchung ist unveränderbar.
 						{/if}

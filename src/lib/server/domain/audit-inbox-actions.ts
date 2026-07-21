@@ -34,7 +34,7 @@ import {
   type BezahltVon,
 } from "$lib/server/domain/auslagen.js";
 import { DATENSCHUTZ_VERSION } from "$lib/server/domain/datenschutz.js";
-import { berlinYear, bookingYearFromCashDate } from "$lib/domain/year.js";
+import { berlinYear } from "$lib/domain/year.js";
 
 // ---------------------------------------------------------------------------
 // manualImportSubmission
@@ -836,29 +836,15 @@ export async function markExpenseErstattet(
     return { ok: true, alreadyErstattet: true };
   }
 
-  // Festschreibung gate (ADR-0006) — mirror markExpenseAsPaid (transactions.ts)
-  // exactly so both reimburse paths agree on Buchungsjahr AND on which year the
-  // gate guards. The UPDATE below preserves an existing abfluss_datum with
-  // COALESCE (it never rebuckets a row already carrying a cash-out date), so the
-  // EFFECTIVE abfluss after the write is `abflussDatum ?? chosenDate`. Gate on
-  // bookingYearFromCashDate(effectiveAbfluss, gebuchtAm) so the app rejection
-  // equals the LEAST(OLD.year_of_buchung, year_for_booking(gebucht_am)) the DB
-  // trigger guards on UPDATE — without this an expense whose existing abfluss
-  // sits in a closed year could slip past year(chosenDate)=open and then hit a
-  // raw 23514 from the trigger (migration 0014/0034).
-  const effectiveAbfluss = expense.abflussDatum ?? chosenDate;
-  const buchungsjahr = bookingYearFromCashDate(
-    effectiveAbfluss,
-    expense.gebuchtAm,
-  );
-  const festBis = await fetchFestgeschriebenBis();
-  if (festBis !== null && buchungsjahr <= festBis) {
-    return {
-      ok: false,
-      status: 409,
-      error: `Jahr ${buchungsjahr} ist festgeschrieben`,
-    };
-  }
+  // NO festschreibung pre-gate (ADR-0006 Nachtrag / migration 0038) — mirrors
+  // markExpenseAsPaid (transactions.ts): the payment carve-out lets a
+  // festgeschriebene Auslage be reimbursed. The UPDATE below writes only the
+  // carve-out column set {erstattet_am, zahlungsart_id, status, updated_at} and
+  // preserves an existing abfluss_datum with COALESCE, so the DB trigger permits
+  // it; a Verein-direct NULL-abfluss row (abfluss would move → Buchungsjahr
+  // change) is rejected by the trigger and degraded to an honest per-row 409
+  // below (so the ?/bulk-mark-erstattet loop reports it as a partial failure,
+  // not a 500). The trigger is the sole enforcer for both reimburse paths.
 
   // A2 (TOCTOU): the SELECT-then-UPDATE pattern is racey — two callers both
   // saw `erstattetAm === null` and both reach this UPDATE. The WHERE clause
@@ -886,17 +872,18 @@ export async function markExpenseErstattet(
       .where(and(eq(expenses.id, expenseId), isNull(expenses.erstattetAm)))
       .returning({ id: expenses.id });
   } catch (err) {
-    // The DB festschreibung trigger raises SQLSTATE 23514 (check_violation) if
-    // the row's Buchungsjahr is festgeschrieben. The app gate above should
-    // already have blocked this, but a stray trigger rejection must degrade to
-    // a clean per-row {ok:false,status:409} so a single mismatched row does NOT
-    // 500 the whole `?/bulk-mark-erstattet` batch (the loop's 409→'festgeschrieben'
-    // mapping then runs instead of an unhandled throw).
+    // Post-carve-out (0038) the ONLY 23514 here is a Verein-direct NULL-abfluss
+    // row in a festgeschriebenes Jahr: COALESCE would set abfluss = chosenDate
+    // and move the Buchungsjahr, which the trigger rejects. Degrade to a clean
+    // per-row {ok:false,status:409} with an honest message so a single such row
+    // does NOT 500 the whole `?/bulk-mark-erstattet` batch — the loop reports it
+    // as a partial failure instead of throwing.
     if (isCheckViolation(err)) {
       return {
         ok: false,
         status: 409,
-        error: `Buchung ist festgeschrieben — Erstattung verweigert`,
+        error:
+          "Diese Ausgabe hat kein Abfluss-Datum und liegt in einem festgeschriebenen Jahr — Erstattung nicht möglich.",
       };
     }
     throw err;

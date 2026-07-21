@@ -21,7 +21,6 @@ import type { Actions, PageServerLoad } from "./$types.js";
 import {
   getTransactionDetail,
   markExpenseAsPaid,
-  checkFestschreibungGate,
 } from "$lib/server/domain/transactions.js";
 import { loadAusgabenListData } from "./list-load.js";
 
@@ -63,11 +62,10 @@ export const actions = {
     const detail = await getTransactionDetail(expenseId, "expense");
     if (!detail) return fail(404, { error: "Nicht gefunden" });
 
-    const gate = await checkFestschreibungGate(
-      detail.yearOfBuchung ?? new Date().getFullYear(),
-    );
-    if (!gate.ok) return fail(gate.status, { error: gate.error });
-
+    // NO festschreibung pre-gate (ADR-0006 Nachtrag / migration 0038): the
+    // payment carve-out lets a festgeschriebene Auslage be marked paid.
+    // markExpenseAsPaid + the DB trigger enforce (payment columns only; honest
+    // German 409 for the Verein-direct NULL-abfluss case, surfaced below).
     const result = await markExpenseAsPaid(expenseId, {
       datum,
       zahlartId: typeof zahlartId === "string" && zahlartId ? zahlartId : null,

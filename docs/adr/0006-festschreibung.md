@@ -104,8 +104,16 @@ Abfluss-Datum, so `markExpenseAsPaid` preserves it (COALESCE) and passes; a
 Verein-direct row with NULL `abfluss_datum` would have `abfluss_datum` set to the
 payment date — moving the Buchungsjahr — so the trigger rejects it and the app
 surfaces an honest German 409 (never marked paid in a closed year without a
-cash-out date). `markExpenseAsPaid` no longer pre-checks festschreibung; the
-trigger is the sole enforcer.
+cash-out date). `markExpenseAsPaid` (detail + list-kebab route actions) and
+`markExpenseErstattet` (the `?/bulk-mark-erstattet` batch path) both drop their
+app pre-gate; the trigger is the sole enforcer, and the reimburse paths degrade
+its 23514 to an honest per-row 409 so a single blocked row never 500s the batch.
+
+Note on `status`: it is included in the allowed set purely as payment-workflow
+metadata (`geprueft` → `erstattet`), the way the reimburse UPDATE sets it. It is
+theoretically settable in isolation on a festgeschriebene Auslage, but no app
+path does so — every writer that touches `status` in the carve-out also writes
+`erstattet_am`. It carries no Buchungswert.
 
 ### (b) Donations — certificate columns `{bescheinigung_nr, bescheinigung_ausgestellt_am, bescheinigung_ausgestellt_von_user_id, bescheid_typ, updated_at}`
 
