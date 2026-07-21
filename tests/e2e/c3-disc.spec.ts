@@ -175,7 +175,7 @@ test.describe("@phase-9 C3-DISC kebab discoverability", () => {
     // columns (a Verein-direct NULL-abfluss row is refused there with a 409).
     await expect(
       page.locator('[data-slot="detail-festschreibung-notice"]'),
-    ).toContainText(/bleibt möglich/i);
+    ).toContainText("bleibt möglich");
     await expect(
       page.getByRole("button", { name: /Als bezahlt markieren/i }),
     ).toHaveCount(1);
