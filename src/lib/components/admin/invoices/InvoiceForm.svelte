@@ -574,9 +574,20 @@
 				</Button>
 			</div>
 			{#if gateDisabled && !submitting}
-				<p class="text-xs text-ink-500 sm:basis-full sm:order-last" aria-live="polite">
-					Fehlt noch: {gateMissing.join(' · ')}.
-				</p>
+				<div
+					class="flex items-start gap-2.5 rounded-xl border border-severity-warn/30 bg-severity-warn-tint px-3.5 py-2.5 sm:basis-full sm:order-last"
+					aria-live="polite"
+				>
+					<span
+						class="mt-px grid h-5 w-5 shrink-0 place-items-center rounded-md bg-severity-warn/15 text-severity-warn-text"
+						aria-hidden="true"
+					>
+						<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+							><circle cx="12" cy="12" r="10" /><path stroke-linecap="round" d="M12 8v4M12 16h.01" /></svg
+						>
+					</span>
+					<span class="text-xs font-medium text-severity-warn-text">Fehlt noch: {gateMissing.join(' · ')}.</span>
+				</div>
 			{/if}
 		</div>
 	</form>

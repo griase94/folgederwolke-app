@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import { afterNavigate, replaceState } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
@@ -35,8 +36,12 @@
 		const url = new URL(page.url);
 		url.searchParams.delete('paid');
 		url.searchParams.delete('undone');
-		// eslint-disable-next-line svelte/no-navigation-without-resolve -- same-page shallow strip of a flash query param
-		replaceState(url, page.state);
+		// Defer one tick so the strip also lands on the initial hard-load (see the
+		// detail page for the full rationale); no-op delay on the client-nav path.
+		void tick().then(() => {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- same-page shallow strip of a flash query param
+			replaceState(url, page.state);
+		});
 	});
 
 	let searchQuery = $state('');

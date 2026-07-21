@@ -22,7 +22,7 @@
 -->
 <script lang="ts">
 	import { page } from '$app/state';
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { invalidateAll, afterNavigate, replaceState } from '$app/navigation';
 	import { enhance } from '$app/forms';
 	import { toast } from 'svelte-sonner';
@@ -206,8 +206,14 @@
 		url.searchParams.delete('paid');
 		url.searchParams.delete('undone');
 		url.searchParams.delete('sent');
-		// eslint-disable-next-line svelte/no-navigation-without-resolve -- same-page shallow strip of a flash query param
-		replaceState(url, page.state);
+		// Defer one tick so the strip also lands on the INITIAL hard-load
+		// (afterNavigate's first 'enter' run fires before the router is ready to
+		// accept replaceState) — otherwise a bookmarked ?sent=1 URL re-toasts on
+		// every reload. On the client-nav path the tick is a no-op delay.
+		void tick().then(() => {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- same-page shallow strip of a flash query param
+			replaceState(url, page.state);
+		});
 	});
 
 	function openMarkPaid(): void {
