@@ -17,7 +17,12 @@ import { eq } from "drizzle-orm";
 import type { Component } from "svelte";
 import { getMailProvider } from "./provider.js";
 import { renderMailTemplate } from "./render.js";
-import type { EntityKind, TemplateProps, TemplateName } from "./types.js";
+import type {
+  EntityKind,
+  MailAttachment,
+  TemplateProps,
+  TemplateName,
+} from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Template component registry
@@ -92,6 +97,8 @@ export async function sendMail<T extends TemplateName>(opts: {
   to: string;
   props: TemplateProps[T];
   send_attempt?: number;
+  /** Optional file attachments (E3a — the invoice PDF). Never persisted. */
+  attachments?: MailAttachment[];
 }): Promise<{ messageId: string | null; deduped: boolean }> {
   const {
     template,
@@ -100,6 +107,7 @@ export async function sendMail<T extends TemplateName>(opts: {
     to,
     props,
     send_attempt = 1,
+    attachments,
   } = opts;
 
   const db = getDb();
@@ -168,6 +176,7 @@ export async function sendMail<T extends TemplateName>(opts: {
       subject,
       html,
       text,
+      attachments,
     });
 
     // ── 4. Mark sent ──────────────────────────────────────────────────────────

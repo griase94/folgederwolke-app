@@ -215,7 +215,8 @@
 	const gateMissing = $derived(
 		[
 			!customerId ? 'Kund:in wählen' : null,
-			nettoCents <= 0 ? 'Betrag eintragen' : null
+			nettoCents <= 0 ? 'Betrag eintragen' : null,
+			!kategorieId ? 'Kategorie wählen' : null
 		].filter((m): m is string => m !== null)
 	);
 	const gateDisabled = $derived(gateMissing.length > 0);
@@ -512,14 +513,24 @@
 			<div class="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
 				<div>
 					<label for="kategorieId" class="mb-1 block text-[13px] font-semibold text-ink-700"
-						>Kategorie (optional)</label
+						>Kategorie <span class="text-primary-text">*</span></label
 					>
-					<select id="kategorieId" name="kategorieId" bind:value={kategorieId} class={FIELD}>
-						<option value="">—</option>
+					<select
+						id="kategorieId"
+						name="kategorieId"
+						bind:value={kategorieId}
+						required
+						aria-invalid={fieldError('kategorieId') ? 'true' : undefined}
+						class={FIELD}
+					>
+						<option value="" disabled>Kategorie wählen …</option>
 						{#each kategorien as k (k.id)}
 							<option value={k.id}>{k.name}</option>
 						{/each}
 					</select>
+					{#if fieldError('kategorieId')}
+						<p class="mt-1 text-xs font-medium text-severity-critical-text">{fieldError('kategorieId')}</p>
+					{/if}
 				</div>
 				<div>
 					<label for="projectId" class="mb-1 block text-[13px] font-semibold text-ink-700"
@@ -563,9 +574,20 @@
 				</Button>
 			</div>
 			{#if gateDisabled && !submitting}
-				<p class="text-xs text-ink-500 sm:basis-full sm:order-last" aria-live="polite">
-					Fehlt noch: {gateMissing.join(' · ')}.
-				</p>
+				<div
+					class="flex items-start gap-2.5 rounded-xl border border-severity-warn/30 bg-severity-warn-tint px-3.5 py-2.5 sm:basis-full sm:order-last"
+					aria-live="polite"
+				>
+					<span
+						class="mt-px grid h-5 w-5 shrink-0 place-items-center rounded-md bg-severity-warn/15 text-severity-warn-text"
+						aria-hidden="true"
+					>
+						<svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+							><circle cx="12" cy="12" r="10" /><path stroke-linecap="round" d="M12 8v4M12 16h.01" /></svg
+						>
+					</span>
+					<span class="text-xs font-medium text-severity-warn-text">Fehlt noch: {gateMissing.join(' · ')}.</span>
+				</div>
 			{/if}
 		</div>
 	</form>

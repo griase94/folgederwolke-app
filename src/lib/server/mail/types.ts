@@ -15,6 +15,18 @@ import type {
 // Wire message
 // ---------------------------------------------------------------------------
 
+/**
+ * A file attached to an outgoing mail. `content` is the raw bytes (never a
+ * persisted handle — attachments are ephemeral, the canonical PDF stays in
+ * the blob, see mail-invoice.md §6.3). The no-op provider ignores attachments
+ * entirely but still writes the sent_mails row for test assertions.
+ */
+export interface MailAttachment {
+  filename: string;
+  content: Uint8Array;
+  contentType: string;
+}
+
 export interface MailMessage {
   /** Sender address — usually env.MAIL_FROM */
   from: string;
@@ -23,6 +35,8 @@ export interface MailMessage {
   html: string;
   text: string;
   headers?: Record<string, string>;
+  /** Optional file attachments (E3a: the invoice PDF rides along here). */
+  attachments?: MailAttachment[];
 }
 
 // ---------------------------------------------------------------------------
@@ -126,13 +140,22 @@ export interface AufwandsspendenBestaetigungProps {
 // ---------------------------------------------------------------------------
 
 /**
- * Sent when an admin shares an invoice with a customer. Provides a
- * lightweight per-recipient summary + optional download link. The PDF
- * itself is attached at the provider layer (Phase 7 polish — for now the
- * customer downloads via the link or admin attaches manually).
+ * Sent when an admin shares an invoice with a customer (E-PR3 Versand-Pfad).
+ * The canonical PDF rides along as a provider-layer attachment (E3a) — there
+ * is no download CTA and no `/app/*` link in the customer-facing mail.
+ *
+ * The Giro-QR *image* is deferred to the QR-lib PR; this template renders the
+ * bank-transfer block + Überweisung hint (the plate's no-image payment state)
+ * so the mail is a real, sendable email today. iban/bic/empfaenger drive the
+ * bank-detail table.
  */
 export interface InvoiceVersendetMailProps {
   customerName: string;
+  /**
+   * Verbatim `customers.anrede` ("Liebe Maria") or null. Null → neutral
+   * "Hallo!" fallback. NEVER "Liebe:r {Firmenname}" (mail-invoice.md §1.3).
+   */
+  anrede: string | null;
   invoiceNumber: string;
   bezeichnung: string;
   bruttoCents: number;
@@ -141,21 +164,15 @@ export interface InvoiceVersendetMailProps {
   rechnungsdatum: string;
   /** ISO YYYY-MM-DD or null */
   faelligkeitsDatum: string | null;
-  /** Absolute URL to download the PDF from the app (optional). */
-  downloadUrl: string | null;
   /**
-   * Verein IBAN — enables the EPC 069 Giro-QR payload block (PM-024).
-   * Optional so existing callers stay backwards-compatible; the QR block
-   * is only rendered when `iban` and `empfaenger` are both present.
+   * Verein IBAN — drives the bank-transfer block. Optional so a deployment
+   * without configured bank data still sends a valid mail (Überweisung hint
+   * only). The full bank table needs iban + bic + empfaenger + EUR.
    */
   iban?: string;
-  /**
-   * Verein BIC — optional at the type level (some legacy invoice flows
-   * don't have it), but the Giro-QR block is only rendered when BIC is
-   * present (EPC 069 v001 requires a non-empty BIC; cycle-2 review F1).
-   */
+  /** Verein BIC — part of the bank-transfer block gate. */
   bic?: string;
-  /** Recipient name for the Giro-QR — typically "Folge der Wolke e.V.". */
+  /** Recipient name for the bank-transfer block — the Verein name. */
   empfaenger?: string;
 }
 

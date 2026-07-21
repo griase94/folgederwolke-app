@@ -428,6 +428,40 @@ describe("markInvoiceAsPaid — happy path", () => {
     expect(incomeValues.kategorieNameSnapshot).toBe("Spende");
     expect(incomeValues.sphereSnapshot).toBe("ideeller");
   });
+
+  it("returns a graceful 422 (never a 500) when a kategorie-less invoice can't resolve its kategorie", async () => {
+    // E-PR3: an Altbestand invoice (no kategorie_id, snapshot "(Unkategorisiert)")
+    // can't be marked paid because there's no income Kategorie to book against.
+    // resolveKategorieByName throws → we must catch and return a 422 that tells
+    // the user to edit the invoice + pick a Kategorie, NOT a 500 "not found".
+    queueSelectResults(
+      [invoiceRow({ kategorieId: null })], // invoice lookup (no kategorie_id)
+      [], // successor lookup → none
+    );
+    mockResolveKategorieByName.mockRejectedValue(
+      new Error("Kategorie not found: income/(Unkategorisiert)"),
+    );
+
+    // The tx must NEVER open — we bail before booking anything.
+    mockTransaction.mockImplementation(() => {
+      throw new Error("transaction must not run for the 422 path");
+    });
+
+    const result = await markInvoiceAsPaid(
+      INVOICE_ID,
+      todayBerlinIso(),
+      ACTOR_ID,
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(422);
+      expect(result.error).toMatch(/Kategorie/);
+      expect(result.error).toMatch(/bearbeiten/i);
+    }
+    expect(mockTransaction).not.toHaveBeenCalled();
+    expect(logAudit).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------

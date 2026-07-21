@@ -16,6 +16,8 @@ import type { EventPayload } from "./types.js";
 import { sendMail } from "$lib/server/mail/index.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
+import { files } from "$lib/server/db/schema/files.js";
+import { getFileStorage } from "$lib/server/files/storage.js";
 import { logAudit } from "$lib/server/audit-log/index.js";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
@@ -406,6 +408,85 @@ export function registerHandlers(): void {
   // This subscription is reserved for future best-effort consumers (mail
   // templates, analytics, …) that don't carry the legal guarantee. None
   // exist today; we deliberately leave the slot unsubscribed.
+
+  // ── invoice.versendet ──────────────────────────────────────────────────
+  // E-PR3: single CRITICAL handler (re-throws, unlike the best-effort auslage
+  // mails) so a send failure surfaces to sendInvoiceMail → the detail page's
+  // "Versand fehlgeschlagen · Erneut versuchen" state. Order matters:
+  //   1. download the canonical PDF via getFileStorage() (never @vercel/blob
+  //      directly — ESLint guard) and attach it (E3a),
+  //   2. sendMail (ADR-0005 idempotency on send_attempt); a provider throw
+  //      marks the sent_mails row failed and re-throws,
+  //   3. ONLY on a real (non-deduped) send, write the Versand audit anchor so
+  //      the Verlauf shows "Versendet an {email}" exactly once.
+  bus.on<EventPayload<"invoice.versendet">>(
+    "invoice.versendet",
+    async (payload) => {
+      const db = getDb();
+
+      // 1. Load the PDF bytes for the attachment. storage_key is the blob
+      // pathname; download() returns the raw bytes.
+      const [file] = await db
+        .select({ storageKey: files.storageKey })
+        .from(files)
+        .where(eq(files.id, payload.pdfFileId))
+        .limit(1);
+      if (!file) {
+        throw new Error(
+          `invoice.versendet: PDF file ${payload.pdfFileId} not found`,
+        );
+      }
+      const storage = await getFileStorage();
+      const pdfBytes = await storage.download(file.storageKey);
+
+      // 2. Send (idempotent on send_attempt).
+      const res = await sendMail({
+        template: "invoice_versendet",
+        entity_kind: "invoice",
+        entity_id: payload.invoiceId,
+        to: payload.to,
+        send_attempt: payload.sendAttempt,
+        props: {
+          customerName: payload.customerName,
+          anrede: payload.anrede,
+          invoiceNumber: payload.invoiceBusinessId,
+          bezeichnung: payload.bezeichnung,
+          bruttoCents: payload.bruttoCents,
+          currency: payload.currency,
+          rechnungsdatum: payload.rechnungsdatum,
+          faelligkeitsDatum: payload.faelligkeitsDatum,
+          iban: payload.iban ?? undefined,
+          bic: payload.bic ?? undefined,
+          empfaenger: payload.empfaenger,
+        },
+        attachments: [
+          {
+            filename: `${payload.invoiceBusinessId}.pdf`,
+            content: pdfBytes,
+            contentType: "application/pdf",
+          },
+        ],
+      });
+
+      // 3. Audit anchor — only for a genuine send (a deduped no-op already has
+      // its anchor from the first send).
+      if (!res.deduped) {
+        await logAudit({
+          action: "update",
+          entityKind: "invoice",
+          entityId: payload.invoiceId,
+          entityBusinessId: payload.invoiceBusinessId,
+          actorUserId: payload.actorUserId,
+          actorKind: payload.actorUserId ? "user" : "system",
+          payload: {
+            kind: "versendet",
+            to: payload.to,
+            sendAttempt: payload.sendAttempt,
+          },
+        });
+      }
+    },
+  );
 
   // ── invoice.superseded ─────────────────────────────────────────────────
   bus.on<EventPayload<"invoice.superseded">>(
