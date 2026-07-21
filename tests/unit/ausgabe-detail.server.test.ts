@@ -156,6 +156,15 @@ vi.mock("$lib/server/db/schema/expenses.js", () => ({
 vi.mock("$lib/server/db/schema/projects.js", () => ({
   projects: { id: "id", name: "name", deletedAt: "deletedAt" },
 }));
+// Mocked so the real schema module (→ files.ts, which uses drizzle's `sql`,
+// stubbed out below) never loads. The delete action's submission pre-flight
+// references these two columns.
+vi.mock("$lib/server/db/schema/auslagen_submissions.js", () => ({
+  auslagenSubmissions: {
+    approvedExpenseId: "approvedExpenseId",
+    businessId: "businessId",
+  },
+}));
 vi.mock("drizzle-orm", () => ({
   eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
   isNull: (a: unknown) => ({ isNull: a }),

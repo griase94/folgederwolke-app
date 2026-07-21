@@ -88,6 +88,8 @@ describe("CI e2e grep coverage (F3)", () => {
     expect(grepTags).toContain("@aurora-impl-e2");
     // Aurora implementation campaign — B2 Erfassen-Kette (entry-modal-v4):
     expect(grepTags).toContain("@aurora-impl-b2");
+    // Aurora implementation campaign — B3 Detail-Kette (detail-views-v4):
+    expect(grepTags).toContain("@aurora-impl-b3");
     // Aurora implementation campaign — E3 Versand-Pfad (send action, mail, gate):
     expect(grepTags).toContain("@aurora-impl-e3");
   });
@@ -139,6 +141,8 @@ describe("CI e2e grep coverage (F3)", () => {
     "aurora-impl-e2-rechnungen.spec.ts",
     // Aurora impl campaign — B2 Erfassen-Kette (dialog, Beleg gate, dirty-guard):
     "aurora-impl-b2.spec.ts",
+    // Aurora impl campaign — B3 Detail-Kette (read-by-default page, edit, delete):
+    "aurora-impl-b3.spec.ts",
     // Aurora impl campaign — E3 Versand-Pfad (send round-trip + gate + Kategorie):
     "aurora-impl-e3-versand.spec.ts",
   ];

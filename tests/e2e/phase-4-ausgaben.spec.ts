@@ -191,9 +191,8 @@ test.describe("@phase-4-ausgaben Ausgaben tab", () => {
     const firstRow = page.getByTestId("txn-row").first();
     if (await firstRow.isVisible().catch(() => false)) {
       await firstRow.click();
-      await page
-        .getByRole("button", { name: /Als Vorlage duplizieren/i })
-        .click();
+      // B3 detail-views-v4: the duplicate head-action reads „Als Vorlage".
+      await page.getByRole("button", { name: /Als Vorlage/i }).click();
       await page.waitForURL(/\/app\/ausgaben\/neu/);
       // Bezeichnung carried; the Beleg gate defaults to the Beleg arm (fresh Beleg).
       await expect(page.getByLabel(/Bezeichnung/i)).not.toHaveValue("");

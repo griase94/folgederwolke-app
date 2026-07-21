@@ -25,6 +25,7 @@ import {
 } from "$lib/server/domain/spenden.js";
 import { getDb } from "$lib/server/db/index.js";
 import { donations } from "$lib/server/db/schema/donations.js";
+import { bus } from "$lib/server/events/index.js";
 
 export const load: PageServerLoad = async ({ params }) => {
   const detail = await getTransactionDetail(params.id, "donation");
@@ -63,7 +64,7 @@ export const actions: Actions = {
     // Hard-delete pre-Bescheinigung donations (the rule moved here from the
     // retired /app/transactions/spenden route). Once a Bescheinigung is issued
     // OR the year is festgeschrieben, deletion is blocked — Storno in Phase 2.
-    void locals;
+    const user = locals.session?.user ?? null;
     const detail = await getTransactionDetail(params.id, "donation");
     if (!detail) return fail(404, { error: "Spende nicht gefunden" });
     if (detail.bescheinigungNr) {
@@ -98,6 +99,15 @@ export const actions: Actions = {
           "Spende konnte nicht gelöscht werden — Jahr ist festgeschrieben oder Bescheinigung wurde ausgestellt",
       });
     }
+    await bus.emit("donation.deleted", {
+      id: params.id,
+      businessId: detail.businessId,
+      actorUserId: user?.id ?? null,
+      payload: {
+        bezeichnung: detail.bezeichnung,
+        betragCents: detail.betragCents,
+      },
+    });
     redirect(303, "/app/spenden");
   },
 };

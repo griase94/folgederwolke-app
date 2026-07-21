@@ -100,6 +100,10 @@ export interface TransactionDetail extends TransactionRow {
   belegFileId: string | null;
   belegMimeType: string | null;
   belegOriginalName: string | null;
+  /** expense only — no Beleg AND no begründeter Verzicht (feed „Beleg fehlt"). */
+  belegFehlt: boolean;
+  /** donation only — the Zuwendungsbestätigung issue date (ISO), when issued. */
+  bescheinigungDatum: string | null;
   approvedAt: string | null;
   /**
    * income only — the aus-Rechnung link: the linked Ausgangsrechnung's
@@ -924,6 +928,10 @@ export async function getTransactionDetail(
       bezahltVonMemberId: r.bezahltVonMemberId ?? null,
       belegDriveFileId: r.belegDriveFileId ?? null,
       belegFileId: r.belegFileId ?? null,
+      // Feed-consistent „Beleg fehlt" flag (M8/minor-9): no Beleg AND no
+      // begründeter Verzicht — mirrors the list query's `beleg_fehlt`.
+      belegFehlt: r.belegFileId == null && r.belegVerzichtGrund == null,
+      bescheinigungDatum: null,
       // belegMimeType/belegOriginalName are filled from the shared `files`
       // lookup below (sourced from files.mime_type / files.original_filename).
       belegMimeType: null,
@@ -997,6 +1005,8 @@ export async function getTransactionDetail(
       belegFileId: r.belegFileId ?? null,
       belegMimeType: null,
       belegOriginalName: null,
+      belegFehlt: false,
+      bescheinigungDatum: null,
       approvedAt: null,
       rechnungBusinessId: invRows[0]?.rechnungBusinessId ?? null,
       rechnungId: invRows[0]?.rechnungId ?? null,
@@ -1056,6 +1066,8 @@ export async function getTransactionDetail(
       belegFileId: r.belegFileId ?? null,
       belegMimeType: null,
       belegOriginalName: null,
+      belegFehlt: false,
+      bescheinigungDatum: r.bescheinigungAusgestelltAm ?? null,
       approvedAt: null,
       rechnungBusinessId: null,
       rechnungId: null,

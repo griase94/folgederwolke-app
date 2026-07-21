@@ -567,6 +567,9 @@ export function registerHandlers(): void {
     { event: "income.created", entityKind: "income", action: "create" },
     { event: "income.updated", entityKind: "income", action: "update" },
     { event: "donation.created", entityKind: "donation", action: "create" },
+    { event: "expense.deleted", entityKind: "expense", action: "delete" },
+    { event: "income.deleted", entityKind: "income", action: "delete" },
+    { event: "donation.deleted", entityKind: "donation", action: "delete" },
   ] as const;
   for (const { event, entityKind, action } of txAuditMap) {
     bus.on<EventPayload<typeof event>>(event, async (payload) => {
