@@ -21,6 +21,7 @@
 	import { formatDatumDe } from '$lib/domain/datum.js';
 	import { SPHERE_LABELS, type Sphere } from '$lib/domain/sphere.js';
 	import { yearScopeLabel, yearScopeMetaLabel } from '$lib/domain/year.js';
+	import { listQueryString } from '$lib/domain/transaction-filters.js';
 	import type { EinnahmenRow } from '$lib/server/domain/transactions.js';
 	import type { EinnahmenListData } from './list-load.js';
 
@@ -128,7 +129,7 @@
 						>CSV</a
 					>
 					<a
-						href="/app/einnahmen/neu"
+						href={`/app/einnahmen/neu${listQueryString('einnahmen', $page.url.searchParams)}`}
 						data-slot="new-cta"
 						class="ml-auto inline-flex h-11 items-center rounded-full bg-primary-strong px-4 text-sm font-semibold text-white shadow-(--glow-brand) transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:ml-0 md:h-10"
 						>Neue Einnahme</a

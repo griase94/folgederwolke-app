@@ -24,6 +24,7 @@
 	import { SPHERE_LABELS, type Sphere } from '$lib/domain/sphere.js';
 	import { statusPresentation } from '$lib/domain/transaction-status.js';
 	import { yearScopeLabel, yearScopeMetaLabel } from '$lib/domain/year.js';
+	import { listQueryString } from '$lib/domain/transaction-filters.js';
 	import type { AusgabenRow } from '$lib/server/domain/transactions.js';
 	import type { AusgabenListData } from './list-load.js';
 
@@ -171,7 +172,7 @@
 						</svg>CSV</a
 					>
 					<a
-						href="/app/ausgaben/neu"
+						href={`/app/ausgaben/neu${listQueryString('ausgaben', $page.url.searchParams)}`}
 						data-slot="new-cta"
 						class="ml-auto inline-flex h-11 items-center rounded-full bg-primary-strong px-4 text-sm font-semibold text-white shadow-(--glow-brand) transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:ml-0 md:h-10"
 						>Neue Ausgabe</a

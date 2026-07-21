@@ -21,6 +21,7 @@
 	import { formatDatumDe } from '$lib/domain/datum.js';
 	import { spendeArtLabel, zweckbindungLabel } from '$lib/domain/spenden-labels.js';
 	import { yearScopeLabel, yearScopeMetaLabel } from '$lib/domain/year.js';
+	import { listQueryString } from '$lib/domain/transaction-filters.js';
 	import type { SpendenRow } from '$lib/server/domain/transactions.js';
 	import type { SpendenListData } from './list-load.js';
 
@@ -128,7 +129,7 @@
 						>CSV</a
 					>
 					<a
-						href="/app/spenden/neu"
+						href={`/app/spenden/neu${listQueryString('spenden', $page.url.searchParams)}`}
 						data-slot="new-cta"
 						class="ml-auto inline-flex h-11 items-center rounded-full bg-primary-strong px-4 text-sm font-semibold text-white shadow-(--glow-brand) transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:ml-0 md:h-10"
 						>Neue Spende</a
@@ -197,7 +198,7 @@
 				</div>
 				<!-- eslint-disable svelte/no-navigation-without-resolve -->
 				<a
-					href="/app/spenden/neu"
+					href={`/app/spenden/neu${listQueryString('spenden', $page.url.searchParams)}`}
 					class="inline-flex h-10 items-center gap-1.5 rounded-full bg-primary-strong px-4 text-sm font-semibold text-white shadow-(--glow-brand) hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2"
 				>
 					<svg

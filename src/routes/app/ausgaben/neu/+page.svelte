@@ -15,6 +15,7 @@
 	import EntryFormShell from '$lib/components/admin/transactions/EntryFormShell.svelte';
 	import AusgabeFields from '$lib/components/admin/transactions/ausgaben/AusgabeFields.svelte';
 	import AusgabenListView from '../AusgabenListView.svelte';
+	import { listQueryString } from '$lib/domain/transaction-filters.js';
 	import type { AusgabeFormValues } from './+page.server.js';
 	import type { PageData, ActionData } from './$types.js';
 
@@ -44,8 +45,11 @@
 	);
 
 	function onClose() {
+		// Kulisse stage continuity: replay the list query (sort/filter/search/year)
+		// so closing returns to the exact list the user opened from — prefill keys
+		// (projectId, bezeichnung, …) are dropped by listQueryString.
 		// eslint-disable-next-line svelte/no-navigation-without-resolve
-		goto('/app/ausgaben');
+		goto(`/app/ausgaben${listQueryString('ausgaben', $page.url.searchParams)}`);
 	}
 </script>
 

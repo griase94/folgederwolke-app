@@ -69,4 +69,27 @@ test.describe("@aurora-impl-b4kulisse Kulisse", () => {
     ).toHaveCount(1);
     await expect(kulisse.locator('[data-slot="new-cta"]')).toHaveCount(1);
   });
+
+  test("stage continuity: a sorted list carries its query into /neu and back on close", async ({
+    page,
+  }) => {
+    await loginAs(page, "admin");
+    // Open a SORTED list (the Betrag lens the Judge flagged).
+    await page.goto("/app/ausgaben?sort=betrag&dir=asc");
+    // Client-side click → the Neu CTA must carry the list query onto /neu so the
+    // backdrop opens already in the user's sort (no visible re-shuffle).
+    await page.locator('[data-slot="new-cta"]').click();
+    await page.waitForURL(/\/app\/ausgaben\/neu\?/);
+    await expect(page).toHaveURL(/sort=betrag/);
+    await expect(page).toHaveURL(/dir=asc/);
+    await expect(page.locator('[data-slot="entry-form-shell"]')).toBeVisible();
+
+    // Close (Abbrechen) → the SAME sort query is replayed onto the list, so the
+    // user lands back on exactly the list they opened from.
+    await page.getByRole("button", { name: /^Abbrechen$/i }).click();
+    await page.waitForURL(/\/app\/ausgaben\?/);
+    await expect(page).not.toHaveURL(/\/neu/);
+    await expect(page).toHaveURL(/sort=betrag/);
+    await expect(page).toHaveURL(/dir=asc/);
+  });
 });

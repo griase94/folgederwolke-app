@@ -3,6 +3,7 @@ import { describe, it, expect } from "vitest";
 import {
   parseFilterState,
   serializeFilterState,
+  listQueryString,
 } from "$lib/domain/transaction-filters.js";
 
 describe("filter state URL round-trip + validation", () => {
@@ -35,5 +36,56 @@ describe("filter state URL round-trip + validation", () => {
     );
     expect(round.get("betragMin")).toBe("1000");
     expect(round.get("mitRechnung")).toBe("true");
+  });
+});
+
+describe("listQueryString (B-Kulisse stage continuity)", () => {
+  it("keeps the list params (search/sort/dir/page/year/amount/filters)", () => {
+    const q = listQueryString(
+      "ausgaben",
+      new URLSearchParams(
+        "q=miete&sort=betrag&dir=asc&page=2&year=2025&betragMin=1000&status=offen",
+      ),
+    );
+    const p = new URLSearchParams(q);
+    expect(p.get("q")).toBe("miete");
+    expect(p.get("sort")).toBe("betrag");
+    expect(p.get("dir")).toBe("asc");
+    expect(p.get("page")).toBe("2");
+    expect(p.get("year")).toBe("2025");
+    expect(p.get("betragMin")).toBe("1000");
+    expect(p.get("status")).toBe("offen");
+  });
+
+  it("drops the /neu PREFILL keys — projectId is prefill-only, never a filter", () => {
+    const q = listQueryString(
+      "ausgaben",
+      new URLSearchParams(
+        "sort=betrag&projectId=abc&bezeichnung=Miete&betragCents=4500&kategorieNameSnapshot=Raum&bezahltVonKind=verein&externName=X",
+      ),
+    );
+    const p = new URLSearchParams(q);
+    // The one real list param survives …
+    expect(p.get("sort")).toBe("betrag");
+    // … and every prefill key is dropped (no filter-vs-prefill collision).
+    expect(p.has("projectId")).toBe(false);
+    expect(p.has("bezeichnung")).toBe(false);
+    expect(p.has("betragCents")).toBe(false);
+    expect(p.has("kategorieNameSnapshot")).toBe(false);
+    expect(p.has("bezahltVonKind")).toBe(false);
+    expect(p.has("externName")).toBe(false);
+  });
+
+  it("returns '' (no leading ?) when no list params are present", () => {
+    expect(
+      listQueryString("spenden", new URLSearchParams("projectId=abc")),
+    ).toBe("");
+    expect(listQueryString("einnahmen", new URLSearchParams())).toBe("");
+  });
+
+  it("prefixes with ? when list params exist", () => {
+    expect(
+      listQueryString("spenden", new URLSearchParams("spendenart=geldspende")),
+    ).toBe("?spendenart=geldspende");
   });
 });
