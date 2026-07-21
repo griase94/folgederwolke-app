@@ -20,6 +20,7 @@
   import KeyValue from "$lib/components/admin/transactions/detail/KeyValue.svelte";
   import BelegViewer from "$lib/components/files/BelegViewer.svelte";
   import AusgabeDetailFields from "$lib/components/admin/transactions/ausgaben/AusgabeDetailFields.svelte";
+  import DeleteConfirm from "$lib/components/admin/transactions/detail/DeleteConfirm.svelte";
   import { statusPresentation } from "$lib/domain/transaction-status.js";
   import { SPHERE_LABELS, type Sphere } from "$lib/domain/sphere.js";
   import { formatCentsAsEuro } from "$lib/domain/money.js";
@@ -31,6 +32,7 @@
   let dirty = $state(false);
   let saving = $state(false);
   let mode = $state<"read" | "edit">("read");
+  let deleteOpen = $state(false);
 
   const errors = $derived(
     (form as { errors?: Record<string, string[]> } | null)?.errors ?? {},
@@ -291,6 +293,21 @@
   {saving}
   {dirty}
   bind:mode
+  onDelete={() => (deleteOpen = true)}
   listHref="/app/ausgaben"
   listLabel="Ausgaben"
+/>
+
+<DeleteConfirm
+  bind:open={deleteOpen}
+  variant={isErstattet ? "warn" : "simple"}
+  title={isErstattet ? "Bereits erstattete Ausgabe löschen" : "Ausgabe löschen?"}
+  subtitle={`${detail.businessId} · ${detail.bezeichnung}`}
+  reassurance="Noch nicht erstattet — diese Ausgabe lässt sich direkt löschen."
+  warnLine={`Am ${fmtDate(detail.erstattetAm)} mit ${formatCentsAsEuro(
+    BigInt(Math.abs(detail.betragCents)),
+  )} an ${detail.bezahltVonDisplay ?? "Unbekannt"} erstattet. Die Erstattungs-Buchung wird aufgelöst; Verlauf und Beleg gehen verloren.`}
+  deltaValue={`+${formatCentsAsEuro(BigInt(Math.abs(detail.betragCents)))}`}
+  confirmLabel={isErstattet ? "Endgültig löschen" : "Löschen"}
+  onClose={() => (deleteOpen = false)}
 />

@@ -22,10 +22,13 @@
 		 * deliberate (contract risk H1): one flag → inert + no-edit.
 		 */
 		locked: boolean;
-		/** Lock banner (info tone, never amber-alarm). null = no banner. */
+		/** Lock banner (info tone, never amber-alarm). null = no banner. The two
+		 * lock reasons stay distinguishable in the copy (Judge-watch): a
+		 * festgeschrieben year vs. an issued Bescheinigung (which names its Nr.). */
 		lock?: {
 			variant: "festgeschrieben" | "bescheinigt";
 			year?: number | null;
+			bescheinigungNr?: string | null;
 		} | null;
 		/** Money-head status chip (settled = neutral) + meta line. */
 		statusChip?: DetailStatusChip;
@@ -183,10 +186,15 @@
 					</div>
 				{:else}
 					<div class="font-semibold text-ink-900">
-						Bescheinigt — die Felder sind gesperrt
+						{#if lock.bescheinigungNr}
+							Zu dieser Spende wurde Bescheinigung Nr. {lock.bescheinigungNr} ausgestellt
+						{:else}
+							Bescheinigt — die Felder sind gesperrt
+						{/if}
 					</div>
 					<div class="mt-0.5 text-ink-700">
-						Korrektur nur über Storno &amp; Neu-Erfassung (Phase 2).
+						Bearbeiten und Löschen sind nicht möglich — Korrektur nur über Storno
+						&amp; Neu-Erfassung (in einer späteren Ausbaustufe).
 					</div>
 				{/if}
 			</div>

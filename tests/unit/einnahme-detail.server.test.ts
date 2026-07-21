@@ -81,9 +81,16 @@ vi.mock("$lib/server/events/index.js", () => ({
   bus: { emit: vi.fn(async () => {}) },
 }));
 
-// Fake db — satisfies db.update(income).set(...).where(...) (save) AND
-// db.select(...).from(projects).where(...).orderBy(...) (load → empty list).
+// Fake db — satisfies db.update(income).set(...).where(...) (save),
+// db.select(...).from(projects).where(...).orderBy(...) (load → empty list),
+// db.select(...).from(invoices).where(...).limit(1) (delete invoice guard),
+// and db.delete(income).where(...).returning(...) (delete).
 const updateCalls: { set?: Record<string, unknown> }[] = [];
+// Configurable per-test: the linked-invoice rows the delete guard select sees,
+// and the rows the DELETE ... RETURNING returns (empty = guard/festschr. race).
+let invoiceRows: { id: string; businessId: string }[] = [];
+let deleteReturns: { id: string }[] = [{ id: "inc-free" }];
+let deleteCalls = 0;
 function makeDbFake() {
   return {
     update() {
@@ -111,6 +118,21 @@ function makeDbFake() {
         orderBy() {
           return Promise.resolve([] as unknown[]);
         },
+        limit() {
+          return Promise.resolve(invoiceRows);
+        },
+      };
+      return chain;
+    },
+    delete() {
+      const chain = {
+        where() {
+          return chain;
+        },
+        returning() {
+          deleteCalls += 1;
+          return Promise.resolve(deleteReturns);
+        },
       };
       return chain;
     },
@@ -120,7 +142,15 @@ const dbFake = makeDbFake();
 vi.mock("$lib/server/db/index.js", () => ({ getDb: () => dbFake }));
 
 vi.mock("$lib/server/db/schema/income.js", () => ({
-  income: { _kind: "income", id: "id" },
+  income: { _kind: "income", id: "id", festgeschriebenAt: "festgeschriebenAt" },
+}));
+vi.mock("$lib/server/db/schema/invoices.js", () => ({
+  invoices: {
+    _kind: "invoices",
+    id: "id",
+    businessId: "businessId",
+    paidByIncomeId: "paidByIncomeId",
+  },
 }));
 vi.mock("$lib/server/db/schema/projects.js", () => ({
   projects: {
@@ -234,6 +264,29 @@ async function runSave(
   return { ok: result };
 }
 
+async function runDelete(
+  id: string,
+  user: { id: string } | null = { id: "user-1" },
+): Promise<{ fail?: { status: number; error?: string }; redirect?: number }> {
+  const event = {
+    params: { id },
+    locals: { session: user ? { user } : null },
+  } as unknown as never;
+  try {
+    const result = await (
+      actions as { delete: (e: never) => Promise<unknown> }
+    ).delete(event);
+    const r = result as { status?: number; data?: { error?: string } };
+    return { fail: { status: r.status ?? 0, error: r.data?.error } };
+  } catch (err) {
+    // A successful delete throws SvelteKit's redirect(303).
+    if (err && typeof err === "object" && "status" in err) {
+      return { redirect: (err as { status: number }).status };
+    }
+    throw err;
+  }
+}
+
 beforeEach(() => {
   detailStore.clear();
   detailStore.set(LINKED.id, { ...LINKED });
@@ -243,6 +296,9 @@ beforeEach(() => {
   checkFestschreibungGateMock.mockClear();
   checkFestschreibungGateMock.mockResolvedValue({ ok: true });
   updateCalls.length = 0;
+  invoiceRows = [];
+  deleteReturns = [{ id: "inc-free" }];
+  deleteCalls = 0;
 });
 
 // ---------------------------------------------------------------------------
@@ -276,11 +332,12 @@ describe("/app/einnahmen/[id] load", () => {
 });
 
 describe("/app/einnahmen/[id] actions", () => {
-  it("exposes ONLY a `save` action (no mark-paid, no duplicate)", () => {
+  it("exposes `save` + `delete` (no mark-paid, no duplicate)", () => {
     expect(typeof actions.save).toBe("function");
+    expect(typeof (actions as Record<string, unknown>).delete).toBe("function");
     expect((actions as Record<string, unknown>)["mark-paid"]).toBeUndefined();
     expect((actions as Record<string, unknown>).duplicate).toBeUndefined();
-    expect(Object.keys(actions)).toEqual(["save"]);
+    expect(Object.keys(actions)).toEqual(["save", "delete"]);
   });
 
   it("?/save updates the editable income fields (gate ok)", async () => {
@@ -345,5 +402,38 @@ describe("/app/einnahmen/[id] actions", () => {
     );
     expect(r.fail?.status).toBe(401);
     expect(updateCalls.length).toBe(0);
+  });
+});
+
+describe("/app/einnahmen/[id] ?/delete", () => {
+  it("HARD GUARD: an income referenced by invoices.paid_by_income_id → 409 with the EXACT German pointer, no delete", async () => {
+    invoiceRows = [{ id: "inv-1", businessId: "FDW-2026-014" }];
+    const r = await runDelete(LINKED.id);
+    expect(r.fail?.status).toBe(409);
+    // The exact string is a contract the UI toast surfaces verbatim.
+    expect(r.fail?.error).toBe(
+      "Diese Einnahme gehört zur Zahlung von Rechnung FDW-2026-014. Nimm zuerst die Zahlung auf der Rechnung zurück.",
+    );
+    expect(deleteCalls).toBe(0);
+  });
+
+  it("a free (non-invoice-linked) income deletes and redirects (303)", async () => {
+    invoiceRows = [];
+    deleteReturns = [{ id: FREE.id }];
+    const r = await runDelete(FREE.id);
+    expect(r.redirect).toBe(303);
+    expect(deleteCalls).toBe(1);
+  });
+
+  it("a festgeschrieben income → 409, never reaches the invoice guard or delete", async () => {
+    const r = await runDelete(FROZEN.id);
+    expect(r.fail?.status).toBe(409);
+    expect(deleteCalls).toBe(0);
+  });
+
+  it("rejects an unauthenticated caller (401)", async () => {
+    const r = await runDelete(FREE.id, null);
+    expect(r.fail?.status).toBe(401);
+    expect(deleteCalls).toBe(0);
   });
 });

@@ -19,7 +19,7 @@
  *            are persisted.
  */
 
-import { error, fail } from "@sveltejs/kit";
+import { error, fail, redirect } from "@sveltejs/kit";
 import { z } from "zod";
 import { isoCalendarDate } from "$lib/domain/date.js";
 import { errorsFromIssues } from "$lib/domain/zod-errors.js";
@@ -34,6 +34,7 @@ import { bookingYearFromCashDate } from "$lib/domain/year.js";
 import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
 import { getDb } from "$lib/server/db/index.js";
 import { income } from "$lib/server/db/schema/income.js";
+import { invoices } from "$lib/server/db/schema/invoices.js";
 import { projects } from "$lib/server/db/schema/projects.js";
 import { and, eq, isNull } from "drizzle-orm";
 import { bus } from "$lib/server/events/index.js";
@@ -188,5 +189,68 @@ export const actions = {
     });
 
     return { ok: true, saved: true };
+  },
+
+  // ── ?/delete — staged delete (B3). Festschreibung → 409. HARD GUARD: a
+  // mark-paid income row IS the payment record of an Ausgangsrechnung
+  // (invoices.paid_by_income_id); deleting it would orphan a „bezahlt" invoice,
+  // so we block with a pointer to un-pay the invoice first. Removal anchored in
+  // the append-only audit trail (ADR-0004). No mail.
+  delete: async ({ params, locals }) => {
+    const user = locals.session?.user;
+    if (!user) return fail(401, { error: "Nicht angemeldet" });
+
+    const detail = await getTransactionDetail(params.id, "income");
+    if (!detail) return fail(404, { error: "Nicht gefunden" });
+    if (detail.festgeschriebenAt) {
+      return fail(409, {
+        error: "Buchungsjahr ist festgeschrieben (ADR-0006)",
+      });
+    }
+
+    const db = getDb();
+    const linked = await db
+      .select({ id: invoices.id, businessId: invoices.businessId })
+      .from(invoices)
+      .where(eq(invoices.paidByIncomeId, params.id))
+      .limit(1);
+    if (linked.length > 0) {
+      const inv = linked[0]!;
+      return fail(409, {
+        error: `Diese Einnahme gehört zur Zahlung von Rechnung ${inv.businessId}. Nimm zuerst die Zahlung auf der Rechnung zurück.`,
+        invoiceId: inv.id,
+        invoiceBusinessId: inv.businessId,
+      });
+    }
+
+    try {
+      const deleted = await db
+        .delete(income)
+        .where(and(eq(income.id, params.id), isNull(income.festgeschriebenAt)))
+        .returning({ id: income.id });
+      if (deleted.length === 0) {
+        return fail(409, {
+          error:
+            "Einnahme konnte nicht gelöscht werden — sie wurde zwischenzeitlich festgeschrieben.",
+        });
+      }
+    } catch (err) {
+      console.error("[einnahmen/[id]/delete]", err);
+      return fail(409, {
+        error:
+          "Einnahme konnte nicht gelöscht werden — es bestehen noch Verknüpfungen.",
+      });
+    }
+
+    await bus.emit("income.deleted", {
+      id: params.id,
+      businessId: detail.businessId,
+      actorUserId: user.id,
+      payload: {
+        bezeichnung: detail.bezeichnung,
+        betragCents: detail.betragCents,
+      },
+    });
+    redirect(303, "/app/einnahmen");
   },
 } satisfies Actions;

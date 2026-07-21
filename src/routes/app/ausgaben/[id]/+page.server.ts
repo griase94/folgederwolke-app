@@ -19,7 +19,7 @@
  *                 duplicated Miete must start unpaid, with no carried receipt.
  */
 
-import { error, fail } from "@sveltejs/kit";
+import { error, fail, redirect } from "@sveltejs/kit";
 import { z } from "zod";
 import { isoCalendarDate } from "$lib/domain/date.js";
 import { errorsFromIssues } from "$lib/domain/zod-errors.js";
@@ -255,5 +255,58 @@ export const actions = {
     };
 
     return { ok: true, prefill };
+  },
+
+  // ── ?/delete — staged delete (B3). The UI stages the confirm (simple vs the
+  // erstattet-Warn with friction); the server enforces the festschreibung gate
+  // and hard-deletes, then anchors the removal in the append-only audit trail
+  // (ADR-0004). No mail. Pre-launch: a hard delete is acceptable (disposable
+  // data); the erstattet-Warn is UI friction, not a server block.
+  delete: async ({ params, locals }) => {
+    const user = locals.session?.user;
+    if (!user) return fail(401, { error: "Nicht angemeldet" });
+
+    const detail = await getTransactionDetail(params.id, "expense");
+    if (!detail) return fail(404, { error: "Nicht gefunden" });
+    if (detail.festgeschriebenAt) {
+      return fail(409, {
+        error: "Buchungsjahr ist festgeschrieben (ADR-0006)",
+      });
+    }
+
+    const db = getDb();
+    try {
+      // TOCTOU: guard the DELETE with isNull(festgeschriebenAt) so a concurrent
+      // Festschreibung between the SELECT and the DELETE can't remove a sealed row.
+      const deleted = await db
+        .delete(expenses)
+        .where(
+          and(eq(expenses.id, params.id), isNull(expenses.festgeschriebenAt)),
+        )
+        .returning({ id: expenses.id });
+      if (deleted.length === 0) {
+        return fail(409, {
+          error:
+            "Ausgabe konnte nicht gelöscht werden — sie wurde zwischenzeitlich festgeschrieben.",
+        });
+      }
+    } catch (err) {
+      console.error("[ausgaben/[id]/delete]", err);
+      return fail(409, {
+        error:
+          "Ausgabe konnte nicht gelöscht werden — es bestehen noch Verknüpfungen.",
+      });
+    }
+
+    await bus.emit("expense.deleted", {
+      id: params.id,
+      businessId: detail.businessId,
+      actorUserId: user.id,
+      payload: {
+        bezeichnung: detail.bezeichnung,
+        betragCents: detail.betragCents,
+      },
+    });
+    redirect(303, "/app/ausgaben");
   },
 } satisfies Actions;

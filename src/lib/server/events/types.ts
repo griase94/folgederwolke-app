@@ -229,6 +229,14 @@ export type Events = {
    *  Bescheinigung is allocated separately and emits
    *  `spende.bescheinigung_generated`. */
   "donation.created": TxMetaEventPayload;
+  /** A booking was hard-deleted from its detail page (staged confirm;
+   *  festschreibung / invoice-reference / Bescheinigung guards enforced
+   *  server-side BEFORE the delete). Audit handler writes action='delete' so
+   *  the removal stays in the append-only trail (ADR-0004) though the row is
+   *  gone. */
+  "expense.deleted": TxMetaEventPayload;
+  "income.deleted": TxMetaEventPayload;
+  "donation.deleted": TxMetaEventPayload;
 
   /** A new Mitglied was inserted via the admin UI. */
   "member.created": MemberEventPayload;

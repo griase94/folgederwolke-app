@@ -18,6 +18,7 @@
   import KeyValue from "$lib/components/admin/transactions/detail/KeyValue.svelte";
   import BelegViewer from "$lib/components/files/BelegViewer.svelte";
   import SpendeDetailFields from "$lib/components/admin/transactions/spenden/SpendeDetailFields.svelte";
+  import DeleteConfirm from "$lib/components/admin/transactions/detail/DeleteConfirm.svelte";
   import { SPHERE_LABELS, type Sphere } from "$lib/domain/sphere.js";
   import type { DetailStatusChip } from "$lib/components/admin/transactions/detail/DetailHead.svelte";
   import type { ActionData, PageData } from "./$types.js";
@@ -27,6 +28,7 @@
   let dirty = $state(false);
   let saving = $state(false);
   let mode = $state<"read" | "edit">("read");
+  let deleteOpen = $state(false);
 
   const errors = $derived((form?.errors as Record<string, string[]>) ?? {});
   const detail = $derived(data.detail);
@@ -225,7 +227,7 @@
   lock={data.isFestgeschrieben
     ? { variant: "festgeschrieben", year: detail.yearOfBuchung }
     : issued
-      ? { variant: "bescheinigt" }
+      ? { variant: "bescheinigt", bescheinigungNr: data.bescheinigungNr }
       : null}
   {statusChip}
   {facts}
@@ -235,6 +237,17 @@
   {saving}
   {dirty}
   bind:mode
+  onDelete={() => (deleteOpen = true)}
   listHref="/app/spenden"
   listLabel="Spenden"
+/>
+
+<DeleteConfirm
+  bind:open={deleteOpen}
+  variant="simple"
+  title="Spende löschen?"
+  subtitle={`${detail.businessId} · ${detail.bezeichnung}`}
+  reassurance="Noch nicht bescheinigt — diese Spende lässt sich löschen."
+  confirmLabel="Löschen"
+  onClose={() => (deleteOpen = false)}
 />
