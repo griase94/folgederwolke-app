@@ -16,6 +16,11 @@ export type CustomerView = {
   id: string;
   name: string;
   anrede: string | null;
+  /** Structured postal address (Andy-Feedback 2026-07). `strasse` incl. Hausnr. */
+  strasse: string | null;
+  plz: string | null;
+  ort: string | null;
+  /** Legacy free-text address block — superseded by strasse/plz/ort. */
   addressBlock: string | null;
   /** ISO 3166-1 alpha-2 country code. Defaults to 'DE'. */
   country: string;
@@ -50,10 +55,27 @@ function optionalText(schema: z.ZodString) {
     .pipe(z.union([schema, z.undefined()]));
 }
 
-const customerBaseSchema = z.object({
+const customerBaseObject = z.object({
   name: z.string().min(1, "Name ist erforderlich").max(200, "Name zu lang"),
   anrede: optionalText(z.string().max(200, "Anrede zu lang")),
-  address_block: optionalText(z.string().max(500, "Adressblock zu lang")),
+  // Structured postal address is MANDATORY (Andy-Feedback 2026-07). `strasse`
+  // includes the Hausnummer. German errors; PLZ format is checked in the refine
+  // below (country-aware — the 5-digit rule is German).
+  strasse: z
+    .string({ error: "Bitte Straße und Hausnummer angeben" })
+    .trim()
+    .min(1, "Bitte Straße und Hausnummer angeben")
+    .max(200, "Straße zu lang"),
+  plz: z
+    .string({ error: "Bitte eine PLZ angeben" })
+    .trim()
+    .min(1, "Bitte eine PLZ angeben")
+    .max(10, "PLZ zu lang"),
+  ort: z
+    .string({ error: "Bitte einen Ort angeben" })
+    .trim()
+    .min(1, "Bitte einen Ort angeben")
+    .max(100, "Ort zu lang"),
   country: z
     .string()
     .optional()
@@ -69,12 +91,30 @@ const customerBaseSchema = z.object({
   notes: optionalText(z.string().max(2000, "Notizen zu lang")),
 });
 
-export const addCustomerSchema = customerBaseSchema;
+// German PLZ is exactly 5 digits. Enforce that for DE only, so a valid AT/CH
+// (4-digit) address isn't wrongly rejected. Non-DE just needs a non-empty PLZ
+// (checked above). Applied to both add + edit.
+function refinePlz(
+  val: { country: string; plz: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (val.country === "DE" && !/^\d{5}$/.test(val.plz)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["plz"],
+      message: "Deutsche PLZ muss 5 Ziffern haben (z. B. 80331)",
+    });
+  }
+}
+
+export const addCustomerSchema = customerBaseObject.superRefine(refinePlz);
 export type AddCustomerInput = z.infer<typeof addCustomerSchema>;
 
-export const editCustomerSchema = customerBaseSchema.extend({
-  id: z.string().uuid("Ungültige Kunden-ID"),
-});
+export const editCustomerSchema = customerBaseObject
+  .extend({
+    id: z.string().uuid("Ungültige Kunden-ID"),
+  })
+  .superRefine(refinePlz);
 export type EditCustomerInput = z.infer<typeof editCustomerSchema>;
 
 // ---------------------------------------------------------------------------

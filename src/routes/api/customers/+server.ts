@@ -33,6 +33,9 @@ export const GET: RequestHandler = async ({ url, locals }) => {
       name: customers.name,
       email: customers.email,
       anrede: customers.anrede,
+      strasse: customers.strasse,
+      plz: customers.plz,
+      ort: customers.ort,
       addressBlock: customers.addressBlock,
     })
     .from(customers)
@@ -56,6 +59,9 @@ export const GET: RequestHandler = async ({ url, locals }) => {
       name: r.name,
       email: r.email,
       anrede: r.anrede,
+      strasse: r.strasse,
+      plz: r.plz,
+      ort: r.ort,
       addressBlock: r.addressBlock,
     })),
   });

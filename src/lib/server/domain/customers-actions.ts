@@ -15,6 +15,7 @@ import {
   validateAddCustomer,
   validateEditCustomer,
 } from "$lib/server/domain/customers.js";
+import { buildCustomerBriefblock } from "$lib/domain/customers.js";
 import { bus } from "$lib/server/events/index.js";
 
 // ---------------------------------------------------------------------------
@@ -50,14 +51,23 @@ export async function addCustomer(
   }
 
   const db = getDb();
-  const { name, anrede, address_block, country, email, notes } = result.data;
+  const { name, anrede, strasse, plz, ort, country, email, notes } =
+    result.data;
+
+  // `address_block` is kept as a denormalized mirror of the structured fields
+  // (assembled Briefblock) so the invoice snapshot + list subline keep reading
+  // one field — the structured columns are the input source of truth.
+  const addressBlock = buildCustomerBriefblock({ strasse, plz, ort });
 
   const inserted = await db
     .insert(customers)
     .values({
       name,
       anrede: anrede ?? null,
-      addressBlock: address_block ?? null,
+      strasse,
+      plz,
+      ort,
+      addressBlock,
       country: country,
       email: email ?? null,
       notes: notes ?? null,
@@ -89,15 +99,20 @@ export async function editCustomer(
   }
 
   const db = getDb();
-  const { id, name, anrede, address_block, country, email, notes } =
+  const { id, name, anrede, strasse, plz, ort, country, email, notes } =
     result.data;
+
+  const addressBlock = buildCustomerBriefblock({ strasse, plz, ort });
 
   await db
     .update(customers)
     .set({
       name,
       anrede: anrede ?? null,
-      addressBlock: address_block ?? null,
+      strasse,
+      plz,
+      ort,
+      addressBlock,
       country: country,
       email: email ?? null,
       notes: notes ?? null,

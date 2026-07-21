@@ -53,7 +53,7 @@
 			</div>
 			<div class="min-w-0">
 				<Dialog.Title class="text-lg font-bold tracking-tight text-ink-900">Kunde anlegen</Dialog.Title>
-				<Dialog.Description class="text-xs text-ink-500">Pflicht ist nur der Name.</Dialog.Description>
+				<Dialog.Description class="text-xs text-ink-500">Name und Adresse sind Pflicht.</Dialog.Description>
 			</div>
 			<Dialog.Close
 				class="ml-auto grid h-9 w-9 shrink-0 place-items-center self-start rounded-lg border border-border text-ink-500 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

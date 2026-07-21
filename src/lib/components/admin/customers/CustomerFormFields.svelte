@@ -1,16 +1,20 @@
 <!--
 	CustomerFormFields — the shared Add/Edit field set (modal-kunde.md §4).
 
-	ONE field component for both dialogs (brief recommendation — the two used to
-	duplicate the markup). Field ORDER follows the invoice reading order
-	(brief §1.3 / spec §2.5, ratified): Name → Anrede → Adresse → Land → E-Mail
-	→ Notizen. Hints explain the CONSEQUENCE (where the value lands on the
-	Rechnung / Mail), never the obvious. Validation is server-authoritative;
-	`errors` echoes the 422 field map, `required` on Name is client comfort only.
+	ONE field component for both dialogs. Field ORDER follows the invoice reading
+	order: Name → Anrede → Adresse (strukturiert) → Land → E-Mail → Notizen.
+
+	Andy-Feedback 2026-07: the address is STRUCTURED (Straße+Hausnr / PLZ / Ort)
+	and MANDATORY — the old free-text block was error-prone. A live BRIEFBLOCK
+	preview shows exactly how the address lands on the Rechnung as you type.
+	Validation is server-authoritative (`errors` echoes the 422 field map); the
+	`required` + `*` are client comfort. PLZ format (German 5-digit) is checked
+	server-side and surfaces here via `errors.plz`.
 -->
 <script lang="ts">
 	import { Input } from '$lib/components/ui/input/index.js';
 	import type { CustomerView } from '$lib/server/domain/customers.js';
+	import { buildCustomerBriefblock, countryLabel } from '$lib/domain/customers.js';
 
 	let {
 		idPrefix,
@@ -29,6 +33,29 @@
 	function err(key: string): string | undefined {
 		return errors[key]?.[0];
 	}
+
+	// Structured address is bound so the live Briefblock preview updates as the
+	// user types. Seeded once from `values` (edit route / post-fail echo) via a
+	// one-shot hydration $effect — starting the state at a literal avoids the
+	// `state_referenced_locally` warning (CI runs --fail-on-warnings).
+	let strasse = $state('');
+	let plz = $state('');
+	let ort = $state('');
+	let country = $state('DE');
+	let hydrated = false;
+	$effect(() => {
+		if (hydrated) return;
+		hydrated = true;
+		strasse = values?.strasse ?? '';
+		plz = values?.plz ?? '';
+		ort = values?.ort ?? '';
+		country = values?.country ?? 'DE';
+	});
+
+	const briefblock = $derived(buildCustomerBriefblock({ strasse, plz, ort }));
+	const previewLines = $derived(
+		briefblock ? briefblock.split('\n') : []
+	);
 
 	const COUNTRIES: Array<[string, string]> = [
 		['DE', 'Deutschland'],
@@ -57,9 +84,8 @@
 		<path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4M12 8h.01" />
 	</svg>
 	<span>
-		Nur der <b class="font-semibold text-ink-700">Name</b> muss sein
-		<span class="text-severity-critical">*</span> — der Rest ist Kür. Der Adressblock
-		erscheint 1:1 im Rechnungskopf.
+		<b class="font-semibold text-ink-700">Name</b> und <b class="font-semibold text-ink-700">Adresse</b>
+		<span class="text-severity-critical">*</span> braucht jede Rechnung — die Adresse erscheint 1:1 im Rechnungskopf.
 	</span>
 </div>
 
@@ -99,22 +125,81 @@
 	{/if}
 </div>
 
-<!-- Adressblock -->
-<div class="space-y-1.5">
-	<label for="{idPrefix}-address" class="block text-sm font-medium text-ink-700">Adressblock</label>
-	<textarea
-		id="{idPrefix}-address"
-		name="address_block"
-		rows="3"
-		class={textareaClass}
-		aria-invalid={!!err('address_block')}
-		placeholder="Zeile für Zeile — genau so, wie es auf dem Rechnungs-PDF stehen soll"
-		>{values?.addressBlock ?? ''}</textarea
-	>
-	<p class="text-xs text-ink-500">Genau so, Zeile für Zeile, auf dem Rechnungs-PDF.</p>
-	{#if err('address_block')}
-		<p class="text-xs font-medium text-severity-critical">{err('address_block')}</p>
+<!-- Adresse (strukturiert) * + Live-Briefblock -->
+<div class="space-y-2.5 rounded-xl border border-hairline bg-card p-3">
+	<div class="flex items-center gap-1.5">
+		<span class="text-sm font-semibold text-ink-700">Adresse</span>
+		<span class="text-severity-critical">*</span>
+	</div>
+
+	<!-- Straße + Hausnr -->
+	<div class="space-y-1.5">
+		<label for="{idPrefix}-strasse" class="block text-xs font-medium text-ink-600">Straße &amp; Hausnr.</label>
+		<Input
+			id="{idPrefix}-strasse"
+			name="strasse"
+			required
+			bind:value={strasse}
+			data-testid="{idPrefix}-strasse-input"
+			placeholder="z. B. Musterstraße 1"
+			aria-invalid={!!err('strasse')}
+			aria-describedby={err('strasse') ? `${idPrefix}-strasse-err` : undefined}
+		/>
+		{#if err('strasse')}
+			<p id="{idPrefix}-strasse-err" class="text-xs font-medium text-severity-critical">{err('strasse')}</p>
+		{/if}
+	</div>
+
+	<!-- PLZ + Ort -->
+	<div class="grid grid-cols-[minmax(0,7rem)_1fr] gap-2.5">
+		<div class="space-y-1.5">
+			<label for="{idPrefix}-plz" class="block text-xs font-medium text-ink-600">PLZ</label>
+			<Input
+				id="{idPrefix}-plz"
+				name="plz"
+				required
+				inputmode="numeric"
+				bind:value={plz}
+				data-testid="{idPrefix}-plz-input"
+				placeholder="80331"
+				aria-invalid={!!err('plz')}
+				aria-describedby={err('plz') ? `${idPrefix}-plz-err` : undefined}
+			/>
+		</div>
+		<div class="space-y-1.5">
+			<label for="{idPrefix}-ort" class="block text-xs font-medium text-ink-600">Ort</label>
+			<Input
+				id="{idPrefix}-ort"
+				name="ort"
+				required
+				bind:value={ort}
+				data-testid="{idPrefix}-ort-input"
+				placeholder="München"
+				aria-invalid={!!err('ort')}
+				aria-describedby={err('ort') ? `${idPrefix}-ort-err` : undefined}
+			/>
+		</div>
+	</div>
+	{#if err('plz')}
+		<p id="{idPrefix}-plz-err" class="text-xs font-medium text-severity-critical">{err('plz')}</p>
 	{/if}
+	{#if err('ort')}
+		<p id="{idPrefix}-ort-err" class="text-xs font-medium text-severity-critical">{err('ort')}</p>
+	{/if}
+
+	<!-- Live-Briefblock: so steht die Adresse auf der Rechnung -->
+	<div class="rounded-lg border border-dashed border-hairline bg-muted/40 px-3 py-2.5" data-testid="{idPrefix}-address-preview">
+		<p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-400">So auf der Rechnung</p>
+		{#if previewLines.length > 0}
+			<address class="text-sm not-italic leading-snug text-ink-700">
+				{#if name.trim()}<div class="font-semibold text-ink-900">{name.trim()}</div>{/if}
+				{#each previewLines as line (line)}<div>{line}</div>{/each}
+				{#if country && country !== 'DE'}<div>{countryLabel(country)}</div>{/if}
+			</address>
+		{:else}
+			<p class="text-sm italic text-ink-400">Adresse eingeben — Vorschau erscheint hier.</p>
+		{/if}
+	</div>
 </div>
 
 <!-- Land -->
@@ -123,10 +208,11 @@
 	<select
 		id="{idPrefix}-country"
 		name="country"
+		bind:value={country}
 		class="border-input bg-background focus-visible:ring-ring/50 h-10 w-full rounded-lg border px-3 text-base focus-visible:outline-none focus-visible:ring-2 sm:text-sm"
 	>
 		{#each COUNTRIES as [code, label] (code)}
-			<option value={code} selected={(values?.country ?? 'DE') === code}>{label}</option>
+			<option value={code}>{label}</option>
 		{/each}
 	</select>
 	<p class="text-xs text-ink-500">Außer Deutschland steht das Land mit auf der Rechnung.</p>

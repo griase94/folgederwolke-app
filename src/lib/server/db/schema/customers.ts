@@ -26,7 +26,21 @@ export const customers = pgTable(
     name: text("name").notNull(),
     /** Salutation line ("Liebe Maria", "Sehr geehrte Damen und Herren"). */
     anrede: text("anrede"),
-    /** Multi-line address block used verbatim in the invoice Doc template. */
+    /**
+     * Structured postal address (Andy-Feedback 2026-07). The free-text
+     * `address_block` was error-prone; the invoice briefblock snapshot is now
+     * assembled from these fields. `strasse` includes the Hausnummer.
+     * Nullable at the DB level (additive migration; existing rows may lack
+     * them) — mandatory is enforced in the Kunden-Modal + Zod.
+     */
+    strasse: text("strasse"),
+    plz: text("plz"),
+    ort: text("ort"),
+    /**
+     * Legacy free-text address block. Superseded by strasse/plz/ort — kept
+     * (additive migration) so the seed can split existing values; new code
+     * assembles the invoice snapshot from the structured fields instead.
+     */
     addressBlock: text("address_block"),
     /**
      * ISO 3166-1 alpha-2 country code. Default 'DE'.

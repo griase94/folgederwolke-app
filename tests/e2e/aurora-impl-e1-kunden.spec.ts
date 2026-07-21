@@ -19,6 +19,10 @@ test.describe("@aurora-impl-e1 Kunden-Kette", () => {
     const name = `E2E Neukunde ${Date.now()}`;
     await page.getByTestId("add-customer").click();
     await page.getByTestId("add-cust-name-input").fill(name);
+    // Address is mandatory now (Andy-Feedback 2026-07) — the submit gates on it.
+    await page.getByTestId("add-cust-strasse-input").fill("Teststraße 1");
+    await page.getByTestId("add-cust-plz-input").fill("80331");
+    await page.getByTestId("add-cust-ort-input").fill("München");
     await page.getByTestId("add-customer-submit").click();
 
     // The new customer surfaces as a row (invalidateAll reload).
@@ -70,6 +74,10 @@ test.describe("@aurora-impl-e1 Kunden-Kette", () => {
     const name = `E2E Archivkunde ${Date.now()}`;
     await page.getByTestId("add-customer").click();
     await page.getByTestId("add-cust-name-input").fill(name);
+    // Address is mandatory now (Andy-Feedback 2026-07) — the submit gates on it.
+    await page.getByTestId("add-cust-strasse-input").fill("Teststraße 1");
+    await page.getByTestId("add-cust-plz-input").fill("80331");
+    await page.getByTestId("add-cust-ort-input").fill("München");
     await page.getByTestId("add-customer-submit").click();
     const row = page.getByTestId("customer-row").filter({ hasText: name });
     await expect(row).toBeVisible();
