@@ -275,6 +275,24 @@ describe("editInvoice — validation guards", () => {
       expect(result.status).toBe(400);
     }
   });
+
+  it("returns 422 when SWITCHING to a non-rechnungsfaehig Kategorie (tampered POST)", async () => {
+    // The load-filter is dropdown-only; a hand-crafted POST could send a
+    // non-invoiceable kategorieId (#154 Verifier). old.kategorieId is null (≠
+    // the tampered id) so the eligibility gate — not the exception — fires.
+    queueSelectResults(
+      [existingInvoiceRow()], // invoice (old.kategorieId = null)
+      [], // successor lookup → none
+      [customerRow()], // customer lookup
+      [{ name: "Zinsen", sphere: "vermoegen", rechnungsfaehig: false }],
+    );
+    const result = await editInvoice(INVOICE_ID, validInput, ACTOR_ID);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.status).toBe(422);
+      expect(result.error).toMatch(/nicht vorgesehen/i);
+    }
+  });
 });
 
 describe("editInvoice — happy path", () => {
@@ -283,7 +301,15 @@ describe("editInvoice — happy path", () => {
       [existingInvoiceRow()], // invoice
       [], // successor lookup → no successor
       [customerRow()], // customer lookup
-      [{ name: "Webseiten & Digitales", sphere: "wirtschaftlich" }], // kategorie lookup (E-PR3: kategorieId now always set)
+      // kategorie lookup (E-PR3: kategorieId always set). rechnungsfaehig=true so
+      // the #154 eligibility gate lets a normal edit through.
+      [
+        {
+          name: "Webseiten & Digitales",
+          sphere: "wirtschaftlich",
+          rechnungsfaehig: true,
+        },
+      ],
     );
 
     // Wire the tx callback up so we can capture what was called.
@@ -354,5 +380,50 @@ describe("editInvoice — happy path", () => {
     expect(entry.payload.changedFields.bezeichnung).toBeDefined();
     // nettoCents went 40000 → 50000.
     expect(entry.payload.changedFields.nettoCents).toBeDefined();
+  });
+
+  it("ALLOWS keeping the invoice's existing non-rechnungsfaehig Kategorie (#154 exception)", async () => {
+    // old.kategorieId === input.kategorieId AND the Kategorie is not
+    // rechnungsfaehig → the gate's exception applies (only SWITCHING is blocked),
+    // so a legacy invoice can still be edited. Proceeds into the tx → ok.
+    queueSelectResults(
+      [existingInvoiceRow({ kategorieId: KATEGORIE_ID })], // old.kategorieId === input
+      [], // successor lookup → none
+      [customerRow()], // customer lookup
+      [{ name: "Zinsen", sphere: "vermoegen", rechnungsfaehig: false }],
+    );
+
+    const txInsertReturning = vi
+      .fn()
+      .mockResolvedValue([{ id: "job-uuid-777" }]);
+    const txInsertValues = vi
+      .fn()
+      .mockReturnValue({ returning: txInsertReturning });
+    const txInsertImpl = vi.fn().mockReturnValue({ values: txInsertValues });
+    const txUpdateWhere = vi.fn().mockResolvedValue(undefined);
+    const txUpdateSet = vi.fn().mockReturnValue({ where: txUpdateWhere });
+    const txUpdateImpl = vi.fn().mockReturnValue({ set: txUpdateSet });
+    const txInsertForAudit = vi.fn().mockReturnValue({
+      values: vi.fn().mockResolvedValue(undefined),
+    });
+    mockTransaction.mockImplementation(
+      async (cb: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          update: txUpdateImpl,
+          insert: (table: unknown) =>
+            typeof table === "object" &&
+            table !== null &&
+            "id" in (table as Record<string, unknown>) &&
+            (table as { id: string }).id === "invoice_jobs.id"
+              ? txInsertImpl(table)
+              : txInsertForAudit(table),
+          select: mockSelect,
+        };
+        return cb(tx);
+      },
+    );
+
+    const result = await editInvoice(INVOICE_ID, validInput, ACTOR_ID);
+    expect(result.ok).toBe(true);
   });
 });
