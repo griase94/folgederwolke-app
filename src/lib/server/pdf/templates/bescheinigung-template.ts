@@ -24,6 +24,14 @@ import {
 } from "pdf-lib";
 import type { BmfPflichtfelder } from "$lib/server/domain/spenden.js";
 import { addressLines } from "$lib/server/domain/address.js";
+import {
+  toPdfAscii,
+  bmfTitel,
+  bmfSubtitle,
+  bmfVerzichtSatz,
+  bmf50Hinweis,
+  bmfHaftungHinweis,
+} from "$lib/domain/bescheinigung-wortlaut.js";
 
 // ── Geometry ──────────────────────────────────────────────────────────────
 const MM_TO_PT = 72 / 25.4;
@@ -270,21 +278,18 @@ export async function drawBescheinigung(
 
   // ── Title ──────────────────────────────────────────────────────────────
   // BMF Mustervordruck uses distinct titles per Zuwendungs-Art. Do not
-  // generalise — Finanzaemter pattern-match on the exact title string.
-  const title =
-    p.spendeKind === "sachspende"
-      ? "Bestaetigung ueber Sachzuwendungen"
-      : "Bestaetigung ueber Geldzuwendungen / Mitgliedsbeitraege";
-  drawText(ctx, title, {
+  // generalise — Finanzaemter pattern-match on the exact title string. The
+  // wording is shared with the on-screen preview via bescheinigung-wortlaut;
+  // toPdfAscii derives the exact ASCII the Helvetica core font draws.
+  drawText(ctx, toPdfAscii(bmfTitel(p.spendeKind)), {
     size: SIZE_TITLE,
     bold: true,
     color: COLOR_PRIMARY,
   });
-  drawText(
-    ctx,
-    "im Sinne des Paragraph 10b des Einkommensteuergesetzes (EStG)",
-    { size: SIZE_SMALL, color: COLOR_MUTED },
-  );
+  drawText(ctx, toPdfAscii(bmfSubtitle()), {
+    size: SIZE_SMALL,
+    color: COLOR_MUTED,
+  });
   drawGap(ctx, mm(3));
   drawText(ctx, `Bescheinigungs-Nr. ${p.bescheinigungNr}`, {
     size: SIZE_BODY,
@@ -343,11 +348,10 @@ export async function drawBescheinigung(
   }
 
   drawGap(ctx, mm(2));
-  drawText(
-    ctx,
-    "Es handelt sich nicht um den Verzicht auf Erstattung von Aufwendungen: ja.",
-    { size: SIZE_SMALL, color: COLOR_MUTED },
-  );
+  drawText(ctx, toPdfAscii(bmfVerzichtSatz()), {
+    size: SIZE_SMALL,
+    color: COLOR_MUTED,
+  });
   drawGap(ctx, mm(4));
   drawRule(ctx);
 
@@ -375,12 +379,10 @@ export async function drawBescheinigung(
   drawText(ctx, p.vereinName, { size: SIZE_BODY, bold: true });
   drawText(ctx, "Vorstand", { size: SIZE_SMALL, color: COLOR_MUTED });
   drawGap(ctx, mm(3));
-  drawText(
-    ctx,
-    "Diese Zuwendungsbestaetigung ist maschinell erstellt und " +
-      "ohne Unterschrift gueltig (Paragraph 50 Absatz 1 EStDV).",
-    { size: SIZE_SMALL, color: COLOR_MUTED },
-  );
+  drawText(ctx, toPdfAscii(bmf50Hinweis()), {
+    size: SIZE_SMALL,
+    color: COLOR_MUTED,
+  });
 
   // ── Footer hint ────────────────────────────────────────────────────────
   const footerY = MARGIN_BOTTOM + mm(16);
@@ -390,11 +392,7 @@ export async function drawBescheinigung(
     thickness: 0.3,
     color: COLOR_RULE,
   });
-  const footer1 =
-    "Hinweis: Wer vorsaetzlich oder grob fahrlaessig eine unrichtige Zuwendungsbestaetigung " +
-    "ausstellt oder veranlasst, dass Zuwendungen nicht zu den in der Zuwendungsbestaetigung " +
-    "angegebenen steuerbeguenstigten Zwecken verwendet werden, haftet fuer die entgangene " +
-    "Steuer (Paragraph 10b Abs. 4 EStG, Paragraph 9 Abs. 3 KStG, Paragraph 9 Nr. 5 GewStG).";
+  const footer1 = toPdfAscii(bmfHaftungHinweis());
   const footer2 =
     p.bescheidTyp === "feststellung_60a"
       ? "Hinweis (vorlaeufige Bescheinigung): Diese Bestaetigung wird auf Grund der Feststellung " +

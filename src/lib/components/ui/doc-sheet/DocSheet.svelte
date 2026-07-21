@@ -69,6 +69,9 @@
 		border: 1px solid var(--dp-line2);
 		padding: 30px 34px 26px;
 		font-variant-numeric: tabular-nums;
+		/* A pathological ultra-long token (e.g. a spaceless spender name or IBAN)
+		   must wrap onto the paper, never overflow the sheet. */
+		overflow-wrap: break-word;
 	}
 	.doc-eyebrow {
 		display: block;
