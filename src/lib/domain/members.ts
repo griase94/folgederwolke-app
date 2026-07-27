@@ -58,13 +58,6 @@ export type MemberView = {
   beitragExemptReason: string | null;
   isFixture: boolean;
   createdAt: string;
-  /**
-   * @deprecated Legacy per-year beitrag map. Beitrag state now lives in the
-   * matrix (`MatrixData.cells`, single source). The Mitglieder list no longer
-   * populates or reads this; only the detail MemberInfoCard still passes `{}`
-   * until the detail screen is rewired (Aurora C-S2c). Then this field is removed.
-   */
-  beitrags?: Record<number, BeitragCell>;
 };
 
 // ---------------------------------------------------------------------------

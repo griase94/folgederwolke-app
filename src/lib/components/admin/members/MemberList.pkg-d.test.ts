@@ -35,15 +35,6 @@ const sampleMember: MemberView = {
   beitragExemptReason: null,
   isFixture: false,
   createdAt: "2020-01-01",
-  beitrags: {
-    2026: {
-      id: "b1",
-      betragCents: 6000,
-      paidCents: 0,
-      gezahltAm: null,
-      isExempt: false,
-    },
-  },
 };
 
 describe("MemberList — Package D column header", () => {
