@@ -7,6 +7,13 @@
 	 * kit: the CellPopover shell (anchored Popover ≥sm / bottom Sheet <sm) wrapping
 	 * a BeitragCellDialog in its `mark-paid` variant.
 	 *
+	 * Since C-S2 this is PURE POST/undo/toast glue around CellPopover +
+	 * BeitragCellDialog — the former UI monolith (its own inline Popover/Sheet +
+	 * MarkPaidPopover) is consolidated away, and NO variant/UI logic lives here any
+	 * more. The brief §4 "delete MarkPaidControl" was ratified as a keep-as-glue
+	 * deviation by the lead (dissolving it would triplicate the POST logic across
+	 * row/card/detail); see the Aurora masterplan.
+	 *
 	 * The matrix does NOT use this — it owns an optimistic overlay and drives
 	 * CellPopover + BeitragCellDialog directly. The server actions
 	 * (?/mark-beitrag-paid, ?/set-beitrag-exempt, ?/send-reminder) are the single
