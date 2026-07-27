@@ -108,12 +108,12 @@
 <!-- eslint-enable svelte/no-navigation-without-resolve -->
 
 <div class="bericht-page mx-auto max-w-4xl px-4 pb-16 sm:px-6">
-	<DocSheet
-		eyebrow="Kassenbericht · Mitgliedsbeiträge"
-		title="Kassenbericht Mitgliedsbeiträge {data.year}"
-		{subtitle}
-		data-testid="bericht-sheet"
-	>
+	<DocSheet eyebrow="Kassenbericht · Mitgliedsbeiträge" data-testid="bericht-sheet">
+		<!-- Semantic heading on the paper (DocSheet's `title` prop renders a <p>,
+		     which would drop the h1 landmark + the report's document title). -->
+		<h1 class="kb-title">Kassenbericht Mitgliedsbeiträge {data.year}</h1>
+		<p class="kb-subtitle">{subtitle}</p>
+
 		{#if data.satzMissing}
 			<p class="kb-hint" data-testid="bericht-satz-missing">
 				Für {data.year} ist kein Beitragssatz festgelegt — Sollbeträge werden nicht ausgewiesen.
@@ -221,6 +221,20 @@
 	/* Paper body classes — read the DocSheet-exposed --dp-* vars so the sheet
 	   stays physical paper (light) in BOTH themes. Status accents use fixed
 	   Tailwind colors (applied in markup), which are already light-safe. */
+	.kb-title {
+		margin: 0;
+		font-size: 16px;
+		font-weight: 800;
+		line-height: 1.35;
+		letter-spacing: -0.005em;
+		color: var(--dp-ink);
+	}
+	.kb-subtitle {
+		margin: 5px 0 0;
+		font-size: 11.5px;
+		line-height: 1.5;
+		color: var(--dp-faint);
+	}
 	.kb-faint {
 		color: var(--dp-faint);
 	}
