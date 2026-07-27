@@ -6,8 +6,12 @@
 	import Info from '@lucide/svelte/icons/info';
 	import Package from '@lucide/svelte/icons/package';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import type { PageData } from './$types.js';
 
+	// gobd-export is a DEEPENING of the Exports tab, not a workspace tab itself
+	// (flow brief §gobd „kein Workspace-Tab"). It breaks out of the [year] tab
+	// layout via +page@app and carries its OWN breadcrumb back to the workspace.
 	let { data }: { data: PageData } = $props();
 
 	const bundleUrl = $derived(`/app/jahresabschluss/${data.year}/bundle.zip`);
@@ -25,6 +29,13 @@
 		generating = true;
 		setTimeout(() => (generating = false), 8000);
 	}
+
+	function formatDate(iso: string | null): string {
+		if (!iso) return '—';
+		const d = new Date(iso);
+		if (Number.isNaN(d.getTime())) return iso;
+		return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+	}
 </script>
 
 <svelte:head>
@@ -33,8 +44,19 @@
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -->
 <PageShell width="list">
+	<nav class="mb-3" aria-label="Brotkrumen">
+		<a
+			href={`/app/jahresabschluss/${data.year}/exports`}
+			class="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+			data-testid="gobd-breadcrumb"
+		>
+			<ChevronLeft class="size-[15px]" aria-hidden="true" />
+			Jahresabschluss {data.year}
+		</a>
+	</nav>
+
 	<div class="mb-5">
-		<h2 class="text-xl font-bold tracking-tight text-foreground">GoBD-Z3 Export {data.year}</h2>
+		<h1 class="text-2xl font-bold tracking-tight text-foreground">GoBD-Z3 Export {data.year}</h1>
 		<p class="mt-1 text-sm text-muted-foreground">
 			Maschinenlesbarer Export für die Betriebsprüfung — § 147 Abs. 6 AO.
 		</p>
@@ -75,7 +97,9 @@
 						</li>
 					{/each}
 				</ul>
-				<p class="note">Der GoBD-Z3-Export steckt im Paket unter <code>05_GoBD-Z3-{data.year}/</code>.</p>
+				<p class="note">
+					Der GoBD-Z3-Export steckt im Paket unter <code>05_GoBD-Z3-{data.year}/</code>.
+				</p>
 			</section>
 
 			<!-- Format & Schema -->
@@ -154,6 +178,20 @@
 
 			{#if data.closed}
 				<GobdTrustBlock stacked />
+				{#if data.festMeta?.festgeschriebenAm}
+					<dl class="fest-meta" data-testid="festgeschrieben-meta">
+						<div class="fm-row">
+							<dt>Festgeschrieben am</dt>
+							<dd>{formatDate(data.festMeta.festgeschriebenAm)}</dd>
+						</div>
+						{#if data.festMeta.festgeschriebenBy}
+							<div class="fm-row">
+								<dt>Durch</dt>
+								<dd>{data.festMeta.festgeschriebenBy}</dd>
+							</div>
+						{/if}
+					</dl>
+				{/if}
 			{/if}
 		</aside>
 	</div>
@@ -345,5 +383,30 @@
 		margin: 8px 0 0;
 		font-size: 11.5px;
 		color: var(--ink-500);
+	}
+	/* festgeschrieben am · durch wen */
+	.fest-meta {
+		margin: 0;
+		padding: 4px 4px 0;
+	}
+	.fm-row {
+		display: grid;
+		grid-template-columns: 128px 1fr;
+		gap: 12px;
+		padding: 7px 0;
+		font-size: 12.5px;
+	}
+	.fm-row + .fm-row {
+		border-top: 1px solid var(--hairline);
+	}
+	.fm-row dt {
+		color: var(--ink-500);
+		font-weight: 600;
+	}
+	.fm-row dd {
+		margin: 0;
+		text-align: right;
+		font-weight: 600;
+		color: var(--ink-900);
 	}
 </style>

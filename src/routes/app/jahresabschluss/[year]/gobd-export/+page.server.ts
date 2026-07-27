@@ -10,7 +10,10 @@ import { sql } from "drizzle-orm";
 import type { PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
-import { isYearClosed } from "$lib/server/domain/jahresabschluss.js";
+import {
+  isYearClosed,
+  readFestschreibungMeta,
+} from "$lib/server/domain/jahresabschluss.js";
 import { bundleManifest } from "$lib/server/eur/bundle-manifest.js";
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -39,6 +42,8 @@ export const load: PageServerLoad = async ({ params }) => {
   const ausgaben = parseInt(counts[0]?.ausgaben ?? "0", 10);
   const spenden = parseInt(counts[0]?.spenden ?? "0", 10);
 
+  const closed = await isYearClosed(year);
+
   return {
     year,
     vereinName,
@@ -46,8 +51,10 @@ export const load: PageServerLoad = async ({ params }) => {
     // D-Flow §Stufe-0 (e): the screen needs the close state + whether there is
     // anything to export, and renders the ZIP contents from the single-source
     // manifest (never a hardcoded filename — §4.5 Manifest-Lüge guard).
-    closed: await isYearClosed(year),
+    closed,
     hasBuchungen: einnahmen + ausgaben + spenden > 0,
     manifest: bundleManifest(year),
+    // festgeschrieben am · durch wen — for the Trust-Block meta (§2.6).
+    festMeta: closed ? await readFestschreibungMeta(year) : null,
   };
 };

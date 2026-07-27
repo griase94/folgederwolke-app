@@ -18,6 +18,8 @@
 		spendenCount: number;
 		hasBuchungen: boolean;
 		manifest: BundleManifestEntry[];
+		/** festgeschrieben am · durch wen — only present for a sealed year. */
+		festMeta?: { festgeschriebenAm: string | null; festgeschriebenBy: string | null } | null;
 	}
 </script>
 
@@ -32,7 +34,21 @@
 	import Package from '@lucide/svelte/icons/package';
 	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 
-	let { year, closed, spendenCount, hasBuchungen, manifest }: ExportsTabProps = $props();
+	let {
+		year,
+		closed,
+		spendenCount,
+		hasBuchungen,
+		manifest,
+		festMeta = null
+	}: ExportsTabProps = $props();
+
+	function formatDate(iso: string | null): string {
+		if (!iso) return '—';
+		const d = new Date(iso);
+		if (Number.isNaN(d.getTime())) return iso;
+		return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+	}
 
 	const bundleUrl = $derived(`/app/jahresabschluss/${year}/bundle.zip`);
 	const gobdUrl = $derived(`/app/jahresabschluss/${year}/gobd-export`);
@@ -160,6 +176,20 @@
 
 		{#if closed}
 			<GobdTrustBlock stacked />
+			{#if festMeta?.festgeschriebenAm}
+				<dl class="fest-meta" data-testid="festgeschrieben-meta">
+					<div class="fm-row">
+						<dt>Festgeschrieben am</dt>
+						<dd>{formatDate(festMeta.festgeschriebenAm)}</dd>
+					</div>
+					{#if festMeta.festgeschriebenBy}
+						<div class="fm-row">
+							<dt>Durch</dt>
+							<dd>{festMeta.festgeschriebenBy}</dd>
+						</div>
+					{/if}
+				</dl>
+			{/if}
 		{/if}
 	</aside>
 </div>
@@ -317,5 +347,30 @@
 	}
 	.dl-line :global(svg) {
 		color: var(--ink-500);
+	}
+	/* festgeschrieben am · durch wen — one label ruler, values right */
+	.fest-meta {
+		margin: 0;
+		padding: 4px 4px 0;
+	}
+	.fm-row {
+		display: grid;
+		grid-template-columns: 128px 1fr;
+		gap: 12px;
+		padding: 7px 0;
+		font-size: 12.5px;
+	}
+	.fm-row + .fm-row {
+		border-top: 1px solid var(--hairline);
+	}
+	.fm-row dt {
+		color: var(--ink-500);
+		font-weight: 600;
+	}
+	.fm-row dd {
+		margin: 0;
+		text-align: right;
+		font-weight: 600;
+		color: var(--ink-900);
 	}
 </style>

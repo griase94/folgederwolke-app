@@ -74,6 +74,61 @@ export async function closeBuchhaltungsjahr(
   return { year, rowsByTable, totalRows };
 }
 
+export interface FestschreibungMeta {
+  /** ISO timestamp the year was festgeschrieben (null if never closed / empty). */
+  festgeschriebenAm: string | null;
+  /** Display name of the actor (users.name ?? email), null if unknown. */
+  festgeschriebenBy: string | null;
+}
+
+/**
+ * When + by whom a year was festgeschrieben — for the „festgeschrieben am ·
+ * durch wen"-meta on the export screens (D-Flow §2.5/§2.6). close_buchhaltungsjahr
+ * stamps the SAME festgeschrieben_am (= now()) + festgeschrieben_by_user_id on
+ * every row of the year across income/expenses/donations, so ONE representative
+ * row is enough — take the most recent across the three tables and resolve the
+ * actor via users. Returns nulls for an open (or empty) year.
+ */
+export async function readFestschreibungMeta(
+  year: number,
+): Promise<FestschreibungMeta> {
+  const db = getDb();
+  const res = (await db.execute(sql`
+    WITH stamps AS (
+      SELECT festgeschrieben_at, festgeschrieben_by_user_id
+        FROM income
+       WHERE year_of_buchung = ${year} AND festgeschrieben_at IS NOT NULL
+      UNION ALL
+      SELECT festgeschrieben_at, festgeschrieben_by_user_id
+        FROM expenses
+       WHERE year_of_buchung = ${year} AND festgeschrieben_at IS NOT NULL
+      UNION ALL
+      SELECT festgeschrieben_at, festgeschrieben_by_user_id
+        FROM donations
+       WHERE year_of_buchung = ${year} AND festgeschrieben_at IS NOT NULL
+    )
+    SELECT s.festgeschrieben_at,
+           COALESCE(u.name, u.email) AS by_name
+      FROM stamps s
+      LEFT JOIN users u ON u.id = s.festgeschrieben_by_user_id
+     ORDER BY s.festgeschrieben_at DESC
+     LIMIT 1
+  `)) as unknown as Array<{
+    festgeschrieben_at: Date | string | null;
+    by_name: string | null;
+  }>;
+
+  const row = res[0];
+  if (!row || row.festgeschrieben_at === null) {
+    return { festgeschriebenAm: null, festgeschriebenBy: null };
+  }
+  const ts =
+    row.festgeschrieben_at instanceof Date
+      ? row.festgeschrieben_at.toISOString()
+      : String(row.festgeschrieben_at);
+  return { festgeschriebenAm: ts, festgeschriebenBy: row.by_name };
+}
+
 /**
  * Check whether `year` is "closed" — i.e. covered by the
  * `settings.festgeschrieben_bis` timestamp.

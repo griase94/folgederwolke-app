@@ -22,5 +22,6 @@
 		spendenCount={data.spendenCount}
 		{hasBuchungen}
 		manifest={data.manifest}
+		festMeta={data.festMeta}
 	/>
 </PageShell>
