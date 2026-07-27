@@ -1,15 +1,18 @@
 /**
- * @phase-2 Kassenbericht /app/mitglieder/bericht/[year] (spec §11).
+ * @aurora-impl-c1 Kassenbericht /app/mitglieder/bericht/[year] (spec §11).
  *
  * Adapted to the 7-state resolver truth (C-S2): the Bericht status comes from
  * the canonical resolveBeitragState — the SAME source as the Matrix/Detail — so
- * an unpaid current-year member past Fälligkeit+grace reads as ÜBERFÄLLIG, not a
- * flat "Offen". The behavioural asserts (per-member states + totals) live on in
- * that truth; PLUS a targeted assert pinning the disjoint totals rule
- * (§5: openSum = open+partial+overdue; overdueSum = the "davon" subset).
+ * an unpaid current-year member past Fälligkeit+grace reads as ÜBERFÄLLIG (not a
+ * flat "Offen"), and a partial payment reads as TEILZAHLUNG. The behavioural
+ * asserts (per-member states + totals) live on in that truth; PLUS a targeted
+ * assert pinning the disjoint totals rule (§5: openSum = open+partial+overdue;
+ * overdueSum = the "davon" subset). Erna (partial) makes that a REAL subset —
+ * openSum (120,00) ⊋ overdueSum (75,00) — never accidental equality.
  *
- * Seed: Alice paid, Bob unpaid (Fälligkeit fixed in the past → deterministically
- * overdue on any run date), Carla per-year exempt, David paid.
+ * Seed: Alice + David paid, Bob unpaid → overdue (Fälligkeit fixed in the past →
+ * deterministically overdue on any run date), Erna partial (30,00 / 75,00),
+ * Carla per-year exempt.
  */
 
 import { expect, test } from "@playwright/test";
@@ -32,6 +35,7 @@ const mA = "40000000-0000-0000-0000-0000000000b1"; // paid
 const mB = "40000000-0000-0000-0000-0000000000b2"; // overdue (unpaid, past Fälligkeit)
 const mC = "40000000-0000-0000-0000-0000000000b3"; // per-year exempt
 const mD = "40000000-0000-0000-0000-0000000000b4"; // paid
+const mE = "40000000-0000-0000-0000-0000000000b5"; // partial (30,00 von 75,00)
 
 async function signIn(page: import("@playwright/test").Page): Promise<void> {
   const { default: postgres } = await import("postgres");
@@ -90,7 +94,8 @@ async function seedBericht(): Promise<void> {
         (${mA}, 'Alice',  'Bericht',  'a@b.test', 'mitglied', '2020-01-01', true),
         (${mB}, 'Bob',    'Bericht',  'b@b.test', 'mitglied', '2020-01-01', true),
         (${mC}, 'Carla',  'Bericht',  'c@b.test', 'mitglied', '2020-01-01', true),
-        (${mD}, 'David',  'Bericht',  'd@b.test', 'mitglied', '2020-01-01', true)
+        (${mD}, 'David',  'Bericht',  'd@b.test', 'mitglied', '2020-01-01', true),
+        (${mE}, 'Erna',   'Bericht',  'e@b.test', 'mitglied', '2020-01-01', true)
     `;
     await sql`DELETE FROM beitragssatz_by_year WHERE year = ${ANCHOR}`;
     await sql`
@@ -103,11 +108,22 @@ async function seedBericht(): Promise<void> {
         (${mA}, ${ANCHOR}, 7500, 7500, ${`${ANCHOR}-02-10`}, false, NULL),
         (${mB}, ${ANCHOR}, 7500, 0,    NULL,                  false, NULL),
         (${mC}, ${ANCHOR}, 7500, 0,    NULL,                  true,  'Härtefall'),
-        (${mD}, ${ANCHOR}, 7500, 7500, ${`${ANCHOR}-03-01`}, false, NULL)
+        (${mD}, ${ANCHOR}, 7500, 7500, ${`${ANCHOR}-03-01`}, false, NULL),
+        (${mE}, ${ANCHOR}, 7500, 3000, ${`${ANCHOR}-04-15`}, false, NULL)
     `;
   } finally {
     await sql.end();
   }
+}
+
+/** Extract the first "1.234,56" de-DE amount from an element's text as integer cents. */
+async function readCents(
+  locator: import("@playwright/test").Locator,
+): Promise<number> {
+  const text = (await locator.textContent()) ?? "";
+  const m = text.match(/(\d{1,3}(?:\.\d{3})*),(\d{2})/);
+  if (!m) throw new Error(`no de-DE amount in ${JSON.stringify(text)}`);
+  return parseInt(m[1]!.replace(/\./g, ""), 10) * 100 + parseInt(m[2]!, 10);
 }
 
 test.beforeEach(async () => {
@@ -115,7 +131,7 @@ test.beforeEach(async () => {
   await seedBericht();
 });
 
-test.describe("@phase-2 Kassenbericht", () => {
+test.describe("@aurora-impl-c1 Kassenbericht", () => {
   test("per-member states + disjoint totals render in the 7-state truth", async ({
     page,
   }) => {
@@ -130,8 +146,8 @@ test.describe("@phase-2 Kassenbericht", () => {
       }),
     ).toBeVisible();
 
-    // Four applicable rows.
-    await expect(page.getByTestId("bericht-row")).toHaveCount(4);
+    // Five applicable rows.
+    await expect(page.getByTestId("bericht-row")).toHaveCount(5);
 
     // Alice + David: paid (two rows).
     await expect(
@@ -146,10 +162,21 @@ test.describe("@phase-2 Kassenbericht", () => {
     await expect(bobRow).toHaveCount(1);
     await expect(bobRow).toContainText("Bericht, Bob");
     await expect(bobRow).toContainText("Überfällig");
-    // No stale "open" row exists — overdue is its own honest state.
+    // No stale "open" row exists — overdue and partial are their own honest
+    // states, never folded into a flat "Offen" row.
     await expect(
       page.locator('[data-testid="bericht-row"][data-status="open"]'),
     ).toHaveCount(0);
+
+    // Erna: partial payment → TEILZAHLUNG, shown honestly as paid-of-Soll.
+    const ernaRow = page.locator(
+      '[data-testid="bericht-row"][data-status="partial"]',
+    );
+    await expect(ernaRow).toHaveCount(1);
+    await expect(ernaRow).toContainText("Bericht, Erna");
+    await expect(ernaRow).toContainText("Teilzahlung");
+    await expect(ernaRow).toContainText("30,00");
+    await expect(ernaRow).toContainText("75,00");
 
     // Carla: per-year exempt with the stored Grund.
     const carlaRow = page.locator(
@@ -164,17 +191,28 @@ test.describe("@phase-2 Kassenbericht", () => {
     await expect(page.getByTestId("bericht-paid-count")).toContainText("2");
     await expect(page.getByTestId("bericht-paid-sum")).toContainText("150,00");
 
-    // Offen = open + partial + OVERDUE outstanding → Bob is counted here even
-    // though his row reads Überfällig: 1 member · 75,00 €.
-    await expect(page.getByTestId("bericht-open-count")).toContainText("1");
-    await expect(page.getByTestId("bericht-open-sum")).toContainText("75,00");
+    // Offen (superset) = open + partial + OVERDUE outstanding → Bob (overdue,
+    // 75,00) + Erna (partial, 75,00 − 30,00 = 45,00) = 2 members · 120,00 €.
+    await expect(page.getByTestId("bericht-open-count")).toContainText("2");
+    await expect(page.getByTestId("bericht-open-sum")).toContainText("120,00");
 
     // "davon überfällig" — the disjoint overdue SUBSET of the Offen bucket:
-    // 1 member · 75,00 € (here == the whole Offen bucket, since Bob is the only
-    // outstanding member and he is overdue). Pins openSum ⊇ overdueSum.
-    await expect(page.getByTestId("bericht-overdue-sum")).toContainText("1");
-    await expect(page.getByTestId("bericht-overdue-sum")).toContainText(
-      "75,00",
-    );
+    // 1 member · 75,00 € (Bob only; Erna's partial is NOT overdue).
+    const overdue = page.getByTestId("bericht-overdue-sum");
+    await expect(overdue).toContainText("1");
+    await expect(overdue).toContainText("75,00");
+
+    // ── Disjoint-overdue invariant (§5, the sharp assert) ──────────────────
+    // overdueSum is a *subset* of the Offen superset, shown as a "davon" line.
+    // Erna's partial keeps the two distinct (120,00 ⊋ 75,00), so this pins the
+    // real subset relation — not accidental equality. openSum − overdueSum is
+    // exactly the partial member's outstanding rest (45,00). If the aggregation
+    // ever folded overdue OUT of openSum, this equality would break.
+    const openCents = await readCents(page.getByTestId("bericht-open-sum"));
+    const overdueCents = await readCents(overdue);
+    expect(openCents).toBe(12000);
+    expect(overdueCents).toBe(7500);
+    expect(openCents).toBeGreaterThan(overdueCents);
+    expect(openCents - overdueCents).toBe(4500); // exactly Erna's outstanding rest
   });
 });
