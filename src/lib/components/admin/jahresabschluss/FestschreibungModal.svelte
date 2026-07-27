@@ -52,14 +52,60 @@
     "data-testid": testId = "festschreibung-modal",
   }: FestschreibungModalProps = $props();
 
+  let dialogEl = $state<HTMLDivElement | null>(null);
+  let restoreFocusTo: HTMLElement | null = null;
+
   function close() {
     open = false;
     confirmed = false;
+    restoreFocusTo?.focus?.();
+    restoreFocusTo = null;
     onClose?.();
   }
 
+  // On open: remember the trigger, move focus INTO the dialog (a11y initial
+  // focus). The dialog is tabindex=-1 so it can receive programmatic focus.
+  $effect(() => {
+    if (open && dialogEl) {
+      restoreFocusTo = document.activeElement as HTMLElement | null;
+      const el = dialogEl;
+      queueMicrotask(() => el.focus());
+    }
+  });
+
+  function focusables(): HTMLElement[] {
+    if (!dialogEl) return [];
+    return Array.from(
+      dialogEl.querySelectorAll<HTMLElement>(
+        'a[href],button:not([disabled]),input:not([disabled]),[tabindex]:not([tabindex="-1"])',
+      ),
+    );
+  }
+
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === "Escape") close();
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    // Focus-trap: keep Tab cycling inside the dialog.
+    const f = focusables();
+    if (f.length === 0) {
+      e.preventDefault();
+      dialogEl?.focus();
+      return;
+    }
+    const first = f[0]!;
+    const last = f[f.length - 1]!;
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || active === dialogEl)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
   }
 </script>
 
@@ -73,7 +119,9 @@
     onkeydown={onKeydown}
   >
     <div
-      class="flex w-full max-w-[460px] flex-col overflow-hidden rounded-t-2xl border border-hairline bg-card shadow-card sm:rounded-2xl"
+      bind:this={dialogEl}
+      tabindex="-1"
+      class="flex w-full max-w-[460px] flex-col overflow-hidden rounded-t-2xl border border-hairline bg-card shadow-card outline-none sm:rounded-2xl"
       role="dialog"
       aria-modal="true"
       aria-labelledby="fs-modal-title"

@@ -78,6 +78,8 @@ export interface EurWorkspaceData {
    * `feedFoot + beitragEinnahmenCents === eur.totalUeberschussCents`.
    */
   beitragEinnahmenCents: number;
+  /** Donations folded into the EÜR-Einnahmen — the „davon Spenden" hero line. */
+  spendenEinnahmenCents: number;
 }
 
 // ── Pure composer ────────────────────────────────────────────────────────────
@@ -123,6 +125,10 @@ export function composeEurWorkspaceData(
   // Single source of the paid-Mitgliedsbeitrag component of the EÜR — the same
   // rows folded into currentEinnahmenUnion above (never re-derived downstream).
   const beitragEinnahmenCents = (input.currentBeitrags ?? []).reduce(
+    (a, r) => a + Number(r.betragCents),
+    0,
+  );
+  const spendenEinnahmenCents = (input.currentSpenden ?? []).reduce(
     (a, r) => a + Number(r.betragCents),
     0,
   );
@@ -201,6 +207,7 @@ export function composeEurWorkspaceData(
     preFlight,
     tabs,
     beitragEinnahmenCents,
+    spendenEinnahmenCents,
   };
 }
 

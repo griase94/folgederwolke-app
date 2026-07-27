@@ -72,18 +72,24 @@
 		</div>
 	{/if}
 
-	<div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+	<div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
 		<!-- Main -->
 		<div class="space-y-5">
 			<!-- Manifest + Zähler-Fakten -->
 			<section class="panel" aria-labelledby="gobd-manifest-head">
 				<h3 id="gobd-manifest-head" class="panel-title">Paket-Inhalt</h3>
 				<p class="counts" data-testid="gobd-counts">
-					<span class="c ein">{data.counts.einnahmen} Einnahmen</span>
+					<span class="c ein"
+						>{data.counts.einnahmen} {data.counts.einnahmen === 1 ? 'Einnahme' : 'Einnahmen'}</span
+					>
 					<span class="sep">·</span>
-					<span class="c aus">{data.counts.ausgaben} Ausgaben</span>
+					<span class="c aus"
+						>{data.counts.ausgaben} {data.counts.ausgaben === 1 ? 'Ausgabe' : 'Ausgaben'}</span
+					>
 					<span class="sep">·</span>
-					<span class="c spe">{data.counts.spenden} Spenden</span>
+					<span class="c spe"
+						>{data.counts.spenden} {data.counts.spenden === 1 ? 'Spende' : 'Spenden'}</span
+					>
 				</p>
 				<ul class="manifest">
 					{#each data.manifest as entry (entry.no)}

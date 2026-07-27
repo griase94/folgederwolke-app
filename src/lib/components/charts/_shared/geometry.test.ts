@@ -64,6 +64,10 @@ describe("dataviz geometry", () => {
     const [, apexY] = gaugePoint(200, 208, 166, 0.5);
     expect(apexY).toBeCloseTo(42, 3);
     expect(gaugeArc(200, 208, 166, 0, 0.315)).toMatch(/^M.*A166,166/);
+    // Semicircle guard: even a >0.5 sweep (warn/over range) keeps large-arc-flag
+    // 0, so the arc never bulges past the track (FreigrenzeGauge warn overflow).
+    expect(gaugeArc(200, 208, 166, 0, 0.846)).toMatch(/A166,166 0 0 1 /);
+    expect(gaugeArc(200, 208, 166, 0, 1)).toMatch(/A166,166 0 0 1 /);
   });
 
   it("monotonePath produces a cubic through all points; single point degrades to a move", () => {

@@ -52,7 +52,21 @@
 	const modalFacts = $derived<FactRow[]>(
 		readyCard
 			? [
-					{ label: 'Buchungen', value: String(readyCard.buchungszahl), variant: 'num' },
+					{
+						// The Festschreibung seals the TRANSACTION rows (income + expense +
+						// donation) — close_buchhaltungsjahr stamps exactly those. NOT the
+						// paid Mitgliedsbeiträge (they carry no festgeschrieben_at). Show that
+						// count so the modal matches the Settle „N Buchungen gesichert" exactly
+						// (Zahlengleichheit im heikelsten Moment); buchungszahl (4-source union)
+						// would over-state by the Beiträge.
+						label: 'Buchungen',
+						value: String(
+							readyCard.counts.einnahmen +
+								readyCard.counts.ausgaben +
+								readyCard.counts.spenden
+						),
+						variant: 'num'
+					},
 					{
 						label: 'Einnahmen',
 						value: eur(readyCard.einnahmenCents),
@@ -157,6 +171,7 @@
 					buchungszahl={y.buchungszahl}
 					preFlightItems={readyItems}
 					collapsePreFlight
+					blocked={!pf?.canFestschreiben}
 				>
 					{#snippet consequence()}
 						Nach dem Festschreiben sind die Zahlen von <b>{y.year}</b> unveränderbar (GoBD § 146).

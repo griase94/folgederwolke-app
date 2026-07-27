@@ -201,7 +201,13 @@ export function gaugeArc(
   f0: number,
   f1: number,
 ): string {
-  const large = f1 - f0 > 0.5 ? 1 : 0;
+  // The gauge spans a SEMICIRCLE: f∈[0,1] maps to 180°→0° via gaugePoint, so any
+  // sub-arc (f1−f0)·180° is ALWAYS ≤ 180°. The SVG large-arc-flag must therefore
+  // stay 0 — a flag of 1 on a <180° sweep draws the complementary (>180°) arc,
+  // which bulges outward past the track (the warn-state overflow bug; the
+  // exactly-180° over-state coincided so it looked fine). Flag only flips if the
+  // sweep truly exceeds 180° (f1−f0 > 1), which never happens for a semicircle.
+  const large = f1 - f0 > 1 ? 1 : 0;
   const [x0, y0] = gaugePoint(cx, cy, radius, f0);
   const [x1, y1] = gaugePoint(cx, cy, radius, f1);
   return `M${r2(x0)},${r2(y0)} A${radius},${radius} 0 ${large} 1 ${r2(x1)},${r2(y1)}`;

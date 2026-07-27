@@ -143,16 +143,23 @@
 	const footSum = $derived(
 		rows.reduce((a, r) => a + (r.kind === 'expense' ? -r.betragCents : r.betragCents), 0)
 	);
-	// ✓ only when the feed-saldo TRULY equals the EÜR (beitrag-free year).
+	// When the feed hits the 2000-row cap the foot-sum is PARTIAL, so it can
+	// neither claim „= EÜR ✓" nor drive the Beitrags-Reconciliation.
+	const capReached = $derived(allRowsCount >= FEED_CAP);
+	// ✓ only when the feed-saldo TRULY equals the EÜR (beitrag-free, uncapped).
 	const kreuzOk = $derived(
-		!filtersActive && beitragEinnahmenCents === 0 && footSum === ueberschussCents
+		!filtersActive &&
+			!capReached &&
+			beitragEinnahmenCents === 0 &&
+			footSum === ueberschussCents
 	);
 	// The Mitgliedsbeitrag component is the SINGLE-SOURCE value from the EÜR
 	// composer (not `EÜR − feed`, which couldn't catch a feed/EÜR mismatch). The
 	// identity `footSum + beitragEinnahmenCents === ueberschussCents` is asserted
-	// by the @aurora-impl-d-abschluss e2e.
-	const showBeitragNote = $derived(!filtersActive && beitragEinnahmenCents > 0);
-	const capReached = $derived(allRowsCount >= FEED_CAP);
+	// by the @aurora-impl-d-abschluss e2e. Suppressed when capped (partial sum).
+	const showBeitragNote = $derived(
+		!filtersActive && !capReached && beitragEinnahmenCents > 0
+	);
 
 	function formatDate(iso: string): string {
 		const d = new Date(iso);
@@ -308,7 +315,9 @@
 			</EmptyState>
 		{/if}
 	{:else}
-		<div class="ledger" data-testid="buchungsliste-table">
+		<!-- role=table gives the SortHeader's role=row + columnheader (with aria-sort)
+		     a valid parent; the rows below stay real links (whole-row navigation). -->
+		<div class="ledger" data-testid="buchungsliste-table" role="table" aria-label={`Buchungen ${year}`}>
 			<SortHeader
 				columns={sortColumns}
 				cols={LEDGER_COLS}
@@ -382,7 +391,11 @@
 			<div class="lfoot" data-testid="buchungsliste-foot">
 				<div class="lf-main">
 					<span class="lf-lbl">
-						{filtersActive ? 'Summe der Sicht' : 'Transaktions-Saldo'}
+						{filtersActive
+							? 'Summe der Sicht'
+							: capReached
+								? `Saldo der ersten ${FEED_CAP} — CSV für die Jahres-Kreuzprobe`
+								: 'Transaktions-Saldo'}
 					</span>
 					<span class="lf-amt tabular" class:ein={footSum >= 0} class:aus={footSum < 0}>
 						{footSum < 0 ? '−' : ''}{eur(Math.abs(footSum))}
@@ -539,7 +552,13 @@
 		border: 1px solid var(--border);
 		border-radius: 14px;
 		box-shadow: var(--shadow-card);
-		overflow: hidden;
+		/* NO overflow:hidden — a clipping ancestor breaks the sticky SortHeader
+		   (position:sticky needs no overflow ancestor between it and the scroll
+		   root). Round the first/last children instead. */
+	}
+	.ledger :global(.sorthead) {
+		border-top-left-radius: 14px;
+		border-top-right-radius: 14px;
 	}
 	.rows {
 		display: flex;
@@ -707,6 +726,8 @@
 		padding: 13px 16px;
 		border-top: 2px solid var(--border);
 		background: var(--secondary);
+		border-bottom-left-radius: 14px;
+		border-bottom-right-radius: 14px;
 	}
 	.lf-main {
 		display: flex;

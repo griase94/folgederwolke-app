@@ -95,7 +95,7 @@
 <!-- eslint-disable svelte/no-navigation-without-resolve -->
 <div class="space-y-5">
 	<!-- Hero-Band: Überschuss + §64-Spielraum -->
-	<div class="grid gap-5 lg:grid-cols-2">
+	<div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
 		<!-- Überschuss-Hero -->
 		<div class="hero-card">
 			<p class="hero-eyebrow">Überschuss {data.year}</p>
@@ -111,6 +111,18 @@
 					<span class="hl-lbl">Einnahmen</span>
 					<span class="hl-amt ein">{eur(data.eur.totalEinnahmenCents)}</span>
 				</div>
+				{#if data.spendenEinnahmenCents > 0}
+					<div class="hl-row hl-sub">
+						<span class="hl-lbl">davon Spenden</span>
+						<span class="hl-amt spe">{eur(data.spendenEinnahmenCents)}</span>
+					</div>
+				{/if}
+				{#if data.beitragEinnahmenCents > 0}
+					<div class="hl-row hl-sub">
+						<span class="hl-lbl">davon Mitgliedsbeiträge</span>
+						<span class="hl-amt">{eur(data.beitragEinnahmenCents)}</span>
+					</div>
+				{/if}
 				<div class="hl-row">
 					<span class="hl-lbl">Ausgaben</span>
 					<span class="hl-amt aus">−{eur(data.eur.totalAusgabenCents)}</span>
@@ -143,7 +155,7 @@
 	</div>
 
 	<!-- Main + Rail -->
-	<div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+	<div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
 		<div class="space-y-5">
 			<!-- Vier-Sphären-Matrix -->
 			<section class="panel" aria-labelledby="matrix-head">
@@ -151,7 +163,7 @@
 					<h2 id="matrix-head" class="panel-title">Vier-Sphären-Matrix</h2>
 					<p class="panel-sub">Einnahmen inkl. Spenden &amp; Mitgliedsbeiträge</p>
 				</div>
-				<table class="dt" data-testid="sphere-matrix">
+				<div class="dt-wrap"><table class="dt" data-testid="sphere-matrix">
 					<thead>
 						<tr>
 							<th scope="col" class="lbl-col">Sphäre</th>
@@ -192,7 +204,7 @@
 							</td>
 						</tr>
 					</tfoot>
-				</table>
+				</table></div>
 
 				{#if kreuzOk}
 					<div class="kreuz" data-testid="kreuzprobe">
@@ -345,8 +357,22 @@
 	.hl-amt.ein {
 		color: var(--type-einnahme);
 	}
+	.hl-amt.spe {
+		color: var(--type-spende);
+	}
 	.hl-amt.aus {
 		color: var(--type-ausgabe);
+	}
+	/* „davon"-breakdown lines — indented, quieter than the top-level rows. */
+	.hl-sub {
+		font-size: 12px;
+		padding-left: 12px;
+	}
+	.hl-sub .hl-lbl {
+		color: var(--ink-500);
+	}
+	.hl-sub .hl-amt {
+		font-weight: 600;
 	}
 	.hero-note {
 		margin: 12px 0 0;
@@ -391,8 +417,15 @@
 	}
 
 	/* ── Matrix table ───────────────────────────────────────────────────────── */
+	/* Scroll the fixed-column money matrix on a narrow viewport instead of
+	   letting the nowrap number columns push the panel wider than the screen
+	   (mobile clipping fix — the € column was cut off at 390px). */
+	.dt-wrap {
+		overflow-x: auto;
+	}
 	.dt {
 		width: 100%;
+		min-width: 340px;
 		border-collapse: collapse;
 		font-variant-numeric: tabular-nums;
 	}

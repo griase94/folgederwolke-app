@@ -72,7 +72,7 @@
 </script>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -->
-<div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+<div class="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
 	<!-- Paket-Karte (Hero) -->
 	<section class="paket" aria-labelledby="paket-head">
 		<div class="paket-head">

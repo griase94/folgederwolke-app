@@ -19,6 +19,7 @@
   import { formatCentsAsEuro } from "$lib/domain/money.js";
   import Lock from "@lucide/svelte/icons/lock";
   import ShieldCheck from "@lucide/svelte/icons/shield-check";
+  import CircleAlert from "@lucide/svelte/icons/circle-alert";
   import PreFlightList from "./PreFlightList.svelte";
 
   export type YearCardState = "ready" | "running" | "locked";
@@ -43,6 +44,8 @@
     preFlightItems?: YearCardPreFlightItem[];
     /** ready: collapse passed pre-flight items behind a disclosure (Hub). */
     collapsePreFlight?: boolean;
+    /** ready: pre-flight blockers remain → „Prüfung nötig" chip, not „Abschlussbereit". */
+    blocked?: boolean;
     /** ready: optional §64 "sicherer Bereich" line (WGB). */
     safeLine?: string;
     /** running: a quiet note. */
@@ -72,6 +75,7 @@
     buchungszahl,
     preFlightItems,
     collapsePreFlight = false,
+    blocked = false,
     safeLine,
     note,
     lockedMeta,
@@ -110,7 +114,12 @@
   >
     <div class="yc-head">
       <span class="yc-year">{year}</span>
-      {#if state === "ready"}
+      {#if state === "ready" && blocked}
+        <!-- Ready by date, but pre-flight blockers remain → not „Abschlussbereit". -->
+        <span class="statechip is-blocked">
+          <CircleAlert class="size-3.5" aria-hidden="true" />Prüfung nötig
+        </span>
+      {:else if state === "ready"}
         <span class="statechip is-ready">
           <ShieldCheck class="size-3.5" aria-hidden="true" />Abschlussbereit
         </span>
@@ -238,6 +247,11 @@
     background: var(--type-einnahme-tint);
     border-color: color-mix(in srgb, var(--type-einnahme) 30%, transparent);
     color: var(--type-einnahme);
+  }
+  .statechip.is-blocked {
+    background: color-mix(in srgb, var(--sev-warn) 12%, transparent);
+    border-color: color-mix(in srgb, var(--sev-warn) 32%, transparent);
+    color: var(--sev-warn-text);
   }
   /* Mini-EÜR */
   .yc-eur {
@@ -436,5 +450,25 @@
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     color: var(--type-einnahme);
+  }
+
+  /* Mobile: the running-card substats become a compact 2×2 grid with NO
+     border-left dividers — the flex-wrap row otherwise dropped a stray divider
+     onto the wrapped line (m12) and made the „läuft"-Karte tall enough to push
+     the ready CTA below the fold (m9). */
+  @media (max-width: 640px) {
+    .yc-substats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 16px;
+      flex-wrap: initial;
+    }
+    .yc-stat {
+      padding: 0;
+      border-left: 0;
+    }
+    .ys-val {
+      font-size: 14px;
+    }
   }
 </style>
