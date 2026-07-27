@@ -24,7 +24,11 @@ export const load: PageServerLoad = async ({ params }) => {
 
   const db = getDb();
 
-  // Count rows for display
+  // Count rows for display. The Spenden count MUST exclude Storno originals
+  // (supersedes_id IS NULL) to match the transaction feed's Art-count — the feed
+  // now filters supersedes too (buildSpendenWhere), and the @aurora-impl-d-abschluss
+  // e2e asserts gobd-counter == Art-count. Without this the identity breaks in a
+  // Storno year.
   const counts = await db.execute<{
     einnahmen: string;
     ausgaben: string;
@@ -33,7 +37,7 @@ export const load: PageServerLoad = async ({ params }) => {
     SELECT
       (SELECT count(*)::text FROM v_eur_year WHERE year_of_buchung = ${year} AND art = 'income')  AS einnahmen,
       (SELECT count(*)::text FROM v_eur_year WHERE year_of_buchung = ${year} AND art = 'expense') AS ausgaben,
-      (SELECT count(*)::text FROM donations WHERE year_of_buchung = ${year})                       AS spenden
+      (SELECT count(*)::text FROM donations WHERE year_of_buchung = ${year} AND supersedes_id IS NULL) AS spenden
   `);
 
   const { name: vereinName } = await readStammdaten();

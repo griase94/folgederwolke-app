@@ -43,12 +43,17 @@ const ALLOWLIST = new Set<string>([
   "spenden/neu/+page.svelte",
 ]);
 
+// Matches `+page.svelte` AND layout-breakout pages `+page@<segment>.svelte`
+// (e.g. gobd-export/+page@app.svelte) so the PageShell guard also covers routes
+// that opt out of a parent layout — otherwise a breakout is only grep-verified.
+const PAGE_FILE = /^\+page(@[A-Za-z0-9._-]+)?\.svelte$/;
+
 function* walkPages(dir: string): Generator<string> {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     if (statSync(full).isDirectory()) {
       yield* walkPages(full);
-    } else if (entry === "+page.svelte") {
+    } else if (PAGE_FILE.test(entry)) {
       yield full;
     }
   }
