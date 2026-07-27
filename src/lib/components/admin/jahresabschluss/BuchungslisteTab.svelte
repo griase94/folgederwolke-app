@@ -130,10 +130,18 @@
 	}
 
 	// ── Foot sum (client-side over the filtered view) ─────────────────────────
+	// The Buchungsliste is the TRANSACTION feed (income ∪ expense ∪ donation) —
+	// it does NOT carry Mitgliedsbeiträge. The EÜR-Überschuss additionally
+	// includes paid Mitgliedsbeiträge, so the feed-saldo equals the EÜR ONLY in a
+	// year without paid Beiträge. We show the ✓-Kreuzprobe when they truly match,
+	// and otherwise state the honest Mitgliedsbeitrags-delta (never a false ✓).
 	const footSum = $derived(
 		rows.reduce((a, r) => a + (r.kind === 'expense' ? -r.betragCents : r.betragCents), 0)
 	);
 	const kreuzOk = $derived(!filtersActive && footSum === ueberschussCents);
+	// EÜR − Feed-Saldo = the part of the EÜR that isn't in the transaction feed
+	// (paid Mitgliedsbeiträge). Only meaningful when unfiltered.
+	const beitragDelta = $derived(!filtersActive ? ueberschussCents - footSum : 0);
 	const capReached = $derived(allRowsCount >= FEED_CAP);
 
 	function formatDate(iso: string): string {
@@ -361,13 +369,22 @@
 
 			<!-- Foot -->
 			<div class="lfoot" data-testid="buchungsliste-foot">
-				<span class="lf-lbl">
-					{filtersActive ? 'Summe der Sicht' : 'Saldo (Kreuzprobe zur EÜR)'}
-				</span>
-				<span class="lf-amt tabular" class:ein={footSum >= 0} class:aus={footSum < 0}>
-					{footSum < 0 ? '−' : ''}{eur(Math.abs(footSum))}
-					{#if kreuzOk}<span class="lf-check" data-testid="foot-kreuzprobe">✓</span>{/if}
-				</span>
+				<div class="lf-main">
+					<span class="lf-lbl">
+						{filtersActive ? 'Summe der Sicht' : 'Transaktions-Saldo'}
+					</span>
+					<span class="lf-amt tabular" class:ein={footSum >= 0} class:aus={footSum < 0}>
+						{footSum < 0 ? '−' : ''}{eur(Math.abs(footSum))}
+						{#if kreuzOk}<span class="lf-check" data-testid="foot-kreuzprobe">= EÜR ✓</span>{/if}
+					</span>
+				</div>
+				{#if !filtersActive && beitragDelta > 0}
+					<!-- Honest reconciliation: the feed excludes Mitgliedsbeiträge, which the EÜR adds. -->
+					<p class="lf-note" data-testid="foot-beitrag-note">
+						+ {eur(beitragDelta)} Mitgliedsbeiträge (nicht im Transaktions-Feed) = EÜR-Überschuss
+						<b>{eur(ueberschussCents)}</b>
+					</p>
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -673,13 +690,26 @@
 		color: var(--ink-700);
 	}
 	.lfoot {
+		padding: 13px 16px;
+		border-top: 2px solid var(--border);
+		background: var(--secondary);
+	}
+	.lf-main {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
 		gap: 14px;
-		padding: 13px 16px;
-		border-top: 2px solid var(--border);
-		background: var(--secondary);
+	}
+	.lf-note {
+		margin: 8px 0 0;
+		font-size: 11.5px;
+		line-height: 1.45;
+		color: var(--ink-500);
+	}
+	.lf-note b {
+		color: var(--type-einnahme);
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
 	}
 	.lf-lbl {
 		font-size: 12.5px;
