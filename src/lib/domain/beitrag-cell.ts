@@ -105,3 +105,41 @@ export function popoverKindForState(state: CellState): PopoverKind {
       return null;
   }
 }
+
+/**
+ * The seven surfaces of `BeitragCellDialog` (modal-member-popovers §1). Four are
+ * entry variants reached directly from a cell click (via `variantForKind`); the
+ * other three are internal transitions (`edit` from paid-review "Bearbeiten",
+ * `befreien` from mark-paid "Befreien") plus the read-only `readonly-mini` shown
+ * for "—" cells (pre_join / post_austritt / satz-fehlt).
+ */
+export type BeitragDialogVariant =
+  | "mark-paid"
+  | "edit"
+  | "befreien"
+  | "paid-review"
+  | "exempt-review"
+  | "perm-exempt"
+  | "readonly-mini";
+
+/**
+ * Map the popover `kind` emitted by BeitragCell.onOpenPopover to the dialog's
+ * entry variant. Single source of truth so the matrix (and every other surface)
+ * never re-derives the variant from cell state — it forwards `kind` and asks
+ * here. `readonly-mini` has no `kind` (BeitragCell does not emit for "—" cells);
+ * callers pass that variant explicitly.
+ */
+export function variantForKind(
+  kind: Exclude<PopoverKind, null>,
+): BeitragDialogVariant {
+  switch (kind) {
+    case "mark-paid":
+      return "mark-paid";
+    case "paid":
+      return "paid-review";
+    case "exempt":
+      return "exempt-review";
+    case "permanently_exempt":
+      return "perm-exempt";
+  }
+}
