@@ -17,11 +17,9 @@
   import { cn } from "$lib/utils.js";
   import type { Snippet } from "svelte";
   import { formatCentsAsEuro } from "$lib/domain/money.js";
-  import Check from "@lucide/svelte/icons/check";
-  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
-  import CircleAlert from "@lucide/svelte/icons/circle-alert";
   import Lock from "@lucide/svelte/icons/lock";
   import ShieldCheck from "@lucide/svelte/icons/shield-check";
+  import PreFlightList from "./PreFlightList.svelte";
 
   export type YearCardState = "ready" | "running" | "locked";
   export type PreFlightStatus = "pass" | "warn" | "block";
@@ -143,29 +141,7 @@
 
       {#if preFlightItems && preFlightItems.length > 0}
         <div class="yc-checkhead">Prüfpunkte</div>
-        <div class="checklist">
-          {#each preFlightItems as item (item.id)}
-            <div class="ck-item {item.status}">
-              <span class="ck-ic">
-                {#if item.status === "pass"}
-                  <Check class="size-3.5" aria-hidden="true" />
-                {:else if item.status === "warn"}
-                  <TriangleAlert class="size-3.5" aria-hidden="true" />
-                {:else}
-                  <CircleAlert class="size-3.5" aria-hidden="true" />
-                {/if}
-              </span>
-              <div class="ck-body">
-                <span class="ck-label">{item.label}</span>
-                <span class="ck-sub">{item.detail}</span>
-              </div>
-              {#if item.status !== "pass" && item.fixHref}
-                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- server-built in-app fix path -->
-                <a class="ck-fix" href={item.fixHref}>Beheben ›</a>
-              {/if}
-            </div>
-          {/each}
-        </div>
+        <PreFlightList items={preFlightItems} />
       {/if}
 
       {#if consequence || cta}
@@ -362,7 +338,7 @@
   .yc-runfoot {
     margin-top: 14px;
   }
-  /* Pre-flight checklist */
+  /* Pre-flight head (the list itself is the shared PreFlightList component) */
   .yc-checkhead {
     margin-top: 16px;
     margin-bottom: 8px;
@@ -371,71 +347,6 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--ink-500);
-  }
-  .checklist {
-    display: flex;
-    flex-direction: column;
-  }
-  .ck-item {
-    display: grid;
-    grid-template-columns: 22px minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 11px;
-    padding: 9px 2px;
-  }
-  .ck-item + .ck-item {
-    border-top: 1px solid var(--hairline);
-  }
-  .ck-ic {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    flex: none;
-    margin-top: 1px;
-  }
-  .ck-item.pass .ck-ic {
-    background: var(--type-einnahme-tint);
-    color: var(--type-einnahme);
-  }
-  .ck-item.warn .ck-ic {
-    background: color-mix(in srgb, var(--sev-warn) 16%, transparent);
-    color: var(--sev-warn-text);
-  }
-  .ck-item.block .ck-ic {
-    background: color-mix(in srgb, var(--sev-critical) 14%, transparent);
-    color: var(--sev-critical-text);
-  }
-  .ck-label {
-    display: block;
-    font-size: 13px;
-    font-weight: 550;
-    color: var(--ink-900);
-    line-height: 1.35;
-  }
-  .ck-item.block .ck-label {
-    color: var(--sev-critical-text);
-    font-weight: 650;
-  }
-  .ck-sub {
-    display: block;
-    font-size: 11.5px;
-    color: var(--ink-500);
-    margin-top: 2px;
-    line-height: 1.4;
-  }
-  .ck-fix {
-    align-self: center;
-    font-size: 12px;
-    font-weight: 650;
-    color: var(--primary-text);
-    text-decoration: none;
-    white-space: nowrap;
-  }
-  .ck-fix:hover {
-    text-decoration: underline;
-    text-underline-offset: 2px;
   }
   /* Foot */
   .yc-foot {
