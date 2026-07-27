@@ -21,31 +21,21 @@ import { sentMails } from "$lib/server/db/schema/mails.js";
 import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
 import { resolveBeitragState } from "$lib/domain/beitrag-state.js";
 
+// Client-safe types live in $lib/domain so Svelte components can import them
+// without tripping the $lib/server guard; re-exported here for server callers.
+export type {
+  ReminderBlockedReason,
+  ReminderCandidate,
+  ReminderCandidatesData,
+} from "$lib/domain/reminder-candidate.js";
+import type {
+  ReminderCandidate,
+  ReminderBlockedReason,
+  ReminderCandidatesData,
+} from "$lib/domain/reminder-candidate.js";
+
 /** 30-day dedup window (ADR-0005 — matches sendMail dedup + the detail load). */
 export const REMINDER_DEDUP_DAYS = 30;
-
-export type ReminderBlockedReason = "no_email" | "recently_reminded";
-
-export type ReminderCandidate = {
-  memberId: string;
-  /** "Vorname Nachname". */
-  name: string;
-  email: string | null;
-  /** Only owing states reach the list. */
-  state: "open" | "partial" | "overdue";
-  /** Soll − bezahlt (clamped ≥ 0). */
-  openCents: number;
-  /** ISO timestamp of the last beitrag_reminder, or null. */
-  lastReminderAt: string | null;
-  /** True when the member can be reminded (has e-mail, not recently reminded). */
-  selectable: boolean;
-  blockedReason: ReminderBlockedReason | null;
-};
-
-export type ReminderCandidatesData = {
-  year: number;
-  candidates: ReminderCandidate[];
-};
 
 /** Parse settings.festgeschrieben_bis / grace-days (jsonb year int or string). */
 function parseSettingInt(v: unknown): number | null {
@@ -187,7 +177,8 @@ export async function loadReminderCandidates(
     ({ member, state, openCents }) => {
       const lastReminderAt = lastByMember.get(member.id) ?? null;
       const recentlyReminded =
-        lastReminderAt !== null && new Date(lastReminderAt).getTime() >= cutoffMs;
+        lastReminderAt !== null &&
+        new Date(lastReminderAt).getTime() >= cutoffMs;
       let blockedReason: ReminderBlockedReason | null = null;
       if (!member.email) blockedReason = "no_email";
       else if (recentlyReminded) blockedReason = "recently_reminded";
