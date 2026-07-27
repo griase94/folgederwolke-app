@@ -1,9 +1,9 @@
 <!--
   MemberCardMobile — compact card variant of MemberRow for use below the md
-  breakpoint (PM-009). Package D: uses resolveBeitragState + BeitragStatusPill
-  (single canonical resolver) instead of the old simpleBeitragStatus inline.
+  breakpoint (PM-009). Reads the pre-resolved matrix cell (single MatrixData
+  source) and renders a BeitragCell(variant='pill').
 
-  - shows a single BeitragStatusPill for the current Buchungsjahr
+  - shows a single BeitragCell pill for the current Buchungsjahr
   - card body is a tap-target → /app/mitglieder/{id}
   - open/partial (unpaid) rows get a trailing ≥44px pay affordance that opens
     MarkPaidControl (bottom-sheet on mobile).

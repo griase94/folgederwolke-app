@@ -13,7 +13,7 @@
 	 *   - Timeline rows also use resolveBeitragState (not simpleBeitragStatus).
 	 */
 	import MarkPaidControl from './MarkPaidControl.svelte';
-	import BeitragStatusPill from './BeitragStatusPill.svelte';
+	import BeitragCell from './BeitragCell.svelte';
 	import { resolveBeitragState, projectForList } from '$lib/domain/beitrag-state.js';
 	import type { CellState } from '$lib/domain/beitrag-cell.js';
 	import { berlinYear } from '$lib/domain/year.js';
@@ -198,7 +198,8 @@
 			<div>
 				<p class="text-xs font-medium text-muted-foreground">Beitrag {heroYear}</p>
 				<div class="mt-1">
-					<BeitragStatusPill
+					<BeitragCell
+						variant="pill"
 						state={heroDisplayState}
 						year={heroYear}
 						paidCents={heroState.paidCents}

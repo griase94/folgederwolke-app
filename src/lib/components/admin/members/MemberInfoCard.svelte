@@ -2,7 +2,7 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import EditMemberDialog from './EditMemberDialog.svelte';
-	import BeitragStatusPill from './BeitragStatusPill.svelte';
+	import BeitragCell from './BeitragCell.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
 	import type { ResolveBeitragStateResult } from '$lib/domain/beitrag-state.js';
 	import type { CellState } from '$lib/domain/beitrag-cell.js';
@@ -48,11 +48,10 @@
 
 	let editOpen = $state(false);
 
-	// Cast to MemberView for EditMemberDialog (beitrags field is unused there)
+	// Cast to MemberView for EditMemberDialog (contact fields only).
 	const memberView = $derived<MemberView>({
 		...member,
 		isFixture: member.isFixture ?? false,
-		beitrags: {},
 	});
 
 	function roleLabel(role: string): string {
@@ -169,7 +168,8 @@
 				{#if currentYear !== null && pillDisplayState !== null && currentYearState !== null}
 					<div class="mt-3">
 						<p class="mb-1 text-xs text-muted-foreground">Beitrag {currentYear}</p>
-						<BeitragStatusPill
+						<BeitragCell
+							variant="pill"
 							state={pillDisplayState}
 							year={currentYear}
 							paidCents={currentYearState.paidCents}
