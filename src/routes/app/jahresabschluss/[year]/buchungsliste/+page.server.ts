@@ -63,6 +63,16 @@ export const load: PageServerLoad = async ({ params, url }) => {
 
   const filtered = filterAndSortRows(mapped, filters);
 
+  // Per-Art counts over the UNFILTERED year set — baked into the Art filter
+  // chips ("Einnahmen 94"). Presentational only (derived from the already-
+  // loaded `mapped`, no extra query).
+  const kindCounts = {
+    all: mapped.length,
+    income: mapped.filter((r) => r.kind === "income").length,
+    expense: mapped.filter((r) => r.kind === "expense").length,
+    donation: mapped.filter((r) => r.kind === "donation").length,
+  };
+
   // Lookup tables for filter chips
   const db = getDb();
   const [kategorienOpts, projectsOpts] = await Promise.all([
@@ -81,6 +91,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
     rows: filtered,
     totalRows: filtered.length,
     allRowsCount: mapped.length,
+    kindCounts,
     kategorien: kategorienOpts,
     projects: projectsOpts,
   };

@@ -1,126 +1,349 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import PageShell from '$lib/components/layout/PageShell.svelte';
+	import ExportManifestLine from '$lib/components/admin/jahresabschluss/ExportManifestLine.svelte';
+	import GobdTrustBlock from '$lib/components/admin/jahresabschluss/GobdTrustBlock.svelte';
+	import Info from '@lucide/svelte/icons/info';
+	import Package from '@lucide/svelte/icons/package';
+	import LoaderCircle from '@lucide/svelte/icons/loader-circle';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
 
-	const gobdZipUrl = $derived(`/app/jahresabschluss/${data.year}/bundle.zip`);
+	const bundleUrl = $derived(`/app/jahresabschluss/${data.year}/bundle.zip`);
+
+	let generating = $state(false);
+	function onZipClick(e: MouseEvent) {
+		if (!data.hasBuchungen) {
+			e.preventDefault();
+			return;
+		}
+		if (generating) {
+			e.preventDefault();
+			return;
+		}
+		generating = true;
+		setTimeout(() => (generating = false), 8000);
+	}
 </script>
 
 <svelte:head>
-	<title>GoBD-Export {data.year} – {page.data.vereinName}</title>
+	<title>GoBD-Z3 Export {data.year} – {page.data.vereinName}</title>
 </svelte:head>
 
-<div class="mx-auto max-w-2xl px-4 py-8 lg:px-8">
-	<!-- Back link -->
-	<!-- eslint-disable svelte/no-navigation-without-resolve -->
-	<div class="mb-4">
-		<a
-			href="/app/jahresabschluss/{data.year}"
-			class="text-sm text-muted-foreground hover:text-foreground"
-		>
-			&larr; Jahresabschluss {data.year}
-		</a>
+<!-- eslint-disable svelte/no-navigation-without-resolve -->
+<PageShell width="list">
+	<div class="mb-5">
+		<h2 class="text-xl font-bold tracking-tight text-foreground">GoBD-Z3 Export {data.year}</h2>
+		<p class="mt-1 text-sm text-muted-foreground">
+			Maschinenlesbarer Export für die Betriebsprüfung — § 147 Abs. 6 AO.
+		</p>
 	</div>
 
-	<h1 class="text-2xl font-bold text-foreground">GoBD-Z3 Export {data.year}</h1>
-	<p class="mt-1 text-sm text-muted-foreground">
-		{data.vereinName} &middot; Steuerberater-Übergabe
-	</p>
-
-	<!-- Info card -->
-	<div class="mt-6 rounded-xl border border-border bg-card shadow-sm">
-		<div class="px-6 py-5">
-			<h2 class="text-base font-semibold text-foreground">Inhalt des GoBD-Z3 Exports</h2>
-			<p class="mt-1 text-sm text-muted-foreground">
-				Maschinenlesbarer Buchungsjournal-Export für IDEA-Audit-Software (§ 147 Abs. 6 AO).
+	{#if !data.closed}
+		<div class="callout info" role="status" data-testid="gobd-zwischenstand">
+			<Info class="size-4 flex-none" aria-hidden="true" />
+			<p>
+				{data.year} ist noch nicht festgeschrieben — der Export ist ein Zwischenstand, Zahlen können
+				sich noch ändern.
 			</p>
 		</div>
+	{/if}
 
-		<!-- Stats -->
-		<div class="grid grid-cols-3 divide-x divide-border border-t border-border">
-			<div class="px-6 py-4 text-center">
-				<div class="text-2xl font-bold text-foreground">{data.counts.einnahmen}</div>
-				<div class="text-xs text-muted-foreground">Einnahmen</div>
-			</div>
-			<div class="px-6 py-4 text-center">
-				<div class="text-2xl font-bold text-foreground">{data.counts.ausgaben}</div>
-				<div class="text-xs text-muted-foreground">Ausgaben</div>
-			</div>
-			<div class="px-6 py-4 text-center">
-				<div class="text-2xl font-bold text-foreground">{data.counts.spenden}</div>
-				<div class="text-xs text-muted-foreground">Spenden</div>
-			</div>
+	<div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+		<!-- Main -->
+		<div class="space-y-5">
+			<!-- Manifest + Zähler-Fakten -->
+			<section class="panel" aria-labelledby="gobd-manifest-head">
+				<h3 id="gobd-manifest-head" class="panel-title">Paket-Inhalt</h3>
+				<p class="counts" data-testid="gobd-counts">
+					<span class="c ein">{data.counts.einnahmen} Einnahmen</span>
+					<span class="sep">·</span>
+					<span class="c aus">{data.counts.ausgaben} Ausgaben</span>
+					<span class="sep">·</span>
+					<span class="c spe">{data.counts.spenden} Spenden</span>
+				</p>
+				<ul class="manifest">
+					{#each data.manifest as entry (entry.no)}
+						<li>
+							<ExportManifestLine
+								filename={entry.path}
+								desc={entry.label}
+								highlight={entry.highlight}
+								badge={entry.highlight ? 'GoBD-Z3' : undefined}
+							/>
+						</li>
+					{/each}
+				</ul>
+				<p class="note">Der GoBD-Z3-Export steckt im Paket unter <code>05_GoBD-Z3-{data.year}/</code>.</p>
+			</section>
+
+			<!-- Format & Schema -->
+			<section class="panel" aria-labelledby="gobd-format-head">
+				<h3 id="gobd-format-head" class="panel-title">Format &amp; Schema</h3>
+				<dl class="facts">
+					<div class="f-row"><dt>Format</dt><dd class="mono">IDEA-XML (GDPdU/GoBD Z3, v2.0)</dd></div>
+					<div class="f-row"><dt>Zeichensatz</dt><dd class="mono">UTF-8</dd></div>
+					<div class="f-row"><dt>Datumsformat</dt><dd class="mono">ISO 8601 (YYYY-MM-DD)</dd></div>
+					<div class="f-row">
+						<dt>Betragsformat</dt>
+						<dd>EUR mit 2 Dezimalstellen (Cents → EUR), Ausgaben negativ</dd>
+					</div>
+				</dl>
+			</section>
+
+			<!-- IDEA-Import-Anleitung -->
+			<section class="panel" aria-labelledby="gobd-idea-head">
+				<h3 id="gobd-idea-head" class="panel-title">IDEA-Import</h3>
+				<ol class="tl">
+					<li>
+						<span class="tl-no">1</span>
+						<span class="tl-txt">
+							Entpacke das ZIP — den Ordner <code>05_GoBD-Z3-{data.year}</code> brauchst du gleich.
+						</span>
+					</li>
+					<li>
+						<span class="tl-no">2</span>
+						<span class="tl-txt">
+							Starte IDEA → Datei → Datei importieren → Dateityp XML, Schema Z3 (GDPdU).
+						</span>
+					</li>
+					<li>
+						<span class="tl-no">3</span>
+						<span class="tl-txt">
+							Wähle <code>gobd_z3_{data.year}.xml</code> und prüfe die importierten Buchungen.
+						</span>
+					</li>
+				</ol>
+			</section>
 		</div>
 
-		<!-- Format details -->
-		<div class="border-t border-border/50 px-6 py-4">
-			<p class="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Format</p>
-			<ul class="space-y-1 text-xs text-muted-foreground">
-				<li>Schema: GDPdU/GoBD Z3, Version 2.0 (BMF 2014-07-14)</li>
-				<li>Encoding: UTF-8</li>
-				<li>Beträge: EUR mit 2 Dezimalstellen, Ausgaben negativ</li>
-				<li>Datumsformat: ISO 8601 (YYYY-MM-DD)</li>
-			</ul>
-		</div>
-
-		<!-- Download action -->
-		<div class="border-t border-border/50 px-6 py-4">
-			<p class="mb-3 text-sm text-muted-foreground">
-				Der GoBD-Z3 Export ist im vollständigen Jahresabschluss-Bundle enthalten.
-			</p>
-			<a
-				href={gobdZipUrl}
-				download="Jahresabschluss-{data.year}.zip"
-				class="inline-flex items-center gap-2 rounded-lg bg-primary-strong px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-strong/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-			>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					width="16"
-					height="16"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					aria-hidden="true"
-				>
-					<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-					<polyline points="7 10 12 15 17 10" />
-					<line x1="12" y1="15" x2="12" y2="3" />
-				</svg>
-				Bundle herunterladen (inkl. GoBD-Z3 XML)
-			</a>
-		</div>
-	</div>
-
-	<!-- IDEA import instructions -->
-	<div class="mt-4 rounded-xl border border-border bg-card shadow-sm">
-		<div class="px-6 py-5">
-			<h2 class="text-base font-semibold text-foreground">IDEA-Import Anleitung</h2>
-		</div>
-		<div class="border-t border-border/50 px-6 py-4">
-			<ol class="space-y-2 text-sm text-muted-foreground">
-				<li class="flex gap-3">
-					<span class="font-medium text-primary">1.</span>
-					Bundle-ZIP herunterladen und entpacken
-				</li>
-				<li class="flex gap-3">
-					<span class="font-medium text-primary">2.</span>
-					IDEA starten → Datei → Datei importieren
-				</li>
-				<li class="flex gap-3">
-					<span class="font-medium text-primary">3.</span>
-					Dateityp: XML &middot; Schema: Z3 (GDPdU)
-				</li>
-				<li class="flex gap-3">
-					<span class="font-medium text-primary">4.</span>
-					Datei auswählen: <code class="rounded bg-muted px-1 text-xs"
-						>05_GoBD-Z3-{data.year}/gobd_z3_{data.year}.xml</code
+		<!-- Rail -->
+		<aside class="space-y-4">
+			<div class="dl-card">
+				<h3 class="panel-title">Download</h3>
+				{#if data.hasBuchungen}
+					<a
+						class="zip-cta"
+						class:is-primary={data.closed}
+						class:is-ghost={!data.closed}
+						href={bundleUrl}
+						download={`Jahresabschluss-${data.year}.zip`}
+						onclick={onZipClick}
+						aria-busy={generating}
+						data-testid="gobd-download"
 					>
-				</li>
-			</ol>
-		</div>
+						{#if generating}
+							<LoaderCircle class="size-4 spin" aria-hidden="true" />
+							Paket wird gepackt…
+						{:else}
+							<Package class="size-4" aria-hidden="true" />
+							{data.closed ? 'ZIP herunterladen' : 'Zwischenstand herunterladen'}
+						{/if}
+					</a>
+					<p class="dl-name"><code>Jahresabschluss-{data.year}.zip</code></p>
+					<p class="dl-hint">Enthält den GoBD-Z3-Export unter 05_GoBD-Z3-{data.year}/.</p>
+				{:else}
+					<span class="zip-cta is-disabled" aria-disabled="true" data-testid="gobd-download-disabled">
+						<Package class="size-4" aria-hidden="true" />
+						Nichts zu exportieren
+					</span>
+					<p class="dl-hint">Ohne Buchungen gibt es nichts zu exportieren.</p>
+				{/if}
+			</div>
+
+			{#if data.closed}
+				<GobdTrustBlock stacked />
+			{/if}
+		</aside>
 	</div>
-</div>
+</PageShell>
+
+<style>
+	.callout {
+		display: flex;
+		align-items: flex-start;
+		gap: 10px;
+		padding: 11px 14px;
+		border-radius: 10px;
+		font-size: 13px;
+		line-height: 1.45;
+		margin-bottom: 20px;
+		border: 1px solid color-mix(in srgb, var(--sev-info) 35%, transparent);
+		background: color-mix(in srgb, var(--sev-info) 9%, transparent);
+		color: var(--ink-700);
+	}
+	.callout p {
+		margin: 0;
+	}
+	.callout :global(svg) {
+		color: var(--sev-info);
+		margin-top: 1px;
+	}
+	.panel,
+	.dl-card {
+		background: var(--card);
+		border: 1px solid var(--border);
+		border-radius: 14px;
+		box-shadow: var(--shadow-card);
+		padding: 16px 18px;
+	}
+	.panel-title {
+		margin: 0 0 12px;
+		font-size: 14px;
+		font-weight: 700;
+		color: var(--ink-900);
+	}
+	.counts {
+		margin: 0 0 14px;
+		font-size: 13px;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	.counts .c.ein {
+		color: var(--type-einnahme);
+	}
+	.counts .c.aus {
+		color: var(--type-ausgabe);
+	}
+	.counts .c.spe {
+		color: var(--type-spende);
+	}
+	.counts .sep {
+		color: var(--ink-300);
+	}
+	.manifest {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.manifest > li + li {
+		margin-top: 8px;
+	}
+	.note {
+		margin: 14px 0 0;
+		font-size: 12px;
+		color: var(--ink-500);
+	}
+	code {
+		font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+		font-size: 0.92em;
+		padding: 1px 5px;
+		border-radius: 5px;
+		background: var(--secondary);
+		color: var(--ink-700);
+	}
+	/* Format facts — one label ruler, values right */
+	.facts {
+		margin: 0;
+	}
+	.f-row {
+		display: grid;
+		grid-template-columns: 128px 1fr;
+		gap: 14px;
+		padding: 8px 0;
+		font-size: 13px;
+	}
+	.f-row + .f-row {
+		border-top: 1px solid var(--hairline);
+	}
+	.f-row dt {
+		color: var(--ink-500);
+		font-weight: 600;
+	}
+	.f-row dd {
+		margin: 0;
+		color: var(--ink-900);
+	}
+	.f-row dd.mono {
+		font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+		font-size: 12.5px;
+	}
+	/* IDEA timeline — neutral numbered steps */
+	.tl {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+	.tl li {
+		display: flex;
+		align-items: flex-start;
+		gap: 12px;
+	}
+	.tl-no {
+		flex: none;
+		width: 24px;
+		height: 24px;
+		display: grid;
+		place-items: center;
+		border-radius: 50%;
+		background: var(--secondary);
+		border: 1px solid var(--border);
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--ink-700);
+	}
+	.tl-txt {
+		font-size: 13px;
+		line-height: 1.5;
+		color: var(--ink-700);
+		padding-top: 2px;
+	}
+	/* Download CTA */
+	.zip-cta {
+		display: inline-flex;
+		width: 100%;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 11px 18px;
+		border-radius: 10px;
+		font-size: 14px;
+		font-weight: 700;
+		text-decoration: none;
+	}
+	.zip-cta.is-primary {
+		background: var(--primary-strong, var(--primary));
+		color: var(--primary-foreground);
+	}
+	.zip-cta.is-primary:hover {
+		background: color-mix(in srgb, var(--primary-strong, var(--primary)) 88%, #000);
+	}
+	.zip-cta.is-ghost {
+		border: 1px solid var(--border);
+		background: var(--card);
+		color: var(--ink-900);
+	}
+	.zip-cta.is-ghost:hover {
+		background: var(--secondary);
+	}
+	.zip-cta.is-disabled {
+		border: 1px solid var(--border);
+		background: var(--secondary);
+		color: var(--ink-300);
+		cursor: not-allowed;
+	}
+	.zip-cta :global(.spin) {
+		animation: gobdspin 0.8s linear infinite;
+	}
+	@keyframes gobdspin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	.dl-name {
+		margin: 10px 0 0;
+		text-align: center;
+	}
+	.dl-hint {
+		margin: 8px 0 0;
+		font-size: 11.5px;
+		color: var(--ink-500);
+	}
+</style>

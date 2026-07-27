@@ -35,7 +35,10 @@ export interface SpendeStatusRow {
  * (most recent applicable version) — 300 € is the current value used by all
  * BMF-Vordrucke.
  */
-const KLEINBETRAG_THRESHOLD_CENTS = 30000; // 300 € per §50 Abs. 4 EStDV
+/** 300 € (§50 Abs. 4 EStDV) — Zuwendungen darüber brauchen eine
+ *  Zuwendungsbestätigung; darunter genügt der Bareinzahlungsbeleg. Shared with
+ *  the ja-spenden „≥ 300 €"-Flag + the pre-flight #6 warning threshold. */
+export const KLEINBETRAG_THRESHOLD_CENTS = 30000;
 
 export function bescheinigungStatusFor(
   row: SpendeStatusRow,
