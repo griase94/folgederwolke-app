@@ -42,6 +42,8 @@ export interface JahresabschlussHub {
   readyYear: number | null;
   /** Full pre-flight for the ready year (the close gate + checklist). */
   readyPreFlight: PreFlightChecklist | null;
+  /** Current Buchungsjahr (Europe/Berlin) — the „läuft"-Karte on the Hub. */
+  currentYear: number;
 }
 
 interface HubAggRow {
@@ -146,5 +148,5 @@ export async function loadJahresabschlussHub(): Promise<JahresabschlussHub> {
       ? (await loadEurWorkspaceData(readyYear)).preFlight
       : null;
 
-  return { years, readyYear, readyPreFlight };
+  return { years, readyYear, readyPreFlight, currentYear };
 }
