@@ -3,28 +3,31 @@
 	import { toast } from 'svelte-sonner';
 	import { invalidateAll } from '$app/navigation';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
-	import BeitragStatusPill from './BeitragStatusPill.svelte';
+	import BeitragCell from './BeitragCell.svelte';
 	import MarkPaidControl from './MarkPaidControl.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
-	import { currentBuchungsjahr, clampYearToAvailable, berlinYear } from '$lib/domain/year.js';
-	import {
-		resolveBeitragState,
-		projectForList,
-	} from '$lib/domain/beitrag-state.js';
-	import type { CellState } from '$lib/domain/beitrag-cell.js';
+	import { currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
+	import { projectForList } from '$lib/domain/beitrag-state.js';
+	import type { CellState, MatrixCell } from '$lib/domain/beitrag-cell.js';
 
 	let {
 		member,
 		years,
+		cells,
 		onEdit,
 		selectable = false,
 		selected = false,
 		bulkYear = null,
-		satzByYear = {},
 		onToggleSelect
 	}: {
 		member: MemberView;
 		years: number[];
+		/**
+		 * Pre-resolved matrix cells keyed `${memberId}:${year}` — the single source
+		 * of beitrag state (replaces the client-side resolveBeitragState re-derivation,
+		 * which passed festBis=null and so never reflected Festschreibung).
+		 */
+		cells: ReadonlyMap<string, MatrixCell>;
 		onEdit: (m: MemberView) => void;
 		/** Bulk-select mode — renders a leading checkbox + hides the kebab. */
 		selectable?: boolean;
@@ -37,8 +40,6 @@
 		 * ticked and re-paid.
 		 */
 		bulkYear?: number | null;
-		/** Per-year configured Beitragssatz (cents) — seeds the mark-paid popover. */
-		satzByYear?: Record<number, number>;
 		onToggleSelect?: (id: string, checked: boolean) => void;
 	} = $props();
 
@@ -85,47 +86,22 @@
 	let markPaidBetragCents = $state(0);
 	let markPaidPaidCents = $state(0);
 
-	// Package D: canonical current-year resolver via resolveBeitragState.
-	// Single source of truth — replaces simpleBeitragStatus inline checks.
 	const currentYear = $derived(
 		years.length > 0 ? clampYearToAvailable(currentBuchungsjahr(), years) : null,
 	);
 
-	const eintrittsJahr = $derived(
-		member.eintrittsDatum ? Number(member.eintrittsDatum.slice(0, 4)) : berlinYear(),
-	);
-	const austrittsJahr = $derived(
-		member.austrittsDatum ? Number(member.austrittsDatum.slice(0, 4)) : null,
+	// Single source of beitrag state — the pre-resolved matrix cell for the current
+	// Buchungsjahr (no client-side re-derivation; carries the real festBis lock).
+	const currentCell = $derived<MatrixCell | null>(
+		currentYear !== null ? (cells.get(`${member.id}:${currentYear}`) ?? null) : null,
 	);
 
-	const currentYearState = $derived.by(() => {
-		if (currentYear === null) return null;
-		const row = member.beitrags[currentYear] ?? null;
-		const result = resolveBeitragState({
-			year: currentYear,
-			eintrittsJahr: eintrittsJahr,
-			austrittsJahr: austrittsJahr,
-			beitragExempt: member.beitragExempt,
-			row: row
-				? {
-						betragCents: row.betragCents,
-						paidCents: row.paidCents,
-						isExempt: row.isExempt,
-						gezahltAm: row.gezahltAm,
-					}
-				: null,
-			satzCents: satzByYear[currentYear] ?? null,
-			festBis: null,
-		});
-		return result;
-	});
-
-	// Projected state for the list: overdue→open (list shows single "Offen")
+	// Projected state for the list: overdue→open (list shows a single "Offen").
 	const currentYearDisplayState = $derived<CellState | null>(
-		currentYearState !== null ? projectForList(currentYearState.state) : null,
+		currentCell !== null ? projectForList(currentCell.state) : null,
 	);
 
-	// One-tap pay: show for open or partial states on non-exempt, active members
+	// One-tap pay: show for open or partial states on non-exempt, active members.
 	const showPayTrigger = $derived(
 		currentYear !== null &&
 			currentYearDisplayState !== null &&
@@ -135,10 +111,10 @@
 	);
 
 	function openMarkPaid(year: number) {
-		const b = member.beitrags[year];
+		const cell = cells.get(`${member.id}:${year}`);
 		markPaidYear = year;
-		markPaidBetragCents = b?.betragCents ?? satzByYear[year] ?? 0;
-		markPaidPaidCents = b?.paidCents ?? 0;
+		markPaidBetragCents = cell?.betragCents ?? 0;
+		markPaidPaidCents = cell?.paidCents ?? 0;
 		dropdownOpen = false;
 		queueMicrotask(() => (markPaidOpen = true));
 	}
@@ -192,24 +168,13 @@
 		queueMicrotask(() => deleteFormEl?.requestSubmit());
 	}
 
-	// Bulk-select helper: mirror the gate logic without simpleBeitragStatus
+	// Bulk-select gate: enabled only when the bulk-year cell projects to "open".
 	function isSelectDisabledForBulk(): boolean {
 		if (bulkYear === null) return true;
 		if (member.beitragExempt || !!member.austrittsDatum) return true;
-		const row = member.beitrags[bulkYear] ?? null;
-		const result = resolveBeitragState({
-			year: bulkYear,
-			eintrittsJahr: eintrittsJahr,
-			austrittsJahr: austrittsJahr,
-			beitragExempt: member.beitragExempt,
-			row: row
-				? { betragCents: row.betragCents, paidCents: row.paidCents, isExempt: row.isExempt, gezahltAm: row.gezahltAm }
-				: null,
-			satzCents: satzByYear[bulkYear] ?? null,
-			festBis: null,
-		});
-		const projected = projectForList(result.state);
-		return projected !== 'open';
+		const cell = cells.get(`${member.id}:${bulkYear}`);
+		if (!cell) return true;
+		return projectForList(cell.state) !== 'open';
 	}
 </script>
 
@@ -254,15 +219,17 @@
 		{/if}
 	</div>
 
-	<!-- Single current-year BeitragStatusPill (Package D: one pill, not N year chips).
+	<!-- Single current-year Beitrag pill (one pill, not N year chips).
 	     Hidden in bulk-select mode where the checkbox drives the whole row. -->
-	{#if !selectable && currentYear !== null && currentYearState !== null && currentYearDisplayState !== null}
-		<div class="hidden sm:flex items-center">
-			<BeitragStatusPill
+	{#if !selectable && currentYear !== null && currentCell !== null && currentYearDisplayState !== null}
+		<div class="hidden items-center sm:flex">
+			<BeitragCell
+				variant="pill"
 				state={currentYearDisplayState}
 				year={currentYear}
-				paidCents={currentYearState.paidCents}
-				betragCents={currentYearState.betragCents}
+				paidCents={currentCell.paidCents}
+				betragCents={currentCell.betragCents}
+				isLocked={currentCell.isLocked}
 				compact
 				exemptReason={member.beitragExemptReason}
 			/>

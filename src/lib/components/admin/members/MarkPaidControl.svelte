@@ -1,33 +1,24 @@
 <script lang="ts">
 	/**
-	 * MarkPaidControl — the ONE shared Beitrag mark-paid surface for the list
-	 * (MemberRow kebab), the mobile card (MemberCardMobile), and the detail-page
-	 * timeline (MemberBeitragsTimeline).
+	 * MarkPaidControl — the shared Beitrag mark-paid glue for the list
+	 * (MemberRow), the mobile card (MemberCardMobile) and the detail-page timeline
+	 * (MemberBeitragsTimeline). It owns the POST/undo/toast wiring so those three
+	 * entry points behave identically, and delegates ALL presentation to the S1
+	 * kit: the CellPopover shell (anchored Popover ≥sm / bottom Sheet <sm) wrapping
+	 * a BeitragCellDialog in its `mark-paid` variant.
 	 *
-	 * Before this, those three entry points had divergent flows: a hidden form
-	 * with no date picker (MemberRow), a green button on the timeline, and NO
-	 * mark-paid affordance at all on mobile. Only the Beitragsmatrix had the rich
-	 * MarkPaidPopover ("Bezahlt am" date + live EÜR-Buchungsjahr line + Befreien +
-	 * undo toast). This component lifts the matrix's popover content + POST/undo
-	 * logic into a reusable trigger so all four paths behave identically.
-	 *
-	 * Presentation mirrors MemberMatrix: an anchored bits-ui Popover on >= sm,
-	 * a full-width bottom Sheet on < sm (the ~280px popover escapes a 390px
-	 * viewport). The caller supplies the trigger via the `trigger` snippet and
-	 * gets `{ props, open }` so it can render its own button/menu-item and wire
-	 * the open state.
-	 *
-	 * The server actions (?/mark-beitrag-paid, ?/set-beitrag-exempt,
-	 * ?/send-reminder) are the single source of truth and stay untouched; this is
-	 * a client wrapper that posts to them and reconciles via invalidateAll().
+	 * The matrix does NOT use this — it owns an optimistic overlay and drives
+	 * CellPopover + BeitragCellDialog directly. The server actions
+	 * (?/mark-beitrag-paid, ?/set-beitrag-exempt, ?/send-reminder) are the single
+	 * source of truth and stay untouched; this is a client wrapper that posts to
+	 * them and reconciles via invalidateAll().
 	 */
 	import type { Snippet } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { deserialize } from '$app/forms';
 	import { toast } from 'svelte-sonner';
-	import { Popover } from 'bits-ui';
-	import * as Sheet from '$lib/components/ui/sheet/index.js';
-	import MarkPaidPopover from './MarkPaidPopover.svelte';
+	import CellPopover from './CellPopover.svelte';
+	import BeitragCellDialog from './BeitragCellDialog.svelte';
 
 	let {
 		memberId,
@@ -48,67 +39,48 @@
 		year: number;
 		memberName: string;
 		betragCents: number;
-		/** Already-paid cents — forwarded to MarkPaidPopover so it can prefill the open remainder. */
+		/** Already-paid cents — forwarded to BeitragCellDialog to prefill the open remainder. */
 		paidCents?: number;
+		/**
+		 * Gate the "Erinnerung senden" ghost inside the dialog. The list/card pass
+		 * false; the detail timeline passes true for overdue years. The server
+		 * (checkReminderAllowed + email check) stays the backstop.
+		 */
 		isOverdue?: boolean;
 		isLocked?: boolean;
 		/**
-		 * Forwarded to MarkPaidPopover to show/hide the "Befreien" affordance.
-		 * Default true. The list (MemberRow), mobile card (MemberCardMobile) and
-		 * detail timeline (MemberBeitragsTimeline) pass `false` because they don't
-		 * reflect per-year `member_beitrags.isExempt` — exempting there would give
-		 * no visible feedback and keep offering "Bezahlt". Per-year Befreien stays
-		 * matrix-only (the matrix renders MarkPaidPopover directly with the default).
+		 * Show the per-year "Befreien" affordance. Default true; the list
+		 * (MemberRow), mobile card (MemberCardMobile) and detail timeline pass
+		 * `false` because they don't reflect per-year exempt state — per-year
+		 * Befreien stays matrix-only.
 		 */
 		allowExempt?: boolean;
+		/** Controlled open state (e.g. MemberRow opens it programmatically). */
+		open?: boolean;
+		/** Element the desktop popover anchors to in controlled mode. */
+		anchor?: HTMLElement | null;
 		/**
-		 * Route prefix for the form-action POSTs. Defaults to '' (the current
-		 * route). The member DETAIL route only implements `mark-beitrag-paid` +
-		 * `send-reminder`, so the timeline passes `actionBase="/app/mitglieder"`
-		 * to reach the list route's full action set (incl. mark-beitrag-unpaid +
-		 * set-beitrag-exempt) for the Befreien / undo paths. invalidateAll() then
-		 * refreshes whichever page is showing.
+		 * Route prefix for the form-action POSTs. The member DETAIL route only
+		 * implements `mark-beitrag-paid` + `send-reminder`, so the timeline passes
+		 * `actionBase="/app/mitglieder"` to reach the list route's full action set.
 		 */
 		actionBase?: string;
-		/**
-		 * Controlled open state. Used by callers (e.g. MemberRow's kebab) that
-		 * open the surface programmatically rather than via the `trigger` snippet.
-		 */
-		open?: boolean;
-		/**
-		 * Element to anchor the desktop popover to in controlled mode (mirrors
-		 * MemberMatrix's `customAnchor`). Ignored when a `trigger` snippet is given.
-		 */
-		anchor?: HTMLElement | null;
 		/** Fired after the surface closes (e.g. to restore focus to the kebab). */
 		onClose?: () => void;
-		/**
-		 * Optional render-prop for the trigger element. When provided, `props`
-		 * MUST be spread onto a focusable element so bits-ui can anchor + toggle;
-		 * `open` reflects the current state. Omit it for controlled (anchor) mode.
-		 */
+		/** Optional trigger element (the card renders its own pay button). */
 		trigger?: Snippet<[{ props: Record<string, unknown>; open: boolean }]>;
 	} = $props();
 
 	let submitting = $state(false);
 
-	// Mobile detection — below Tailwind `sm` (640px) we present a bottom Sheet
-	// instead of the anchored popover (mirrors MemberMatrix). SSR-guarded.
-	let isMobile = $state(false);
-	$effect(() => {
-		if (typeof window === 'undefined' || !window.matchMedia) return;
-		const mql = window.matchMedia('(max-width: 639px)');
-		isMobile = mql.matches;
-		const onChange = (e: MediaQueryListEvent) => (isMobile = e.matches);
-		mql.addEventListener('change', onChange);
-		return () => mql.removeEventListener('change', onChange);
-	});
+	const eur = (cents: number) =>
+		(cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
 
 	// Canonical POST → SvelteKit form action. A form-action fetch ALWAYS returns
 	// HTTP 200 with a devalue-encoded ActionResult body, so `result.data.error`
-	// must be decoded via `deserialize()` — hand-parsing res.json() silently
-	// drops the server's message (the treasurer would never see the real
-	// Festschreibung / 422-missing-Satz reason). Mirrors MemberMatrix.post.
+	// must be decoded via `deserialize()` — hand-parsing res.json() silently drops
+	// the server's message (the treasurer would never see the real Festschreibung /
+	// 422-missing-Satz reason).
 	async function post(
 		action: string,
 		fields: Record<string, string>
@@ -168,14 +140,13 @@
 		submitting = true;
 		open = false;
 		try {
-			const fields: Record<string, string> = {
+			const result = await post('mark-beitrag-paid', {
 				memberId: detail.memberId,
 				year: String(detail.year),
 				gezahltAm: detail.gezahltAm,
 				paidCents: String(detail.paidCents),
 				notes: detail.notes ?? ''
-			};
-			const result = await post('mark-beitrag-paid', fields);
+			});
 			if (!result.ok) {
 				hapticError();
 				toast.error(result.error ?? 'Fehler — Zahlung nicht gespeichert.');
@@ -183,10 +154,16 @@
 			}
 			hapticSuccess();
 			await invalidateAll();
-			toast.success(`${memberName} ${detail.year} als bezahlt markiert`, {
-				duration: 10000,
-				action: { label: 'Rückgängig', onClick: () => undoMarkPaid() }
-			});
+			const rest = betragCents - detail.paidCents;
+			toast.success(
+				rest > 0
+					? `${eur(detail.paidCents)} erfasst — ${eur(rest)} noch offen`
+					: `${memberName} ${detail.year} als bezahlt markiert`,
+				{
+					duration: 10000,
+					action: { label: 'Rückgängig', onClick: () => undoMarkPaid() }
+				}
+			);
 		} finally {
 			submitting = false;
 		}
@@ -235,75 +212,30 @@
 	const sheetTitle = $derived(`${memberName} · ${year} · Beitrag bearbeiten`);
 </script>
 
-{#snippet body()}
-	<MarkPaidPopover
-		{memberId}
-		{year}
-		{memberName}
-		{betragCents}
-		{paidCents}
-		{isOverdue}
-		{isLocked}
-		{allowExempt}
-		{submitting}
-		onPaid={handlePaid}
-		onExempt={handleExempt}
-		onReminder={handleReminder}
-		onCancel={() => (open = false)}
-	/>
-{/snippet}
-
-{#if isMobile}
-	<!-- Mobile (< sm): bottom Sheet. Trigger (if any) renders inline. -->
-	{#if trigger}
-		{@render trigger({ props: { onclick: () => (open = true) }, open })}
-	{/if}
-	<Sheet.Root bind:open onOpenChangeComplete={(o) => { if (!o) onClose?.(); }}>
-		<Sheet.Content
-			side="bottom"
-			class="rounded-t-2xl px-4 pb-[max(env(safe-area-inset-bottom),1rem)]"
-			data-testid="markpaid-sheet"
-		>
-			<Sheet.Title class="sr-only">{sheetTitle}</Sheet.Title>
-			<div class="mx-auto w-full max-w-md py-2">
-				{@render body()}
-			</div>
-		</Sheet.Content>
-	</Sheet.Root>
-{:else if trigger}
-	<!-- Desktop, self-triggering: bits-ui anchors the popover to the trigger. -->
-	<Popover.Root bind:open onOpenChangeComplete={(o) => { if (!o) onClose?.(); }}>
-		<Popover.Trigger>
-			{#snippet child({ props })}
-				{@render trigger!({ props, open })}
-			{/snippet}
-		</Popover.Trigger>
-		<Popover.Portal>
-			<Popover.Content
-				side="bottom"
-				align="end"
-				sideOffset={6}
-				class="z-50 rounded-lg border border-border bg-popover p-3 shadow-lg outline-none"
-				data-testid="markpaid-popover"
-			>
-				{@render body()}
-			</Popover.Content>
-		</Popover.Portal>
-	</Popover.Root>
-{:else}
-	<!-- Desktop, controlled: anchored to a caller-supplied element (kebab). -->
-	<Popover.Root bind:open onOpenChangeComplete={(o) => { if (!o) onClose?.(); }}>
-		<Popover.Portal>
-			<Popover.Content
-				customAnchor={anchor}
-				side="bottom"
-				align="end"
-				sideOffset={6}
-				class="z-50 rounded-lg border border-border bg-popover p-3 shadow-lg outline-none"
-				data-testid="markpaid-popover"
-			>
-				{@render body()}
-			</Popover.Content>
-		</Popover.Portal>
-	</Popover.Root>
-{/if}
+<CellPopover
+	bind:open
+	{anchor}
+	title={sheetTitle}
+	{onClose}
+	{trigger}
+	popoverTestId="markpaid-popover"
+	sheetTestId="markpaid-sheet"
+>
+	{#key `${memberId}:${year}`}
+		<BeitragCellDialog
+			{memberId}
+			{year}
+			{memberName}
+			{betragCents}
+			{paidCents}
+			initialVariant="mark-paid"
+			{isLocked}
+			{allowExempt}
+			canRemind={isOverdue}
+			{submitting}
+			onPaid={handlePaid}
+			onExempt={handleExempt}
+			onReminder={handleReminder}
+		/>
+	{/key}
+</CellPopover>

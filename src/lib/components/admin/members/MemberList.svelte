@@ -6,17 +6,18 @@
 	import SearchNoResults from '$lib/components/empty/SearchNoResults.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { MemberView } from '$lib/domain/members.js';
+	import type { MatrixCell } from '$lib/domain/beitrag-cell.js';
 	import { currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
 
 	let {
 		members,
 		years,
+		cells,
 		loading = false,
 		query = '',
 		selectable = false,
 		selectedIds,
 		bulkYear = null,
-		satzByYear = {},
 		onToggleSelect,
 		onEdit,
 		onAdd,
@@ -24,6 +25,9 @@
 	}: {
 		members: MemberView[];
 		years: number[];
+		/** Pre-resolved matrix cells keyed `${memberId}:${year}` — single source of
+		 *  beitrag state for the pills + mark-paid seeds. */
+		cells: ReadonlyMap<string, MatrixCell>;
 		loading?: boolean;
 		/** Active search term — distinguishes "no data yet" from "no matches". */
 		query?: string;
@@ -33,8 +37,6 @@
 		selectedIds?: ReadonlySet<string>;
 		/** The year the bulk "Als bezahlt" targets — gates each row's checkbox. */
 		bulkYear?: number | null;
-		/** Per-year configured Beitragssatz (cents) — seeds the mark-paid popover. */
-		satzByYear?: Record<number, number>;
 		onToggleSelect?: (id: string, checked: boolean) => void;
 		onEdit: (m: MemberView) => void;
 		/** Optional CTA — when provided the empty state renders an "anlegen" button. */
@@ -93,7 +95,7 @@
 	>
 		{#each members as member (member.id)}
 			<div role="listitem">
-				<MemberCardMobile {member} {years} {satzByYear} />
+				<MemberCardMobile {member} {years} {cells} />
 			</div>
 		{/each}
 	</div>
@@ -126,11 +128,11 @@
 				<MemberRow
 					{member}
 					{years}
+					{cells}
 					{onEdit}
 					{selectable}
 					selected={selectedIds?.has(member.id) ?? false}
 					{bulkYear}
-					{satzByYear}
 					{onToggleSelect}
 				/>
 			</div>

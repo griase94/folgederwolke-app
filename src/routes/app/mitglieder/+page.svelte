@@ -10,20 +10,17 @@
 	import AddMemberDialog from '$lib/components/admin/members/AddMemberDialog.svelte';
 	import EditMemberDialog from '$lib/components/admin/members/EditMemberDialog.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
+	import { projectForList } from '$lib/domain/beitrag-state.js';
 	import { berlinYmd, currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
 
-	// Package A: beitragStatusFor removed; inline cents check until Package D
-	// migrates this page to resolveBeitragState.
-	function simpleBeitragStatus(b: { betragCents: number; paidCents: number }): 'paid' | 'open' | 'waived' {
-		const betrag = BigInt(b.betragCents);
-		const paid = BigInt(b.paidCents);
-		if (betrag === 0n) return 'waived';
-		if (paid >= betrag) return 'paid';
-		return 'open';
-	}
+	// Single source of beitrag state: the matrix cells, keyed `${memberId}:${year}`.
+	// The list pills + bulk-select gate read from here — no parallel re-derivation.
+	const cellMap = $derived(
+		new Map(data.matrix.cells.map((c) => [`${c.memberId}:${c.year}`, c]))
+	);
 
 	let addOpen = $state(false);
 	let editOpen = $state(false);
@@ -71,8 +68,8 @@
 			? []
 			: filteredMembers.filter((m) => {
 					if (m.beitragExempt || m.austrittsDatum) return false;
-					const b = m.beitrags[bulkYear];
-					return (b ? simpleBeitragStatus(b) : 'open') === 'open';
+					const cell = cellMap.get(`${m.id}:${bulkYear}`);
+					return cell ? projectForList(cell.state) === 'open' : false;
 				})
 	);
 	const allSelectableSelected = $derived(
@@ -320,11 +317,11 @@
 		<MemberList
 			members={filteredMembers}
 			years={data.years}
+			cells={cellMap}
 			query={searchQuery}
 			selectable={selectMode}
 			{selectedIds}
 			{bulkYear}
-			satzByYear={data.satzByYear}
 			onToggleSelect={toggleSelect}
 			onEdit={openEdit}
 			onAdd={() => (addOpen = true)}
