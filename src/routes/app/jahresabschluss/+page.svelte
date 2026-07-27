@@ -23,6 +23,7 @@
 		success: boolean;
 		year: number;
 		totalRows: number;
+		beitragCount: number;
 		archived: number;
 		archiveFailed: number;
 		archiveTotal: number;
@@ -48,23 +49,36 @@
 		}))
 	);
 
+	// Sealed transaction rows (income+expense+donation, stamped festgeschrieben_at)
+	// vs. the full 4-source Buchungszahl the Hub card shows. Both stay visible so
+	// Hub(14) == Modal(14) == Settle(14) with the sealing detail spelled out.
+	const sealedCount = $derived(
+		readyCard
+			? readyCard.counts.einnahmen + readyCard.counts.ausgaben + readyCard.counts.spenden
+			: 0
+	);
+	const modalFootnote = $derived(
+		readyCard
+			? `${sealedCount} versiegelt (GoBD § 146)${
+					readyCard.counts.beitrags > 0
+						? `, ${readyCard.counts.beitrags} Mitgliedsbeiträge über die Jahressperre`
+						: ''
+				}.`
+			: ''
+	);
+
 	// Modal facts + warnings for the ready year.
 	const modalFacts = $derived<FactRow[]>(
 		readyCard
 			? [
 					{
-						// The Festschreibung seals the TRANSACTION rows (income + expense +
-						// donation) — close_buchhaltungsjahr stamps exactly those. NOT the
-						// paid Mitgliedsbeiträge (they carry no festgeschrieben_at). Show that
-						// count so the modal matches the Settle „N Buchungen gesichert" exactly
-						// (Zahlengleichheit im heikelsten Moment); buchungszahl (4-source union)
-						// would over-state by the Beiträge.
-						label: 'Buchungen',
-						value: String(
-							readyCard.counts.einnahmen +
-								readyCard.counts.ausgaben +
-								readyCard.counts.spenden
-						),
+						// „geschützt" = the full 4-source Buchungszahl (14) shown on the Hub
+						// card. Of those, the 8 transaction rows are row-sealed
+						// (festgeschrieben_at); the paid Mitgliedsbeiträge are protected by the
+						// Jahressperre (markBeitragPaid 409 on year <= festgeschrieben_bis).
+						// The breakdown lives in modalFootnote so Hub==Modal==Settle.
+						label: 'Buchungen geschützt',
+						value: String(readyCard.buchungszahl),
 						variant: 'num'
 					},
 					{
@@ -112,10 +126,12 @@
 			<span class="s-ic"><CircleCheck class="size-5" aria-hidden="true" /></span>
 			<div class="s-body">
 				<div class="s-title">
-					Buchungsjahr {settle.year} festgeschrieben — {settle.totalRows} Buchung{settle.totalRows ===
-					1
-						? ''
-						: 'en'} gesichert.
+					Buchungsjahr {settle.year} festgeschrieben — {settle.totalRows + settle.beitragCount}
+					Buchungen geschützt.
+				</div>
+				<div class="s-sub" data-testid="festschreiben-settle-breakdown">
+					{settle.totalRows} versiegelt (GoBD § 146){#if settle.beitragCount > 0}, {settle.beitragCount}
+						Mitgliedsbeiträge über die Jahressperre{/if}.
 				</div>
 				{#if settle.archiveFailed > 0}
 					<div class="s-warn">
@@ -246,6 +262,7 @@
 		bind:confirmed
 		year={readyCard.year}
 		facts={modalFacts}
+		footnote={modalFootnote}
 		warnings={modalWarnings}
 	>
 		{#snippet cta()}
@@ -327,6 +344,11 @@
 		font-size: 13.5px;
 		font-weight: 700;
 		color: var(--ink-900);
+	}
+	.s-sub {
+		margin-top: 3px;
+		font-size: 12px;
+		color: var(--ink-700);
 	}
 	.s-warn {
 		display: flex;

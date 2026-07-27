@@ -28,6 +28,8 @@
     year: number;
     /** The „Was passiert" facts (Buchungen sealed, sums …). */
     facts: FactRow[];
+    /** Sober one-liner under the facts (e.g. the versiegelt/Jahressperre breakdown). */
+    footnote?: string;
     /** Remaining non-blocking warnings (e.g. offene Spenden-Bescheinigungen). */
     warnings?: string[];
     /** The friction confirmation copy. */
@@ -45,6 +47,7 @@
     confirmed = $bindable(false),
     year,
     facts,
+    footnote,
     warnings = [],
     confirmLabel = "Ich habe verstanden, dass dieses Jahr danach unveränderbar ist.",
     cta,
@@ -156,6 +159,14 @@
             Was passiert
           </div>
           <FactsTable rows={facts} labelWidth="150px" />
+          {#if footnote}
+            <p
+              class="mt-2 text-[11.5px] leading-relaxed text-ink-500"
+              data-testid="fs-modal-footnote"
+            >
+              {footnote}
+            </p>
+          {/if}
         </div>
 
         {#each warnings as w (w)}
