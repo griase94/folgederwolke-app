@@ -70,6 +70,14 @@ export interface EurWorkspaceData {
   wgb: WgbStatus;
   preFlight: PreFlightChecklist;
   tabs: EurWorkspaceTab[];
+  /**
+   * Paid Mitgliedsbeiträge folded into the EÜR-Einnahmen (single source). The
+   * Buchungsliste transaction feed does NOT carry Beiträge, so its foot-saldo
+   * differs from the EÜR by exactly this amount; the buchungsliste renders it
+   * as an honest reconciliation and the e2e asserts
+   * `feedFoot + beitragEinnahmenCents === eur.totalUeberschussCents`.
+   */
+  beitragEinnahmenCents: number;
 }
 
 // ── Pure composer ────────────────────────────────────────────────────────────
@@ -111,6 +119,13 @@ export function composeEurWorkspaceData(
     ...(input.currentSpenden ?? []),
     ...(input.currentBeitrags ?? []),
   ];
+
+  // Single source of the paid-Mitgliedsbeitrag component of the EÜR — the same
+  // rows folded into currentEinnahmenUnion above (never re-derived downstream).
+  const beitragEinnahmenCents = (input.currentBeitrags ?? []).reduce(
+    (a, r) => a + Number(r.betragCents),
+    0,
+  );
   const priorEinnahmenUnion = [
     ...input.priorEinnahmen,
     ...(input.priorSpenden ?? []),
@@ -185,6 +200,7 @@ export function composeEurWorkspaceData(
     wgb,
     preFlight,
     tabs,
+    beitragEinnahmenCents,
   };
 }
 

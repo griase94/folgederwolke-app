@@ -31,8 +31,12 @@
 		rows: BuchungslisteRow[];
 		allRowsCount: number;
 		kindCounts: KindCounts;
-		/** EÜR-Überschuss (cents) — the unfiltered foot-sum must match it (Kreuzprobe). */
+		/** EÜR-Überschuss (cents) — the unfiltered feed-foot matches it only in a
+		 *  beitrag-free year (Kreuzprobe ✓). */
 		ueberschussCents: number;
+		/** Paid Mitgliedsbeiträge folded into the EÜR (single source from the EÜR
+		 *  composer). The feed excludes them; foot + this == EÜR-Überschuss. */
+		beitragEinnahmenCents: number;
 		kategorien: { id: string; name: string }[];
 		projects: { id: string; name: string }[];
 		closed?: boolean;
@@ -76,6 +80,7 @@
 		allRowsCount,
 		kindCounts,
 		ueberschussCents,
+		beitragEinnahmenCents,
 		kategorien,
 		projects,
 		closed = false
@@ -138,10 +143,15 @@
 	const footSum = $derived(
 		rows.reduce((a, r) => a + (r.kind === 'expense' ? -r.betragCents : r.betragCents), 0)
 	);
-	const kreuzOk = $derived(!filtersActive && footSum === ueberschussCents);
-	// EÜR − Feed-Saldo = the part of the EÜR that isn't in the transaction feed
-	// (paid Mitgliedsbeiträge). Only meaningful when unfiltered.
-	const beitragDelta = $derived(!filtersActive ? ueberschussCents - footSum : 0);
+	// ✓ only when the feed-saldo TRULY equals the EÜR (beitrag-free year).
+	const kreuzOk = $derived(
+		!filtersActive && beitragEinnahmenCents === 0 && footSum === ueberschussCents
+	);
+	// The Mitgliedsbeitrag component is the SINGLE-SOURCE value from the EÜR
+	// composer (not `EÜR − feed`, which couldn't catch a feed/EÜR mismatch). The
+	// identity `footSum + beitragEinnahmenCents === ueberschussCents` is asserted
+	// by the @aurora-impl-d-abschluss e2e.
+	const showBeitragNote = $derived(!filtersActive && beitragEinnahmenCents > 0);
 	const capReached = $derived(allRowsCount >= FEED_CAP);
 
 	function formatDate(iso: string): string {
@@ -378,11 +388,11 @@
 						{#if kreuzOk}<span class="lf-check" data-testid="foot-kreuzprobe">= EÜR ✓</span>{/if}
 					</span>
 				</div>
-				{#if !filtersActive && beitragDelta > 0}
+				{#if showBeitragNote}
 					<!-- Honest reconciliation: the feed excludes Mitgliedsbeiträge, which the EÜR adds. -->
 					<p class="lf-note" data-testid="foot-beitrag-note">
-						+ {eur(beitragDelta)} Mitgliedsbeiträge (nicht im Transaktions-Feed) = EÜR-Überschuss
-						<b>{eur(ueberschussCents)}</b>
+						+ {eur(beitragEinnahmenCents)} Mitgliedsbeiträge (nicht im Transaktions-Feed) =
+						EÜR-Überschuss <b>{eur(ueberschussCents)}</b>
 					</p>
 				{/if}
 			</div>
