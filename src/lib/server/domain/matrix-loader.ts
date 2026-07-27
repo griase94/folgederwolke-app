@@ -225,6 +225,9 @@ export async function loadMatrix(opts: {
       paidSumCents: paidCells.reduce((s, c) => s + c.paidCents, 0),
       exemptCount: exemptCells.length,
       isLocked: festBis !== null && y <= festBis,
+      // §4.5: no Satz row for the year → header shows a "Beitragssatz fehlt" hint
+      // rather than implying a Soll of 0.
+      satzMissing: !satzByYear.has(y),
     };
   });
 

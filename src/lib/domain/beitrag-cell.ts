@@ -52,6 +52,12 @@ export type YearHeader = {
   paidSumCents: number;
   exemptCount: number;
   isLocked: boolean;
+  /**
+   * True when no Beitragssatz is configured for the year — the matrix header
+   * shows a "Beitragssatz {year} fehlt" hint instead of implying a Soll
+   * (spec §4.5). Distinct from isLocked.
+   */
+  satzMissing: boolean;
 };
 
 export type MatrixMember = {

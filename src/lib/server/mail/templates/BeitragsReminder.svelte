@@ -2,6 +2,7 @@
 	import type { BeitragsReminderProps } from '../types.js';
 	import { buildEpc069Payload } from '../giro-qr.js';
 	import MailFooter from './MailFooter.svelte';
+	import { reminderIntro, reminderVerwendungszweck } from '$lib/domain/beitrag-reminder-copy.js';
 
 	let {
 		vorname,
@@ -12,6 +13,8 @@
 		bic,
 		bank,
 		empfaenger,
+		fristAt = null,
+		customIntro = null,
 		vereinName = '',
 		adresse = '',
 		vr = '',
@@ -36,8 +39,9 @@
 			.trim()
 	);
 
-	const fullName = $derived(nachname ? `${vorname} ${nachname}`.trim() : vorname);
-	const verwendungszweck = $derived(`Mitgliedsbeitrag ${jahr} ${fullName}`);
+	// Single-source copy (shared with the erinnerung-senden preview, C2/AC8).
+	const verwendungszweck = $derived(reminderVerwendungszweck(vorname, nachname, jahr));
+	const introText = $derived(reminderIntro({ vorname, jahr, betragCents, fristAt, customIntro }));
 
 	// EPC 069 SEPA Giro-QR payload — banking apps scan this to pre-fill the
 	// Überweisung. Rendered as a <pre> block until a QR-encoding lib is
@@ -100,10 +104,7 @@
 									Dein Vereinsbeitrag {jahr}
 								</h1>
 
-								<p style="margin:0 0 18px 0;color:#374151;">
-									<strong>Liebste:r {vorname},</strong> kleine sonnige Erinnerung — dein
-									Mitgliedsbeitrag für <strong>{jahr}</strong> ist noch offen.
-								</p>
+								<p style="margin:0 0 18px 0;color:#374151;" data-copy="rem-intro">{introText}</p>
 
 								<!-- Payment card (monospace, copy-friendly per UI-031) -->
 								<table

@@ -1,30 +1,76 @@
 /**
- * /app/mitglieder/bericht/[year] — printable Kassenbericht (Task 3.5 / spec §11).
+ * /app/mitglieder/bericht/[year] — printable Kassenbericht (spec §11 / §4.4).
  *
- * Loads per-member Beitragsstatus for a given year: paid, open, or exempt.
- * Computes totals (paid sum, open sum, exempt count) for the Kassenprüfer report.
- * Auth-gated via the /app layout (hooks.server.ts redirects if unauthenticated).
+ * C-Lane resolver swap (D2): the per-member status now comes from the canonical
+ * `resolveBeitragState` resolver — the SAME source the Matrix, Detail and
+ * Reminder-Guard use — so the Bericht can honestly show Überfällig + Teilzahlung
+ * and never contradicts the Matrix header (one ledger, one truth). The previous
+ * paid|open|exempt derivation (with a fabricated VEREIN_BEITRAG_DEFAULT_CENTS
+ * fallback) is gone: no-row / no-Satz members carry 0 € instead of an invented
+ * Soll.
+ *
+ * Totals rule (§5): "Offen" = open + partial + overdue outstanding; "davon
+ * überfällig" is the overdue subset shown as a footnote. Amber discipline (§7.3):
+ * only Überfällig is amber — merely-open is neutral.
+ *
+ * Auth: admin (Vorstand) + steuerberater (Kassenprüfer), defense-in-depth
+ * (ADR-0009). Read-only.
  */
 
 import { error } from "@sveltejs/kit";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
-import { env } from "$lib/server/env.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
+import { resolveBeitragState } from "$lib/domain/beitrag-state.js";
+
+/** The seven honest report states (via resolveBeitragState). */
+export type BerichtStatus =
+  | "paid"
+  | "partial"
+  | "open"
+  | "overdue"
+  | "exempt"
+  | "permanently_exempt"
+  | "not_applicable";
 
 export type BerichtRow = {
   memberId: string;
+  /** "Nachname, Vorname" — Kassenprüfer sort order. */
   name: string;
-  /** ISO date of entry, for Kassenprüfer cross-reference. */
   eintrittsDatum: string | null;
-  status: "paid" | "open" | "exempt";
+  status: BerichtStatus;
+  /** Soll in cents (0 for satz-missing / not_applicable — never fabricated). */
   betragCents: number;
   paidCents: number;
   gezahltAm: string | null;
-  exemptReason: string | null;
+  /** Befreiungs-Grund OR payment note. */
+  anmerkung: string | null;
 };
+
+export type BerichtTotals = {
+  paidCount: number;
+  paidSumCents: number;
+  /** open + partial + overdue members and their outstanding sum. */
+  openCount: number;
+  openSumCents: number;
+  /** The overdue subset ("davon überfällig"). */
+  overdueCount: number;
+  overdueSumCents: number;
+  exemptCount: number;
+  totalMembers: number;
+};
+
+/** Parse settings.festgeschrieben_bis (jsonb year int or JSON-string). */
+function parseSettingYear(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const parsed = Number(v.replace(/^"|"$/g, ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
 
 export const load: PageServerLoad = async ({ params, locals }) => {
   // Defense-in-depth (ADR-0009): the Kassenbericht exposes every member's
@@ -45,7 +91,24 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
   const db = getDb();
 
-  // Load the Beitragssatz for this year (may be null if never set).
+  // ── Settings needed by the resolver (shared basis with the Matrix so the
+  //    numbers reconcile: same festBis, same graceDays, same faelligkeit). ──
+  const settingRows = (await db.execute(sql`
+    SELECT key, value FROM settings
+     WHERE key IN ('festgeschrieben_bis', 'beitrag.overdue_grace_days')
+  `)) as { key: string; value: unknown }[];
+  let festBis: number | null = null;
+  let graceDays = 60;
+  for (const r of settingRows) {
+    if (r.key === "festgeschrieben_bis") festBis = parseSettingYear(r.value);
+    else if (r.key === "beitrag.overdue_grace_days") {
+      const g = parseSettingYear(r.value);
+      if (g !== null) graceDays = g;
+    }
+  }
+  const isLockedYear = festBis !== null && year <= festBis;
+
+  // Load the Beitragssatz + Fälligkeit for this year (may be null if never set).
   const [satz] = await db
     .select({
       cents: beitragssatzByYear.cents,
@@ -53,6 +116,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     })
     .from(beitragssatzByYear)
     .where(eq(beitragssatzByYear.year, year));
+  const satzCents = satz ? Number(satz.cents) : null;
 
   // Load all members (including ausgetretene — the report covers whoever was
   // active in that year, or had a Beitrag row, not just current members).
@@ -84,77 +148,127 @@ export const load: PageServerLoad = async ({ params, locals }) => {
         ),
       );
   }
-
   const beitragMap = new Map(beitragRows.map((b) => [b.memberId, b]));
 
-  // Determine which members were active in this year.
+  // ── Derive each member's canonical state ──────────────────────────────────
   const rows: BerichtRow[] = [];
   for (const m of allMembers) {
-    const entryYear = m.eintrittsDatum
-      ? new Date(m.eintrittsDatum).getFullYear()
+    const eintrittsJahr = m.eintrittsDatum
+      ? parseInt(m.eintrittsDatum.slice(0, 4), 10)
       : 0;
-    const exitYear = m.austrittsDatum
-      ? new Date(m.austrittsDatum).getFullYear()
+    const austrittsJahr = m.austrittsDatum
+      ? parseInt(m.austrittsDatum.slice(0, 4), 10)
       : null;
 
-    // Skip members who weren't in the club during this year at all.
-    if (entryYear > year) continue;
-    if (exitYear !== null && exitYear < year) continue;
-
     const beitrag = beitragMap.get(m.id);
-    const defaultCents = Number(
-      satz?.cents ?? env.VEREIN_BEITRAG_DEFAULT_CENTS,
-    );
+    const row = beitrag
+      ? {
+          betragCents: Number(beitrag.betragCents),
+          paidCents: Number(beitrag.paidCents),
+          isExempt: beitrag.isExempt ?? false,
+          gezahltAm: beitrag.gezahltAm ?? null,
+        }
+      : null;
 
-    // Effective exemption: permanent (members.beitrag_exempt) or per-year (member_beitrags.is_exempt).
-    const effectiveExempt = m.beitragExempt || (beitrag?.isExempt ?? false);
-    const exemptReason = m.beitragExempt
-      ? (m.beitragExemptReason ?? null)
-      : (beitrag?.exemptReason ?? null);
+    const resolved = resolveBeitragState({
+      year,
+      eintrittsJahr,
+      austrittsJahr,
+      beitragExempt: m.beitragExempt,
+      row,
+      satzCents,
+      festBis,
+      faelligkeit: satz?.faelligkeitAt ?? undefined,
+      graceDays,
+    });
 
-    let status: BerichtRow["status"];
-    if (effectiveExempt) {
-      status = "exempt";
-    } else if (
-      beitrag &&
-      Number(beitrag.paidCents) >= Number(beitrag.betragCents)
+    // Members who weren't in the club during this year (pre-join / post-Austritt)
+    // don't belong on the year's Kassenbericht — skip them so `totalMembers`
+    // reflects the year's applicable roster (Kanon: 7 Mitglieder für 2026).
+    // (`locked_year` is a legacy CellState the resolver never returns — narrowed
+    // out here so `status` is the six report states.)
+    if (
+      resolved.state === "not_applicable_pre_join" ||
+      resolved.state === "not_applicable_post_austritt" ||
+      resolved.state === "locked_year"
     ) {
-      status = "paid";
-    } else {
-      status = "open";
+      continue;
     }
+    const status = resolved.state;
+
+    const isExemptState =
+      status === "exempt" || status === "permanently_exempt";
+    const exemptReason =
+      status === "permanently_exempt"
+        ? (m.beitragExemptReason ?? null)
+        : status === "exempt"
+          ? (beitrag?.exemptReason ?? null)
+          : null;
 
     rows.push({
       memberId: m.id,
       name: `${m.nachname}, ${m.vorname}`,
       eintrittsDatum: m.eintrittsDatum ?? null,
       status,
-      betragCents: beitrag ? Number(beitrag.betragCents) : defaultCents,
-      paidCents: beitrag ? Number(beitrag.paidCents) : 0,
+      betragCents: resolved.betragCents,
+      paidCents: resolved.paidCents,
       gezahltAm: beitrag?.gezahltAm ?? null,
-      exemptReason,
+      anmerkung: isExemptState ? exemptReason : (beitrag?.notes ?? null),
     });
   }
 
-  // Compute totals.
+  // ── Totals (§5 aggregate rule) ────────────────────────────────────────────
+  const outstanding = (r: BerichtRow) =>
+    Math.max(r.betragCents - r.paidCents, 0);
   const paidRows = rows.filter((r) => r.status === "paid");
-  const openRows = rows.filter((r) => r.status === "open");
-  const exemptRows = rows.filter((r) => r.status === "exempt");
+  const overdueRows = rows.filter((r) => r.status === "overdue");
+  const openLikeRows = rows.filter(
+    (r) =>
+      r.status === "open" || r.status === "partial" || r.status === "overdue",
+  );
+  const exemptRows = rows.filter(
+    (r) => r.status === "exempt" || r.status === "permanently_exempt",
+  );
 
-  const paidSumCents = paidRows.reduce((s, r) => s + r.paidCents, 0);
-  const openSumCents = openRows.reduce((s, r) => s + r.betragCents, 0);
+  const totals: BerichtTotals = {
+    paidCount: paidRows.length,
+    paidSumCents: paidRows.reduce((s, r) => s + r.paidCents, 0),
+    openCount: openLikeRows.length,
+    openSumCents: openLikeRows.reduce((s, r) => s + outstanding(r), 0),
+    overdueCount: overdueRows.length,
+    overdueSumCents: overdueRows.reduce((s, r) => s + outstanding(r), 0),
+    exemptCount: exemptRows.length,
+    totalMembers: rows.length,
+  };
+
+  // ── Trust-line timestamp (only meaningful for a locked year) ──────────────
+  // The close function stamps every booking row's festgeschrieben_at with the
+  // same `now()`, so MAX across the four booking tables is the close moment.
+  // Null when the year is unlocked or had no bookings (trust-line still renders
+  // via isLockedYear, just without a date).
+  let festgeschriebenAm: string | null = null;
+  if (isLockedYear) {
+    const fgRows = (await db.execute(sql`
+      SELECT MAX(fa)::text AS ts FROM (
+        SELECT festgeschrieben_at AS fa FROM income     WHERE year_of_buchung = ${year} AND festgeschrieben_at IS NOT NULL
+        UNION ALL SELECT festgeschrieben_at FROM expenses  WHERE year_of_buchung = ${year} AND festgeschrieben_at IS NOT NULL
+        UNION ALL SELECT festgeschrieben_at FROM donations WHERE year_of_buchung = ${year} AND festgeschrieben_at IS NOT NULL
+        UNION ALL SELECT festgeschrieben_at FROM invoices  WHERE year_of_buchung = ${year} AND festgeschrieben_at IS NOT NULL
+      ) x
+    `)) as { ts: string | null }[];
+    festgeschriebenAm = fgRows[0]?.ts ?? null;
+  }
 
   return {
     year,
     faelligkeitAt: satz?.faelligkeitAt ?? null,
+    satzCents,
+    /** True when no Beitragssatz is configured for the year (show hint, not fabricated Soll). */
+    satzMissing: satzCents === null,
+    festgeschriebenBis: festBis,
+    isLockedYear,
+    festgeschriebenAm,
     rows,
-    totals: {
-      memberCount: rows.length,
-      paidCount: paidRows.length,
-      openCount: openRows.length,
-      exemptCount: exemptRows.length,
-      paidSumCents,
-      openSumCents,
-    },
+    totals,
   };
 };

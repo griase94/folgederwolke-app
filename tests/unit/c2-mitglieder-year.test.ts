@@ -36,9 +36,11 @@ function makeEvent(searchString: string) {
 describe.skipIf(!url)(
   "C2-2 — Mitglieder Beitragsmatrix anchors on ?year=",
   () => {
-    it("anchors the 3-year window on ?year=2024 (showing 2023/2024/2025)", async () => {
+    it("anchors the trailing 3-year window on ?year=2024 (showing 2022/2023/2024)", async () => {
+      // Ruling C5: the selected year sits at the RIGHT edge — anchor plus the
+      // two prior years, never a future column.
       const data = await mitgliederLoad(makeEvent("?year=2024"));
-      expect((data as { years: number[] }).years).toEqual([2023, 2024, 2025]);
+      expect((data as { years: number[] }).years).toEqual([2022, 2023, 2024]);
     });
 
     it("defaults to the clamped current-year window when ?year is absent (F8: no future column)", async () => {

@@ -149,6 +149,7 @@ function makeMatrix(): MatrixData {
         paidSumCents: 0,
         exemptCount: 0,
         isLocked: false,
+        satzMissing: false,
       },
     ],
     festgeschriebenBis: null,
