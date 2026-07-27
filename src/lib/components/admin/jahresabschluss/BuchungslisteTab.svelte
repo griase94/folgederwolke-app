@@ -360,7 +360,8 @@
 						</span>
 						<span
 							class="cell betrag tabular"
-							class:ein={isEin || isSpe}
+							class:ein={isEin}
+							class:spe={isSpe}
 							class:aus={r.kind === 'expense'}
 						>
 							{r.kind === 'expense' ? '−' : ''}{eur(r.betragCents)}
@@ -681,6 +682,9 @@
 	.betrag.ein {
 		color: var(--type-einnahme);
 	}
+	.betrag.spe {
+		color: var(--type-spende);
+	}
 	.betrag.aus {
 		color: var(--type-ausgabe);
 	}
@@ -745,7 +749,7 @@
 
 	/* ── Mobile: buchung + betrag on one row; rest hidden (S4 adds the sheet) ── */
 	@media (max-width: 640px) {
-		.ledger :global(.sort-header) {
+		.ledger :global(.sorthead) {
 			display: none;
 		}
 		.lrow {

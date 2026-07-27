@@ -156,6 +156,7 @@
 					ueberschussCents={y.ueberschussCents}
 					buchungszahl={y.buchungszahl}
 					preFlightItems={readyItems}
+					collapsePreFlight
 				>
 					{#snippet consequence()}
 						Nach dem Festschreiben sind die Zahlen von <b>{y.year}</b> unveränderbar (GoBD § 146).

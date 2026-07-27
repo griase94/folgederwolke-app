@@ -41,6 +41,8 @@
     buchungszahl: number;
     /** ready: the pre-flight checklist. */
     preFlightItems?: YearCardPreFlightItem[];
+    /** ready: collapse passed pre-flight items behind a disclosure (Hub). */
+    collapsePreFlight?: boolean;
     /** ready: optional §64 "sicherer Bereich" line (WGB). */
     safeLine?: string;
     /** running: a quiet note. */
@@ -69,6 +71,7 @@
     ueberschussCents,
     buchungszahl,
     preFlightItems,
+    collapsePreFlight = false,
     safeLine,
     note,
     lockedMeta,
@@ -143,7 +146,7 @@
 
       {#if preFlightItems && preFlightItems.length > 0}
         <div class="yc-checkhead">Prüfpunkte</div>
-        <PreFlightList items={preFlightItems} />
+        <PreFlightList items={preFlightItems} collapsePassed={collapsePreFlight} />
       {/if}
 
       {#if consequence || cta}

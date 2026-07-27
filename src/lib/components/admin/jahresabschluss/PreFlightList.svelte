@@ -24,6 +24,13 @@
 
   export interface PreFlightListProps {
     items: PreFlightListItem[];
+    /**
+     * Collapse the PASSED items behind a disclosure so a long checklist doesn't
+     * bury the close CTA (D-Flow §4 polish). Blockers + warnings ALWAYS render —
+     * they are never collapsible (ANDY-LENS §4). Default false (ReadinessCard +
+     * the eur-Übersicht keep the full flat list).
+     */
+    collapsePassed?: boolean;
     class?: string;
     "data-testid"?: string;
   }
@@ -32,38 +39,63 @@
 <script lang="ts">
   let {
     items,
+    collapsePassed = false,
     class: className,
     "data-testid": testId = "preflight-list",
   }: PreFlightListProps = $props();
+
+  const openItems = $derived(
+    collapsePassed ? items.filter((i) => i.status !== "pass") : items,
+  );
+  const passedItems = $derived(
+    collapsePassed ? items.filter((i) => i.status === "pass") : [],
+  );
 </script>
+
+{#snippet row(item: PreFlightListItem)}
+  <div class="ck-item {item.status}">
+    <span class="ck-ic">
+      {#if item.status === "pass"}
+        <Check class="size-3.5" aria-hidden="true" />
+      {:else if item.status === "warn"}
+        <TriangleAlert class="size-3.5" aria-hidden="true" />
+      {:else}
+        <CircleAlert class="size-3.5" aria-hidden="true" />
+      {/if}
+    </span>
+    <div class="ck-body">
+      <span class="ck-label">{item.label}</span>
+      {#if item.detail}<span class="ck-sub">{item.detail}</span>{/if}
+    </div>
+    {#if item.status !== "pass" && item.fixHref}
+      <!-- eslint-disable svelte/no-navigation-without-resolve -- in-app fix path -->
+      <a class="ck-fix" href={item.fixHref}>{item.fixLabel ?? "Beheben"} ›</a>
+      <!-- eslint-enable svelte/no-navigation-without-resolve -->
+    {/if}
+  </div>
+{/snippet}
 
 <div
   class={cn("checklist", className)}
   data-testid={testId}
   data-slot="preflight-list"
 >
-  {#each items as item (item.id)}
-    <div class="ck-item {item.status}">
-      <span class="ck-ic">
-        {#if item.status === "pass"}
-          <Check class="size-3.5" aria-hidden="true" />
-        {:else if item.status === "warn"}
-          <TriangleAlert class="size-3.5" aria-hidden="true" />
-        {:else}
-          <CircleAlert class="size-3.5" aria-hidden="true" />
-        {/if}
-      </span>
-      <div class="ck-body">
-        <span class="ck-label">{item.label}</span>
-        {#if item.detail}<span class="ck-sub">{item.detail}</span>{/if}
-      </div>
-      {#if item.status !== "pass" && item.fixHref}
-        <!-- eslint-disable svelte/no-navigation-without-resolve -- in-app fix path -->
-        <a class="ck-fix" href={item.fixHref}>{item.fixLabel ?? "Beheben"} ›</a>
-        <!-- eslint-enable svelte/no-navigation-without-resolve -->
-      {/if}
-    </div>
+  {#each openItems as item (item.id)}
+    {@render row(item)}
   {/each}
+  {#if collapsePassed && passedItems.length > 0}
+    <details class="ck-more" data-testid="preflight-passed-disclosure">
+      <summary>
+        <Check class="size-3.5" aria-hidden="true" />
+        {passedItems.length} erfüllte Prüfpunkte
+      </summary>
+      <div class="ck-more-body">
+        {#each passedItems as item (item.id)}
+          {@render row(item)}
+        {/each}
+      </div>
+    </details>
+  {/if}
 </div>
 
 <style>
@@ -79,6 +111,31 @@
     padding: 9px 2px;
   }
   .ck-item + .ck-item {
+    border-top: 1px solid var(--hairline);
+  }
+  /* Passed-items disclosure — blockers/warnings above stay always visible. */
+  .ck-more {
+    border-top: 1px solid var(--hairline);
+  }
+  .ck-more > summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 2px;
+    font-size: 12.5px;
+    font-weight: 650;
+    color: var(--type-einnahme);
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+  .ck-more > summary::-webkit-details-marker {
+    display: none;
+  }
+  .ck-more[open] > summary {
+    color: var(--ink-500);
+  }
+  .ck-more-body > .ck-item:first-child {
     border-top: 1px solid var(--hairline);
   }
   .ck-ic {
