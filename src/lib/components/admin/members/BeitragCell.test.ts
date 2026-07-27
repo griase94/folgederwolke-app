@@ -148,10 +148,30 @@ describe("BeitragCell — shells + a11y + interaction", () => {
     expect(onOpenPopover).not.toHaveBeenCalled();
   });
 
-  it("cell variant: not_applicable is non-interactive (disabled, tabindex -1)", () => {
+  it("cell variant: not_applicable ('—') is interactive and opens the mini (no dead-end)", async () => {
+    const onOpenPopover = vi.fn();
     render(BeitragCell, {
       props: {
         state: "not_applicable_pre_join",
+        variant: "cell",
+        memberId: "m1",
+        year: 2023,
+        onOpenPopover,
+      },
+    });
+    const btn = screen.getByRole("gridcell");
+    expect((btn as HTMLButtonElement).disabled).toBe(false);
+    expect(btn.getAttribute("tabindex")).toBe("0");
+    await fireEvent.click(btn);
+    expect(onOpenPopover).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "mini", memberId: "m1", year: 2023 }),
+    );
+  });
+
+  it("cell variant: locked_year stays non-interactive (lock uses the onLocked path)", () => {
+    render(BeitragCell, {
+      props: {
+        state: "locked_year",
         variant: "cell",
         memberId: "m1",
         year: 2023,

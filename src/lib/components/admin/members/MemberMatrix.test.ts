@@ -121,6 +121,7 @@ function makeMatrix(): MatrixData {
         id: MEMBER_ID,
         vorname: "Erika",
         nachname: "Mustermann",
+        email: "erika@example.org",
         eintrittsJahr: 2020,
         austrittsJahr: null,
         beitragExempt: false,

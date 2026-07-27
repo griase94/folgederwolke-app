@@ -152,7 +152,11 @@
 	});
 
 	// ── Matrix (variant="cell") interactive dispatch — inherited from MatrixCell.
-	const interactive = $derived(variant === 'cell' && hasChrome);
+	// Every cell with a popover kind is interactive — including the "—" cells
+	// (not_applicable → kind 'mini' → readonly-mini), so they open a plain-text
+	// reason instead of dead-ending (§1 var.7 / §6.4). Only locked_year (kind
+	// null) stays non-interactive; the festgeschrieben lock uses the onLocked path.
+	const interactive = $derived(variant === 'cell' && popoverKindForState(state) !== null);
 
 	function trigger(el: HTMLElement) {
 		if (!interactive) return;

@@ -64,6 +64,8 @@ export type MatrixMember = {
   id: string;
   vorname: string;
   nachname: string;
+  /** null when no address on file — gates the "Erinnerung senden" ghost. */
+  email: string | null;
   eintrittsJahr: number;
   /** null when no Austrittsdatum set (still active). */
   austrittsJahr: number | null;
@@ -79,12 +81,17 @@ export type MatrixData = {
   festgeschriebenBis: number | null;
 };
 
-/** Which popover a cell click should open (or null = non-interactive). */
+/**
+ * Which popover a cell click opens (or null = non-interactive). `mini` is the
+ * read-only dialog for "—" cells (pre_join / post_austritt) — the brief's
+ * "kein Dead-End" rule (§1 var.7 / §6.4): every applicable cell leads somewhere.
+ */
 export type PopoverKind =
   | "mark-paid"
   | "paid"
   | "exempt"
   | "permanently_exempt"
+  | "mini"
   | null;
 
 /** Map a CellState to the popover it opens on click. */
@@ -100,8 +107,13 @@ export function popoverKindForState(state: CellState): PopoverKind {
       return "exempt";
     case "permanently_exempt":
       return "permanently_exempt";
+    case "not_applicable_pre_join":
+    case "not_applicable_post_austritt":
+      // "—" cells open the read-only mini (no dead-end). The plain-text reason
+      // is supplied by the caller from member eintritts-/austritts-year.
+      return "mini";
     default:
-      // not_applicable_*, locked_year → non-interactive
+      // locked_year → non-interactive (the lock uses the separate onLocked path).
       return null;
   }
 }
@@ -126,8 +138,7 @@ export type BeitragDialogVariant =
  * Map the popover `kind` emitted by BeitragCell.onOpenPopover to the dialog's
  * entry variant. Single source of truth so the matrix (and every other surface)
  * never re-derives the variant from cell state — it forwards `kind` and asks
- * here. `readonly-mini` has no `kind` (BeitragCell does not emit for "—" cells);
- * callers pass that variant explicitly.
+ * here.
  */
 export function variantForKind(
   kind: Exclude<PopoverKind, null>,
@@ -141,5 +152,7 @@ export function variantForKind(
       return "exempt-review";
     case "permanently_exempt":
       return "perm-exempt";
+    case "mini":
+      return "readonly-mini";
   }
 }

@@ -235,6 +235,7 @@ export async function loadMatrix(opts: {
     id: m.id,
     vorname: m.vorname,
     nachname: m.nachname,
+    email: m.email ?? null,
     eintrittsJahr: m.eintrittsDatum
       ? parseInt(m.eintrittsDatum.slice(0, 4), 10)
       : 0,
