@@ -180,9 +180,14 @@
 					<tfoot>
 						<tr class="sum-row">
 							<td class="lbl">Σ EÜR</td>
-							<td class="num">{eur(data.eur.totalEinnahmenCents)}</td>
-							<td class="num">{eur(data.eur.totalAusgabenCents)}</td>
-							<td class="num strong" class:ein={data.eur.totalUeberschussCents >= 0} class:aus={data.eur.totalUeberschussCents < 0}>
+							<td class="num" data-testid="matrix-total-einnahmen">{eur(data.eur.totalEinnahmenCents)}</td>
+							<td class="num" data-testid="matrix-total-ausgaben">{eur(data.eur.totalAusgabenCents)}</td>
+							<td
+								class="num strong"
+								class:ein={data.eur.totalUeberschussCents >= 0}
+								class:aus={data.eur.totalUeberschussCents < 0}
+								data-testid="matrix-total-ueberschuss"
+							>
 								{eur(data.eur.totalUeberschussCents)}
 							</td>
 						</tr>

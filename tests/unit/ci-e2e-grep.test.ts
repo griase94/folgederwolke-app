@@ -96,6 +96,9 @@ describe("CI e2e grep coverage (F3)", () => {
     expect(grepTags).toContain("@aurora-impl-b4kulisse");
     // Aurora implementation campaign — B-ZB (Zuwendungsbestätigung Werkstatt):
     expect(grepTags).toContain("@aurora-impl-b-zb");
+    // Aurora implementation campaign — D-Abschluss (Jahresabschluss/EÜR/GoBD +
+    // the cross-probe numeric-equality gate):
+    expect(grepTags).toContain("@aurora-impl-d-abschluss");
   });
 
   it("PWA share_target spec is covered by the CI grep (F3)", () => {

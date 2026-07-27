@@ -128,7 +128,9 @@
         </div>
         <div class="yc-line yc-total">
           <span class="lbl">Überschuss</span>
-          <span class="amt {saldoClass}">{eur(ueberschussCents)}</span>
+          <span class="amt {saldoClass}" data-testid="yc-ueberschuss"
+            >{eur(ueberschussCents)}</span
+          >
         </div>
       </div>
 
