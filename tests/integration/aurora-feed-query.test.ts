@@ -12,6 +12,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import postgres from "postgres";
 import { listTransaktionenFeedPage } from "$lib/server/domain/transactions.js";
+import { loadEurWorkspaceData } from "$lib/server/eur/load.js";
 import { parseFilterState } from "$lib/domain/transaction-filters.js";
 
 const dbConfigured = (process.env["DIRECT_DATABASE_URL"] ?? "").length > 0;
@@ -163,6 +164,19 @@ describe.skipIf(!dbConfigured)("listTransaktionenFeedPage", () => {
     } finally {
       await client.end();
     }
+
+    // DIRECT numeric reconciliation identity (was only pinned by construction):
+    // feed-foot + EÜR-Beitragskomponente === EÜR-Überschuss. This requires BOTH
+    // the feed AND the EÜR to filter supersedes consistently — a Storno double-
+    // count on either side would break it. 2096: one kept 5000-donation only.
+    const footSum = rows.reduce(
+      (a, r) => a + (r.kind === "expense" ? -r.betragCents : r.betragCents),
+      0,
+    );
+    const ws = await loadEurWorkspaceData(2096);
+    expect(footSum + ws.beitragEinnahmenCents).toBe(
+      ws.eur.totalUeberschussCents,
+    );
   });
 
   it("LIMIT/OFFSET pages the union window while total stays constant (page-clamp contract)", async () => {

@@ -11,11 +11,9 @@
  */
 
 import { fail, error } from "@sveltejs/kit";
-import { sql } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { closeBuchhaltungsjahr } from "$lib/server/domain/jahresabschluss.js";
 import { archiveYear } from "$lib/server/files/archive-job.js";
-import { getDb } from "$lib/server/db/index.js";
 import { berlinYear } from "$lib/domain/year.js";
 
 export const load: PageServerLoad = async () => {
@@ -57,22 +55,14 @@ export const actions: Actions = {
       // PHASE 2: close the books.
       const result = await closeBuchhaltungsjahr(year, user.id);
 
-      // The year's paid Mitgliedsbeiträge are NOT row-sealed by
-      // close_buchhaltungsjahr (they carry no festgeschrieben_at), but they ARE
-      // protected by the Jahressperre — markBeitragPaid returns 409 for a
-      // year <= festgeschrieben_bis. Surface the count so the Hub-Settle can
-      // honestly say „N geschützt (M versiegelt, K Beiträge über die Jahressperre)".
-      const beitragRes = (await getDb().execute<{ cnt: string }>(sql`
-        SELECT count(*)::text AS cnt FROM member_beitrags
-         WHERE year = ${year} AND gezahlt_am IS NOT NULL AND paid_cents > 0
-      `)) as { cnt: string }[];
-      const beitragCount = parseInt(beitragRes[0]?.cnt ?? "0", 10);
-
+      // NB: the Hub-Settle count breakdown (versiegelt + Beiträge) is derived
+      // client-side from the SAME 4-source Hub counts the modal showed — NOT from
+      // result.totalRows (which counts invoices + skips supersedes and would
+      // exceed the modal in an invoice year). So no extra count query here.
       return {
         success: true,
         year: result.year,
         totalRows: result.totalRows,
-        beitragCount,
         rowsByTable: result.rowsByTable,
         archived: archiveResult.archived,
         archiveFailed: archiveResult.failed,

@@ -86,11 +86,6 @@ describe("canonical festschreiben action archives before closing", () => {
       archiveFailed: 0,
       archiveTotal: 3,
     });
-    // beitragCount (paid Mitgliedsbeiträge, protected by the Jahressperre) is
-    // surfaced for the Settle breakdown „N geschützt (M versiegelt, K Beiträge)".
-    expect(typeof (res as { beitragCount: number }).beitragCount).toBe(
-      "number",
-    );
   });
 
   it("surfaces a partial archive failure without swallowing it", async () => {

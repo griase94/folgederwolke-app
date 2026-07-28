@@ -23,11 +23,20 @@
 		success: boolean;
 		year: number;
 		totalRows: number;
-		beitragCount: number;
 		archived: number;
 		archiveFailed: number;
 		archiveTotal: number;
 	}
+	// The Settle count-basis is captured from the SAME 4-source Hub counts the
+	// modal used (income+expense+donation, supersedes-filtered, NO invoices) +
+	// Beiträge — NOT close_buchhaltungsjahr.totalRows (which counts invoices and
+	// skips supersedes, so it would exceed the modal in an invoice year and break
+	// Hub == Modal == Settle at the most sensitive moment).
+	interface SettleNums {
+		sealedCount: number;
+		beitragCount: number;
+	}
+	let settleNums = $state<SettleNums | null>(null);
 	let settle = $state<FestschreibenResult | null>(null);
 	let submitError = $state<string | null>(null);
 	let submitting = $state(false);
@@ -120,17 +129,17 @@
 		</p>
 	</div>
 
-	<!-- Success settle (Hub-Settle) -->
-	{#if settle?.success}
+	<!-- Success settle (Hub-Settle) — counts from the captured 4-source basis. -->
+	{#if settle?.success && settleNums}
 		<div class="settle ok" role="status" data-testid="festschreiben-settle">
 			<span class="s-ic"><CircleCheck class="size-5" aria-hidden="true" /></span>
 			<div class="s-body">
 				<div class="s-title">
-					Buchungsjahr {settle.year} festgeschrieben — {settle.totalRows + settle.beitragCount}
-					Buchungen geschützt.
+					Buchungsjahr {settle.year} festgeschrieben — {settleNums.sealedCount +
+						settleNums.beitragCount} Buchungen geschützt.
 				</div>
 				<div class="s-sub" data-testid="festschreiben-settle-breakdown">
-					{settle.totalRows} versiegelt (GoBD § 146){#if settle.beitragCount > 0}, {settle.beitragCount}
+					{settleNums.sealedCount} versiegelt (GoBD § 146){#if settleNums.beitragCount > 0}, {settleNums.beitragCount}
 						Mitgliedsbeiträge über die Jahressperre{/if}.
 				</div>
 				{#if settle.archiveFailed > 0}
@@ -272,10 +281,15 @@
 				use:enhance={() => {
 					submitting = true;
 					submitError = null;
-					return async ({ result, update }) => {
+					const snap: SettleNums = {
+							sealedCount,
+							beitragCount: readyCard?.counts.beitrags ?? 0
+						};
+						return async ({ result, update }) => {
 						submitting = false;
 						if (result.type === 'success') {
 							settle = result.data as unknown as FestschreibenResult;
+								settleNums = snap;
 							modalOpen = false;
 							confirmed = false;
 							await update({ reset: false });
