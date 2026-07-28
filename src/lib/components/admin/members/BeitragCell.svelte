@@ -208,10 +208,12 @@
 		<Lock size={13} aria-hidden="true" class="shrink-0" />
 	{/if}
 	{#if state === 'partial'}
-		{#if compact}
-			<!-- Dense cell (Matrix): only the paid amount so the pill fits a fixed
-			     120px track; the full „X von Y" fraction lives in the aria-label +
-			     the click-popover. -->
+		{#if variant === 'cell'}
+			<!-- Dense Matrix cell ONLY: just the paid amount so the pill fits the
+			     fixed 120px track; the full „X von Y" fraction lives in the
+			     aria-label + the click-popover. The pill variant (list/card/detail)
+			     has room and KEEPS the full fraction — Judge-pinned, do not gate on
+			     the `compact` prop (the list pill is compact too). -->
 			<span class="tabular-nums">{eur(paidCents)}</span>
 		{:else}
 			<span class="tabular-nums">{eur(paidCents)} / {eur(betragCents)}</span>

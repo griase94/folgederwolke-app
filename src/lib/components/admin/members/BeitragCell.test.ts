@@ -85,6 +85,25 @@ describe("BeitragCell — tone contract (amber-discipline)", () => {
     expect(el.getAttribute("aria-label")).toMatch(/30,00.*von.*69,69/);
   });
 
+  it("partial + compact PILL (list/card): keeps the full fraction — compact must NOT strip it outside the Matrix cell", () => {
+    // Regression guard (mitglieder.spec @phase-member-zahlung): the list row pill
+    // is compact too, but has room — the visible fraction is Judge-pinned. Only
+    // variant='cell' (the 120px Matrix track) collapses to the paid amount.
+    const { container } = render(BeitragCell, {
+      props: {
+        state: "partial",
+        variant: "pill",
+        compact: true,
+        paidCents: 3000,
+        betragCents: 6000,
+        year: 2025,
+      },
+    });
+    const el = container.querySelector("[data-state='partial']")!;
+    expect(el.textContent).toMatch(/30,00/);
+    expect(el.textContent).toMatch(/60,00/);
+  });
+
   it("exempt / permanently_exempt: slate/ink, 'Befreit', no emerald", () => {
     for (const state of ["exempt", "permanently_exempt"] as const) {
       const { container } = render(BeitragCell, {
