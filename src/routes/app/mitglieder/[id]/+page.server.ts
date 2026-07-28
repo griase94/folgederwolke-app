@@ -27,7 +27,13 @@ import {
   markBeitragPaid,
   checkReminderAllowed,
 } from "$lib/server/domain/members-actions.js";
-import { sendMail } from "$lib/server/mail/index.js";
+import { bus } from "$lib/server/events/index.js";
+import {
+  reminderSendAttempt,
+  remindedMemberIdsForYear,
+  resolveReminderFrist,
+  vereinBankIdentity,
+} from "$lib/server/domain/beitrag-reminder.js";
 import { env } from "$lib/server/env.js";
 import { berlinYear, berlinYmd } from "$lib/domain/year.js";
 import { assertUuidOr404 } from "$lib/domain/uuid.js";
@@ -286,7 +292,8 @@ export const actions: Actions = {
   // Package B: uses checkReminderAllowed to refuse 422 when the member owes
   // nothing for the year (CARDINAL RULE — no false debt). VEREIN_BEITRAG_DEFAULT_CENTS
   // fabrication removed; betragCents comes from the canonical state resolver.
-  "send-reminder": async ({ request, params }) => {
+  "send-reminder": async ({ request, params, locals }) => {
+    const userId = locals.session?.user.id ?? null;
     // F14: validate before memberId reaches the ::uuid cast in
     // checkReminderAllowed (actions skip load()).
     const memberId = assertUuidOr404(params.id, "Mitglied nicht gefunden");
@@ -320,11 +327,8 @@ export const actions: Actions = {
     }
 
     // Org bank details — env.VEREIN_* is the only source of truth.
-    const iban = env.VEREIN_IBAN;
-    const bic = env.VEREIN_BIC;
-    const bank = env.VEREIN_BANK;
-    const empfaenger = env.VEREIN_NAME;
-    if (!iban || !bic || !bank || !empfaenger) {
+    const bank = vereinBankIdentity();
+    if (!bank) {
       return fail(500, {
         action: "send-reminder",
         error:
@@ -332,33 +336,37 @@ export const actions: Actions = {
       });
     }
 
+    // Already reminded for this (member, year)? → honest "already sent".
+    const already = await remindedMemberIdsForYear([memberId], year);
+    if (already.has(memberId)) {
+      return {
+        action: "send-reminder",
+        success: true,
+        deduped: true,
+        vorname: member.vorname,
+      };
+    }
+
+    // Mail goes through the event bus (`beitrag.reminder_requested`), never
+    // inline sendMail (§4.1.1 #2, ADR-0005). send_attempt is jahresbasiert so
+    // this shares the (member, year) dedup key with cron + the Bulk sheet.
     try {
-      const result = await sendMail({
-        template: "beitrag_reminder",
-        entity_kind: "member",
-        entity_id: memberId,
+      await bus.emit("beitrag.reminder_requested", {
+        memberId,
+        year,
         to: member.email,
-        props: {
-          vorname: member.vorname,
-          nachname: member.nachname,
-          jahr: year,
-          betragCents,
-          iban,
-          bic,
-          bank,
-          empfaenger,
-        },
+        vorname: member.vorname,
+        nachname: member.nachname,
+        betragCents,
+        iban: bank.iban,
+        bic: bank.bic,
+        bank: bank.bank,
+        empfaenger: bank.empfaenger,
+        fristAt: await resolveReminderFrist(year),
+        customIntro: null,
+        sendAttempt: reminderSendAttempt(year),
+        actorUserId: userId,
       });
-
-      if (result.deduped) {
-        return {
-          action: "send-reminder",
-          success: true,
-          deduped: true,
-          vorname: member.vorname,
-        };
-      }
-
       return {
         action: "send-reminder",
         success: true,

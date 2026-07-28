@@ -65,35 +65,54 @@ describe("cron beitragsreminder threads VEREIN_* env vars (no hardcoded fallback
   });
 });
 
-describe("manual /mitglieder/[id] send-reminder action threads VEREIN_* env vars", () => {
-  const src = readFileSync(
+describe("manual send-reminder actions source the bank identity from env only", () => {
+  // C2/S3a: the per-route inline `const iban = env.VEREIN_IBAN` reads moved into
+  // the shared `vereinBankIdentity()` helper (beitrag-reminder.ts), used by BOTH
+  // mitglieder route actions + the Bulk path. The guarantee is unchanged and now
+  // single-sourced: env is the only source, and the action refuses when unset.
+  const ROUTE_FILES = [
+    "src/routes/app/mitglieder/+page.server.ts",
     "src/routes/app/mitglieder/[id]/+page.server.ts",
+  ];
+
+  for (const file of ROUTE_FILES) {
+    const src = readFileSync(file, "utf-8");
+
+    it(`${file}: no old hardcoded IBAN/BIC/Bankname/Empfänger fallback`, () => {
+      expect(src).not.toContain(OLD_LEAKED_IBAN);
+      expect(src).not.toMatch(/BELADEBEXXX/);
+      expect(src).not.toMatch(/Berliner Volksbank|Berliner Sparkasse/);
+      expect(src).not.toMatch(/const\s+empfaenger\s*=\s*["']Folge der Wolke/);
+    });
+
+    it(`${file}: sources the bank identity via vereinBankIdentity() + refuses when unset`, () => {
+      expect(src).toMatch(/vereinBankIdentity\(\)/);
+      // The action bails out (500) when the helper returns null.
+      expect(src).toMatch(/if\s*\(\s*!bank\s*\)/);
+    });
+  }
+});
+
+describe("vereinBankIdentity() reads exclusively from env.VEREIN_* (no fallbacks)", () => {
+  const src = readFileSync(
+    "src/lib/server/domain/beitrag-reminder.ts",
     "utf-8",
   );
 
-  it("does not contain the old hardcoded IBAN fallback", () => {
+  it("does not contain the old hardcoded IBAN/BIC/Bankname fallbacks", () => {
     expect(src).not.toContain(OLD_LEAKED_IBAN);
-  });
-
-  it("does not contain the old hardcoded BIC fallback", () => {
     expect(src).not.toMatch(/BELADEBEXXX/);
-  });
-
-  it("does not contain the old hardcoded Bankname fallback", () => {
     expect(src).not.toMatch(/Berliner Volksbank|Berliner Sparkasse/);
   });
 
-  it("does not contain the old hardcoded Empfänger fallback", () => {
-    // The old code had `const empfaenger = "Folge der Wolke e.V."`.
-    // env.VEREIN_NAME is the source of truth now.
-    expect(src).not.toMatch(/const\s+empfaenger\s*=\s*["']Folge der Wolke/);
+  it("reads all four VEREIN_* bank fields from env", () => {
+    expect(src).toMatch(/env\.VEREIN_IBAN/);
+    expect(src).toMatch(/env\.VEREIN_BIC/);
+    expect(src).toMatch(/env\.VEREIN_BANK/);
+    expect(src).toMatch(/env\.VEREIN_NAME/);
   });
 
-  it("reads iban from env.VEREIN_IBAN", () => {
-    expect(src).toMatch(/iban\s*=\s*env\.VEREIN_IBAN/);
-  });
-
-  it("reads bic from env.VEREIN_BIC", () => {
-    expect(src).toMatch(/bic\s*=\s*env\.VEREIN_BIC/);
+  it("returns null when any bank field is unset (refuse, never send wrong data)", () => {
+    expect(src).toMatch(/return null/);
   });
 });

@@ -31,6 +31,12 @@ import { berlinYmd, currentBuchungsjahr } from "$lib/domain/year.js";
 import { requireAdmin } from "$lib/server/domain/require-role.js";
 import { findBeitragssatz } from "$lib/server/domain/beitragssatz.js";
 import { resolveBeitragState } from "$lib/domain/beitrag-state.js";
+import {
+  reminderSendAttempt,
+  remindedMemberIdsForYear,
+  resolveReminderFrist,
+  vereinBankIdentity,
+} from "$lib/server/domain/beitrag-reminder.js";
 
 // ---------------------------------------------------------------------------
 // Result types
@@ -64,6 +70,27 @@ export type RestoreMemberResult = { ok: true } | ActionFailure;
 export type MarkBeitragPaidResult = { ok: true } | ActionFailure;
 export type MarkBeitragUnpaidResult = { ok: true } | ActionFailure;
 export type SetBeitragExemptResult = { ok: true } | ActionFailure;
+
+/**
+ * Per-recipient outcome of a Beitrags-Reminder Bulk send (erinnerung-senden §5
+ * digest). Every posted memberId lands in exactly one bucket; the UI's
+ * result-state reads these to show "N gesendet · M übersprungen · K fehlgeschlagen".
+ *   - sent            — the reminder was emitted on the bus
+ *   - skippedNoMail   — member has no e-mail (never a mail; brief §1)
+ *   - skippedDeduped  — already reminded for this (member, year) → no 2nd row
+ *   - skippedNoDebt   — false-debt guard refused (paid/exempt/pre-join/austritt/404)
+ *   - failed          — the mail send threw (transient provider error → retry)
+ */
+export type ReminderDigest =
+  | {
+      ok: true;
+      sent: string[];
+      skippedNoMail: string[];
+      skippedDeduped: string[];
+      skippedNoDebt: string[];
+      failed: string[];
+    }
+  | ActionFailure;
 
 /**
  * Missing-Beitragssatz failure (422). Surfaced when an admin tries to mark a
@@ -832,5 +859,127 @@ export async function checkReminderAllowed(args: {
     allowed: true,
     member,
     betragCents: resolved.betragCents,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// sendBeitragReminderBulk — the single send path (single = n=1, Bulk = n≥1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Send Beitrags-Erinnerungen for `year` to every member in `memberIds`
+ * (erinnerung-senden §6.1 — "analog mark-beitrag-paid-bulk"). One recipient is
+ * just the n=1 case of the same path (Ruling C6a), so BOTH the manual single
+ * actions and the Bulk sheet funnel through here.
+ *
+ * Per recipient (deduped, admin-gated ONCE up front):
+ *   1. `checkReminderAllowed` — the CARDINAL false-debt guard (single source);
+ *      a paid/exempt/pre-join/post-austritt/unknown member is skippedNoDebt,
+ *      NEVER mailed.
+ *   2. no e-mail → skippedNoMail.
+ *   3. already reminded for this (member, year) → skippedDeduped (no emit); this
+ *      is also what makes a repeated POST idempotent — the 2nd POST sees the
+ *      1st POST's `sent_mails` rows.
+ *   4. else emit `beitrag.reminder_requested` (bus, never inline sendMail —
+ *      §4.1.1 #2). The handler re-throws on a provider error → `failed`.
+ *
+ * Idempotency is anchored on `reminderSendAttempt(year)` (jahresbasiert,
+ * ADR-0005), identical to the annual cron so the three paths share ONE
+ * `sent_mails` dedup key per (member, year).
+ */
+export async function sendBeitragReminderBulk(args: {
+  memberIds: string[];
+  year: number;
+  /** Bulk sheet's chosen "Zahlbar bis" date; omitted → year's Fälligkeit. */
+  fristAt?: string | null;
+  /** Bulk-edited intro override (C2a); the single path never sets it. */
+  customIntro?: string | null;
+  actorUserId: string | null;
+  actorRole?: string | null;
+}): Promise<ReminderDigest> {
+  const { memberIds, year, customIntro = null, actorUserId, actorRole } = args;
+
+  const denial = requireAdmin(actorRole);
+  if (denial) return denial;
+
+  if (!Number.isFinite(year)) {
+    return { ok: false, status: 400, error: "Ungültige Parameter" };
+  }
+
+  // De-dupe + drop empties so a malformed payload can't double-send a member.
+  const ids = [...new Set(memberIds.filter((id) => id && id.trim() !== ""))];
+  if (ids.length === 0) {
+    return { ok: false, status: 400, error: "Keine Mitglieder ausgewählt." };
+  }
+
+  // Bank identity is env-sourced and identical for the whole batch; refuse the
+  // whole send if it is unconfigured (a wrong IBAN must never go out).
+  const bank = vereinBankIdentity();
+  if (!bank) {
+    return {
+      ok: false,
+      status: 500,
+      error:
+        "Vereins-Bankdaten (VEREIN_IBAN / VEREIN_BIC / VEREIN_BANK / VEREIN_NAME) sind nicht konfiguriert.",
+    };
+  }
+
+  // Frist + send_attempt are per-year (same for every recipient) → resolve once.
+  const fristAt = await resolveReminderFrist(year, args.fristAt);
+  const sendAttempt = reminderSendAttempt(year);
+  const alreadyReminded = await remindedMemberIdsForYear(ids, year);
+
+  const sent: string[] = [];
+  const skippedNoMail: string[] = [];
+  const skippedDeduped: string[] = [];
+  const skippedNoDebt: string[] = [];
+  const failed: string[] = [];
+
+  for (const memberId of ids) {
+    const guard = await checkReminderAllowed({ memberId, year });
+    if (!guard.allowed) {
+      skippedNoDebt.push(memberId);
+      continue;
+    }
+    const { member, betragCents } = guard;
+    if (!member.email) {
+      skippedNoMail.push(memberId);
+      continue;
+    }
+    if (alreadyReminded.has(memberId)) {
+      skippedDeduped.push(memberId);
+      continue;
+    }
+    try {
+      await bus.emit("beitrag.reminder_requested", {
+        memberId,
+        year,
+        to: member.email,
+        vorname: member.vorname,
+        nachname: member.nachname,
+        betragCents,
+        iban: bank.iban,
+        bic: bank.bic,
+        bank: bank.bank,
+        empfaenger: bank.empfaenger,
+        fristAt,
+        customIntro,
+        sendAttempt,
+        actorUserId,
+      });
+      sent.push(memberId);
+    } catch (err) {
+      console.error(`[reminder] send failed for member ${memberId}:`, err);
+      failed.push(memberId);
+    }
+  }
+
+  return {
+    ok: true,
+    sent,
+    skippedNoMail,
+    skippedDeduped,
+    skippedNoDebt,
+    failed,
   };
 }
