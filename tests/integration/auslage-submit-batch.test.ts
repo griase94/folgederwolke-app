@@ -14,7 +14,7 @@
  * @phase-2
  */
 import { describe, it, expect, beforeAll, beforeEach } from "vitest";
-import { sql, eq, inArray } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { registerHandlers } from "$lib/server/events/index.js";
 import {
@@ -22,7 +22,6 @@ import {
   type AuslageBatchItem,
 } from "$lib/server/domain/auslage-submit.js";
 import { allocateBusinessIds } from "$lib/server/domain/id-allocator.js";
-import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { DATENSCHUTZ_VERSION } from "$lib/server/domain/datenschutz.js";
 
