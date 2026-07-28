@@ -7,7 +7,7 @@
 	import MemberActivityFeed from '$lib/components/admin/members/MemberActivityFeed.svelte';
 	import SendReminderBulkSheet from '$lib/components/admin/members/SendReminderBulkSheet.svelte';
 	import MarkPaidControl from '$lib/components/admin/members/MarkPaidControl.svelte';
-	import { resolveBeitragState, projectForList } from '$lib/domain/beitrag-state.js';
+	import { projectForList } from '$lib/domain/beitrag-state.js';
 	import type { PageData } from './$types.js';
 
 	let { data }: { data: PageData } = $props();
@@ -41,8 +41,6 @@
 		}
 	}
 
-	// Package D: compute canonical currentYearState for MemberInfoCard + hero.
-	// Uses resolveBeitragState (ADR-0001 — only Berlin year from server load).
 	const eintrittsJahr = $derived(
 		data.member.eintrittsDatum ? Number(data.member.eintrittsDatum.slice(0, 4)) : data.currentYear,
 	);
@@ -50,28 +48,17 @@
 		data.member.austrittsDatum ? Number(data.member.austrittsDatum.slice(0, 4)) : null,
 	);
 
-	const currentYearRow = $derived(
-		data.currentYearBeitrag
-			? {
-					betragCents: data.currentYearBeitrag.betragCents,
-					paidCents: data.currentYearBeitrag.paidCents,
-					isExempt: data.currentYearBeitrag.isExempt,
-					gezahltAm: null,
-				}
-			: null,
-	);
-
-	const currentYearState = $derived(
-		resolveBeitragState({
-			year: data.currentYear,
-			eintrittsJahr: eintrittsJahr,
-			austrittsJahr: austrittsJahr,
-			beitragExempt: data.member.beitragExempt,
-			row: currentYearRow,
-			satzCents: data.satzByYear[data.currentYear] ?? null,
-			festBis: null,
-		}),
-	);
+	// S4 #1: the current-year state comes from the SERVER-resolved cell (real
+	// festBis) — the single source. The old client resolveBeitragState passed
+	// festBis:null, so the detail pill never reflected Festschreibung; now isLocked
+	// is correct and heroDaysOverdue is Zoe-clamped (both straight off the cell).
+	const currentCell = $derived(data.cells.find((c) => c.year === data.currentYear) ?? null);
+	const currentYearState = $derived({
+		state: currentCell?.state ?? 'open',
+		betragCents: currentCell?.betragCents ?? 0,
+		paidCents: currentCell?.paidCents ?? 0,
+		isLocked: currentCell?.isLocked ?? false,
+	});
 
 	const currentYearDisplayState = $derived(projectForList(currentYearState.state));
 
@@ -177,6 +164,8 @@
 						austrittsJahr={austrittsJahr}
 						currentYear={data.currentYear}
 						satzByYear={data.satzByYear}
+						festBis={data.festBis}
+						heroDaysOverdue={currentCell?.daysOverdue ?? null}
 					/>
 				{/if}
 			</div>

@@ -4,7 +4,6 @@
 	import MemberDialog from './MemberDialog.svelte';
 	import BeitragCell from './BeitragCell.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
-	import type { ResolveBeitragStateResult } from '$lib/domain/beitrag-state.js';
 	import type { CellState } from '$lib/domain/beitrag-cell.js';
 	import { projectForList } from '$lib/domain/beitrag-state.js';
 
@@ -43,7 +42,17 @@
 			createdAt: string;
 		};
 		currentYear?: number | null;
-		currentYearState?: ResolveBeitragStateResult | null;
+		/**
+		 * S4 #1: the current-year cell state (server-resolved with the REAL festBis
+		 * — `isLocked` reflects Festschreibung). Narrowed to the fields the pill
+		 * uses so the caller can pass a plain cell-derived object.
+		 */
+		currentYearState?: {
+			state: CellState;
+			betragCents: number;
+			paidCents: number;
+			isLocked: boolean;
+		} | null;
 	} = $props();
 
 	let editOpen = $state(false);
@@ -175,6 +184,7 @@
 							year={currentYear}
 							paidCents={currentYearState.paidCents}
 							betragCents={currentYearState.betragCents}
+							isLocked={currentYearState.isLocked}
 							compact
 							exemptReason={member.beitragExemptReason}
 						/>

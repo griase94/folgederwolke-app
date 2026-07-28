@@ -29,6 +29,11 @@ import {
   sendBeitragReminderBulk,
 } from "$lib/server/domain/members-actions.js";
 import { loadReminderCandidates } from "$lib/server/domain/reminder-candidates.js";
+import {
+  resolveMemberCells,
+  fetchFestgeschriebenBis,
+  getGraceDays,
+} from "$lib/server/domain/matrix-loader.js";
 import { vereinBankIdentity } from "$lib/server/domain/beitrag-reminder.js";
 import { env } from "$lib/server/env.js";
 import {
@@ -108,23 +113,49 @@ export const load: PageServerLoad = async ({ params }) => {
   // ── Org constants for mail preview ───────────────────────────────────────
   const mailFrom = env.MAIL_FROM;
 
-  // ── Package B: satzByYear — load Satz for all years member has a row in
-  //    plus the current year (so UI can show betragCents for no-row years) ─
+  // ── Package B: satzByYear — load Satz + Fälligkeit for all years the member
+  //    has a row in plus the current year (UI shows betragCents for no-row years;
+  //    Fälligkeit feeds the S4 #1 cell resolution). ─
   const beitragYears = [
     ...new Set([...beitragRows.map((b) => b.year), currentYear]),
   ];
-  let satzRows: { year: number; cents: bigint }[] = [];
+  let satzRows: {
+    year: number;
+    cents: bigint;
+    faelligkeitAt: string | null;
+  }[] = [];
   if (beitragYears.length > 0) {
     satzRows = await db
       .select({
         year: beitragssatzByYear.year,
         cents: beitragssatzByYear.cents,
+        faelligkeitAt: beitragssatzByYear.faelligkeitAt,
       })
       .from(beitragssatzByYear)
       .where(inArray(beitragssatzByYear.year, beitragYears));
   }
   const satzByYear: Record<number, number> = {};
   for (const s of satzRows) satzByYear[s.year] = Number(s.cents);
+
+  // ── S4 #1: resolve the member's Beitrag cells SERVER-SIDE with the REAL
+  //    festBis (never client-side festBis:null). Single source — same
+  //    resolveMemberCells the Beitragsmatrix uses — so the detail pill reflects
+  //    Festschreibung (isLocked) and heroDaysOverdue is Zoe-clamped.
+  const [detailFestBis, detailGraceDays] = await Promise.all([
+    fetchFestgeschriebenBis(),
+    getGraceDays(),
+  ]);
+  const beitragByYear = new Map(beitragRows.map((b) => [b.year, b]));
+  const satzRowByYear = new Map(satzRows.map((s) => [s.year, s]));
+  const cells = resolveMemberCells(
+    member,
+    beitragYears,
+    (y) => beitragByYear.get(y),
+    (y) => satzRowByYear.get(y),
+    detailFestBis,
+    detailGraceDays,
+    new Date(`${berlinYmd()}T00:00:00Z`),
+  );
 
   const currentYearBeitrag = beitragRows.find((b) => b.year === currentYear);
 
@@ -183,6 +214,10 @@ export const load: PageServerLoad = async ({ params }) => {
     mailFrom,
     currentYear,
     satzByYear,
+    // S4 #1: server-resolved cells (real festBis) — the single source for the
+    // detail hero/pill state, isLocked (Festschreibung), and Zoe-clamped overdue.
+    cells,
+    festBis: detailFestBis,
     currentYearBeitrag: currentYearBeitrag
       ? {
           id: currentYearBeitrag.id,
