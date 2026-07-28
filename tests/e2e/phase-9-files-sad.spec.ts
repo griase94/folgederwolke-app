@@ -163,27 +163,30 @@ test.describe("@phase-9 Files — sad", () => {
     // it for a *different* reason — we want the size guard to fire.
     Buffer.from("%PDF-1.4\n").copy(big, 0);
 
+    // A-flow S1: extern-only BATCH payload (identity + 1 item + beleg_0).
     const payload = {
-      bezahlt_von: {
-        kind: "extern",
+      identity: {
         name: "S1 Tester",
         iban: "DE89370400440532013000",
         email: "s1@example.test",
       },
-      bezeichnung: "S1-too-big",
-      betragCents: 100,
-      currency: "EUR",
       consent_text_version: DATENSCHUTZ_VERSION,
-      // UUID v4 — validateAuslageInput rejects other shapes
-      submissionNonce: crypto.randomUUID(),
+      auslagen: [
+        {
+          client_key: "a1",
+          submission_nonce: crypto.randomUUID(),
+          bezeichnung: "S1-too-big",
+          betrag_cents: 100,
+          rechnungsdatum: "2026-05-01",
+        },
+      ],
     };
 
     const res = await page.request.post("/auslage-einreichen", {
       headers: CSRF_HEADERS,
       multipart: {
         data: JSON.stringify(payload),
-        submissionNonce: payload.submissionNonce,
-        beleg: {
+        beleg_0: {
           name: "huge.pdf",
           mimeType: "application/pdf",
           buffer: big,

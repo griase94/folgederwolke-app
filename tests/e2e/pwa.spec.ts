@@ -114,7 +114,11 @@ test.describe("@phase-2 PWA", () => {
     );
     expect(getRes?.status()).toBe(200);
     await expect(page.getByTestId("share-prefill-banner")).toBeVisible();
-    await expect(page.locator("#bezeichnung")).toHaveValue("Druckerpapier");
+    // A-flow S1: the batch form's bezeichnung input has a per-block dynamic id,
+    // so select it by its stable placeholder; the share title seeds block 1.
+    await expect(
+      page.getByPlaceholder("z. B. Getränke fürs Sommerfest"),
+    ).toHaveValue("Druckerpapier");
   });
 
   test("share_target POST without Origin header (Android intent) is NOT blocked by CSRF", async ({

@@ -1,153 +1,172 @@
 /**
  * @phase-2
  *
- * E2E tests for the public Auslage submission form UI.
- *
- * These tests assert that:
- * - The form renders with the expected sections.
- * - Submitting an empty form shows validation errors (inline).
- * - The happy path (fill + submit) reaches the confirmation page.
- *
- * Fails loudly if PUBLIC_FORM_ENABLED is off — silent
- * test.skip() previously masked the route 404 and made the entire form-UI
- * suite a no-op in CI.
+ * E2E for the public Auslage form (Aurora A-flow S1): extern-only + multi-Auslage
+ * batch. Asserts the form renders, the submit gate blocks an incomplete form, the
+ * F2 cap hides "+ weitere Auslage" at MAX_BATCH_ITEMS, and the happy path (fill +
+ * Beleg + submit) reaches the confirmation — single and batch.
  */
-
 import { expect, test, type Page } from "@playwright/test";
 
-test.describe("@phase-2 auslage form UI", () => {
+// A valid 64×64 PNG — large enough that the server-side sharp thumbnail
+// succeeds (a 1×1 trips a libpng read error, leaving a thumbnail-less files row
+// that breaks the /app/files admin listing spec downstream).
+const PNG_BELEG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAn0lEQVRoge2SQQkAQRDDKqzCTmcUrYh7hIFCBKSh4etpohuwAdUrsgv1LtEN2IDqFdmFepfoBmxA9YrsQr1LdAM2oHpFdqHeJboBG1C9IrtQ7xLdgA2oXpFdqHeJbsAGVK/ILtS7RDdgA6pXZBfqXaIbsAHVK7IL9S7RDdiA6hXZhXqX6AZsQPWK7EK9S3QDNqB6RXah3iW6ARtQveIfHgeIYWnw/5CEAAAAAElFTkSuQmCC",
+  "base64",
+);
+
+// A distinct identity for the submit round-trips so the afterAll cleanup can
+// remove exactly the submissions + Beleg files these tests create (they persist
+// real rows + blobs; leaving them behind slows the downstream /app/files admin
+// listing spec — spec isolation).
+const FORM_EMAIL = "e2e-form-submit@example.test";
+
+test.describe("@phase-2 auslage form (extern-only + batch)", () => {
+  test.afterAll(async () => {
+    const { default: postgres } = await import("postgres");
+    const c = postgres(
+      process.env["DIRECT_DATABASE_URL"] ?? process.env["DATABASE_URL"] ?? "",
+      { prepare: false, max: 1 },
+    );
+    try {
+      const rows = await c<{ beleg_file_id: string | null }[]>`
+        DELETE FROM auslagen_submissions
+        WHERE extern_email = ${FORM_EMAIL}
+        RETURNING beleg_file_id`;
+      const ids = rows
+        .map((r) => r.beleg_file_id)
+        .filter((id): id is string => Boolean(id));
+      if (ids.length) await c`DELETE FROM files WHERE id = ANY(${ids})`;
+    } finally {
+      await c.end();
+    }
+  });
+
   async function goToForm(page: Page): Promise<void> {
-    // CSP is now configured via svelte.config.js kit.csp (mode: 'auto') —
-    // SvelteKit adds the right hashes/nonces for its inline hydration scripts
-    // so we no longer need to intercept and strip the header in tests.
     const res = await page.goto("/auslage-einreichen");
     if (res?.status() === 404) {
       throw new Error(
-        "GET /auslage-einreichen returned 404 — PUBLIC_FORM_ENABLED is off. Fix .env.test (PUBLIC_FORM_ENABLED=true) instead of silently skipping the entire form UI suite.",
+        "GET /auslage-einreichen returned 404 — PUBLIC_FORM_ENABLED is off. Fix .env.test (PUBLIC_FORM_ENABLED=true).",
       );
     }
     expect(res?.status()).toBe(200);
-    // Wait for Svelte hydration: the submit button must be interactive
-    // before we start asserting reactive state or firing events.
     await page.waitForLoadState("networkidle");
-    await expect(
-      page.getByRole("button", { name: "Auslage einreichen" }),
-    ).toBeVisible();
+    await expect(page.getByTestId("auslage-submit")).toBeVisible();
   }
 
-  test("form renders all major sections", async ({ page }) => {
-    await goToForm(page);
+  async function fillIdentity(page: Page): Promise<void> {
+    await page.getByPlaceholder("Vor- und Nachname").fill("E2E Form Tester");
+    await page.getByPlaceholder("damit wir dich erreichen").fill(FORM_EMAIL);
+    await page.getByPlaceholder(/^DE00/).fill("DE89 3704 0044 0532 0130 00");
+  }
 
-    // Section headings visible — string may appear in card title + sr-only legend,
-    // so accept any occurrence via .first()
-    await expect(page.getByText("Wer hat bezahlt?").first()).toBeVisible();
-    await expect(
-      page.getByText("Wofür ist die Auslage?").first(),
-    ).toBeVisible();
-    await expect(page.getByText("Beleg").first()).toBeVisible();
-    await expect(page.getByText("Datenschutz").first()).toBeVisible();
+  // Fill the (currently open) block's fields + attach a Beleg. `scope` narrows
+  // to a single block's subtree for the batch case.
+  async function fillBlock(
+    scope: Page | ReturnType<Page["locator"]>,
+    { bez, betrag, datum }: { bez: string; betrag: string; datum: string },
+  ): Promise<void> {
+    await scope.getByPlaceholder("z. B. Getränke fürs Sommerfest").fill(bez);
+    await scope.getByTestId("amount-field-input").fill(betrag);
+    const dateInput = scope.getByTestId("date-field-input");
+    await dateInput.fill(datum);
+    await dateInput.blur();
+    await scope.locator('input[type="file"]').first().setInputFiles({
+      name: "beleg.png",
+      mimeType: "image/png",
+      buffer: PNG_BELEG,
+    });
+    // Wait for the compressed file to land in block state (BelegUpload preview).
+    await expect(scope.getByText(/beleg\.png/i).first()).toBeVisible();
+  }
 
-    // CTA visible
-    await expect(
-      page.getByRole("button", { name: "Auslage einreichen" }),
-    ).toBeVisible();
-  });
-
-  test("radio group renders all three bezahlt-von options", async ({
+  test("renders the extern identity, an Auslage, Beleg + consent + login nudge", async ({
     page,
   }) => {
     await goToForm(page);
-
-    // Use role-based locator to target the actual radio inputs by their accessible name
-    await expect(
-      page.getByRole("radio", { name: "Folge der Wolke e.V." }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("radio", { name: "Vereinsmitglied" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("radio", { name: "Externe Person" }),
-    ).toBeVisible();
-  });
-
-  test("selecting Externe Person shows name/IBAN/email fields", async ({
-    page,
-  }) => {
-    await goToForm(page);
-
-    // Click the label wrapping the radio — this fires the change event that
-    // Svelte's onchange handler listens to and updates the `kind` reactive state.
-    await page.locator("label").filter({ hasText: "Externe Person" }).click();
-
-    // Fields are conditionally rendered via {#if kind === 'extern'}
-    // Use placeholder-based locators for reliability.
-    await expect(page.getByPlaceholder("Max Mustermann")).toBeVisible();
-    await expect(
-      page.getByPlaceholder("DE89 3704 0044 0532 0130 00"),
-    ).toBeVisible();
-    await expect(page.getByPlaceholder("max@example.com")).toBeVisible();
-  });
-
-  test("submit button is disabled without required fields (C2-TAX gate)", async ({
-    page,
-  }) => {
-    await goToForm(page);
-
-    // C2-TAX: AuslagenForm's submit button is now disabled whenever the
-    // required fields (bezeichnung, betrag, Beleg, rechnungsdatum, …) are
-    // missing or invalid. The disabled state IS the validation signal —
-    // the previous "click → see errors" interaction is replaced by the
-    // gate-at-the-button pattern. Asserting disabled-on-empty here protects
-    // the regression that "you can submit a half-filled Auslage".
-    const button = page.getByRole("button", { name: "Auslage einreichen" });
-    await expect(button).toBeDisabled();
-  });
-
-  test("bezeichnung counter shows character count", async ({ page }) => {
-    await goToForm(page);
-
-    const input = page.locator("#bezeichnung");
-    // pressSequentially dispatches individual key events that Svelte's oninput handler
-    // receives — this is more reliable than fill() for reactive state tracking.
-    await input.pressSequentially("Test Bezeichnung");
-    await input.blur();
-
-    // Counter is reactive Svelte state: {bezeichnung.length}/200
-    await expect(page.getByText(/16\/200/)).toBeVisible();
-  });
-
-  test("datenschutz consent checkbox present", async ({ page }) => {
-    await goToForm(page);
-
-    const checkbox = page.locator(
-      'input[type="checkbox"][name="datenschutz_consent"]',
-    );
-    await expect(checkbox).toBeVisible();
-    expect(await checkbox.isChecked()).toBe(false);
-  });
-
-  test("file upload zone visible", async ({ page }) => {
-    await goToForm(page);
-
+    await expect(page.getByText("Wer bekommt's zurück?").first()).toBeVisible();
+    await expect(page.getByText("Wofür war's?").first()).toBeVisible();
+    await expect(page.getByPlaceholder(/^DE00/)).toBeVisible(); // extern IBAN, no radio
     await expect(
       page.getByText(/Datei hierher ziehen oder auswählen/),
     ).toBeVisible();
+    await expect(page.getByTestId("login-nudge")).toBeVisible();
+    await expect(page.getByRole("checkbox")).toBeVisible();
   });
 
-  test("project select is populated with seeded projects (AT-002 regression guard)", async ({
+  test("submit is gated (disabled) while required fields are missing (F1/C2-TAX)", async ({
     page,
   }) => {
-    // AT-002: the project dropdown is rendered from the `+layout.server.ts`
-    // active-projects query and previously shipped a regression where that
-    // query returned an empty array, so the <select> silently rendered with
-    // only its default option (or not at all, since it's gated on
-    // `projects.length > 0`). Assert it actually carries the seeded projects,
-    // not just that the form renders.
     await goToForm(page);
+    await expect(page.getByTestId("auslage-submit")).toBeDisabled();
+    await expect(page.getByTestId("einreichen-gate")).toBeVisible();
+  });
 
-    const select = page.locator("#wofuer-select");
+  test("project select is populated from the seeded projects (AT-002 guard)", async ({
+    page,
+  }) => {
+    await goToForm(page);
+    const select = page.locator("select").first();
     await expect(select).toBeVisible();
-    const optionCount = await select.locator("option").count();
-    expect(optionCount).toBeGreaterThan(1);
+    expect(await select.locator("option").count()).toBeGreaterThan(1);
+  });
+
+  test("F2: '+ weitere Auslage' disappears once the batch cap is reached", async ({
+    page,
+  }) => {
+    await goToForm(page);
+    // Start at 1 block; add until the cap (MAX_BATCH_ITEMS=10) hides the button.
+    for (let i = 0; i < 9; i++) {
+      await page.getByTestId("add-auslage").click();
+    }
+    await expect(page.getByTestId("add-auslage")).toHaveCount(0);
+    expect(await page.getByTestId("auslage-block").count()).toBe(10);
+  });
+
+  test("happy path: fill one Auslage + Beleg → submit → confirmation", async ({
+    page,
+  }) => {
+    await goToForm(page);
+    await fillIdentity(page);
+    await fillBlock(page, {
+      bez: "Getränke fürs Sommerfest",
+      betrag: "24,90",
+      datum: "04.07.2026",
+    });
+    await page.getByRole("checkbox").check();
+    await expect(page.getByTestId("auslage-submit")).toBeEnabled();
+    await page.getByTestId("auslage-submit").click();
+    // Server allocates a real AUS-Nr and 303s to the confirmation.
+    await page.waitForURL(/\/auslage-eingereicht\?id=AUS-\d{4}-\d{3}/);
+    await expect(page.getByTestId("eingereicht-heading")).toBeVisible();
+    await expect(page.getByTestId("status-cta")).toBeVisible();
+  });
+
+  test("batch path: two Auslagen → submit → batch confirmation with a total", async ({
+    page,
+  }) => {
+    await goToForm(page);
+    await fillIdentity(page);
+    // Block 1 (inline while it's the only one).
+    await fillBlock(page, {
+      bez: "Kuchen",
+      betrag: "24,90",
+      datum: "04.07.2026",
+    });
+    // Add a second block (it opens by default; block 1 collapses to a summary).
+    await page.getByTestId("add-auslage").click();
+    const block2 = page.getByTestId("auslage-block").nth(1);
+    await fillBlock(block2, {
+      bez: "Standmiete",
+      betrag: "14,90",
+      datum: "06.07.2026",
+    });
+    await page.getByRole("checkbox").check();
+    await expect(page.getByTestId("auslage-submit")).toBeEnabled();
+    await page.getByTestId("auslage-submit").click();
+    await page.waitForURL(/\/auslage-eingereicht\?id=AUS-\d{4}-\d{3}/);
+    await expect(page.getByTestId("eingereicht-heading")).toBeVisible();
+    await expect(page.getByTestId("bcg-total")).toContainText("39,80");
   });
 });
