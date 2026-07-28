@@ -16,36 +16,7 @@ import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { parseBusinessId } from "$lib/domain/business-id.js";
 import { checkAndRecord, RateLimitError } from "$lib/server/auth/rate-limit.js";
-
-function maskIban(iban: string): string {
-  if (iban.length <= 4) return "****";
-  return `${"*".repeat(iban.length - 4)}${iban.slice(-4)}`;
-}
-
-/**
- * Map DB decision/state to a canonical public status label.
- *
- * Timeline:
- *   eingegangen   — submitted, admin has not opened it yet
- *   in_pruefung   — admin has opened it in the audit inbox (reviewed_at set)
- *   geprueft      — admin decided (approved); waiting for transfer
- *   erstattet     — approved AND the linked expense has erstattet_am set
- *   abgelehnt     — admin rejected the submission
- */
-function deriveStatus(row: {
-  decision: string | null;
-  decidedAt: Date | null;
-  reviewedAt: Date | null;
-  erstattetAm: string | null;
-}): "eingegangen" | "in_pruefung" | "geprueft" | "erstattet" | "abgelehnt" {
-  if (row.decidedAt) {
-    if (row.decision === "rejected") return "abgelehnt";
-    if (row.decision === "approved" && row.erstattetAm) return "erstattet";
-    return "geprueft";
-  }
-  if (row.reviewedAt) return "in_pruefung";
-  return "eingegangen";
-}
+import { deriveStatus, maskIban } from "$lib/server/domain/auslage-status.js";
 
 export const load: PageServerLoad = async ({ params, getClientAddress }) => {
   const { ausId } = params;

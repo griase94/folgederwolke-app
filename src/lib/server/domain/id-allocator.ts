@@ -22,6 +22,14 @@ import { berlinYear } from "$lib/domain/year.js";
 export type AllocatorKind = BusinessIdPrefix;
 
 /**
+ * Minimal Drizzle writer surface (client OR in-flight transaction handle).
+ * `allocateBusinessIds` accepts one so a batch submit can claim its IDs on the
+ * SAME transaction as its inserts — a rollback then also rolls back the counter
+ * bump, so a failed batch burns NO gapless IDs. Mirrors logAudit's writer seam.
+ */
+type IdWriter = Pick<ReturnType<typeof getDb>, "execute" | "insert">;
+
+/**
  * Allocates the next business ID for the given prefix kind + year.
  *
  * @param kind  - One of the BusinessIdPrefix values: 'A'|'AUS'|'E'|'S'|'B'|'P'|'FDW'
@@ -74,4 +82,65 @@ export async function allocateBusinessId(
   });
 
   return businessId;
+}
+
+/**
+ * Allocates `count` consecutive business IDs for a batch submit in ONE
+ * advisory-locked counter bump — the batch-Auslage analogue of
+ * allocateBusinessId. Returns them in order, e.g.
+ * ["AUS-2026-007", "AUS-2026-008", "AUS-2026-009"].
+ *
+ * @param writer  Optional in-flight transaction handle. Pass the `tx` from an
+ *   enclosing `db.transaction()` so the counter bump participates in the same
+ *   transaction as the row inserts: on rollback the counter also rolls back, so
+ *   a failed batch burns no IDs. MUST be a real transaction handle — passing a
+ *   bare client would auto-commit each statement and release the advisory lock
+ *   before the UPDATE. Omit to run in a fresh self-contained transaction.
+ */
+export async function allocateBusinessIds(
+  kind: AllocatorKind,
+  count: number,
+  year: number = berlinYear(),
+  writer?: IdWriter,
+): Promise<string[]> {
+  if (count <= 0) return [];
+
+  const run = async (tx: IdWriter): Promise<string[]> => {
+    // 1. Serialize allocations for this (year, kind) shard (xact-scoped lock).
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext(${`id_counter:${year}:${kind}`}))`,
+    );
+
+    // 2. Ensure the counter row exists.
+    await tx
+      .insert(idCounters)
+      .values({ year, kind, nextValue: BigInt(1) })
+      .onConflictDoNothing();
+
+    // 3. Claim a contiguous block of `count` values; return the block start.
+    const rows = await tx.execute<{ start: string }>(
+      sql`
+        UPDATE id_counters
+        SET next_value = next_value + ${count},
+            updated_at = NOW()
+        WHERE year = ${year} AND kind = ${kind}
+        RETURNING (next_value - ${count})::text AS start
+      `,
+    );
+
+    const startStr = (rows as { start: string }[])[0]?.start;
+    if (!startStr) {
+      throw new Error(
+        `id-allocator: batch UPDATE returned no row for kind=${kind} year=${year}`,
+      );
+    }
+
+    const start = parseInt(startStr, 10);
+    return Array.from({ length: count }, (_, i) =>
+      formatBusinessId(kind, year, start + i),
+    );
+  };
+
+  if (writer) return run(writer);
+  return getDb().transaction(run);
 }

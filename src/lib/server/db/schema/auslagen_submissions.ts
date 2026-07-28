@@ -56,6 +56,28 @@ export const auslagenSubmissions = pgTable(
      */
     submissionNonce: uuid("submission_nonce"),
 
+    /**
+     * Batch grouping (Aurora A-flow M1). One `submission_group_id` is shared by
+     * every row of a single multi-Auslage batch submit; each row still carries
+     * its own AUS-{YYYY}-{NNN} `business_id` and its own `submission_nonce`.
+     * NULL for legacy single-submit rows — all loaders treat NULL as a group of
+     * one, so no backfill is needed (pre-launch data is disposable anyway).
+     */
+    submissionGroupId: uuid("submission_group_id"),
+
+    /**
+     * Member-arm reimbursement IBAN snapshot (Aurora A-flow M4, §2.2b).
+     * Captured at submit time: Fall A = snapshot of `members.iban`; Fall B/C =
+     * the IBAN the member typed. The Überweisungs-Werkstatt resolves the payout
+     * target as COALESCE(erstattung_iban, extern_iban, live members.iban): an
+     * explicit snapshot is immune to later profile edits, while the members.iban
+     * fallback stays deliberately live (a member who changes banks wants the
+     * reimbursement on the current account). The EXTERN arm keeps writing
+     * `extern_iban` (unchanged); this column is the MEMBER arm's per-submission
+     * payout target. NULL for extern rows and legacy rows.
+     */
+    erstattungIban: text("erstattung_iban"),
+
     bezeichnung: text("bezeichnung").notNull(),
     kommentar: text("kommentar"),
     rechnungsdatum: date("rechnungsdatum"),
@@ -158,5 +180,8 @@ export const auslagenSubmissions = pgTable(
       t.submittedAt,
     ),
     projectIdIdx: index("auslagen_submissions_project_id_idx").on(t.projectId),
+    submissionGroupIdIdx: index(
+      "auslagen_submissions_submission_group_id_idx",
+    ).on(t.submissionGroupId),
   }),
 );
