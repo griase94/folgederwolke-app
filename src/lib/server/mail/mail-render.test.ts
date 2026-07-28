@@ -248,6 +248,8 @@ describe("MagicLink", () => {
     expect(html).toContain(VEREIN_NAME);
     // Headline (rewritten 2026-05-19 to be tighter than "Hallo!…")
     expect(html).toContain("Dein Anmelde-Link");
+    // Default audience is admin → Buchhaltung wording (Board #163 J-M3).
+    expect(html).toContain("in der Buchhaltung anzumelden");
     // Email is shown in the "Du wurdest aufgefordert…" sentence so the
     // user can spot phishing where the click-through identity doesn't
     // match what they entered
@@ -275,6 +277,15 @@ describe("MagicLink", () => {
     expect(text.length).toBeGreaterThan(50);
     expect(text).toContain("lea@example.com");
     expect(text).toContain(VEREIN_NAME);
+  });
+
+  it("member audience gets portal wording, never 'Buchhaltung' (Board #163 J-M3)", async () => {
+    const { html } = await renderTemplate("MagicLink", {
+      ...magicLinkProps,
+      audience: "member" as const,
+    });
+    expect(html).toContain("in deinem Mitglieder-Portal anzumelden");
+    expect(html).not.toContain("in der Buchhaltung");
   });
 });
 

@@ -7,6 +7,7 @@
 		email,
 		magicUrl,
 		expiresInMinutes,
+		audience = 'admin',
 		vereinName = '',
 		adresse = '',
 		vr = '',
@@ -18,6 +19,11 @@
 		steuernummer?: string;
 	} = $props();
 	import { BRAND_PRIMARY_STRONG } from '$lib/brand.js';
+
+	// Board #163 J-M3: a member is signing in to their portal, not the Buchhaltung.
+	const destination = $derived(
+		audience === 'member' ? 'in deinem Mitglieder-Portal' : 'in der Buchhaltung'
+	);
 </script>
 
 <!--
@@ -68,7 +74,7 @@
 								</h1>
 
 								<p style="margin:0 0 28px 0;color:#374151;">
-									Klick auf den Knopf, um dich in der Buchhaltung anzumelden.
+									Klick auf den Knopf, um dich {destination} anzumelden.
 								</p>
 
 								<!-- CTA Button -->

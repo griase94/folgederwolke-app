@@ -1,8 +1,8 @@
 /**
  * Root route — role-aware entry point.
  *
- * - Session present                          → /app (admin home; member roles
- *                                               will branch to /portal later)
+ * - Session present (admin)                   → /app (admin home)
+ * - Session present (member_self_service)     → /portal (member home)
  * - No session + PUBLIC_FORM_ENABLED=true     → render the landing page so the
  *                                               visitor can choose between the
  *                                               public Auslage form and signing
@@ -25,7 +25,12 @@ export const load: PageServerLoad = async ({ locals }) => {
   // for this same request — read it here instead of making a second DB
   // round-trip (PR1 latency optimisation).
   if (locals.session) {
-    throw redirect(302, "/app");
+    // Role-aware landing: self-service members go to their portal; admins (incl.
+    // admins who are also members) go to the app and can navigate to /portal.
+    throw redirect(
+      302,
+      locals.session.user.role === "member_self_service" ? "/portal" : "/app",
+    );
   }
 
   if (!isPublicFormEnabled()) {

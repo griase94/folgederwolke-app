@@ -403,6 +403,18 @@ export type Events = {
     actorUserId: string | null;
     betragCents: number;
   };
+
+  /**
+   * Two or more ACTIVE members canonicalize to the SAME email (Board #163
+   * A-min). The member allowlist REFUSES to bind a login to an arbitrary one
+   * (heap/scan order) — `findActiveMemberByEmail` returns null and emits this
+   * so the collision is recorded for an admin to disambiguate. Audit-only,
+   * best-effort (the deny decision is independent of this write).
+   */
+  "auth.member_ambiguous": {
+    canonicalEmail: string;
+    memberIds: string[];
+  };
 };
 
 export type EventName = keyof Events;

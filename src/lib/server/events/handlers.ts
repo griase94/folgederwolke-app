@@ -793,6 +793,33 @@ export function registerHandlers(): void {
       });
     },
   );
+
+  // ── auth.member_ambiguous ───────────────────────────────────────────────
+  // A canonical-email collision across active members (Board #163 A-min). The
+  // security decision (deny the login) is already made by the allowlist; this
+  // handler only records the collision so an admin can disambiguate. Swallow
+  // errors — a transient audit failure must not affect the already-denied flow.
+  bus.on<EventPayload<"auth.member_ambiguous">>(
+    "auth.member_ambiguous",
+    async (payload) => {
+      try {
+        await logAudit({
+          action: "sign_in",
+          entityKind: "user",
+          entityId: null,
+          actorUserId: null,
+          actorKind: "system",
+          payload: {
+            reason: "AMBIGUOUS_MEMBER_MATCH",
+            canonicalEmail: payload.canonicalEmail,
+            memberIds: payload.memberIds,
+          },
+        });
+      } catch (e) {
+        console.error("[events] member-ambiguous audit failed:", e);
+      }
+    },
+  );
 }
 
 /** Test-only: clear the registration guard so a fresh registerHandlers() works. */
