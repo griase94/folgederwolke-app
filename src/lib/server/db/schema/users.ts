@@ -24,6 +24,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { userRoleEnum } from "./enums.js";
+import { members } from "./members.js";
 
 export const users = pgTable(
   "users",
@@ -33,6 +34,17 @@ export const users = pgTable(
     emailCanonical: text("email_canonical").notNull(),
     name: text("name"),
     role: userRoleEnum("role").notNull().default("admin"),
+    /**
+     * Links a self-service login (role='member_self_service') to its Mitglied
+     * row (Aurora A-flow M3). Auto-provisioned on first member magic-link
+     * sign-in; NULL for admin/steuerberater accounts that are not members.
+     * ON DELETE RESTRICT so a member row that owns a login can't be silently
+     * deleted out from under an active session — the Mitglieder path must
+     * detach the login first.
+     */
+    memberId: uuid("member_id").references(() => members.id, {
+      onDelete: "restrict",
+    }),
     disabledAt: timestamp("disabled_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -45,6 +57,7 @@ export const users = pgTable(
     emailCanonicalIdx: uniqueIndex("users_email_canonical_uq").on(
       t.emailCanonical,
     ),
+    memberIdIdx: index("users_member_id_idx").on(t.memberId),
   }),
 );
 

@@ -146,6 +146,37 @@ describe("EingangsMail", () => {
     expect(text).toContain("AUS-2026-042");
     expect(text).toContain(VEREIN_NAME);
   });
+
+  it("batch digest renders a grouped list with plural heading + total", async () => {
+    const { html } = await renderTemplate("EingangsMail", {
+      ...eingangsProps,
+      // Batch: betragCents = group total; items drive the grouped list.
+      betragCents: 6000,
+      items: [
+        { ausId: "AUS-2026-071", bezeichnung: "Kuchen", betragCents: 2490 },
+        { ausId: "AUS-2026-072", bezeichnung: "Deko", betragCents: 1510 },
+        { ausId: "AUS-2026-073", bezeichnung: "Kerzen", betragCents: 2000 },
+      ],
+    });
+
+    // Plural heading + count line.
+    expect(html).toContain("Auslagen eingegangen");
+    expect(html).toContain("3 Auslagen");
+    // Every AUS-Nr + bezeichnung in the list.
+    expect(html).toContain("AUS-2026-071");
+    expect(html).toContain("AUS-2026-073");
+    expect(html).toContain("Kuchen");
+    expect(html).toContain("Kerzen");
+    // Per-item + total amounts.
+    expect(html).toContain("24,90");
+    expect(html).toContain("Gesamt");
+    expect(html).toContain("60,00");
+    // Status CTA points at the first item (opens the group in the status view).
+    expect(html).toContain("/auslage-status/AUS-2026-042");
+    // No Gmail-stripped CSS.
+    expect(html).not.toContain("oklch(");
+    expect(html).not.toContain("linear-gradient(");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -425,6 +456,17 @@ describe("subjectFor — name-bearing subjects from props.vereinName", () => {
     });
     expect(s).toContain(name);
     expect(s).not.toContain("Folge der Wolke");
+  });
+
+  it("auslage_eingang subject: single AUS-id vs plural batch", () => {
+    const single = subjectFor("auslage_eingang", { ausId: "AUS-2026-042" });
+    expect(single).toContain("AUS-2026-042");
+    expect(single).toContain("ist bei uns angekommen");
+
+    const batch = subjectFor("auslage_eingang", {
+      items: [{}, {}, {}],
+    });
+    expect(batch).toBe("Deine 3 Auslagen sind bei uns angekommen");
   });
 
   it("default subject uses the runtime name", () => {

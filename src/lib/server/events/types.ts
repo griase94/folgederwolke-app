@@ -58,7 +58,15 @@ export type TxMetaEventPayload = {
 };
 
 export type Events = {
-  /** Public Auslage form submission completed (Drive upload + DB insert OK). */
+  /**
+   * Auslage submission completed (upload + DB insert OK). Emitted by the legacy
+   * single-submit route (single-item shape) AND by submitAuslagenBatch (batch
+   * shape). When `submissionGroupId` + `items` are present the mail handler
+   * sends ONE digest EingangsMail deduped on the group, and the audit handler
+   * no-ops (submitAuslagenBatch already wrote one in-tx create-anchor per row).
+   * The single-item fields then describe the FIRST item (greeting + fallbacks)
+   * and `betragCents` is the group TOTAL.
+   */
   "auslagen.submitted": {
     submissionId: string;
     ausId: string;
@@ -75,6 +83,10 @@ export type Events = {
     userAgentHash: string;
     /** bezahlt_von kind for the audit payload. */
     bezahltVonKind: "member" | "extern" | "verein";
+    /** Batch grouping (submitAuslagenBatch). Absent → legacy single submit. */
+    submissionGroupId?: string;
+    /** Every Auslage in the group — drives the digest EingangsMail body. */
+    items?: { ausId: string; bezeichnung: string; betragCents: number }[];
   };
 
   /**
