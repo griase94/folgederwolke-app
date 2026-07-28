@@ -129,6 +129,13 @@ export interface MagicLinkProps {
   magicUrl: string;
   /** Minutes until link expires — typically 15 */
   expiresInMinutes: number;
+  /**
+   * Which door this link opens (Board #163 J-M3). Members must not be told they
+   * are signing in to "die Buchhaltung" — the copy adapts to the recipient's
+   * role. The issue path already knows the role; defaults to 'admin' so any
+   * legacy caller keeps the original wording.
+   */
+  audience?: "admin" | "member";
 }
 
 /**

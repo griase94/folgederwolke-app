@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { enhance } from '$app/forms';
-	import { Button } from '$lib/components/ui/button/index.js';
 
 	let {
 		data
@@ -49,9 +48,15 @@
 			}}
 		>
 			<input type="hidden" name="token" value={data.token} />
-			<Button type="submit" class="w-full" disabled={pending}>
+			<!-- Primary tap of the flow — full-height (h-11) touch target, styled to
+			     match the sign-in page's submit CTA (Board #163 J-min). -->
+			<button
+				type="submit"
+				disabled={pending}
+				class="flex h-11 w-full items-center justify-center rounded-[10px] [background-image:var(--gradient-brand)] text-sm font-semibold text-white shadow-[var(--glow-brand)] transition-opacity disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none lg:h-10"
+			>
 				{pending ? 'Anmelden…' : 'Weiter als ' + data.email}
-			</Button>
+			</button>
 		</form>
 
 		<p class="text-muted-foreground text-center text-xs">

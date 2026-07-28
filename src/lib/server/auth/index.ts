@@ -32,6 +32,10 @@ import {
 } from "./cookies.js";
 import { checkAndRecord } from "./rate-limit.js";
 import { isAdminEmail } from "./allowlist.js";
+import {
+  findActiveMemberByEmail,
+  getActiveMemberById,
+} from "./member-allowlist.js";
 import { logAudit } from "$lib/server/audit-log/index.js";
 
 export { RateLimitError } from "./rate-limit.js";
@@ -53,6 +57,13 @@ export interface SessionUser {
   emailCanonical: string;
   name: string | null;
   role: "admin" | "steuerberater" | "member_self_service";
+  /**
+   * Linked Mitglied id for self-service logins (and for admins who are also
+   * members). NULL for admin/steuerberater accounts that are not members.
+   * Read by the route guards (hooks.server.ts) to gate `/portal` without a
+   * per-request members query. Aurora A-flow S2a.
+   */
+  memberId: string | null;
 }
 
 export interface ResolvedSession {
@@ -68,6 +79,12 @@ export interface ResolvedSession {
  * Issue (or skip-dedup) a magic link for the given email.
  * ALWAYS returns identical JSON to caller (anti-enumeration, MUST-fix #3).
  * Rate limits both email and IP keys before doing anything else.
+ *
+ * Eligible senders are (a) admins (ADMIN_EMAILS) and (b) ACTIVE members
+ * (`members` row with a matching email). Both allowlists get the SAME identical
+ * response and the same real link — the issued link is role-agnostic (it only
+ * carries the canonical email); the role is resolved at consume time. A caller
+ * cannot tell admin, member, and unknown apart from the response (S2a).
  */
 export async function issueMagicLink(
   rawEmail: string,
@@ -80,10 +97,16 @@ export async function issueMagicLink(
   await checkAndRecord(`magic_link:email:${canonical}`, 3, 5 * 60_000);
   await checkAndRecord(`magic_link:ip:${meta.ip}`, 10, 5 * 60_000);
 
-  // Constant-time path for non-admin: hash a random nonce, don't send
-  if (!isAdminEmail(canonical)) {
+  // Eligibility: admin OR active member. The members lookup for the non-admin
+  // branch makes member-vs-non-member timing near-identical (both scan) — the
+  // pair that matters for the MEMBER allowlist's enumeration mitigation.
+  const isAdmin = isAdminEmail(canonical);
+  const member = isAdmin ? null : await findActiveMemberByEmail(canonical);
+
+  // Constant-time path for non-eligible emails: hash a random nonce, don't send
+  if (!isAdmin && !member) {
     // MUST-fix #3: consume rate-limit slot, perform constant-time hash,
-    // do NOT send real email, do NOT reveal admin status.
+    // do NOT send real email, do NOT reveal admin/member status.
     sha256(randomBytes(32).toString("base64url")); // no-op nonce hash
     return { ok: true, message: "Schau in dein Postfach 💌" };
   }
@@ -154,7 +177,13 @@ export async function issueMagicLink(
     entity_kind: "user",
     entity_id: magicLinkRow!.id,
     to: canonical,
-    props: { magicUrl: verifyUrl, email: canonical, expiresInMinutes: 15 },
+    props: {
+      magicUrl: verifyUrl,
+      email: canonical,
+      expiresInMinutes: 15,
+      // Board #163 J-M3: members get portal wording, admins the Buchhaltung.
+      audience: isAdmin ? "admin" : "member",
+    },
   });
 
   // Device-binding intent cookie (MUST-fix #7)
@@ -185,8 +214,8 @@ export async function getMagicLinkByToken(rawToken: string) {
 // ---------------------------------------------------------------------------
 
 export type ConsumeResult =
-  | { ok: true; email: string }
-  | { ok: false; reason: "LINK_INVALID_OR_EXPIRED" | "NOT_ADMIN" };
+  | { ok: true; email: string; role: SessionUser["role"] }
+  | { ok: false; reason: "LINK_INVALID_OR_EXPIRED" | "NOT_ELIGIBLE" };
 
 export async function consumeMagicLink(
   rawToken: string,
@@ -214,11 +243,17 @@ export async function consumeMagicLink(
     const row = rows[0] as { id: string; email_canonical: string };
     const email = row.email_canonical;
 
-    // Allowlist check inside tx — consume is committed regardless (MUST-fix #3 + anti-retry)
-    if (!isAdminEmail(email)) {
-      // Pass `tx` so the audit insert participates in the same transaction —
-      // otherwise the global getDb() opens a separate pooled connection that
-      // can't see the in-flight UPDATE, breaking ordering.
+    // Resolve role INSIDE the tx — consume is committed regardless of the
+    // outcome (MUST-fix #3 + anti-retry). Admin takes precedence; an active
+    // member (or an admin who is also a member) is linked to its Mitglied row.
+    const isAdmin = isAdminEmail(email);
+    const member = await findActiveMemberByEmail(email, tx);
+
+    if (!isAdmin && !member) {
+      // Neither allowlist matches → not eligible. Pass `tx` so the audit insert
+      // participates in the same transaction — otherwise the global getDb()
+      // opens a separate pooled connection that can't see the in-flight UPDATE,
+      // breaking ordering.
       await logAudit(
         {
           action: "sign_in",
@@ -227,15 +262,18 @@ export async function consumeMagicLink(
           actorUserId: null,
           actorKind: "system",
           actorIpPrefix: ipToPrefix(meta.ip),
-          payload: { email, reason: "NOT_ADMIN" },
+          payload: { email, reason: "NOT_ELIGIBLE" },
         },
         tx,
       );
-      return { ok: false, reason: "NOT_ADMIN" } as ConsumeResult;
+      return { ok: false, reason: "NOT_ELIGIBLE" } as ConsumeResult;
     }
 
-    // Upsert user
-    const user = await upsertUser(tx, email);
+    // Admin precedence; member_id set for members AND for admins-who-are-members
+    // (so the latter may also reach /portal). Auto-provisions on first sign-in.
+    const role: SessionUser["role"] = isAdmin ? "admin" : "member_self_service";
+    const memberId = member?.id ?? null;
+    const user = await upsertUser(tx, email, role, memberId);
 
     // Create session
     const sessionToken = randomBytes(32).toString("base64url");
@@ -263,12 +301,12 @@ export async function consumeMagicLink(
         actorUserId: user.id,
         actorKind: "user",
         actorIpPrefix: ipToPrefix(meta.ip),
-        payload: { email },
+        payload: { email, role },
       },
       tx,
     );
 
-    return { ok: true, email };
+    return { ok: true, email, role };
   });
 }
 
@@ -281,23 +319,30 @@ export async function consumeMagicLink(
  * safe under concurrent calls — the UNIQUE index serialises insert collisions
  * and ON CONFLICT DO UPDATE … RETURNING always yields the persisted row.
  *
- * The SET clause is a no-op-ish bump of updatedAt so RETURNING fires on the
- * conflict path (DO NOTHING would not return a row).
+ * `role` + `memberId` are written on BOTH the insert and the conflict path, so
+ * a returning login always reflects the CURRENT allowlist state (an email
+ * promoted to admin upgrades on next sign-in; a member who left is nulled out
+ * — the resolveSession re-check revokes the live session in the meantime). The
+ * updatedAt bump also ensures RETURNING fires on conflict (DO NOTHING would not
+ * return a row).
  */
 async function upsertUser(
   tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
   emailCanonical: string,
+  role: SessionUser["role"],
+  memberId: string | null,
 ): Promise<typeof users.$inferSelect> {
   const inserted = await tx
     .insert(users)
     .values({
       email: emailCanonical,
       emailCanonical,
-      role: "admin",
+      role,
+      memberId,
     })
     .onConflictDoUpdate({
       target: users.emailCanonical,
-      set: { updatedAt: new Date() },
+      set: { role, memberId, updatedAt: new Date() },
     })
     .returning();
 
@@ -338,6 +383,7 @@ export async function resolveSession(
       userEmailCanonical: users.emailCanonical,
       userName: users.name,
       userRole: users.role,
+      userMemberId: users.memberId,
       userDisabledAt: users.disabledAt,
       userCreatedAt: users.createdAt,
       userUpdatedAt: users.updatedAt,
@@ -393,11 +439,33 @@ export async function resolveSession(
       });
   }
 
-  // Re-check the admin allowlist on every request. Without this, removing
-  // a user from ADMIN_EMAILS has no effect for up to 30 days (the session
-  // absolute lifetime). Flagged by the 2026-05-19 security review (CRIT-3).
-  // Stays awaited (correctness: must complete before returning null).
-  if (!isAdminEmail(joined.userEmailCanonical)) {
+  // Re-check the allowlist on every request, ROLE-AWARE. Without this, revoking
+  // access (removing an admin from ADMIN_EMAILS, or deactivating a member) has
+  // no effect for up to 30 days (the session absolute lifetime). Original admin
+  // check flagged by the 2026-05-19 security review (CRIT-3); the member arm is
+  // its S2a analogue. Stays awaited (correctness: must complete before return).
+  if (joined.userRole === "admin") {
+    // Admin path — byte-identical to the original CRIT-3 re-check.
+    if (!isAdminEmail(joined.userEmailCanonical)) {
+      await db.delete(sessions).where(eq(sessions.id, row.id));
+      clearSessionCookie(cookies);
+      return null;
+    }
+  } else if (joined.userRole === "member_self_service") {
+    // Member path — the session survives (unlike the old unconditional nuke of
+    // every non-admin), but dies the moment the bound Mitglied is deactivated
+    // (past Austritt) or the FK is null. O(1) by member_id.
+    if (
+      !joined.userMemberId ||
+      !(await getActiveMemberById(joined.userMemberId))
+    ) {
+      await db.delete(sessions).where(eq(sessions.id, row.id));
+      clearSessionCookie(cookies);
+      return null;
+    }
+  } else {
+    // Any other role (e.g. steuerberater) has no active allowlist path yet —
+    // deny defensively rather than trust a stale row.
     await db.delete(sessions).where(eq(sessions.id, row.id));
     clearSessionCookie(cookies);
     return null;
@@ -411,6 +479,7 @@ export async function resolveSession(
       emailCanonical: joined.userEmailCanonical,
       name: joined.userName,
       role: joined.userRole,
+      memberId: joined.userMemberId ?? null,
     },
   };
 }

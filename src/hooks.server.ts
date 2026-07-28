@@ -54,11 +54,15 @@ const authHandle: Handle = async ({ event, resolve }) => {
     event.locals.session = null;
   }
 
+  const path = event.url.pathname;
+  const session = event.locals.session;
+  const role = session?.user.role ?? null;
+
   // Protect /app and /app/* routes. Use exact-match-plus-slash rather than
   // `startsWith("/app")` so paths like `/appendix`, `/app-onboarding` or
   // `/applepay` are not accidentally caught by the auth gate.
-  if (event.url.pathname === "/app" || event.url.pathname.startsWith("/app/")) {
-    if (!event.locals.session) {
+  if (path === "/app" || path.startsWith("/app/")) {
+    if (!session) {
       // The PWA start_url is now `/?source=pwa` (the role-aware root), so a
       // fresh logged-out launch never reaches `/app` here. This branch only
       // catches STALE installs whose cached start_url is still
@@ -70,10 +74,35 @@ const authHandle: Handle = async ({ event, resolve }) => {
       if (event.url.searchParams.get("source") === "pwa") {
         redirect(303, "/?source=pwa");
       }
-      redirect(
-        303,
-        `/sign-in?redirectTo=${encodeURIComponent(event.url.pathname)}`,
-      );
+      redirect(303, `/sign-in?redirectTo=${encodeURIComponent(path)}`);
+    }
+    // A self-service member never reaches the admin app — send them to their
+    // portal (Aurora A-flow S2a). Admins (incl. admins who are also members)
+    // pass through unchanged. Any OTHER role (e.g. steuerberater) has no admin
+    // app either — defense-in-depth (resolveSession already denies such a
+    // session, so this else-if is currently unreachable but keeps the gate
+    // fail-closed if a future role is added).
+    if (role === "member_self_service") {
+      redirect(303, "/portal");
+    } else if (role !== "admin") {
+      redirect(303, "/sign-in");
+    }
+  }
+
+  // Protect /portal and /portal/* — the member self-service area (S2a).
+  if (path === "/portal" || path.startsWith("/portal/")) {
+    if (!session) {
+      redirect(303, `/sign-in?redirectTo=${encodeURIComponent(path)}`);
+    }
+    // Allowed: member_self_service always; an admin ONLY if they are also a
+    // member (member_id set) — an admin without a linked Mitglied has no portal
+    // identity, so route them back to the admin app. Any other role (e.g.
+    // steuerberater) has no portal.
+    if (role === "admin" && !session.user.memberId) {
+      redirect(303, "/app");
+    }
+    if (role !== "admin" && role !== "member_self_service") {
+      redirect(303, "/app");
     }
   }
 

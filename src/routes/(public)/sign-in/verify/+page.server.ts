@@ -45,12 +45,13 @@ export const actions: Actions = {
     const result = await consumeMagicLink(token, { ip, ua }, cookies);
 
     if (!result.ok) {
-      if (result.reason === "NOT_ADMIN") {
+      if (result.reason === "NOT_ELIGIBLE") {
         error(403, "NOT_AUTHORISED");
       }
       error(400, "LINK_INVALID_OR_EXPIRED");
     }
 
-    redirect(303, "/app");
+    // Role-aware landing: members go to their portal, admins to the app.
+    redirect(303, result.role === "member_self_service" ? "/portal" : "/app");
   },
 };
