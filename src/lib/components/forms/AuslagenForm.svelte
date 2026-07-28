@@ -520,7 +520,7 @@
 						onToggle={() => toggleBlock(block.clientKey)}
 						onRemove={() => removeBlock(block.clientKey)}
 					>
-						{#snippet body()}{@render blockFields(block, i)}{/snippet}
+						{#snippet body()}{@render blockFields(block)}{/snippet}
 					</AuslageBlock>
 				{/each}
 			{/if}
