@@ -67,6 +67,14 @@
 	// svelte-ignore state_referenced_locally
 	let display = $state(value);
 
+	// An amount is always positive — the sign is the accent glyph, not a typed
+	// character. Strip a leading minus/space the moment it's typed so the value
+	// never shows "−5" next to the "−" prefix (board minor e).
+	function stripLeadingSign() {
+		const s = display.replace(/^[\s−-]+/, '');
+		if (s !== display) display = s;
+	}
+
 	const cents = $derived.by(() => {
 		const t = display.trim();
 		if (t === '') return null;
@@ -113,6 +121,7 @@
 		{disabled}
 		{placeholder}
 		bind:value={display}
+		oninput={stripLeadingSign}
 		aria-invalid={invalid ? 'true' : undefined}
 		aria-describedby={ariaDescribedBy}
 		data-testid="amount-field-input"

@@ -103,23 +103,25 @@ async function submitAuslageWithPdf(
     pdfName?: string;
   },
 ): Promise<{ status: number; body: string }> {
+  // A-flow S1: the public action takes the extern-only BATCH payload
+  // (identity + auslagen[] + one beleg_<i> per item). This 1-item batch drives
+  // the same upload pipeline the old single-item shape did.
   const payload = {
-    bezahlt_von: {
-      kind: "extern",
+    identity: {
       name: opts.name,
       iban: "DE89370400440532013000",
       email: opts.email,
     },
-    bezeichnung: opts.bezeichnung,
-    betragCents: opts.betragCents,
-    currency: "EUR",
-    // C2-TAX: rechnungsdatum is now a required field on auslageInputSchema.
-    // Pre-C2-TAX fixtures omitted it; supply an ISO date so the gate passes.
-    rechnungsdatum: "2026-05-01",
     consent_text_version: DATENSCHUTZ_VERSION,
-    // crypto.randomUUID() returns a UUIDv4 string — validateAuslageInput
-    // rejects any other shape ("submissionNonce muss UUID v4 sein").
-    submissionNonce: crypto.randomUUID(),
+    auslagen: [
+      {
+        client_key: "a1",
+        submission_nonce: crypto.randomUUID(),
+        bezeichnung: opts.bezeichnung,
+        betrag_cents: opts.betragCents,
+        rechnungsdatum: "2026-05-01",
+      },
+    ],
   };
 
   // Multipart POST via Playwright's APIRequestContext so we can attach a
@@ -133,8 +135,7 @@ async function submitAuslageWithPdf(
     headers: CSRF_HEADERS,
     multipart: {
       data: JSON.stringify(payload),
-      submissionNonce: payload.submissionNonce,
-      beleg: {
+      beleg_0: {
         name: opts.pdfName ?? "beleg.pdf",
         mimeType: "application/pdf",
         buffer: opts.pdfBytes,

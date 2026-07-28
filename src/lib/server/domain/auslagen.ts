@@ -9,6 +9,7 @@ import { z } from "zod";
 import { validateIban, normalizeIban } from "./iban.js";
 import { ALLOWED_BELEG_MIMES } from "./file-validation.js";
 import { isoCalendarDate } from "$lib/domain/date.js";
+import { MAX_BATCH_ITEMS } from "./auslage-submit.js";
 
 // ---------------------------------------------------------------------------
 // Zod schema — shared between load() fixture and action validation
@@ -191,4 +192,139 @@ export function composeBezahltVonDisplay(bv: BezahltVon): string {
       return `Extern: ${bv.name} (${masked})`;
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Public batch submission schema (Aurora A-flow S1)
+// ---------------------------------------------------------------------------
+
+/**
+ * The public form is extern-only (ratified): one identity for the whole batch,
+ * then N Auslage items. `kind` is implicit ('extern') — no payer radio. The
+ * member/verein arms live in the portal + admin import (they still use the
+ * discriminated `bezahltVonSchema` above), so this narrower schema is the ONLY
+ * shape the public endpoint accepts (AC #1: a member/verein POST → 422).
+ */
+const externIdentitySchema = z
+  .object({
+    name: z.string().min(1, "Name ist erforderlich").max(120, "Name zu lang"),
+    // F3: IBAN validated (mod-97) exactly as the single extern arm did. Warm,
+    // non-scolding wording for the public form (board minor b).
+    iban: z
+      .string()
+      .min(15, "Die IBAN sieht etwas kurz aus — magst du sie nochmal prüfen?")
+      .max(34, "Die IBAN sieht etwas lang aus — magst du sie nochmal prüfen?")
+      .transform((v) => normalizeIban(v))
+      .refine(
+        validateIban,
+        "Die IBAN stimmt so nicht — magst du sie nochmal prüfen?",
+      ),
+    email: z.string().email("Ungültige E-Mail").max(254, "E-Mail zu lang"),
+  })
+  .strict();
+
+const auslageBatchItemSchema = z
+  .object({
+    /** Correlates a field error back to its block in the UI. */
+    client_key: z.string().min(1, "client_key fehlt").max(64),
+    /** Per-item idempotency nonce (retry heals the batch, never splits it). */
+    submission_nonce: z
+      .string()
+      .uuid("submission_nonce muss UUID v4 sein")
+      .optional(),
+    bezeichnung: z
+      .string()
+      .min(3, "Bezeichnung muss mindestens 3 Zeichen haben")
+      .max(200, "Bezeichnung zu lang"),
+    kommentar: z.string().max(1000, "Kommentar zu lang").optional().nullable(),
+    // C2-TAX: real calendar date required per item (same helper as single arm).
+    rechnungsdatum: isoCalendarDate,
+    // F1: positive integer cents per item (ADR-0003).
+    betrag_cents: z
+      .number({ error: "Betrag muss eine Zahl sein" })
+      .int("Betrag muss ein ganzzahliger Cent-Betrag sein")
+      .positive("Betrag muss positiv sein")
+      .max(1_000_000_00, "Betrag überschreitet Limit"),
+    // Optional Projekt/Event NAME (persisted to `wofuer`, matching the existing
+    // single-arm behaviour — there is no project_id FK column on submissions).
+    wofuer: z.string().max(500).optional().nullable(),
+  })
+  .strict();
+
+export const auslageBatchInputSchema = z
+  .object({
+    identity: externIdentitySchema,
+    consent_text_version: z
+      .string()
+      .min(1, "Datenschutz-Version fehlt")
+      .max(64, "Datenschutz-Version zu lang"),
+    // F2: hard batch cap (mirrors submitAuslagenBatch's MAX_BATCH_ITEMS backstop).
+    auslagen: z
+      .array(auslageBatchItemSchema)
+      .min(1, "Mindestens eine Auslage")
+      .max(
+        MAX_BATCH_ITEMS,
+        `Maximal ${MAX_BATCH_ITEMS} Auslagen pro Einreichung`,
+      ),
+  })
+  .strict();
+
+export type AuslageBatchInput = z.infer<typeof auslageBatchInputSchema>;
+
+export type BatchValidationSuccess = { ok: true; data: AuslageBatchInput };
+export type BatchValidationFailure = {
+  ok: false;
+  /** Page-level errors (identity, consent, batch-shape). */
+  formErrors: string[];
+  /** identity.<field> → messages. */
+  identityErrors: Record<string, string[]>;
+  /** client_key → { field → messages }. */
+  itemErrors: Record<string, Record<string, string[]>>;
+};
+
+/**
+ * Validate a public batch payload, mapping each Zod issue back to the UI shape:
+ * identity errors keyed by field, item errors keyed by the block's client_key
+ * (not the array index — the client tracks blocks by client_key so a remove
+ * mid-batch can't misalign the error to the wrong block).
+ */
+export function validateAuslageBatchInput(
+  data: unknown,
+): BatchValidationSuccess | BatchValidationFailure {
+  const result = auslageBatchInputSchema.safeParse(data);
+  if (result.success) return { ok: true, data: result.data };
+
+  // Resolve array indices to client_keys where possible (best-effort — a
+  // malformed payload may not carry them, in which case the numeric index
+  // stands in).
+  const rawItems =
+    typeof data === "object" &&
+    data !== null &&
+    Array.isArray((data as { auslagen?: unknown }).auslagen)
+      ? ((data as { auslagen: unknown[] }).auslagen as Array<{
+          client_key?: unknown;
+        }>)
+      : [];
+
+  const formErrors: string[] = [];
+  const identityErrors: Record<string, string[]> = {};
+  const itemErrors: Record<string, Record<string, string[]>> = {};
+
+  for (const issue of result.error.issues) {
+    const [head, second, third] = issue.path;
+    if (head === "identity" && typeof second === "string") {
+      (identityErrors[second] ??= []).push(issue.message);
+    } else if (head === "auslagen" && typeof second === "number") {
+      const key =
+        typeof rawItems[second]?.client_key === "string"
+          ? (rawItems[second]!.client_key as string)
+          : String(second);
+      const field = typeof third === "string" ? third : "_root";
+      ((itemErrors[key] ??= {})[field] ??= []).push(issue.message);
+    } else {
+      formErrors.push(issue.message);
+    }
+  }
+
+  return { ok: false, formErrors, identityErrors, itemErrors };
 }

@@ -64,7 +64,14 @@ export async function compressIfNeeded(
         fileType: "image/jpeg",
       });
       opts.onProgress?.({ stage: "image", current: 1, total: 1 });
-      return compressed.size < file.size ? compressed : file;
+      if (compressed.size >= file.size) return file;
+      // browser-image-compression returns a Blob-like whose `name` only
+      // survives as a monkey-patched property — FormData serialises it as
+      // "blob", so the server persists beleg_original_name='blob'. Re-wrap in a
+      // REAL File carrying the original name (like the PDF branch below). The
+      // content is forced to JPEG, so give it a .jpg extension.
+      const jpgName = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+      return new File([compressed], jpgName, { type: "image/jpeg" });
     }
     if (file.type === "application/pdf" && file.size > COMPRESS_THRESHOLD) {
       return compressPdfIfScan(file, opts);

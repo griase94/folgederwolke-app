@@ -2,155 +2,148 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { setPreferredAuslage } from '$lib/client/pwa-entry.js';
-	import {
-		buildStatusUrl,
-		shareOrCopyStatusLink,
-		type ShareOutcome
-	} from '$lib/client/share-status-link.js';
+	import { buildStatusUrl, shareOrCopyStatusLink, type ShareOutcome } from '$lib/client/share-status-link.js';
+	import SplitCardShell from '$lib/components/public/SplitCardShell.svelte';
+	import TrustJourney from '$lib/components/public/TrustJourney.svelte';
+	import StatusMedallion from '$lib/components/ui/StatusMedallion.svelte';
+	import AusIdCard from '$lib/components/public/AusIdCard.svelte';
+	import BatchConfirmGroup from '$lib/components/public/BatchConfirmGroup.svelte';
+	import StatusTimeline from '$lib/components/ui/status-timeline/StatusTimeline.svelte';
+	import { deDate } from '$lib/components/auslagen/status-detail-builder.js';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import Eye from '@lucide/svelte/icons/eye';
+	import Link from '@lucide/svelte/icons/link';
+	import Plus from '@lucide/svelte/icons/plus';
+	import CheckCheck from '@lucide/svelte/icons/check-check';
+	import type { PageData } from './$types.js';
 
-	const ausId = $derived(page.url.searchParams.get('id') ?? '');
+	let { data }: { data: PageData } = $props();
+
+	const isBatch = $derived(data.items.length > 1);
+	const firstAus = $derived(data.items[0]?.ausId ?? '');
+	const submittedLabel = $derived(deDate(data.submittedAt) ?? '');
+
+	const journeySteps = $derived([
+		{ title: 'Du hast eingereicht', subtitle: isBatch ? `${data.items.length} Auslagen — gerade eben.` : 'Erledigt — gerade eben.' },
+		{ title: 'Julia prüft', subtitle: 'Der Vorstand schaut jetzt drüber.' },
+		{ title: 'Geld kommt zurück', subtitle: 'Erstattung aufs Konto, meist 1–2 Wochen.' }
+	]);
+
+	const timeline = $derived([
+		{ title: 'Eingereicht', timestamp: `am ${submittedLabel}`, state: 'done' as const, detail: isBatch ? 'Wir haben deine Auslagen erhalten.' : 'Wir haben deine Auslage erhalten.' },
+		{ title: 'Julia prüft', timestamp: 'als Nächstes', state: 'now' as const, detail: 'Der Vorstand schaut sich den Beleg an.' },
+		{ title: 'Geld kommt zurück', timestamp: 'danach', state: 'pending' as const, detail: 'Erstattung aufs Konto, meist in 1–2 Wochen.' }
+	]);
 
 	let shareState = $state<'idle' | ShareOutcome>('idle');
-	let shareUrl = $state('');
-
-	onMount(async () => {
-		// A completed submission is the strongest "this device files expenses"
-		// signal — make the Auslage form this device's sticky launch entry so a
-		// returning external lands straight on it. Harmless for authed devices:
-		// the launch router ignores the preference once hasAuthedBefore is set.
-		setPreferredAuslage();
-
-		// Clear the IndexedDB draft now that submission succeeded.
-		// Dynamic import because clearDraft uses IndexedDB (browser-only).
-		const { clearDraft } = await import('$lib/client/drafts.js');
-		await clearDraft();
-
-		// Rotate the idempotency nonce: this submission succeeded, so a NEW
-		// Auslage started from "Weitere Auslage einreichen" must get a fresh
-		// nonce (otherwise it would dedup to this one). Clearing the
-		// sessionStorage key makes AuslagenForm seed a new UUID on its next
-		// mount. Must match the key in AuslagenForm.svelte
-		// (fdw-auslage-submission-nonce).
-		try {
-			sessionStorage.removeItem('fdw-auslage-submission-nonce');
-		} catch {
-			// sessionStorage unavailable (private mode) — nothing to rotate.
-		}
-	});
+	const shareLabel = $derived(
+		shareState === 'copied' ? 'Link kopiert' : shareState === 'shared' ? 'Link geteilt' : 'Link speichern'
+	);
+	const shareAnnouncement = $derived(
+		shareState === 'copied' ? 'Link kopiert' : shareState === 'shared' ? 'Link geteilt' : ''
+	);
 
 	async function onShare() {
-		// WhatsApp in-app browsers lose the URL on close; the confirmation mail
-		// also carries the link — this is the belt to that suspender (spec §6).
-		const url = buildStatusUrl(ausId, page.url.origin);
-		shareUrl = url;
-		shareState = await shareOrCopyStatusLink(url, page.data.vereinName);
+		const urlStr = buildStatusUrl(firstAus, page.url.origin);
+		shareState = await shareOrCopyStatusLink(urlStr, page.data.vereinName);
 	}
 
-	const shareLabel = $derived(
-		shareState === 'copied'
-			? 'Link kopiert ✓'
-			: shareState === 'shared'
-				? 'Link geteilt ✓'
-				: 'Link speichern'
-	);
-
-	// Announcement for screen readers via the aria-live region below.
-	const shareAnnouncement = $derived(
-		shareState === 'copied'
-			? 'Link kopiert'
-			: shareState === 'shared'
-				? 'Link geteilt'
-				: shareState === 'failed'
-					? `Konnte nicht gespeichert werden — Link: ${shareUrl}`
-					: ''
-	);
+	onMount(async () => {
+		// PWA-entry stickiness + draft clear (submission succeeded).
+		setPreferredAuslage();
+		const { clearDraft } = await import('$lib/client/drafts.js');
+		await clearDraft();
+		// Rotate ALL batch nonces so "Weitere Auslage" starts fresh (each block
+		// stored fdw-auslage-submission-nonce:<clientKey>).
+		try {
+			for (const key of Object.keys(sessionStorage)) {
+				if (key.startsWith('fdw-auslage-submission-nonce')) sessionStorage.removeItem(key);
+			}
+		} catch {
+			/* sessionStorage unavailable — nothing to rotate */
+		}
+	});
 </script>
 
-<svelte:head>
-	<title>Auslage eingereicht – {page.data.vereinName}</title>
-</svelte:head>
+<svelte:head><title>Auslage eingereicht — {page.data.vereinName}</title></svelte:head>
 
-<main class="mx-auto w-full max-w-2xl px-4 py-12 lg:px-6 lg:py-16">
-	<div class="mb-8 flex items-center gap-3">
-		<span
-			class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full [background-image:var(--gradient-brand-soft)] text-xl"
-			aria-hidden="true">✓</span
-		>
-		<h1 class="text-3xl font-bold tracking-tight text-ink-900">Vielen Dank!</h1>
-	</div>
+<main class="mx-auto w-full max-w-5xl px-3 py-6 lg:px-6 lg:py-10">
+	<SplitCardShell center>
+		{#snippet aside()}
+			<div>
+				<span class="text-[11px] font-bold tracking-wide text-ink-500 uppercase">{isBatch ? 'Auslagen eingereicht' : 'Auslage eingereicht'}</span>
+				<h1 class="mt-3 text-[26px] leading-[1.1] font-extrabold tracking-tight text-ink-900">
+					{isBatch ? 'Alles drin — jede mit eigener Nummer.' : 'Danke, dass du in Vorkasse gegangen bist.'}
+				</h1>
+				<p class="mt-3 max-w-[32ch] text-[14px] leading-relaxed text-ink-500">
+					{isBatch
+						? 'Julia prüft jede für sich — du verfolgst alle auf einer Seite.'
+						: 'Wir haben deine Auslage — jetzt übernehmen wir. Du musst nichts weiter tun.'}
+				</p>
+			</div>
+			<div class="mt-auto hidden lg:block">
+				<TrustJourney steps={journeySteps} doneUntil={1} trust="Wir melden uns per E-Mail bei jedem Schritt." />
+			</div>
+		{/snippet}
+		{#snippet main()}
+			<div class="mx-auto flex w-full max-w-[420px] flex-col items-center text-center">
+				<StatusMedallion class="mb-5" tone="done" size="lg">{#snippet icon()}<CircleCheck />{/snippet}</StatusMedallion>
+				<h2 tabindex="-1" class="text-[24px] font-extrabold tracking-tight text-ink-900 outline-none" data-testid="eingereicht-heading">
+					{isBatch ? `Alles drin, ${data.vorname} — ${data.items.length} Auslagen unterwegs.` : `Hat geklappt, ${data.vorname}!`}
+				</h2>
+				<p class="mt-2.5 max-w-[38ch] text-[14px] leading-relaxed text-ink-500">
+					{isBatch
+						? 'Sie sind bei uns gelandet, jede mit eigener Nummer. Du musst jetzt nichts weiter tun.'
+						: 'Du musst jetzt nichts weiter tun — wir melden uns, sobald geprüft ist.'}
+				</p>
 
-	{#if ausId}
-		<p class="mb-6 text-lg text-ink-700">Deine Auslage wurde erfolgreich eingereicht.</p>
+				{#if isBatch}
+					<BatchConfirmGroup class="mt-6" items={data.items} gesamtCents={data.gesamtCents} />
+				{:else}
+					<AusIdCard class="mt-6" ausId={firstAus} betragCents={data.gesamtCents} belegName={data.belegName} />
+				{/if}
 
-		<div
-			class="mb-8 rounded-2xl border border-[var(--hairline)] bg-card px-6 py-4 shadow-[var(--shadow-card)]"
-		>
-			<p class="mb-1 text-sm font-medium tracking-wide text-ink-500 uppercase">
-				Deine Einreichungs-ID
-			</p>
-			<p class="font-mono text-2xl font-bold text-ink-900">{ausId}</p>
-		</div>
+				<div class="mt-6 w-full text-left">
+					<div class="mb-3.5 text-[11px] font-bold tracking-wide text-ink-500 uppercase">Was jetzt passiert</div>
+					<StatusTimeline events={timeline} />
+				</div>
 
-		<p class="mb-5 leading-relaxed text-ink-700">
-			Der Vorstand prüft deine Auslage. Sobald sie freigegeben ist, wird der Betrag überwiesen — den Stand siehst du jederzeit unter deinem Status-Link.
-		</p>
+				<div class="mt-6 flex w-full flex-col gap-2.5">
+					<!-- eslint-disable svelte/no-navigation-without-resolve -->
+					<a
+						href={data.statusUrl}
+						data-testid="status-cta"
+						class="inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-[10px] [background-image:var(--gradient-brand)] px-5 text-[15px] font-semibold text-white shadow-[var(--glow-brand)] transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none [&_svg]:size-4"
+					>
+						<Eye aria-hidden="true" />{isBatch ? 'Alle Status verfolgen' : 'Status verfolgen'}
+					</a>
+					<button
+						type="button"
+						onclick={onShare}
+						data-testid="share-status-link"
+						class="inline-flex min-h-[46px] w-full items-center justify-center gap-2 rounded-[10px] border border-hairline bg-card px-5 text-sm font-semibold {shareState === 'idle' ? 'text-primary-text' : 'text-type-einnahme'} transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [&_svg]:size-4"
+					>
+						{#if shareState === 'idle'}<Link aria-hidden="true" />{:else}<CheckCheck aria-hidden="true" />{/if}{shareLabel}
+					</button>
+					<a
+						href="/auslage-einreichen"
+						class="mt-1 inline-flex items-center justify-center gap-1.5 text-[12.5px] font-semibold text-primary-text no-underline hover:opacity-80 [&_svg]:size-3.5"
+					>
+						<Plus aria-hidden="true" />Weitere Auslage einreichen
+					</a>
+					<!-- eslint-enable svelte/no-navigation-without-resolve -->
+				</div>
 
-		<!-- eslint-disable svelte/no-navigation-without-resolve -->
-		<div class="flex flex-wrap items-center gap-3">
-			<a
-				href="/auslage-status/{ausId}"
-				class="inline-flex h-11 items-center gap-2 rounded-[10px] bg-primary-strong px-5 text-sm font-semibold text-white shadow-[var(--glow-brand)] transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none lg:h-10"
-			>
-				Status verfolgen →
-			</a>
-			<button
-				type="button"
-				onclick={onShare}
-				data-testid="share-status-link"
-				class="inline-flex h-11 items-center gap-2 rounded-[10px] border border-[var(--hairline)] bg-card px-5 text-sm font-semibold text-primary-text transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none lg:h-10"
-			>
-				{shareLabel}
-			</button>
-		</div>
-		{#if shareState === 'failed'}
-			<p class="mt-3 text-xs break-all text-ink-500">
-				Konnte nicht automatisch gespeichert werden — Link zum Kopieren:
-				<span class="font-mono" data-testid="share-url-fallback">{shareUrl}</span>
-			</p>
-		{/if}
-		<!-- Visually hidden live region: announces share outcome to screen readers
-		     without polluting visible UI. Empty when idle or cancelled. -->
-		<p class="sr-only" aria-live="polite" aria-atomic="true">{shareAnnouncement}</p>
-
-		<p class="mt-8">
-			<a
-				href="/auslage-einreichen"
-				class="text-sm font-medium text-primary-text underline underline-offset-2 hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-			>
-				Weitere Auslage einreichen
-			</a>
-		</p>
-		<!-- eslint-enable svelte/no-navigation-without-resolve -->
-	{:else}
-		<p class="mb-6 text-ink-500">
-			Deine Einreichung wurde gespeichert. Falls du eine Bestätigungs-E-Mail erwartest, prüfe
-			bitte deinen Posteingang.
-		</p>
-
-		<!-- eslint-disable svelte/no-navigation-without-resolve -->
-		<a
-			href="/auslage-einreichen"
-			class="inline-flex h-11 items-center gap-2 rounded-[10px] bg-primary-strong px-5 text-sm font-semibold text-white shadow-[var(--glow-brand)] transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none lg:h-10"
-		>
-			Weitere Auslage einreichen
-		</a>
-		<!-- eslint-enable svelte/no-navigation-without-resolve -->
-	{/if}
-
-	<div class="mt-12 border-t border-[var(--hairline)] pt-8">
-		<p class="text-sm text-ink-500">
-			Bei Fragen wende dich an den Vorstand von {page.data.vereinName}. Bitte halte deine
-			Einreichungs-ID bereit.
-		</p>
-	</div>
+				<p class="mt-5 w-full border-t border-hairline pt-4 text-left text-[12px] leading-relaxed text-ink-500">
+					{#if isBatch}
+						Jede deiner Nummern öffnet die ganze Gruppe — Hauptsache, du hast eine parat. Fang mit
+						<b class="font-bold text-ink-700 tabular-nums whitespace-nowrap">{firstAus}</b> an.
+					{:else}
+						Halt deine Nummer <b class="font-bold text-ink-700 tabular-nums whitespace-nowrap">{firstAus}</b> bereit — damit findest du deinen Status jederzeit wieder.
+					{/if}
+				</p>
+				<p class="sr-only" aria-live="polite" aria-atomic="true">{shareAnnouncement}</p>
+			</div>
+		{/snippet}
+	</SplitCardShell>
 </main>
