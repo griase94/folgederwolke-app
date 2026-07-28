@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { invalidateAll } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import MemberInfoCard from '$lib/components/admin/members/MemberInfoCard.svelte';
 	import MemberBeitragsTimeline from '$lib/components/admin/members/MemberBeitragsTimeline.svelte';
 	import MemberActivityFeed from '$lib/components/admin/members/MemberActivityFeed.svelte';
-	import SendReminderSheet from '$lib/components/admin/members/SendReminderSheet.svelte';
+	import SendReminderBulkSheet from '$lib/components/admin/members/SendReminderBulkSheet.svelte';
 	import MarkPaidControl from '$lib/components/admin/members/MarkPaidControl.svelte';
 	import { resolveBeitragState, projectForList } from '$lib/domain/beitrag-state.js';
 	import type { PageData } from './$types.js';
@@ -282,17 +283,12 @@
 	<div class="h-20" aria-hidden="true"></div>
 {/if}
 
-<!-- Send reminder sheet -->
-<SendReminderSheet
+<!-- Send reminder sheet (n=1 case of the consolidated Bulk sheet) -->
+<SendReminderBulkSheet
 	bind:open={reminderSheetOpen}
-	member={{
-		id: data.member.id,
-		vorname: data.member.vorname,
-		nachname: data.member.nachname,
-		email: data.member.email
-	}}
-	defaultYear={data.defaultReminderYear}
-	defaultBetragCents={data.defaultReminderBetragCents}
-	reminderSentRecently={data.reminderSentRecently}
-	openYears={data.openYears}
+	candidates={data.reminderCandidates}
+	year={data.reminderYear}
+	vereinName={page.data.vereinName}
+	iban={data.reminderIban}
+	onSuccess={() => invalidateAll()}
 />

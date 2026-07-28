@@ -14,7 +14,7 @@
  */
 
 import { error, fail } from "@sveltejs/kit";
-import { and, eq, gt, count, desc, inArray } from "drizzle-orm";
+import { and, eq, desc, inArray } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
@@ -26,7 +26,9 @@ import {
   softDeleteMember,
   markBeitragPaid,
   checkReminderAllowed,
+  sendBeitragReminderBulk,
 } from "$lib/server/domain/members-actions.js";
+import { loadReminderCandidates } from "$lib/server/domain/reminder-candidates.js";
 import { bus } from "$lib/server/events/index.js";
 import {
   reminderSendAttempt,
@@ -35,7 +37,11 @@ import {
   vereinBankIdentity,
 } from "$lib/server/domain/beitrag-reminder.js";
 import { env } from "$lib/server/env.js";
-import { berlinYear, berlinYmd } from "$lib/domain/year.js";
+import {
+  berlinYear,
+  berlinYmd,
+  currentBuchungsjahr,
+} from "$lib/domain/year.js";
 import { assertUuidOr404 } from "$lib/domain/uuid.js";
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -79,24 +85,19 @@ export const load: PageServerLoad = async ({ params }) => {
     .orderBy(desc(sentMails.queuedAt))
     .limit(50);
 
-  // ── 30-day reminder dedup check ──────────────────────────────────────────
-  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const recentReminderRows = await db
-    .select({ cnt: count() })
-    .from(sentMails)
-    .where(
-      and(
-        eq(sentMails.template, "beitrag_reminder"),
-        eq(sentMails.entityKind, "member"),
-        eq(sentMails.entityId, id),
-        gt(sentMails.queuedAt, cutoff),
-      ),
-    );
-
-  const reminderSentRecently = (recentReminderRows[0]?.cnt ?? 0) > 0;
-
   // ── Compute current year for hero + reminder defaults (ADR-0001) ─────────
   const currentYear = berlinYear();
+
+  // ── Bulk-Reminder candidate for THIS member (n=1) ─────────────────────────
+  // Reuse the single source (loadReminderCandidates) so the detail sheet matches
+  // the list exactly — same state resolution, 30-day dedup, and false-debt gate.
+  // Empty when the member owes nothing for the current Buchungsjahr.
+  const reminderYear = currentBuchungsjahr();
+  const reminderData = await loadReminderCandidates(reminderYear);
+  const reminderCandidates = reminderData.candidates.filter(
+    (c) => c.memberId === id,
+  );
+  const reminderIban = vereinBankIdentity()?.iban ?? null;
 
   // ── Org constants for mail preview ───────────────────────────────────────
   const mailFrom = env.MAIL_FROM;
@@ -119,24 +120,7 @@ export const load: PageServerLoad = async ({ params }) => {
   const satzByYear: Record<number, number> = {};
   for (const s of satzRows) satzByYear[s.year] = Number(s.cents);
 
-  // ── Find open beitrags (paidCents < betragCents, not exempt) ─────────────
-  // Package B: openYears uses row data only — no VEREIN_BEITRAG_DEFAULT_CENTS
-  // fabrication. A no-row year is handled by the canonical state resolver.
   const currentYearBeitrag = beitragRows.find((b) => b.year === currentYear);
-  const openYears = beitragRows
-    .filter((b) => !b.isExempt && Number(b.paidCents) < Number(b.betragCents))
-    .map((b) => ({
-      year: b.year,
-      betragCents: Number(b.betragCents),
-      paidCents: Number(b.paidCents),
-    }));
-
-  const defaultReminderYear = openYears[0]?.year ?? currentYear;
-  // betragCents for the reminder: use the open row's recorded amount (no fallback
-  // to VEREIN_BEITRAG_DEFAULT_CENTS — that was the false-debt fabrication removed
-  // in Package B). If there is no open row, fall back to satz or 0.
-  const defaultReminderBetragCents =
-    openYears[0]?.betragCents ?? satzByYear[currentYear] ?? 0;
 
   return {
     member: {
@@ -186,13 +170,12 @@ export const load: PageServerLoad = async ({ params }) => {
         sentAt: m.sentAt?.toISOString() ?? null,
       })),
     },
-    reminderSentRecently,
-    defaultReminderYear,
-    defaultReminderBetragCents,
+    reminderYear,
+    reminderCandidates,
+    reminderIban,
     mailFrom,
     currentYear,
     satzByYear,
-    openYears,
     currentYearBeitrag: currentYearBeitrag
       ? {
           id: currentYearBeitrag.id,
@@ -288,14 +271,57 @@ export const actions: Actions = {
     return { action: "mark-beitrag-paid", success: true };
   },
 
-  // ── Send BeitragsReminder ─────────────────────────────────────────────────
-  // Package B: uses checkReminderAllowed to refuse 422 when the member owes
-  // nothing for the year (CARDINAL RULE — no false debt). VEREIN_BEITRAG_DEFAULT_CENTS
-  // fabrication removed; betragCents comes from the canonical state resolver.
+  // ── Send BeitragsReminder (Bulk endpoint; the detail bar posts n=1) ────────
+  // Consolidated on the same path as the list (Ruling C6a): the SendReminder
+  // BulkSheet on the detail page posts one selected recipient here. The
+  // false-debt guard + (member, year) dedup + event-bus dispatch live in
+  // sendBeitragReminderBulk.
+  "send-reminder-bulk": async ({ request, locals }) => {
+    const userId = locals.session?.user.id ?? null;
+    const userRole = locals.session?.user.role ?? null;
+    const formData = await request.formData();
+    const memberIds = formData
+      .getAll("memberId")
+      .map((v) => v.toString())
+      .filter(Boolean);
+    const yearStr = formData.get("year")?.toString() ?? "";
+    const year = parseInt(yearStr, 10);
+    const fristAt = formData.get("fristAt")?.toString() || null;
+    const customIntro = formData.get("customIntro")?.toString() || null;
+
+    const result = await sendBeitragReminderBulk({
+      memberIds,
+      year,
+      fristAt,
+      customIntro,
+      actorUserId: userId,
+      actorRole: userRole,
+    });
+    if (!result.ok) {
+      return fail(result.status, {
+        action: "send-reminder-bulk",
+        error: result.error,
+      });
+    }
+
+    return {
+      action: "send-reminder-bulk",
+      success: true,
+      sent: result.sent,
+      skippedNoMail: result.skippedNoMail,
+      skippedDeduped: result.skippedDeduped,
+      skippedNoDebt: result.skippedNoDebt,
+      failed: result.failed,
+    };
+  },
+
+  // ── Send BeitragsReminder (single quick-remind) ───────────────────────────
+  // The per-cell/timeline reminder ghost (MarkPaidControl) posts here for a fast
+  // one-tap remind. Shares the bus + jahresbasierte dedup with the Bulk sheet.
+  // Consolidating these ghosts INTO the Bulk sheet (and removing this action) is
+  // gated on the matrix per-cell-year ruling — see the C2 handoff.
   "send-reminder": async ({ request, params, locals }) => {
     const userId = locals.session?.user.id ?? null;
-    // F14: validate before memberId reaches the ::uuid cast in
-    // checkReminderAllowed (actions skip load()).
     const memberId = assertUuidOr404(params.id, "Mitglied nicht gefunden");
     const formData = await request.formData();
     const yearStr = formData.get("year")?.toString() ?? "";
@@ -308,7 +334,6 @@ export const actions: Actions = {
       });
     }
 
-    // False-debt guard: refuse when member owes nothing for the year.
     const guard = await checkReminderAllowed({ memberId, year });
     if (!guard.allowed) {
       return fail(guard.status, {
@@ -316,9 +341,7 @@ export const actions: Actions = {
         error: guard.error,
       });
     }
-
     const { member, betragCents } = guard;
-
     if (!member.email) {
       return fail(422, {
         action: "send-reminder",
@@ -326,7 +349,6 @@ export const actions: Actions = {
       });
     }
 
-    // Org bank details — env.VEREIN_* is the only source of truth.
     const bank = vereinBankIdentity();
     if (!bank) {
       return fail(500, {
@@ -336,7 +358,6 @@ export const actions: Actions = {
       });
     }
 
-    // Already reminded for this (member, year)? → honest "already sent".
     const already = await remindedMemberIdsForYear([memberId], year);
     if (already.has(memberId)) {
       return {
@@ -347,9 +368,6 @@ export const actions: Actions = {
       };
     }
 
-    // Mail goes through the event bus (`beitrag.reminder_requested`), never
-    // inline sendMail (§4.1.1 #2, ADR-0005). send_attempt is jahresbasiert so
-    // this shares the (member, year) dedup key with cron + the Bulk sheet.
     try {
       await bus.emit("beitrag.reminder_requested", {
         memberId,
