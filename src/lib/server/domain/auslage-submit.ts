@@ -28,9 +28,9 @@
 import { inArray, eq } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
-import { members } from "$lib/server/db/schema/members.js";
 import { allocateBusinessIds } from "./id-allocator.js";
 import { composeBezahltVonDisplay, type BezahltVon } from "./auslagen.js";
+import { updateMemberIban } from "./member-iban.js";
 import { logAudit } from "$lib/server/audit-log/index.js";
 import { bus } from "$lib/server/events/index.js";
 import { berlinYear } from "$lib/domain/year.js";
@@ -288,21 +288,17 @@ export async function submitAuslagenBatch(
         );
       }
 
-      // 5. Optional profile-IBAN write (Fall B/C) — in-tx so it commits with
-      //    the batch. The value is pre-normalized/validated by the caller.
+      // 5. Optional profile-IBAN write (Fall B/C) — delegated to the ONE member-
+      //    IBAN write path so normalize+validate+in-tx-audit stay identical
+      //    across all three callers (card, submit, profil). In-tx so it commits
+      //    with the batch (a failed/invalid write rolls the whole submit back).
       if (input.memberIbanWrite) {
-        await tx
-          .update(members)
-          .set({ iban: input.memberIbanWrite.iban, updatedAt: new Date() })
-          .where(eq(members.id, input.memberIbanWrite.memberId));
-        await logAudit(
+        await updateMemberIban(
           {
-            action: "update",
-            entityKind: "member",
-            entityId: input.memberIbanWrite.memberId,
+            memberId: input.memberIbanWrite.memberId,
+            rawIban: input.memberIbanWrite.iban,
             actorUserId: input.actorUserId ?? null,
-            actorKind,
-            payload: { kind: "iban_updated", source: "auslage_submit" },
+            source: "auslage_submit",
           },
           tx,
         );
