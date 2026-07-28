@@ -37,6 +37,7 @@ import {
 } from "$lib/server/domain/beitrag-reminder.js";
 import { bus } from "$lib/server/events/index.js";
 import { loadMatrix } from "$lib/server/domain/matrix-loader.js";
+import { loadReminderCandidates } from "$lib/server/domain/reminder-candidates.js";
 import {
   berlinYmd,
   currentBuchungsjahr,
@@ -81,11 +82,22 @@ export const load: PageServerLoad = async ({ url, depends }) => {
   // member_beitrags projection any more (Aurora C-S2: legacy dual model dropped).
   const matrix = await loadMatrix({ years });
 
+  // Reminder candidates for the current Buchungsjahr — backs the "Erinnern (N)"
+  // toolbar (N = selectable count) AND the Bulk sheet's recipient list, from ONE
+  // query (spec §5; the count can never drift from the sheet). IBAN feeds the
+  // sheet's bank-fact preview (env-only, never a literal).
+  const reminderYear = currentBuchungsjahr();
+  const reminderData = await loadReminderCandidates(reminderYear);
+  const reminderBank = vereinBankIdentity();
+
   return {
     view,
     filter,
     years,
     matrix,
+    reminderYear,
+    reminderCandidates: reminderData.candidates,
+    reminderIban: reminderBank?.iban ?? null,
     // Member identity/contact only — beitrag state lives in `matrix`.
     members: allMembers.map((m) => ({
       id: m.id,

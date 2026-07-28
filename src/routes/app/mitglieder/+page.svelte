@@ -10,6 +10,7 @@
 	import MemberMatrix from '$lib/components/admin/members/MemberMatrix.svelte';
 	import AddMemberDialog from '$lib/components/admin/members/AddMemberDialog.svelte';
 	import EditMemberDialog from '$lib/components/admin/members/EditMemberDialog.svelte';
+	import SendReminderBulkSheet from '$lib/components/admin/members/SendReminderBulkSheet.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
 	import { projectForList } from '$lib/domain/beitrag-state.js';
 	import { berlinYmd, currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
@@ -134,6 +135,12 @@
 		editMember = m;
 		editOpen = true;
 	}
+
+	// ── Bulk-Reminder ("Erinnern (N)") ──────────────────────────────────────────
+	let reminderOpen = $state(false);
+	const reminderSelectableCount = $derived(
+		data.reminderCandidates.filter((c) => c.selectable).length
+	);
 </script>
 
 <svelte:head>
@@ -150,21 +157,42 @@
 				{data.members.length === 1 ? 'Mitglied' : 'Mitglieder'}
 			</p>
 		</div>
-		<Button
-			onclick={() => (addOpen = true)}
-			class="bg-primary-strong text-primary-foreground hover:bg-primary-strong/90"
-		>
-			<svg
-				class="mr-2 h-4 w-4"
-				fill="none"
-				viewBox="0 0 24 24"
-				stroke="currentColor"
-				stroke-width="2"
+		<div class="flex items-center gap-2">
+			{#if reminderSelectableCount > 0}
+				<Button
+					variant="outline"
+					onclick={() => (reminderOpen = true)}
+					data-testid="members-remind-toggle"
+				>
+					<svg
+						class="mr-2 h-4 w-4"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke="currentColor"
+						stroke-width="2"
+						aria-hidden="true"
+					>
+						<path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+					</svg>
+					Erinnern ({reminderSelectableCount})
+				</Button>
+			{/if}
+			<Button
+				onclick={() => (addOpen = true)}
+				class="bg-primary-strong text-primary-foreground hover:bg-primary-strong/90"
 			>
-				<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-			</svg>
-			Mitglied hinzufügen
-		</Button>
+				<svg
+					class="mr-2 h-4 w-4"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke="currentColor"
+					stroke-width="2"
+				>
+					<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+				</svg>
+				Mitglied hinzufügen
+			</Button>
+		</div>
 	</div>
 
 	<!-- Controls: search + view toggle -->
@@ -332,3 +360,11 @@
 
 <AddMemberDialog bind:open={addOpen} />
 <EditMemberDialog bind:open={editOpen} member={editMember} />
+<SendReminderBulkSheet
+	bind:open={reminderOpen}
+	candidates={data.reminderCandidates}
+	year={data.reminderYear}
+	vereinName={page.data.vereinName}
+	iban={data.reminderIban}
+	onSuccess={() => invalidateAll()}
+/>

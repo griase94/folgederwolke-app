@@ -108,6 +108,7 @@ export async function loadReminderCandidates(
     member: (typeof memberRows)[number];
     state: "open" | "partial" | "overdue";
     openCents: number;
+    betragCents: number;
   }[] = [];
   for (const m of memberRows) {
     const eintrittsJahr = m.eintrittsDatum
@@ -145,6 +146,7 @@ export async function loadReminderCandidates(
         member: m,
         state: resolved.state,
         openCents: Math.max(resolved.betragCents - resolved.paidCents, 0),
+        betragCents: resolved.betragCents,
       });
     }
   }
@@ -174,7 +176,7 @@ export async function loadReminderCandidates(
 
   const cutoffMs = Date.now() - REMINDER_DEDUP_DAYS * 24 * 60 * 60 * 1000;
   const candidates: ReminderCandidate[] = owing.map(
-    ({ member, state, openCents }) => {
+    ({ member, state, openCents, betragCents }) => {
       const lastReminderAt = lastByMember.get(member.id) ?? null;
       const recentlyReminded =
         lastReminderAt !== null &&
@@ -188,6 +190,7 @@ export async function loadReminderCandidates(
         email: member.email ?? null,
         state,
         openCents,
+        betragCents,
         lastReminderAt,
         selectable: blockedReason === null,
         blockedReason,
