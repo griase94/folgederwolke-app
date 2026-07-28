@@ -234,16 +234,15 @@ test.describe("@phase-3 Member detail — send reminder", () => {
 
     await btn.click();
 
-    // Sheet should be visible
-    await expect(page.locator("text=Erinnerungs-Mail vorbereiten")).toBeVisible(
-      { timeout: 3000 },
-    );
-
-    // Year selector should be present
-    await expect(page.locator("select#reminder-year")).toBeVisible();
-
-    // Mail senden button should exist
-    await expect(page.locator("button:has-text('Mail senden')")).toBeVisible();
+    // The consolidated Bulk-Reminder sheet opens (C2/S3b; the detail is the n=1
+    // case). The recipient (this member) is listed and the send CTA is present.
+    await expect(page.getByTestId("bulk-reminder-sheet")).toBeVisible({
+      timeout: 3000,
+    });
+    await expect(
+      page.getByTestId("reminder-recipient-row").first(),
+    ).toBeVisible();
+    await expect(page.getByTestId("bulk-reminder-send")).toBeVisible();
   });
 
   test("reminder sheet can be closed with Abbrechen", async ({ page }) => {
@@ -264,14 +263,14 @@ test.describe("@phase-3 Member detail — send reminder", () => {
     }
 
     await btn.click();
-    await expect(page.locator("text=Erinnerungs-Mail vorbereiten")).toBeVisible(
-      { timeout: 3000 },
-    );
+    await expect(page.getByTestId("bulk-reminder-sheet")).toBeVisible({
+      timeout: 3000,
+    });
 
     await page.click("button:has-text('Abbrechen')");
-    await expect(
-      page.locator("text=Erinnerungs-Mail vorbereiten"),
-    ).not.toBeVisible({ timeout: 3000 });
+    await expect(page.getByTestId("bulk-reminder-sheet")).not.toBeVisible({
+      timeout: 3000,
+    });
   });
 });
 

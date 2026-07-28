@@ -157,14 +157,22 @@
 	// C3-DISC: the soft-delete form lives OUTSIDE the DropdownMenu.Content so
 	// it survives the menu's unmount-on-close.
 	let deleteFormEl = $state<HTMLFormElement | null>(null);
-	function confirmDelete() {
+	// C2/S3c: two-step "austragen" replaces the jarring native window.confirm.
+	// First kebab click arms (label → "Wirklich austragen?"), the second commits —
+	// a deliberate second gesture, no nested dialog. Disarms when the menu closes.
+	let austragenArmed = $state(false);
+	function handleAustragen() {
+		if (!austragenArmed) {
+			austragenArmed = true;
+			return;
+		}
+		austragenArmed = false;
 		dropdownOpen = false;
-		const ok = window.confirm(
-			`Mitglied "${member.vorname} ${member.nachname}" wirklich archivieren?`,
-		);
-		if (!ok) return;
 		queueMicrotask(() => deleteFormEl?.requestSubmit());
 	}
+	$effect(() => {
+		if (!dropdownOpen) austragenArmed = false;
+	});
 
 	// Bulk-select gate: enabled only when the bulk-year cell projects to "open".
 	function isSelectDisabledForBulk(): boolean {
@@ -333,13 +341,16 @@
 
 				<DropdownMenu.Separator />
 
-				<!-- Delete -->
+				<!-- Austragen (two-step; no window.confirm, no hard delete) -->
 				<DropdownMenu.Item
 					data-testid="member-row-loeschen"
-					class="text-destructive focus:text-destructive"
+					data-armed={austragenArmed ? 'true' : undefined}
+					class="text-destructive focus:text-destructive {austragenArmed
+						? 'font-semibold'
+						: ''}"
 					onSelect={(e) => {
 						e.preventDefault();
-						confirmDelete();
+						handleAustragen();
 					}}
 				>
 					<svg
@@ -356,7 +367,7 @@
 							d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
 						/>
 					</svg>
-					Löschen
+					{austragenArmed ? 'Wirklich austragen?' : 'Austragen'}
 				</DropdownMenu.Item>
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
@@ -372,7 +383,9 @@
 			const memberId = member.id;
 			return async ({ result }) => {
 				if (result.type === 'success') {
-					const toastId = toast.success('Mitglied archiviert', {
+					const toastId = toast.success(
+						`${member.vorname} ${member.nachname} ausgetragen`,
+						{
 						action: {
 							label: 'Rückgängig',
 							onClick: async () => {
@@ -389,7 +402,7 @@
 					await invalidateAll();
 				} else if (result.type === 'failure') {
 					toast.error(
-						(result.data?.['error'] as string | undefined) ?? 'Löschen fehlgeschlagen',
+						(result.data?.['error'] as string | undefined) ?? 'Austragen fehlgeschlagen',
 					);
 				}
 			};
