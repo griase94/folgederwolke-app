@@ -889,12 +889,7 @@
 					<MemberAvatar vorname={member.vorname} nachname={member.nachname} size="md" />
 					<div class="min-w-0 flex-1">
 						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-						<a
-							href="/app/mitglieder/{member.id}"
-							class="block truncate font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-						>
-							{member.nachname}, {member.vorname}
-						</a>
+						<a href="/app/mitglieder/{member.id}" class="block truncate font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{member.nachname}, {member.vorname}</a>
 						{#if member.email}
 							<span class="block truncate text-xs text-muted-foreground">{member.email}</span>
 						{/if}
