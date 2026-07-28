@@ -54,6 +54,11 @@ export const actions: Actions = {
 
       // PHASE 2: close the books.
       const result = await closeBuchhaltungsjahr(year, user.id);
+
+      // NB: the Hub-Settle count breakdown (versiegelt + Beiträge) is derived
+      // client-side from the SAME 4-source Hub counts the modal showed — NOT from
+      // result.totalRows (which counts invoices + skips supersedes and would
+      // exceed the modal in an invoice year). So no extra count query here.
       return {
         success: true,
         year: result.year,

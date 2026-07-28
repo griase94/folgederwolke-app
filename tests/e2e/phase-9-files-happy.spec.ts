@@ -359,8 +359,11 @@ test.describe("@phase-9 Files — happy", () => {
     // documented German error messages (already closed / monotonic forward).
     // We just assert the route exists and doesn't 500.
     const year = new Date().getFullYear() - 5;
+    // D-S3: the ONE canonical festschreiben action lives on the bare [year]
+    // route (archives Phase-9 files, THEN closes). The divergent uebersicht
+    // action was deleted — posting there would now 404/405.
     const res = await page.request.post(
-      `/app/jahresabschluss/${year}/uebersicht?/festschreiben`,
+      `/app/jahresabschluss/${year}?/festschreiben`,
       { headers: CSRF_HEADERS, form: {}, maxRedirects: 0 },
     );
     // SvelteKit form action returns 200 (success/fail) or 303 redirect on

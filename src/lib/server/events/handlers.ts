@@ -31,15 +31,24 @@ export function registerHandlers(): void {
 
   // ── auslagen.submitted ──────────────────────────────────────────────────
   // Handler 1: send EingangsMail (best-effort).
+  //
+  // Batch submits (submitAuslagenBatch) carry submissionGroupId + items and get
+  // ONE digest mail deduped on the GROUP (entity_id = submissionGroupId) — a
+  // group UUID is distinct from any single submission id, so it's a
+  // collision-free polymorphic dedup key that needs no new entity_kind value.
+  // Legacy single submits dedup on the submission id (unchanged).
   bus.on<EventPayload<"auslagen.submitted">>(
     "auslagen.submitted",
     async (payload) => {
       if (!payload.email) return;
+      const isBatch = !!payload.submissionGroupId && !!payload.items;
       try {
         await sendMail({
           template: "auslage_eingang",
           entity_kind: "auslagen_submission",
-          entity_id: payload.submissionId,
+          entity_id: isBatch
+            ? payload.submissionGroupId!
+            : payload.submissionId,
           to: payload.email,
           props: {
             vorname: payload.vorname,
@@ -47,6 +56,7 @@ export function registerHandlers(): void {
             bezeichnung: payload.bezeichnung,
             betragCents: payload.betragCents,
             eingereichtAm: new Date(),
+            items: isBatch ? payload.items : undefined,
           },
         });
       } catch (mailErr) {
@@ -70,9 +80,14 @@ export function registerHandlers(): void {
   // (audit-inbox-actions, admin "Auslage direkt erfassen") does NOT pre-write
   // it, so this handler remains the writer there. Discriminating on presence
   // keeps exactly one create-anchor per submission regardless of emitter.
+  //
+  // Batch submits (submitAuslagenBatch) carry submissionGroupId and write ALL
+  // their create-anchors in-tx (one per row, ADR-0004), so this handler is a
+  // clean no-op for them — never try to write a single anchor for a group.
   bus.on<EventPayload<"auslagen.submitted">>(
     "auslagen.submitted",
     async (payload) => {
+      if (payload.submissionGroupId) return;
       const db = getDb();
       const existing = (await db.execute(sql`
         SELECT 1 FROM audit_log

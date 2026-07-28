@@ -59,10 +59,19 @@ export type EntityKind = (typeof entityKindEnum.enumValues)[number];
 
 export interface EingangsMailProps {
   vorname: string;
+  /** Single: the AUS-id. Batch: the FIRST item's id (drives the status link). */
   ausId: string;
+  /** Single: the Auslage bezeichnung. Batch: the first item's (unused in body). */
   bezeichnung: string;
+  /** Single: the amount. Batch: the group TOTAL. */
   betragCents: number;
   eingereichtAm: Date;
+  /**
+   * Batch digest: when present (a multi-Auslage submit), the template renders a
+   * grouped line-item list + total instead of the single detail card. Absent →
+   * legacy single-item mail.
+   */
+  items?: { ausId: string; bezeichnung: string; betragCents: number }[];
 }
 
 export interface ErstattungsMailProps {

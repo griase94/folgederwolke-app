@@ -10,6 +10,11 @@ import { sql } from "drizzle-orm";
 import type { PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
+import {
+  isYearClosed,
+  readFestschreibungMeta,
+} from "$lib/server/domain/jahresabschluss.js";
+import { bundleManifest } from "$lib/server/eur/bundle-manifest.js";
 
 export const load: PageServerLoad = async ({ params }) => {
   const year = parseInt(params.year, 10);
@@ -19,7 +24,11 @@ export const load: PageServerLoad = async ({ params }) => {
 
   const db = getDb();
 
-  // Count rows for display
+  // Count rows for display. The Spenden count MUST exclude Storno originals
+  // (supersedes_id IS NULL) to match the transaction feed's Art-count — the feed
+  // now filters supersedes too (buildSpendenWhere), and the @aurora-impl-d-abschluss
+  // e2e asserts gobd-counter == Art-count. Without this the identity breaks in a
+  // Storno year.
   const counts = await db.execute<{
     einnahmen: string;
     ausgaben: string;
@@ -28,18 +37,28 @@ export const load: PageServerLoad = async ({ params }) => {
     SELECT
       (SELECT count(*)::text FROM v_eur_year WHERE year_of_buchung = ${year} AND art = 'income')  AS einnahmen,
       (SELECT count(*)::text FROM v_eur_year WHERE year_of_buchung = ${year} AND art = 'expense') AS ausgaben,
-      (SELECT count(*)::text FROM donations WHERE year_of_buchung = ${year})                       AS spenden
+      (SELECT count(*)::text FROM donations WHERE year_of_buchung = ${year} AND supersedes_id IS NULL) AS spenden
   `);
 
   const { name: vereinName } = await readStammdaten();
 
+  const einnahmen = parseInt(counts[0]?.einnahmen ?? "0", 10);
+  const ausgaben = parseInt(counts[0]?.ausgaben ?? "0", 10);
+  const spenden = parseInt(counts[0]?.spenden ?? "0", 10);
+
+  const closed = await isYearClosed(year);
+
   return {
     year,
     vereinName,
-    counts: {
-      einnahmen: parseInt(counts[0]?.einnahmen ?? "0", 10),
-      ausgaben: parseInt(counts[0]?.ausgaben ?? "0", 10),
-      spenden: parseInt(counts[0]?.spenden ?? "0", 10),
-    },
+    counts: { einnahmen, ausgaben, spenden },
+    // D-Flow §Stufe-0 (e): the screen needs the close state + whether there is
+    // anything to export, and renders the ZIP contents from the single-source
+    // manifest (never a hardcoded filename — §4.5 Manifest-Lüge guard).
+    closed,
+    hasBuchungen: einnahmen + ausgaben + spenden > 0,
+    manifest: bundleManifest(year),
+    // festgeschrieben am · durch wen — for the Trust-Block meta (§2.6).
+    festMeta: closed ? await readFestschreibungMeta(year) : null,
   };
 };

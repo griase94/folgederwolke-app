@@ -6,7 +6,9 @@
  * checklist) and exposes it to every tab (Übersicht, Buchungsliste, Spenden,
  * Exports) via SvelteKit's layout-data inheritance.
  *
- * Festschreibung is handled by the tab-local +page.server.ts (Übersicht).
+ * Festschreibung is the ONE canonical action on [year]/+page.server.ts (the
+ * archiving action), triggered from the Hub (D-S3). The old divergent
+ * uebersicht/+page.server.ts action was deleted.
  */
 
 import { error } from "@sveltejs/kit";

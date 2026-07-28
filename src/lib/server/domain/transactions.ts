@@ -616,6 +616,14 @@ export interface FeedRow {
   /** sphere_override ?? sphere_snapshot (expenses); snapshot otherwise. */
   sphereEffective: string;
   kategorieNameSnapshot: string;
+  /** Kategorie id (D-Flow §4.3) — drives the Buchungsliste kategorie/`ohne`
+   *  filter. Nullable defensively (legacy rows); app rows carry it. */
+  kategorieId: string | null;
+  /** Project id (D-Flow §4.3) — Buchungsliste project filter. */
+  projectId: string | null;
+  /** A Beleg file is attached (D-Flow §4.3). Distinct from `belegFehlt`
+   *  (expense-only "no beleg AND no Verzicht-Grund"). */
+  hasBeleg: boolean;
   /** expense only; null for income/donations. */
   status: string | null;
   /**
@@ -672,6 +680,9 @@ interface RawFeedRow extends Record<string, unknown> {
   sphere_snapshot: string;
   sphere_effective: string;
   kategorie_name_snapshot: string;
+  kategorie_id: string | null;
+  project_id: string | null;
+  has_beleg: boolean;
   status: string | null;
   beleg_fehlt: boolean;
   festgeschrieben_at: Date | string | null;
@@ -714,6 +725,9 @@ export async function listTransaktionenFeedPage(
              ${expenses.sphereSnapshot}::text AS sphere_snapshot,
              COALESCE(${expenses.sphereOverride}, ${expenses.sphereSnapshot})::text AS sphere_effective,
              ${expenses.kategorieNameSnapshot} AS kategorie_name_snapshot,
+             ${expenses.kategorieId} AS kategorie_id,
+             ${expenses.projectId} AS project_id,
+             (${expenses.belegFileId} IS NOT NULL) AS has_beleg,
              ${expenses.status}::text AS status,
              (${expenses.belegFileId} IS NULL AND ${expenses.belegVerzichtGrund} IS NULL) AS beleg_fehlt,
              ${expenses.festgeschriebenAt} AS festgeschrieben_at,
@@ -737,6 +751,9 @@ export async function listTransaktionenFeedPage(
              ${income.sphereSnapshot}::text AS sphere_snapshot,
              ${income.sphereSnapshot}::text AS sphere_effective,
              ${income.kategorieNameSnapshot} AS kategorie_name_snapshot,
+             ${income.kategorieId} AS kategorie_id,
+             ${income.projectId} AS project_id,
+             (${income.belegFileId} IS NOT NULL) AS has_beleg,
              NULL::text AS status,
              FALSE AS beleg_fehlt,
              ${income.festgeschriebenAt} AS festgeschrieben_at,
@@ -760,6 +777,9 @@ export async function listTransaktionenFeedPage(
              ${donations.sphereSnapshot}::text AS sphere_snapshot,
              ${donations.sphereSnapshot}::text AS sphere_effective,
              ${donations.kategorieNameSnapshot} AS kategorie_name_snapshot,
+             ${donations.kategorieId} AS kategorie_id,
+             ${donations.projectId} AS project_id,
+             (${donations.belegFileId} IS NOT NULL) AS has_beleg,
              NULL::text AS status,
              FALSE AS beleg_fehlt,
              ${donations.festgeschriebenAt} AS festgeschrieben_at,
@@ -822,6 +842,9 @@ export async function listTransaktionenFeedPage(
       sphereSnapshot: r.sphere_snapshot,
       sphereEffective: r.sphere_effective,
       kategorieNameSnapshot: r.kategorie_name_snapshot,
+      kategorieId: r.kategorie_id ?? null,
+      projectId: r.project_id ?? null,
+      hasBeleg: r.has_beleg === true,
       status: r.status ?? null,
       belegFehlt: r.beleg_fehlt === true,
       festgeschriebenAt: formatTs(r.festgeschrieben_at),

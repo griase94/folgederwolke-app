@@ -9,6 +9,7 @@
 		bezeichnung,
 		betragCents,
 		eingereichtAm,
+		items = undefined,
 		baseUrl = '',
 		vereinName = '',
 		adresse = '',
@@ -24,9 +25,11 @@
 		steuernummer?: string;
 	} = $props();
 
-	const betragFmt = $derived(
-		(betragCents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
-	);
+	// Batch digest: >1 Auslage in one submit → render a grouped list + total.
+	const isBatch = $derived(Array.isArray(items) && items.length > 1);
+	const eur = (cents: number) =>
+		(cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+	const betragFmt = $derived(eur(betragCents));
 	const datumFmt = $derived(
 		eingereichtAm.toLocaleDateString('de-DE', {
 			day: '2-digit',
@@ -83,7 +86,7 @@
 								<h1
 									style="margin:0 0 16px 0;font-size:22px;font-weight:700;color:#111827;letter-spacing:-0.2px;"
 								>
-									Auslage eingegangen
+									{isBatch ? 'Auslagen eingegangen' : 'Auslage eingegangen'}
 								</h1>
 
 								<p style="margin:0 0 16px 0;color:#374151;">
@@ -103,7 +106,46 @@
 									<tbody>
 										<tr>
 											<td style="padding:16px 20px;">
-												<table
+												{#if isBatch && items}
+											<table
+												role="presentation"
+												cellspacing="0"
+												cellpadding="0"
+												border="0"
+												width="100%"
+												style="font-size:13px;color:#374151;"
+											>
+												<tbody>
+													<tr>
+														<td colspan="2" style="padding:0 0 10px 0;color:#6b7280;white-space:nowrap;"
+															>{items.length} Auslagen · eingereicht am {datumFmt}</td
+														>
+													</tr>
+													{#each items as item (item.ausId)}
+														<tr>
+															<td style="padding:5px 0;color:#111827;vertical-align:top;">
+																<strong>{item.ausId}</strong><br />
+																<span style="color:#6b7280;">{item.bezeichnung}</span>
+															</td>
+															<td
+																style="padding:5px 0;color:#111827;font-weight:600;text-align:right;white-space:nowrap;vertical-align:top;"
+																>{eur(item.betragCents)}</td
+															>
+														</tr>
+													{/each}
+													<tr>
+														<td style="padding:12px 0 0 0;border-top:1px solid #f1c6de;color:#111827;font-weight:700;"
+															>Gesamt</td
+														>
+														<td
+															style="padding:12px 0 0 0;border-top:1px solid #f1c6de;color:#111827;font-weight:700;text-align:right;white-space:nowrap;"
+															>{betragFmt}</td
+														>
+													</tr>
+												</tbody>
+											</table>
+										{:else}
+											<table
 													role="presentation"
 													cellspacing="0"
 													cellpadding="0"
@@ -142,6 +184,7 @@
 														</tr>
 													</tbody>
 												</table>
+										{/if}
 											</td>
 										</tr>
 									</tbody>

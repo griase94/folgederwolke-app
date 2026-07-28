@@ -38,12 +38,9 @@ export const load: PageServerLoad = async ({ params, url }) => {
     offset: 0,
   });
 
-  // Map FeedRow → BuchungslisteRow (subset we display).
-  // Note: FeedRow.kategorieId isn't exposed in the shared shape today;
-  // we use kategorieNameSnapshot as the display string and synthesize the
-  // kategorieId/projectId from the detail query only when filtering is on.
-  // For c1's minimum viable cut, we filter against the name snapshot as a
-  // fallback when kategorie/project IDs aren't on the row.
+  // Map FeedRow → BuchungslisteRow (subset we display). D-Flow §4.3: the feed
+  // now exposes kategorieId/projectId/hasBeleg, so the kategorie/`ohne` +
+  // project filters work off the real ids (not the name snapshot).
   const mapped: BuchungslisteRow[] = rows.map((r) => ({
     id: r.id,
     kind: r.kind,
@@ -57,14 +54,24 @@ export const load: PageServerLoad = async ({ params, url }) => {
     // (SQL COALESCE), so no fallback is needed.
     gebuchtAm: r.relevanzDatum,
     sphereSnapshot: r.sphereSnapshot,
-    kategorieId: null,
+    kategorieId: r.kategorieId,
     kategorieNameSnapshot: r.kategorieNameSnapshot,
-    projectId: null,
-    belegDriveFileId: null,
+    projectId: r.projectId,
+    hasBeleg: r.hasBeleg,
     festgeschriebenAt: r.festgeschriebenAt,
   }));
 
   const filtered = filterAndSortRows(mapped, filters);
+
+  // Per-Art counts over the UNFILTERED year set — baked into the Art filter
+  // chips ("Einnahmen 94"). Presentational only (derived from the already-
+  // loaded `mapped`, no extra query).
+  const kindCounts = {
+    all: mapped.length,
+    income: mapped.filter((r) => r.kind === "income").length,
+    expense: mapped.filter((r) => r.kind === "expense").length,
+    donation: mapped.filter((r) => r.kind === "donation").length,
+  };
 
   // Lookup tables for filter chips
   const db = getDb();
@@ -84,6 +91,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
     rows: filtered,
     totalRows: filtered.length,
     allRowsCount: mapped.length,
+    kindCounts,
     kategorien: kategorienOpts,
     projects: projectsOpts,
   };

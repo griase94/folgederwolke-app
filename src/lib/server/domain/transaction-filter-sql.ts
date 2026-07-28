@@ -134,6 +134,12 @@ export function buildEinnahmenWhere(s: FilterState, year: YearScope): SQL[] {
 
 export function buildSpendenWhere(s: FilterState, year: YearScope): SQL[] {
   const c: SQL[] = []; // typed SQL[] so Task 9 `pnpm check` passes
+  // Exclude Storno originals — a superseded donation is replaced by its
+  // correction row, so counting both double-counts. The EÜR + Hub already
+  // filter `supersedes_id IS NULL`; without the same predicate here the
+  // transaction feed over-counts in a Storno year and the Buchungslisten-Fuß
+  // reconciliation (feed + Beiträge == EÜR) breaks. Mirror the income arm.
+  c.push(isNull(donations.supersedesId));
   if (year !== ALL_YEARS) c.push(eq(donations.yearOfBuchung, year));
   if (s.search)
     c.push(

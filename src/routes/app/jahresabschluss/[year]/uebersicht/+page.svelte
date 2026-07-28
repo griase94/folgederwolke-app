@@ -1,8 +1,11 @@
 <script lang="ts">
+	import PageShell from '$lib/components/layout/PageShell.svelte';
 	import UebersichtTab from '$lib/components/admin/jahresabschluss/UebersichtTab.svelte';
-	import type { PageData, ActionData } from './$types.js';
+	import type { PageData } from './$types.js';
 
-	let { data, form }: { data: PageData; form: ActionData } = $props();
+	let { data }: { data: PageData } = $props();
 </script>
 
-<UebersichtTab {data} {form} />
+<PageShell width="list">
+	<UebersichtTab {data} />
+</PageShell>

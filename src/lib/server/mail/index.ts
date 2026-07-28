@@ -67,8 +67,14 @@ export function subjectFor(
   switch (name) {
     case "magic_link":
       return `Dein Anmelde-Link für ${vereinName}`;
-    case "auslage_eingang":
+    case "auslage_eingang": {
+      // Batch digest → plural subject ("Deine 3 Auslagen sind …"); single →
+      // the AUS-id subject.
+      const items = props.items;
+      const n = Array.isArray(items) ? items.length : 0;
+      if (n > 1) return `Deine ${n} Auslagen sind bei uns angekommen`;
       return `Deine Auslage ${props.ausId ?? ""} ist bei uns angekommen`;
+    }
     case "auslage_erstattet":
       return `Deine Erstattung für ${props.ausId ?? ""} ist auf dem Weg`;
     case "auslage_abgelehnt":
