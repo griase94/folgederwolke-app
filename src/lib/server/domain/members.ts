@@ -2,8 +2,8 @@
  * Server-only Mitglieder domain helpers.
  *
  * - validateAddMember / validateEditMember: Zod schemas + validation
- * - beitragYearsRange: returns the 3-year window centered on the anchor year
- *   (anchor − 1 … anchor + 1). Default anchor is the current calendar year.
+ * - beitragYearsRange: returns the trailing 3-year window ending at the anchor
+ *   (anchor − 2 … anchor). Default anchor is the current calendar year.
  *
  * Client-safe types (MemberView, BeitragCell, MemberBeitragsTotals) live in
  * $lib/domain/members.ts to avoid the server-module restriction in browser code.
@@ -184,15 +184,18 @@ export function validateEditMember(
 // ---------------------------------------------------------------------------
 
 /**
- * Returns a 3-year window ending no later than the current Buchungsjahr.
+ * Returns the trailing 3-year window [anchor-2, anchor-1, anchor] (Ruling C5).
  *
- * The upper bound is clamped to `currentBuchungsjahr()` (F8): a future column
- * (e.g. 2027 while the current year is 2026) let the matrix book a Beitrag
- * into a fiscal year that hasn't begun. So the window is
- *   [hi-2, hi-1, hi]  where  hi = min(anchor + 1, currentBuchungsjahr()).
- * For the current anchor this yields [current-2, current-1, current] (no
- * future column); for a past anchor it stays centered ([anchor-1, anchor,
- * anchor+1]) since anchor+1 is still <= the current year.
+ * The selected year sits at the RIGHT edge — the matrix shows the anchor plus
+ * the two prior years, never a future column. Future-safety (F8): the upper
+ * bound is clamped to `currentBuchungsjahr()`, so a stray future `?year=`
+ * (e.g. 2030 while the current year is 2026) can't surface a Buchungsjahr that
+ * hasn't begun — it degrades to [current-2, current-1, current].
+ *
+ *   [hi-2, hi-1, hi]  where  hi = min(anchor, currentBuchungsjahr()).
+ *
+ * For the current anchor this yields [current-2, current-1, current]; for a
+ * past anchor (?year=2025) it yields [2023, 2024, 2025].
  *
  * C2-2: callers thread `?year=` through to anchor the matrix on the selected
  * Buchungsjahr.
@@ -203,7 +206,7 @@ export function beitragYearsRange(
   // boundary.
   anchor: number = berlinYear(),
 ): [number, number, number] {
-  const hi = Math.min(anchor + 1, currentBuchungsjahr());
+  const hi = Math.min(anchor, currentBuchungsjahr());
   return [hi - 2, hi - 1, hi];
 }
 

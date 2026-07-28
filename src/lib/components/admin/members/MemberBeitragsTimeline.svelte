@@ -13,7 +13,7 @@
 	 *   - Timeline rows also use resolveBeitragState (not simpleBeitragStatus).
 	 */
 	import MarkPaidControl from './MarkPaidControl.svelte';
-	import BeitragStatusPill from './BeitragStatusPill.svelte';
+	import BeitragCell from './BeitragCell.svelte';
 	import { resolveBeitragState, projectForList } from '$lib/domain/beitrag-state.js';
 	import type { CellState } from '$lib/domain/beitrag-cell.js';
 	import { berlinYear } from '$lib/domain/year.js';
@@ -121,11 +121,34 @@
 	const totalPaidCents = $derived(
 		visibleBeitrags.reduce((sum, b) => sum + Math.min(b.paidCents, b.betragCents), 0),
 	);
+	// The current (hero) year's open obligation exists even when the member has no
+	// member_beitrags row yet (unpaid → no row). A row-only sum reports "Gesamt
+	// offen 0,00" while the hero shows the year owing (M4 detail-truth). Count the
+	// hero year via heroState, then sum the OTHER visible rows' open.
+	const heroOpenCents = $derived(
+		heroState.state === 'open' ||
+			heroState.state === 'partial' ||
+			heroState.state === 'overdue'
+			? Math.max(0, heroState.betragCents - heroState.paidCents)
+			: 0,
+	);
 	const totalOpenCents = $derived(
 		beitragExempt
 			? 0
-			: visibleBeitrags.reduce((sum, b) => sum + Math.max(0, b.betragCents - b.paidCents), 0),
+			: heroOpenCents +
+				visibleBeitrags
+					.filter((b) => b.year !== heroYear)
+					.reduce((sum, b) => sum + Math.max(0, b.betragCents - b.paidCents), 0),
 	);
+
+	// Overdue days for the hero amber accent ("seit N Tagen überfällig", brief §2).
+	// Consistent with heroState's own overdue derivation (default Fälligkeit 31.03).
+	const heroDaysOverdue = $derived.by(() => {
+		if (heroState.state !== 'overdue') return null;
+		const faellig = new Date(`${heroYear}-03-31T00:00:00Z`);
+		const days = Math.floor((Date.now() - faellig.getTime()) / 86_400_000);
+		return days > 0 ? days : null;
+	});
 
 	function fmtEur(cents: number): string {
 		return (cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
@@ -159,7 +182,9 @@
 	}
 
 	function rowDisplayState(b: BeitragRow): CellState {
-		return projectForList(rowResolve(b).state);
+		// The detail history shows the honest state incl. Überfällig — no list fold
+		// (a past unpaid year should read "Überfällig", not a flat "offen").
+		return rowResolve(b).state;
 	}
 
 	// Status label for timeline rows
@@ -167,7 +192,7 @@
 		paid: 'bezahlt',
 		partial: 'teilweise bezahlt',
 		open: 'offen',
-		overdue: 'offen',
+		overdue: 'überfällig',
 		exempt: 'befreit',
 		permanently_exempt: 'befreit',
 		not_applicable_pre_join: '—',
@@ -176,10 +201,10 @@
 	};
 
 	const statusClasses: Record<string, string> = {
-		paid: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+		paid: 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:border-emerald-400/25 dark:bg-emerald-500/15 dark:text-emerald-300',
 		partial: 'bg-severity-warn/10 text-severity-warn-text border-severity-warn/30',
 		open: 'bg-primary/8 text-primary-text border-primary/20',
-		overdue: 'bg-primary/8 text-primary-text border-primary/20',
+		overdue: 'bg-severity-warn/10 text-severity-warn-text border-severity-warn/30',
 		exempt: 'bg-ink-300/10 text-ink-500 border-hairline',
 		permanently_exempt: 'bg-ink-300/10 text-ink-500 border-hairline',
 		not_applicable_pre_join: 'bg-transparent text-ink-300',
@@ -198,8 +223,10 @@
 			<div>
 				<p class="text-xs font-medium text-muted-foreground">Beitrag {heroYear}</p>
 				<div class="mt-1">
-					<BeitragStatusPill
-						state={heroDisplayState}
+					<BeitragCell
+						variant="pill"
+						state={heroState.state}
+						memberName={displayName}
 						year={heroYear}
 						paidCents={heroState.paidCents}
 						betragCents={heroState.betragCents}
@@ -221,6 +248,14 @@
 					<p class="text-sm font-semibold text-foreground tabular-nums">
 						{fmtEur(heroState.betragCents)}
 					</p>
+					{#if heroDaysOverdue !== null}
+						<p
+							class="text-xs font-medium text-severity-warn-text"
+							data-testid="beitrags-hero-overdue"
+						>
+							seit {heroDaysOverdue} {heroDaysOverdue === 1 ? 'Tag' : 'Tagen'} überfällig
+						</p>
+					{/if}
 				{:else if heroState.satzMissing}
 					<p class="text-xs text-muted-foreground">Beitragssatz {heroYear} fehlt</p>
 				{/if}
@@ -238,6 +273,7 @@
 				memberName={displayName}
 				betragCents={heroState.betragCents}
 				paidCents={heroState.paidCents}
+				notes={heroRow?.notes ?? null}
 				actionBase="/app/mitglieder"
 				allowExempt={false}
 			>
@@ -273,22 +309,22 @@
 	<!-- Summary totals (only when there are historical rows) -->
 	{#if beitrags.length > 0}
 		<div class="grid grid-cols-2 gap-3">
-			<div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-				<p class="text-xs font-medium text-emerald-700">Gesamt bezahlt</p>
-				<p class="mt-0.5 text-lg font-bold text-emerald-800">{fmtEur(totalPaidCents)}</p>
+			<div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-400/25 dark:bg-emerald-500/15">
+				<p class="text-xs font-medium text-emerald-700 dark:text-emerald-300">Gesamt bezahlt</p>
+				<p class="mt-0.5 text-lg font-bold text-emerald-800 dark:text-emerald-300">{fmtEur(totalPaidCents)}</p>
 			</div>
 			<div
 				class="rounded-xl border px-4 py-3
 				{totalOpenCents > 0
-					? 'border-amber-200 bg-amber-50'
+					? 'border-amber-200 bg-amber-50 dark:border-amber-400/25 dark:bg-amber-500/15'
 					: 'border-border bg-muted'}"
 			>
-				<p class="text-xs font-medium {totalOpenCents > 0 ? 'text-amber-700' : 'text-muted-foreground'}">
+				<p class="text-xs font-medium {totalOpenCents > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}">
 					Gesamt offen
 				</p>
 				<p
 					class="mt-0.5 text-lg font-bold {totalOpenCents > 0
-						? 'text-amber-800'
+						? 'text-amber-800 dark:text-amber-300'
 						: 'text-muted-foreground'}"
 				>
 					{fmtEur(totalOpenCents)}
@@ -300,7 +336,7 @@
 	<!-- Exempt banner above timeline -->
 	{#if beitragExempt}
 		<div
-			class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+			class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/25 dark:bg-amber-500/15 dark:text-amber-200"
 			data-testid="beitragsverlauf-exempt-banner"
 		>
 			<p class="font-medium">Beitragspflicht ausgesetzt</p>
@@ -432,6 +468,7 @@
 								memberName={displayName}
 								betragCents={b.betragCents}
 								paidCents={b.paidCents}
+								notes={b.notes}
 								actionBase="/app/mitglieder"
 								allowExempt={false}
 							>

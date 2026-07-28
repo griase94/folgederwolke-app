@@ -393,3 +393,64 @@ describe("@phase-2 matrix loader — locked year", () => {
     expect(header.totalDueCount).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe("@phase-2 matrix loader — overdue-days clamp (Zoe)", () => {
+  it("clamps daysOverdue to the LATER of Fälligkeit and Eintritt (a mid-year joiner isn't overdue since Fälligkeit)", async () => {
+    // 2025 is in the past (today is 2026) and above the seed's
+    // festgeschrieben_bis=2024, so the year is unlocked and the cell derives a
+    // real "overdue" state. Fälligkeit 2025-03-31; the member joins 2025-09-01 —
+    // AFTER the due date. Without the clamp, daysOverdue would count from
+    // Fälligkeit (~154 days too many); with it, the clock starts at Eintritt.
+    const CLAMP_YEAR = 2025;
+    const db = getDb();
+    await db
+      .insert(beitragssatzByYear)
+      .values({
+        year: CLAMP_YEAR,
+        cents: 6969n,
+        faelligkeitAt: `${CLAMP_YEAR}-03-31`,
+      })
+      .onConflictDoUpdate({
+        target: [beitragssatzByYear.year],
+        set: { faelligkeitAt: `${CLAMP_YEAR}-03-31` },
+      });
+
+    const m = await seedMember({
+      name: "ZoeMidYearJoiner",
+      eintrittsDatum: `${CLAMP_YEAR}-09-01`,
+    });
+    await seedOpenBeitrag({ memberId: m.id, year: CLAMP_YEAR });
+
+    const data = await loadMatrix({ years: [CLAMP_YEAR] });
+    const cell = data.cells.find(
+      (c) => c.memberId === m.id && c.year === CLAMP_YEAR,
+    );
+
+    const now = Date.now();
+    const DAY = 86_400_000;
+    const expectedClamped = Math.floor(
+      (now - Date.parse(`${CLAMP_YEAR}-09-01T00:00:00Z`)) / DAY,
+    );
+    const unclamped = Math.floor(
+      (now - Date.parse(`${CLAMP_YEAR}-03-31T00:00:00Z`)) / DAY,
+    );
+
+    expect(cell?.state).toBe("overdue");
+    expect(cell?.daysOverdue).not.toBeNull();
+    // Clamp applied: the clock runs from Eintritt, not the earlier Fälligkeit
+    // (the two are ~154 days apart, so a generous margin proves the clamp).
+    expect(cell!.daysOverdue!).toBeLessThan(unclamped - 100);
+    expect(Math.abs(cell!.daysOverdue! - expectedClamped)).toBeLessThanOrEqual(
+      2,
+    );
+
+    // Restore (match the sibling overdue tests; the test DB also resets per run).
+    await db
+      .insert(beitragssatzByYear)
+      .values({ year: CLAMP_YEAR, cents: 6969n })
+      .onConflictDoUpdate({
+        target: [beitragssatzByYear.year],
+        set: { faelligkeitAt: null },
+      });
+  });
+});

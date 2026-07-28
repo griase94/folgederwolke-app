@@ -1,9 +1,10 @@
 /**
- * MemberRow — Package D tests.
+ * MemberRow — beitrag pill + one-tap pay tests.
  *
- * D1: single current-year BeitragStatusPill via resolveBeitragState;
- *     one-tap pay trigger integrated into the row;
- *     kebab remains as secondary overflow only.
+ * The row renders a single current-year BeitragCell(variant='pill') fed from the
+ * pre-resolved matrix cells (Aurora C-S2: single MatrixData source, no per-row
+ * resolveBeitragState re-derivation), plus a one-tap pay trigger integrated into
+ * the row; the kebab remains as secondary overflow only.
  */
 
 import { describe, it, expect, afterEach, vi } from "vitest";
@@ -18,12 +19,15 @@ vi.mock("$app/navigation", () => ({
 
 import MemberRow from "./MemberRow.svelte";
 import type { MemberView } from "$lib/domain/members.js";
+import type { CellState, MatrixCell } from "$lib/domain/beitrag-cell.js";
 
 afterEach(() => cleanup());
 
+const MEMBER_ID = "mem_1";
+
 function makeMember(overrides: Partial<MemberView> = {}): MemberView {
   return {
-    id: "mem_1",
+    id: MEMBER_ID,
     vorname: "Ada",
     nachname: "Lovelace",
     email: "ada@example.com",
@@ -38,92 +42,87 @@ function makeMember(overrides: Partial<MemberView> = {}): MemberView {
     beitragExemptReason: null,
     isFixture: false,
     createdAt: "2020-01-01",
-    beitrags: {
-      2026: {
-        id: "b1",
-        betragCents: 6000,
-        paidCents: 0,
-        gezahltAm: null,
-        isExempt: false,
-      },
-    },
     ...overrides,
   };
 }
 
-describe("MemberRow — Package D", () => {
-  it("renders a BeitragStatusPill (data-testid=beitrag-status-pill) for the current year", () => {
+function cell(
+  state: CellState,
+  opts: {
+    year?: number;
+    betragCents?: number;
+    paidCents?: number;
+    gezahltAm?: string | null;
+  } = {},
+): MatrixCell {
+  return {
+    memberId: MEMBER_ID,
+    year: opts.year ?? 2026,
+    state,
+    isLocked: false,
+    betragCents: opts.betragCents ?? 6000,
+    paidCents: opts.paidCents ?? 0,
+    gezahltAm: opts.gezahltAm ?? null,
+    notes: null,
+    exemptReason: null,
+    daysOverdue: null,
+  };
+}
+
+function cellsMap(...cs: MatrixCell[]): Map<string, MatrixCell> {
+  return new Map(cs.map((c) => [`${c.memberId}:${c.year}`, c]));
+}
+
+describe("MemberRow — beitrag pill + pay trigger", () => {
+  it("renders a single Beitrag pill (data-testid=beitrag-status-pill) for the current year", () => {
     const { container } = render(MemberRow, {
       props: {
         member: makeMember(),
         years: [2026],
+        cells: cellsMap(cell("open")),
         onEdit: () => {},
-        satzByYear: { 2026: 6000 },
       },
     });
-    const pill = container.querySelector("[data-testid='beitrag-status-pill']");
-    expect(pill).toBeTruthy();
+    expect(
+      container.querySelector("[data-testid='beitrag-status-pill']"),
+    ).toBeTruthy();
   });
 
-  it("shows only ONE pill for current year (not multiple year chips)", () => {
-    const member = makeMember({
-      beitrags: {
-        2024: {
-          id: "b1",
-          betragCents: 6000,
-          paidCents: 6000,
-          gezahltAm: "2024-02-01",
-          isExempt: false,
-        },
-        2025: {
-          id: "b2",
-          betragCents: 6000,
-          paidCents: 6000,
-          gezahltAm: "2025-02-01",
-          isExempt: false,
-        },
-        2026: {
-          id: "b3",
-          betragCents: 6000,
-          paidCents: 0,
-          gezahltAm: null,
-          isExempt: false,
-        },
-      },
-    });
+  it("shows only ONE pill for the current year (not multiple year chips)", () => {
     const { container } = render(MemberRow, {
       props: {
-        member,
+        member: makeMember(),
         years: [2024, 2025, 2026],
+        cells: cellsMap(
+          cell("paid", {
+            year: 2024,
+            paidCents: 6000,
+            gezahltAm: "2024-02-01",
+          }),
+          cell("paid", {
+            year: 2025,
+            paidCents: 6000,
+            gezahltAm: "2025-02-01",
+          }),
+          cell("open", { year: 2026 }),
+        ),
         onEdit: () => {},
-        satzByYear: { 2026: 6000 },
       },
     });
-    // Only one pill should be rendered (current year only)
-    const pills = container.querySelectorAll(
-      "[data-testid='beitrag-status-pill']",
-    );
-    expect(pills.length).toBe(1);
+    expect(
+      container.querySelectorAll("[data-testid='beitrag-status-pill']").length,
+    ).toBe(1);
   });
 
   it("paid state: pill shows emerald paid styling", () => {
-    const member = makeMember({
-      beitrags: {
-        2026: {
-          id: "b1",
-          betragCents: 6000,
-          paidCents: 6000,
-          gezahltAm: "2026-02-01",
-          isExempt: false,
-        },
-      },
-    });
     const { container } = render(MemberRow, {
       props: {
-        member,
+        member: makeMember(),
         years: [2026],
+        cells: cellsMap(
+          cell("paid", { paidCents: 6000, gezahltAm: "2026-02-01" }),
+        ),
         onEdit: () => {},
-        satzByYear: { 2026: 6000 },
       },
     });
     const pill = container.querySelector("[data-state='paid']");
@@ -131,63 +130,47 @@ describe("MemberRow — Package D", () => {
     expect(pill!.className).toMatch(/emerald/);
   });
 
-  it("open state: pill shows open styling with primary/rosa tokens", () => {
+  it("open state: pill shows open styling (not emerald)", () => {
     const { container } = render(MemberRow, {
       props: {
         member: makeMember(),
         years: [2026],
+        cells: cellsMap(cell("open")),
         onEdit: () => {},
-        satzByYear: { 2026: 6000 },
       },
     });
     const pill = container.querySelector("[data-state='open']");
     expect(pill).toBeTruthy();
-    // rosa = primary token, not emerald
     expect(pill!.className).not.toMatch(/emerald/);
   });
 
-  it("partial state: pill shows partial fraction", () => {
-    const member = makeMember({
-      beitrags: {
-        2026: {
-          id: "b1",
-          betragCents: 6000,
-          paidCents: 3000,
-          gezahltAm: "2026-02-01",
-          isExempt: false,
-        },
-      },
-    });
+  it("partial state: pill shows the partial fraction", () => {
     const { container } = render(MemberRow, {
       props: {
-        member,
+        member: makeMember(),
         years: [2026],
+        cells: cellsMap(cell("partial", { paidCents: 3000 })),
         onEdit: () => {},
-        satzByYear: { 2026: 6000 },
       },
     });
-    const pill = container.querySelector("[data-state='partial']");
-    expect(pill).toBeTruthy();
+    expect(container.querySelector("[data-state='partial']")).toBeTruthy();
   });
 
-  it("exempt member: pill shows exempt/befreit state, no pay trigger", () => {
-    const member = makeMember({ beitragExempt: true, beitrags: {} });
+  it("exempt member: pill shows the befreit state and no pay trigger", () => {
     const { container } = render(MemberRow, {
       props: {
-        member,
+        member: makeMember({ beitragExempt: true }),
         years: [2026],
+        cells: cellsMap(cell("exempt")),
         onEdit: () => {},
-        satzByYear: { 2026: 6000 },
       },
     });
-    // Should show exempt pill
-    const pill = container.querySelector("[data-testid='beitrag-status-pill']");
-    expect(pill).toBeTruthy();
-    // No pay trigger button
-    const payTrigger = container.querySelector(
-      "[data-testid='member-row-pay']",
-    );
-    expect(payTrigger).toBeFalsy();
+    expect(
+      container.querySelector("[data-testid='beitrag-status-pill']"),
+    ).toBeTruthy();
+    expect(
+      container.querySelector("[data-testid='member-row-pay']"),
+    ).toBeFalsy();
   });
 
   it("open state: renders a one-tap pay trigger button", () => {
@@ -195,40 +178,29 @@ describe("MemberRow — Package D", () => {
       props: {
         member: makeMember(),
         years: [2026],
+        cells: cellsMap(cell("open")),
         onEdit: () => {},
-        satzByYear: { 2026: 6000 },
       },
     });
-    const payTrigger = container.querySelector(
-      "[data-testid='member-row-pay']",
-    );
-    expect(payTrigger).toBeTruthy();
+    expect(
+      container.querySelector("[data-testid='member-row-pay']"),
+    ).toBeTruthy();
   });
 
-  it("paid state: no pay trigger shown (edit is in kebab)", () => {
-    const member = makeMember({
-      beitrags: {
-        2026: {
-          id: "b1",
-          betragCents: 6000,
-          paidCents: 6000,
-          gezahltAm: "2026-02-01",
-          isExempt: false,
-        },
-      },
-    });
+  it("paid state: no pay trigger shown (edit is in the kebab)", () => {
     const { container } = render(MemberRow, {
       props: {
-        member,
+        member: makeMember(),
         years: [2026],
+        cells: cellsMap(
+          cell("paid", { paidCents: 6000, gezahltAm: "2026-02-01" }),
+        ),
         onEdit: () => {},
-        satzByYear: { 2026: 6000 },
       },
     });
-    const payTrigger = container.querySelector(
-      "[data-testid='member-row-pay']",
-    );
-    expect(payTrigger).toBeFalsy();
+    expect(
+      container.querySelector("[data-testid='member-row-pay']"),
+    ).toBeFalsy();
   });
 
   it("kebab menu button is still rendered (secondary overflow)", () => {
@@ -236,12 +208,10 @@ describe("MemberRow — Package D", () => {
       props: {
         member: makeMember(),
         years: [2026],
+        cells: cellsMap(cell("open")),
         onEdit: () => {},
-        satzByYear: {},
       },
     });
-    // The kebab trigger should exist
-    const kebab = container.querySelector("[aria-label*='Aktionen']");
-    expect(kebab).toBeTruthy();
+    expect(container.querySelector("[aria-label*='Aktionen']")).toBeTruthy();
   });
 });

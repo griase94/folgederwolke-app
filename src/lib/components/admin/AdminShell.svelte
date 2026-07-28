@@ -39,9 +39,11 @@
 
 <!-- Aurora canvas: the wash gradient on the non-scrolling frame (spec §2 —
      blur/backdrop discipline applies to the fixed child surfaces, not here). -->
-<div class="bg-wash flex h-svh overflow-hidden">
+<!-- print: drop the app chrome + let content flow across pages (M7 — the printed
+     Kassenbericht / GoBD documents must be paper, not an app screenshot). -->
+<div class="bg-wash flex h-svh overflow-hidden print:block print:h-auto print:overflow-visible print:bg-transparent">
 	<!-- Sidebar: hidden on mobile, icon-only on tablet, full on desktop -->
-	<div class="hidden md:flex md:shrink-0">
+	<div class="hidden md:flex md:shrink-0 print:!hidden">
 		<!-- Tablet: collapsed icon-only sidebar -->
 		<div class="block lg:hidden">
 			<Sidebar {user} collapsed={true} />
@@ -53,12 +55,14 @@
 	</div>
 
 	<!-- Main area: topbar + scrollable content -->
-	<div class="flex min-w-0 flex-1 flex-col overflow-hidden">
-		<Topbar {user} />
+	<div class="flex min-w-0 flex-1 flex-col overflow-hidden print:overflow-visible">
+		<div class="print:hidden">
+			<Topbar {user} />
+		</div>
 
 		<main
 			id="main-content"
-			class="flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom,0px))] md:pb-0"
+			class="flex-1 overflow-y-auto pb-[calc(5rem+env(safe-area-inset-bottom,0px))] md:pb-0 print:overflow-visible print:pb-0"
 		>
 			<!-- Mobile bottom clearance is owned HERE (AdminShell) so ALL /app
 			     routes — both PageShell-converted and legacy allowlisted — get
@@ -72,7 +76,9 @@
 </div>
 
 <!-- Mobile bottom tab bar (hidden md+) -->
-<MobileTabBar />
+<div class="print:hidden">
+	<MobileTabBar />
+</div>
 
 <!-- PWA overlays (iOS install hint + offline banner). SW registration +
      silent auto-update live in PwaUpdater, mounted app-wide in the root

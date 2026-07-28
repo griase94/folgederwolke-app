@@ -27,11 +27,11 @@ describe("beitragYearsRange", () => {
     expect(years[2]).toBe(current);
   });
 
-  it("keeps a past anchor centered ([anchor-1, anchor, anchor+1]) when it stays <= current (C2-2)", () => {
-    // 2024 is in the past relative to any plausible CI run year, so anchor+1
-    // (2025) is still <= the current Buchungsjahr → window stays centered.
+  it("returns the trailing window [anchor-2, anchor-1, anchor] for a past anchor (Ruling C5)", () => {
+    // The selected year sits at the RIGHT edge — anchor plus the two prior
+    // years, never a future column. ?year=2024 → [2022, 2023, 2024].
     const years = beitragYearsRange(2024);
-    expect(years).toEqual([2023, 2024, 2025]);
+    expect(years).toEqual([2022, 2023, 2024]);
   });
 
   it("never includes a year beyond the current Buchungsjahr (F8)", () => {

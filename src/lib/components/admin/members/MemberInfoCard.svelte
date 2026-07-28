@@ -2,7 +2,7 @@
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import EditMemberDialog from './EditMemberDialog.svelte';
-	import BeitragStatusPill from './BeitragStatusPill.svelte';
+	import BeitragCell from './BeitragCell.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
 	import type { ResolveBeitragStateResult } from '$lib/domain/beitrag-state.js';
 	import type { CellState } from '$lib/domain/beitrag-cell.js';
@@ -48,11 +48,10 @@
 
 	let editOpen = $state(false);
 
-	// Cast to MemberView for EditMemberDialog (beitrags field is unused there)
+	// Cast to MemberView for EditMemberDialog (contact fields only).
 	const memberView = $derived<MemberView>({
 		...member,
 		isFixture: member.isFixture ?? false,
-		beitrags: {},
 	});
 
 	function roleLabel(role: string): string {
@@ -169,8 +168,10 @@
 				{#if currentYear !== null && pillDisplayState !== null && currentYearState !== null}
 					<div class="mt-3">
 						<p class="mb-1 text-xs text-muted-foreground">Beitrag {currentYear}</p>
-						<BeitragStatusPill
+						<BeitragCell
+							variant="pill"
 							state={pillDisplayState}
+							memberName="{member.vorname} {member.nachname}"
 							year={currentYear}
 							paidCents={currentYearState.paidCents}
 							betragCents={currentYearState.betragCents}
@@ -202,11 +203,15 @@
 					</svg>
 					E-Mail
 				</dt>
-				<dd class="min-w-0 flex-1 break-all text-sm font-medium text-foreground">
+				<dd class="min-w-0 flex-1 [overflow-wrap:anywhere] text-sm font-medium text-foreground">
 					{#if member.email}
-						<a href="mailto:{member.email}" class="hover:text-primary hover:underline">
-							{member.email}
-						</a>
+						{@const atIdx = member.email.indexOf('@')}
+						<!-- Break the address at the „@" (a natural boundary) instead of
+						     mid-word; overflow-wrap:anywhere is the fallback for a
+						     pathologically long local part. -->
+						<a href="mailto:{member.email}" class="hover:text-primary hover:underline"
+							>{member.email.slice(0, atIdx + 1)}<wbr />{member.email.slice(atIdx + 1)}</a
+						>
 					{:else}
 						<span class="text-muted-foreground">—</span>
 					{/if}

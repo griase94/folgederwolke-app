@@ -6,17 +6,18 @@
 	import SearchNoResults from '$lib/components/empty/SearchNoResults.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { MemberView } from '$lib/domain/members.js';
+	import type { MatrixCell } from '$lib/domain/beitrag-cell.js';
 	import { currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
 
 	let {
 		members,
 		years,
+		cells,
 		loading = false,
 		query = '',
 		selectable = false,
 		selectedIds,
 		bulkYear = null,
-		satzByYear = {},
 		onToggleSelect,
 		onEdit,
 		onAdd,
@@ -24,6 +25,9 @@
 	}: {
 		members: MemberView[];
 		years: number[];
+		/** Pre-resolved matrix cells keyed `${memberId}:${year}` — single source of
+		 *  beitrag state for the pills + mark-paid seeds. */
+		cells: ReadonlyMap<string, MatrixCell>;
 		loading?: boolean;
 		/** Active search term — distinguishes "no data yet" from "no matches". */
 		query?: string;
@@ -33,8 +37,6 @@
 		selectedIds?: ReadonlySet<string>;
 		/** The year the bulk "Als bezahlt" targets — gates each row's checkbox. */
 		bulkYear?: number | null;
-		/** Per-year configured Beitragssatz (cents) — seeds the mark-paid popover. */
-		satzByYear?: Record<number, number>;
 		onToggleSelect?: (id: string, checked: boolean) => void;
 		onEdit: (m: MemberView) => void;
 		/** Optional CTA — when provided the empty state renders an "anlegen" button. */
@@ -93,7 +95,7 @@
 	>
 		{#each members as member (member.id)}
 			<div role="listitem">
-				<MemberCardMobile {member} {years} {satzByYear} />
+				<MemberCardMobile {member} {years} {cells} />
 			</div>
 		{/each}
 	</div>
@@ -105,8 +107,10 @@
 		role="list"
 		aria-label="Mitgliederliste"
 	>
-		<!-- Package D: column header row -->
-		{#if headerYear !== null}
+		<!-- Package D: column header row. Fixed-width tracks match MemberRow so the
+		     Beitrag pills line up as one column across all rows (M2). Hidden in bulk
+		     mode, where the pill column gives way to the checkbox selection flow. -->
+		{#if headerYear !== null && !selectable}
 			<div
 				data-testid="member-list-beitrag-header"
 				class="flex items-center gap-3 px-4 pb-1 text-xs font-medium text-muted-foreground"
@@ -115,8 +119,10 @@
 				<!-- Spacer matching avatar + name columns -->
 				<div class="h-10 w-10 shrink-0"></div>
 				<div class="min-w-0 flex-1"></div>
-				<span class="shrink-0">Beitrag {headerYear}</span>
-				<!-- Spacer matching pay-trigger + kebab -->
+				<!-- Beitrag column — same fixed width as MemberRow's pill track -->
+				<span class="hidden w-28 shrink-0 justify-end sm:flex">Beitrag {headerYear}</span>
+				<!-- Spacers matching the pay-trigger + kebab tracks -->
+				<div class="hidden w-11 shrink-0 sm:block"></div>
 				<div class="w-8 shrink-0"></div>
 			</div>
 		{/if}
@@ -126,11 +132,11 @@
 				<MemberRow
 					{member}
 					{years}
+					{cells}
 					{onEdit}
 					{selectable}
 					selected={selectedIds?.has(member.id) ?? false}
 					{bulkYear}
-					{satzByYear}
 					{onToggleSelect}
 				/>
 			</div>
