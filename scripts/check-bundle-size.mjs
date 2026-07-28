@@ -68,8 +68,20 @@ const IMMUTABLE_DIR = join(
 // modals). Largest chunk STILL 410.2 KiB (no eager-import signature), growth
 // spread across small route chunks. Measured total 2 061.3 KiB → limit set to
 // new actual + ~3.7 % headroom.
+//
+// Re-anchored 2026-07-28 (A-S1 Public-Kette #162): the B3 headroom was consumed
+// by two flows that landed into main since — D-Abschluss (#157, Jahresabschluss/
+// EÜR/GoBD read chain) and C1 Mitglieder (#159, matrix/popovers/detail/bericht)
+// — plus this PR's A-flow public chain (batch einreichen form, group receipt,
+// status groups + the ~15 shared Auslage compositions). Largest chunk STILL
+// 410.2 KiB (UNCHANGED — pdfjs stays lazy-split, no eager-import signature); the
+// growth is spread across small route + component chunks, i.e. legitimate
+// distributed feature growth, not a re-bundle. Measured total 2 168.3 KiB →
+// limit set to new actual + ~3 % headroom. (The dev-only Auslage kit gallery at
+// src/routes/app/dev/auslagen is DEV-gated + dead-code-eliminated from prod,
+// like the chart gallery, so it costs nothing here.)
 const LARGEST_CHUNK_LIMIT = 462_000; // 462 KB
-const TOTAL_JS_LIMIT = 2_190_000; // ~2 138.7 KiB (actual 2 061.3 KiB + headroom)
+const TOTAL_JS_LIMIT = 2_286_000; // ~2 232.4 KiB (actual 2 168.3 KiB + ~3 %)
 
 // ---------- helpers -------------------------------------------------------- //
 
