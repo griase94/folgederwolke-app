@@ -5,6 +5,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import BeitragCell from './BeitragCell.svelte';
+	import MemberAvatar from './MemberAvatar.svelte';
 	import MarkPaidControl from './MarkPaidControl.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
 	import { currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
@@ -50,36 +51,6 @@
 		 */
 		onRemind?: (memberId: string) => void;
 	} = $props();
-
-	// Deterministic avatar color from name hash
-	function nameHash(s: string): number {
-		let h = 0;
-		for (let i = 0; i < s.length; i++) {
-			h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-		}
-		return Math.abs(h);
-	}
-
-	const avatarColors = [
-		'bg-rose-100 text-rose-900',
-		'bg-pink-100 text-pink-900',
-		'bg-fuchsia-100 text-fuchsia-900',
-		'bg-purple-100 text-purple-900',
-		'bg-violet-100 text-violet-900',
-		'bg-indigo-100 text-indigo-900',
-		'bg-sky-100 text-sky-900',
-		'bg-teal-100 text-teal-900',
-		'bg-emerald-100 text-emerald-900',
-		'bg-amber-100 text-amber-900'
-	];
-
-	function avatarColor(name: string): string {
-		return avatarColors[nameHash(name) % avatarColors.length] ?? avatarColors[0]!;
-	}
-
-	function initials(vorname: string, nachname: string): string {
-		return (vorname.charAt(0) ?? '') + (nachname.charAt(0) ?? '');
-	}
 
 	let dropdownOpen = $state(false);
 
@@ -208,12 +179,7 @@
 	{/if}
 
 	<!-- Avatar -->
-	<div
-		class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold {avatarColor(member.vorname + member.nachname)}"
-		aria-hidden="true"
-	>
-		{initials(member.vorname, member.nachname).toUpperCase()}
-	</div>
+	<MemberAvatar vorname={member.vorname} nachname={member.nachname} size="sm" />
 
 	<!-- Name + email -->
 	<div class="min-w-0 flex-1">
@@ -341,20 +307,22 @@
 
 				<DropdownMenu.Separator />
 
-				<!-- Austragen (two-step; no window.confirm, no hard delete) -->
+				<!-- Austragen: Kit destructive variant + two-step armed (no window.confirm,
+				     no hard delete). "Austragen" is the member soft-delete verb (Guidelines
+				     §5 Format-Kanon); the armed row-kebab is the sanctioned confirm for a
+				     soft-delete WITH an Undo-Snack (Guidelines §2.3-Ausnahme). -->
 				<DropdownMenu.Item
+					variant="destructive"
 					data-testid="member-row-loeschen"
 					data-armed={austragenArmed ? 'true' : undefined}
-					class="text-destructive focus:text-destructive {austragenArmed
-						? 'font-semibold'
-						: ''}"
+					class={austragenArmed ? 'font-semibold' : ''}
 					onSelect={(e) => {
 						e.preventDefault();
 						handleAustragen();
 					}}
 				>
 					<svg
-						class="h-4 w-4 text-destructive"
+						class="h-4 w-4"
 						fill="none"
 						viewBox="0 0 24 24"
 						stroke="currentColor"
