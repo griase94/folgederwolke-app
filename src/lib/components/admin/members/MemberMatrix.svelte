@@ -48,14 +48,23 @@
 		type PopoverKind,
 		type BeitragDialogVariant
 	} from '$lib/domain/beitrag-cell.js';
+	import { currentBuchungsjahr } from '$lib/domain/year.js';
 
 	let {
 		matrix,
-		filter = null
+		filter = null,
+		onRemind
 	}: {
 		matrix: MatrixData;
 		/** ?filter=ueberfaellig|offen — highlights matching cells. */
 		filter?: 'ueberfaellig' | 'offen' | null;
+		/**
+		 * C2/S3b: the per-cell "Erinnerung senden" ghost (current-year column only)
+		 * asks the screen to open the Bulk-Reminder sheet pre-filtered to this
+		 * member (single = n=1) instead of POSTing. Mahnungen are a current-year
+		 * action — a past festgeschriebenes year has no reminder ghost (Fork c).
+		 */
+		onRemind?: (memberId: string) => void;
 	} = $props();
 
 	const eur = (cents: number) =>
@@ -108,10 +117,13 @@
 	const isLocked = $derived(
 		matrix.festgeschriebenBis !== null && activeYear <= matrix.festgeschriebenBis
 	);
-	// Reminder ghost condition (§3b.4): a real open balance AND a member email.
-	// The server (checkReminderAllowed + the email check) stays the backstop.
+	// Reminder ghost condition (§3b.4): a real open balance AND a member email —
+	// AND the current Buchungsjahr only (Fork c). Mahnen is a present-day action;
+	// a past (often festgeschriebenes) year shows its debt in the dialog but has
+	// no reminder ghost. The server guard stays the backstop.
 	const canRemindActive = $derived(
-		!!activeMember?.email &&
+		activeYear === currentBuchungsjahr() &&
+			!!activeMember?.email &&
 			(activeCell?.state === 'open' ||
 				activeCell?.state === 'partial' ||
 				activeCell?.state === 'overdue')
@@ -527,17 +539,12 @@
 		}
 	}
 
-	async function handleReminder(detail: { memberId: string; year: number }) {
-		// Reminder is a side-effect mail, not a cell-state change — no overlay.
-		const result = await post('send-reminder', {
-			memberId: detail.memberId,
-			year: String(detail.year)
-		});
-		if (!result.ok) {
-			toast.error(result.error ?? 'Erinnerung konnte nicht gesendet werden.');
-			return;
-		}
-		toast.success(`Erinnerung an ${memberName(detail.memberId)} gesendet`);
+	function handleReminder(detail: { memberId: string; year: number }) {
+		// Consolidated (C2/S3b): close the cell surface and hand off to the screen's
+		// Bulk-Reminder sheet (pre-filtered to this member) — no inline POST. The
+		// ghost only appears on the current-year column (canRemindActive).
+		popoverOpen = false;
+		onRemind?.(detail.memberId);
 	}
 
 	// ── Context-menu (right-click) shortcuts (Task 2.3a / §7.11) ─────────────────
@@ -727,7 +734,7 @@
 											>
 												Befreien
 											</ContextMenu.Item>
-											{#if state === 'overdue'}
+											{#if state === 'overdue' && year === currentBuchungsjahr()}
 												<ContextMenu.Item
 													class="flex cursor-pointer items-center rounded px-2 py-1.5 text-sm outline-none hover:bg-muted focus:bg-muted"
 													onSelect={() => handleReminder({ memberId: member.id, year })}

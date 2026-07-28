@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance, deserialize } from '$app/forms';
+	import { enhance } from '$app/forms';
 	import { toast } from 'svelte-sonner';
 	import { invalidateAll } from '$app/navigation';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
@@ -19,7 +19,8 @@
 		selectable = false,
 		selected = false,
 		bulkYear = null,
-		onToggleSelect
+		onToggleSelect,
+		onRemind
 	}: {
 		member: MemberView;
 		years: number[];
@@ -42,6 +43,12 @@
 		 */
 		bulkYear?: number | null;
 		onToggleSelect?: (id: string, checked: boolean) => void;
+		/**
+		 * C2/S3b: the kebab "Erinnerung senden" asks the screen to open the
+		 * consolidated Bulk-Reminder sheet pre-filtered to this member (single =
+		 * n=1) instead of POSTing — one reminder surface.
+		 */
+		onRemind?: (memberId: string) => void;
 	} = $props();
 
 	// Deterministic avatar color from name hash
@@ -139,27 +146,12 @@
 			currentYearDisplayState !== 'not_applicable_post_austritt',
 	);
 
-	async function sendReminder() {
+	function requestReminder() {
 		dropdownOpen = false;
-		if (!canRemind || currentYear === null) return;
-		const fd = new FormData();
-		fd.set('memberId', member.id);
-		fd.set('year', String(currentYear));
-		try {
-			const res = await fetch('?/send-reminder', { method: 'POST', body: fd });
-			const result = deserialize(await res.text());
-			if (result.type === 'success') {
-				toast.success(`Erinnerung an ${member.vorname} ${member.nachname} gesendet`);
-			} else if (result.type === 'failure') {
-				toast.error(
-					(result.data?.['error'] as string | undefined) ?? 'Erinnerung konnte nicht gesendet werden.',
-				);
-			} else {
-				toast.error('Erinnerung konnte nicht gesendet werden.');
-			}
-		} catch {
-			toast.error('Erinnerung konnte nicht gesendet werden.');
-		}
+		if (!canRemind) return;
+		// Hand off to the screen's consolidated Bulk-Reminder sheet (pre-filtered
+		// to this member) — no inline POST (C2/S3b).
+		onRemind?.(member.id);
 	}
 
 	// C3-DISC: the soft-delete form lives OUTSIDE the DropdownMenu.Content so
@@ -312,13 +304,14 @@
 					Bearbeiten
 				</DropdownMenu.Item>
 
-				<!-- Send reminder — only when a real open balance exists. -->
+				<!-- Send reminder — only when a real open balance exists. Opens the
+				     consolidated Bulk-Reminder sheet pre-filtered to this member. -->
 				<DropdownMenu.Item
 					data-testid="member-row-erinnerung"
 					disabled={!canRemind}
 					onSelect={(e) => {
 						e.preventDefault();
-						sendReminder();
+						requestReminder();
 					}}
 				>
 					<svg

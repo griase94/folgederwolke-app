@@ -11,6 +11,7 @@
 	import MemberDialog from '$lib/components/admin/members/MemberDialog.svelte';
 	import SendReminderBulkSheet from '$lib/components/admin/members/SendReminderBulkSheet.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
+	import type { ReminderCandidate } from '$lib/domain/reminder-candidate.js';
 	import { projectForList } from '$lib/domain/beitrag-state.js';
 	import { berlinYmd, currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
 	import type { PageData } from './$types.js';
@@ -135,11 +136,25 @@
 		editOpen = true;
 	}
 
-	// ── Bulk-Reminder ("Erinnern (N)") ──────────────────────────────────────────
+	// ── Reminder sheet (toolbar bulk + row/matrix ghost n=1) ─────────────────────
+	// The consolidated surface (C2/S3b): the toolbar opens it with ALL candidates;
+	// a row-kebab / matrix-cell ghost opens the SAME sheet pre-filtered to that one
+	// member (single = n=1). `reminderSubset=null` means "all".
 	let reminderOpen = $state(false);
+	let reminderSubset = $state<ReminderCandidate[] | null>(null);
 	const reminderSelectableCount = $derived(
 		data.reminderCandidates.filter((c) => c.selectable).length
 	);
+
+	function openReminderAll() {
+		reminderSubset = null;
+		reminderOpen = true;
+	}
+	function openReminderFor(memberId: string) {
+		const c = data.reminderCandidates.find((x) => x.memberId === memberId);
+		reminderSubset = c ? [c] : null;
+		reminderOpen = true;
+	}
 </script>
 
 <svelte:head>
@@ -160,7 +175,7 @@
 			{#if reminderSelectableCount > 0}
 				<Button
 					variant="outline"
-					onclick={() => (reminderOpen = true)}
+					onclick={openReminderAll}
 					data-testid="members-remind-toggle"
 				>
 					<svg
@@ -339,7 +354,7 @@
 
 	<!-- Main view -->
 	{#if data.view === 'matrix'}
-		<MemberMatrix matrix={data.matrix} filter={data.filter} />
+		<MemberMatrix matrix={data.matrix} filter={data.filter} onRemind={openReminderFor} />
 	{:else}
 		<MemberList
 			members={filteredMembers}
@@ -351,6 +366,7 @@
 			{bulkYear}
 			onToggleSelect={toggleSelect}
 			onEdit={openEdit}
+			onRemind={openReminderFor}
 			onAdd={() => (addOpen = true)}
 			onClearSearch={() => (searchQuery = '')}
 		/>
@@ -361,7 +377,7 @@
 <MemberDialog bind:open={editOpen} mode="edit" member={editMember} />
 <SendReminderBulkSheet
 	bind:open={reminderOpen}
-	candidates={data.reminderCandidates}
+	candidates={reminderSubset ?? data.reminderCandidates}
 	year={data.reminderYear}
 	vereinName={page.data.vereinName}
 	iban={data.reminderIban}

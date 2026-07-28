@@ -4,10 +4,10 @@
  * load()   → fetch member by id (404 if not found), all beitrags, activity feed,
  *             dedup-check for reminder mail (sent in last 30 days).
  * actions:
- *   ?/edit              — edit master data (shared with the list route)
- *   ?/delete            — soft-delete (sets austritts_datum = today)
- *   ?/mark-beitrag-paid — mark a member's beitrag year as fully paid
- *   ?/send-reminder     — send a BeitragsReminder mail (respects 30-day dedup)
+ *   ?/edit                — edit master data (shared with the list route)
+ *   ?/delete              — soft-delete (sets austritts_datum = today)
+ *   ?/mark-beitrag-paid   — mark a member's beitrag year as fully paid
+ *   ?/send-reminder-bulk  — BeitragsReminder via the consolidated Bulk sheet (n=1)
  *
  * Edit/delete/mark-paid logic lives in `$lib/server/domain/members-actions.ts`
  * so the same write paths run regardless of which route the form posts to.
@@ -25,17 +25,10 @@ import {
   editMember,
   softDeleteMember,
   markBeitragPaid,
-  checkReminderAllowed,
   sendBeitragReminderBulk,
 } from "$lib/server/domain/members-actions.js";
 import { loadReminderCandidates } from "$lib/server/domain/reminder-candidates.js";
-import { bus } from "$lib/server/events/index.js";
-import {
-  reminderSendAttempt,
-  remindedMemberIdsForYear,
-  resolveReminderFrist,
-  vereinBankIdentity,
-} from "$lib/server/domain/beitrag-reminder.js";
+import { vereinBankIdentity } from "$lib/server/domain/beitrag-reminder.js";
 import { env } from "$lib/server/env.js";
 import {
   berlinYear,
@@ -313,90 +306,5 @@ export const actions: Actions = {
       skippedNoDebt: result.skippedNoDebt,
       failed: result.failed,
     };
-  },
-
-  // ── Send BeitragsReminder (single quick-remind) ───────────────────────────
-  // The per-cell/timeline reminder ghost (MarkPaidControl) posts here for a fast
-  // one-tap remind. Shares the bus + jahresbasierte dedup with the Bulk sheet.
-  // Consolidating these ghosts INTO the Bulk sheet (and removing this action) is
-  // gated on the matrix per-cell-year ruling — see the C2 handoff.
-  "send-reminder": async ({ request, params, locals }) => {
-    const userId = locals.session?.user.id ?? null;
-    const memberId = assertUuidOr404(params.id, "Mitglied nicht gefunden");
-    const formData = await request.formData();
-    const yearStr = formData.get("year")?.toString() ?? "";
-    const year = parseInt(yearStr, 10);
-
-    if (!memberId || isNaN(year)) {
-      return fail(400, {
-        action: "send-reminder",
-        error: "Ungültige Parameter",
-      });
-    }
-
-    const guard = await checkReminderAllowed({ memberId, year });
-    if (!guard.allowed) {
-      return fail(guard.status, {
-        action: "send-reminder",
-        error: guard.error,
-      });
-    }
-    const { member, betragCents } = guard;
-    if (!member.email) {
-      return fail(422, {
-        action: "send-reminder",
-        error: "Keine E-Mail-Adresse hinterlegt",
-      });
-    }
-
-    const bank = vereinBankIdentity();
-    if (!bank) {
-      return fail(500, {
-        action: "send-reminder",
-        error:
-          "Vereins-Bankdaten (VEREIN_IBAN / VEREIN_BIC / VEREIN_BANK / VEREIN_NAME) sind nicht konfiguriert.",
-      });
-    }
-
-    const already = await remindedMemberIdsForYear([memberId], year);
-    if (already.has(memberId)) {
-      return {
-        action: "send-reminder",
-        success: true,
-        deduped: true,
-        vorname: member.vorname,
-      };
-    }
-
-    try {
-      await bus.emit("beitrag.reminder_requested", {
-        memberId,
-        year,
-        to: member.email,
-        vorname: member.vorname,
-        nachname: member.nachname,
-        betragCents,
-        iban: bank.iban,
-        bic: bank.bic,
-        bank: bank.bank,
-        empfaenger: bank.empfaenger,
-        fristAt: await resolveReminderFrist(year),
-        customIntro: null,
-        sendAttempt: reminderSendAttempt(year),
-        actorUserId: userId,
-      });
-      return {
-        action: "send-reminder",
-        success: true,
-        deduped: false,
-        vorname: member.vorname,
-      };
-    } catch (err) {
-      console.error("send-reminder failed:", err);
-      return fail(500, {
-        action: "send-reminder",
-        error: "Mail konnte nicht gesendet werden",
-      });
-    }
   },
 };

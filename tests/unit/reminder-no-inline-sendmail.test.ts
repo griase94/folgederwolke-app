@@ -39,21 +39,54 @@ describe("BeitragsReminder dispatches ONLY via the event bus (repo-wide)", () =>
     expect(callers).toEqual(["lib/server/events/handlers.ts"]);
   });
 
-  it("every reminder trigger path emits the event (no inline sendMail call)", () => {
-    const REMINDER_PATHS = [
+  it("the reminder event is emitted from EXACTLY the two domain emitters", () => {
+    // After the C2/S3b consolidation there is ONE reminder domain endpoint
+    // (sendBeitragReminderBulk) + the annual cron; both emit the event. The route
+    // actions delegate to sendBeitragReminderBulk and no longer emit directly.
+    const emitters = files
+      .filter((f) =>
+        /\bemit\(\s*["']beitrag\.reminder_requested["']/.test(
+          readFileSync(f, "utf-8"),
+        ),
+      )
+      .map((f) => f.slice(SRC.length + 1).replace(/\\/g, "/"))
+      .sort();
+    expect(emitters).toEqual([
+      "lib/server/domain/cron-tasks.ts",
+      "lib/server/domain/members-actions.ts",
+    ]);
+  });
+
+  it("no reminder trigger path calls sendMail inline", () => {
+    const PATHS = [
       "src/routes/app/mitglieder/+page.server.ts",
       "src/routes/app/mitglieder/[id]/+page.server.ts",
       "src/lib/server/domain/cron-tasks.ts",
     ];
-    for (const rel of REMINDER_PATHS) {
+    for (const rel of PATHS) {
       const src = readFileSync(join(process.cwd(), rel), "utf-8");
-      // A real call `sendMail(` (no space); the prose "inline sendMail (§…)" has
-      // a space before the paren and is ignored.
+      // A real call `sendMail(` (no space); prose "inline sendMail (§…)" ignored.
       expect(src, `${rel} must not call sendMail inline`).not.toMatch(
         /sendMail\(/,
       );
-      expect(src, `${rel} must emit the reminder event`).toContain(
-        "beitrag.reminder_requested",
+    }
+  });
+
+  it("the single ?/send-reminder action is gone — only the Bulk endpoint remains", () => {
+    const ROUTES = [
+      "src/routes/app/mitglieder/+page.server.ts",
+      "src/routes/app/mitglieder/[id]/+page.server.ts",
+    ];
+    for (const rel of ROUTES) {
+      const src = readFileSync(join(process.cwd(), rel), "utf-8");
+      // No standalone `"send-reminder":` action key (the consolidated endpoint is
+      // `"send-reminder-bulk":`).
+      expect(
+        src,
+        `${rel} must not define a single send-reminder action`,
+      ).not.toMatch(/["']send-reminder["']\s*:/);
+      expect(src, `${rel} must define the Bulk endpoint`).toMatch(
+        /["']send-reminder-bulk["']\s*:/,
       );
     }
   });
