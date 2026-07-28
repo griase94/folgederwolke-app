@@ -171,6 +171,7 @@
 						<BeitragCell
 							variant="pill"
 							state={pillDisplayState}
+							memberName="{member.vorname} {member.nachname}"
 							year={currentYear}
 							paidCents={currentYearState.paidCents}
 							betragCents={currentYearState.betragCents}

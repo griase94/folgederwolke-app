@@ -3,6 +3,7 @@
 	import { toast } from 'svelte-sonner';
 	import { invalidateAll } from '$app/navigation';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import BeitragCell from './BeitragCell.svelte';
 	import MarkPaidControl from './MarkPaidControl.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
@@ -196,19 +197,14 @@
 	<!-- Bulk-select checkbox (only in select mode) -->
 	{#if selectable}
 		{@const selectDisabled = isSelectDisabledForBulk()}
-		<label
-			class="flex shrink-0 items-center {selectDisabled ? 'opacity-40' : ''}"
-			aria-label="{member.vorname} {member.nachname} auswählen"
-		>
-			<input
-				type="checkbox"
-				checked={selected}
-				disabled={selectDisabled}
-				data-testid="member-row-select"
-				onchange={(e) => onToggleSelect?.(member.id, e.currentTarget.checked)}
-				class="h-5 w-5 rounded border-input text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
-			/>
-		</label>
+		<Checkbox
+			checked={selected}
+			disabled={selectDisabled}
+			label="{member.vorname} {member.nachname} auswählen"
+			labelClass="shrink-0"
+			data-testid="member-row-select"
+			onchange={(e) => onToggleSelect?.(member.id, e.currentTarget.checked)}
+		/>
 	{/if}
 
 	<!-- Avatar -->
@@ -235,6 +231,7 @@
 			<BeitragCell
 				variant="pill"
 				state={currentYearDisplayState}
+				memberName="{member.vorname} {member.nachname}"
 				year={currentYear}
 				paidCents={currentCell.paidCents}
 				betragCents={currentCell.betragCents}

@@ -5,6 +5,7 @@
 	import { toast } from 'svelte-sonner';
 	import { SvelteSet } from 'svelte/reactivity';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import MemberList from '$lib/components/admin/members/MemberList.svelte';
 	import MemberMatrix from '$lib/components/admin/members/MemberMatrix.svelte';
 	import AddMemberDialog from '$lib/components/admin/members/AddMemberDialog.svelte';
@@ -270,16 +271,15 @@
 					role="region"
 					aria-label="Sammel-Aktion"
 				>
-					<label class="inline-flex items-center gap-2 text-sm font-medium text-foreground">
-						<input
-							type="checkbox"
-							checked={allSelectableSelected}
-							onchange={toggleSelectAll}
-							disabled={selectableMembers.length === 0}
-							class="h-4 w-4 rounded border-input text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-						/>
+					<Checkbox
+						size="sm"
+						checked={allSelectableSelected}
+						onchange={toggleSelectAll}
+						disabled={selectableMembers.length === 0}
+						labelClass="text-sm font-medium text-foreground"
+					>
 						Alle offenen{bulkYear !== null ? ` (${bulkYear})` : ''}
-					</label>
+					</Checkbox>
 					<span class="text-sm text-muted-foreground" aria-live="polite">
 						{selectedIds.size} ausgewählt
 					</span>

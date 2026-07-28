@@ -226,6 +226,7 @@
 					<BeitragCell
 						variant="pill"
 						state={heroState.state}
+						memberName={displayName}
 						year={heroYear}
 						paidCents={heroState.paidCents}
 						betragCents={heroState.betragCents}
