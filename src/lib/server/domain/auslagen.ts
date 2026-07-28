@@ -208,13 +208,17 @@ export function composeBezahltVonDisplay(bv: BezahltVon): string {
 const externIdentitySchema = z
   .object({
     name: z.string().min(1, "Name ist erforderlich").max(120, "Name zu lang"),
-    // F3: IBAN validated (mod-97) exactly as the single extern arm did.
+    // F3: IBAN validated (mod-97) exactly as the single extern arm did. Warm,
+    // non-scolding wording for the public form (board minor b).
     iban: z
       .string()
-      .min(15, "IBAN zu kurz")
-      .max(34, "IBAN zu lang")
+      .min(15, "Die IBAN sieht etwas kurz aus — magst du sie nochmal prüfen?")
+      .max(34, "Die IBAN sieht etwas lang aus — magst du sie nochmal prüfen?")
       .transform((v) => normalizeIban(v))
-      .refine(validateIban, "IBAN ungültig"),
+      .refine(
+        validateIban,
+        "Die IBAN stimmt so nicht — magst du sie nochmal prüfen?",
+      ),
     email: z.string().email("Ungültige E-Mail").max(254, "E-Mail zu lang"),
   })
   .strict();

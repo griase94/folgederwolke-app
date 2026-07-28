@@ -9,6 +9,7 @@
 	import AusIdCard from '$lib/components/public/AusIdCard.svelte';
 	import BatchConfirmGroup from '$lib/components/public/BatchConfirmGroup.svelte';
 	import StatusTimeline from '$lib/components/ui/status-timeline/StatusTimeline.svelte';
+	import { deDate } from '$lib/components/auslagen/status-detail-builder.js';
 	import CircleCheck from '@lucide/svelte/icons/circle-check';
 	import Eye from '@lucide/svelte/icons/eye';
 	import Link from '@lucide/svelte/icons/link';
@@ -20,7 +21,7 @@
 
 	const isBatch = $derived(data.items.length > 1);
 	const firstAus = $derived(data.items[0]?.ausId ?? '');
-	const submittedLabel = $derived(new Date(data.submittedAt).toLocaleDateString('de-DE'));
+	const submittedLabel = $derived(deDate(data.submittedAt) ?? '');
 
 	const journeySteps = $derived([
 		{ title: 'Du hast eingereicht', subtitle: isBatch ? `${data.items.length} Auslagen — gerade eben.` : 'Erledigt — gerade eben.' },
@@ -29,7 +30,7 @@
 	]);
 
 	const timeline = $derived([
-		{ title: 'Eingereicht', timestamp: `am ${submittedLabel}`, state: 'done' as const, detail: 'Wir haben deine Auslage erhalten.' },
+		{ title: 'Eingereicht', timestamp: `am ${submittedLabel}`, state: 'done' as const, detail: isBatch ? 'Wir haben deine Auslagen erhalten.' : 'Wir haben deine Auslage erhalten.' },
 		{ title: 'Julia prüft', timestamp: 'als Nächstes', state: 'now' as const, detail: 'Der Vorstand schaut sich den Beleg an.' },
 		{ title: 'Geld kommt zurück', timestamp: 'danach', state: 'pending' as const, detail: 'Erstattung aufs Konto, meist in 1–2 Wochen.' }
 	]);

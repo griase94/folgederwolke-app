@@ -130,6 +130,16 @@
 		return cents == null ? '' : (cents / 100).toFixed(2).replace('.', ',');
 	}
 
+	// Zero-padded TT.MM.JJJJ so the block summary + review list match the
+	// DateField display (never "19.7." next to "19.07." — board minor d).
+	function fmtDate(iso: string): string {
+		return new Date(iso).toLocaleDateString('de-DE', {
+			day: '2-digit',
+			month: '2-digit',
+			year: 'numeric'
+		});
+	}
+
 	// ── validation (F1/F3 form-level) ──────────────────────────────────────────
 	const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 	const identityValid = $derived(
@@ -412,7 +422,7 @@
 	{action}
 	method="post"
 	enctype="multipart/form-data"
-	class="flex flex-col gap-6 pb-40"
+	class="flex flex-col gap-6 pb-40 lg:pb-4"
 	use:enhance={({ formData, cancel }) => {
 		const decision = submit();
 		if ('cancelled' in decision) {
@@ -484,7 +494,7 @@
 		</div>
 		<div class="flex flex-col gap-1.5">
 			<Label for="ext-iban">IBAN <span class="text-primary-text" aria-hidden="true">*</span></Label>
-			<Input id="ext-iban" type="text" class="tabular-nums tracking-[0.04em]" maxlength={34} placeholder="DE00 0000 0000 0000 0000 00" bind:value={externIban} oninput={triggerSave} aria-invalid={Boolean(identityError('iban'))} />
+			<Input id="ext-iban" type="text" class="max-w-[30ch] tabular-nums tracking-[0.04em]" maxlength={34} placeholder="DE00 0000 0000 0000 0000 00" bind:value={externIban} oninput={triggerSave} aria-invalid={Boolean(identityError('iban'))} />
 			<p class="text-xs leading-snug text-ink-500">Für die Rücküberweisung — geht <b class="font-semibold">verschlüsselt</b> direkt an den Vorstand.</p>
 			{@render fieldError('err-iban', identityError('iban'))}
 		</div>
@@ -513,7 +523,7 @@
 									amountLabel: formatMoney(block.betragCents ?? 0),
 									belegOk: block.file != null,
 									dateLabel: block.rechnungsdatum
-										? new Date(block.rechnungsdatum).toLocaleDateString('de-DE')
+										? fmtDate(block.rechnungsdatum)
 										: null
 								}
 							: null}
@@ -534,6 +544,10 @@
 				>
 					<Plus aria-hidden="true" />Weitere Auslage hinzufügen
 				</button>
+			{:else}
+				<p class="rounded-[12px] border border-hairline bg-secondary/40 px-3.5 py-2.5 text-center text-[12.5px] leading-snug text-ink-500" data-testid="batch-cap-note">
+					Mehr als {maxBatchItems} auf einmal geht nicht — den Rest einfach in einer zweiten Runde.
+				</p>
 			{/if}
 		</div>
 	</section>
@@ -561,7 +575,7 @@
 			items={blocks.map((b) => ({
 				clientKey: b.clientKey,
 				title: b.bezeichnung,
-				dateLabel: b.rechnungsdatum ? new Date(b.rechnungsdatum).toLocaleDateString('de-DE') : null,
+				dateLabel: b.rechnungsdatum ? fmtDate(b.rechnungsdatum) : null,
 				betragCents: b.betragCents,
 				belegOk: b.file != null,
 				incomplete: !blockValid(b)
@@ -572,8 +586,10 @@
 		/>
 	{/if}
 
-	<!-- ── Sticky foot ────────────────────────────────────────────────────────── -->
-	<div class="fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-card/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
+	<!-- Docked footer: fixed to the viewport on mobile (safe-area, perfect at 390);
+	     from lg it drops into normal flow at the end of the form COLUMN so the CTA
+	     aligns to the form, not the whole viewport (Andy-Lens Regel 5). -->
+	<div class="fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-card/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:static lg:z-auto lg:bg-transparent lg:px-0 lg:pb-0 lg:backdrop-blur-none">
 		<div class="mx-auto flex max-w-xl flex-col gap-2">
 			{#if !formValid && missingHint}
 				<p class="flex items-center justify-center gap-1.5 text-center text-xs font-semibold text-severity-critical-text [&_svg]:size-4" data-testid="einreichen-gate">

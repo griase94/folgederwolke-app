@@ -141,6 +141,25 @@ test.describe("@phase-2 auslage form (extern-only + batch)", () => {
     await page.waitForURL(/\/auslage-eingereicht\?id=AUS-\d{4}-\d{3}/);
     await expect(page.getByTestId("eingereicht-heading")).toBeVisible();
     await expect(page.getByTestId("status-cta")).toBeVisible();
+
+    // M1 regression (board #162): the compressed Beleg must persist a REAL
+    // filename, never 'blob'. Assert the DB row the upload created.
+    const { default: postgres } = await import("postgres");
+    const c = postgres(
+      process.env["DIRECT_DATABASE_URL"] ?? process.env["DATABASE_URL"] ?? "",
+      { prepare: false, max: 1 },
+    );
+    try {
+      const rows = await c<{ beleg_original_name: string | null }[]>`
+        SELECT beleg_original_name FROM auslagen_submissions
+        WHERE extern_email = ${FORM_EMAIL}
+        ORDER BY submitted_at DESC LIMIT 1`;
+      expect(rows[0]?.beleg_original_name).toBeTruthy();
+      expect(rows[0]?.beleg_original_name).not.toBe("blob");
+      expect(rows[0]?.beleg_original_name).toMatch(/\.(png|jpg|jpeg)$/i);
+    } finally {
+      await c.end();
+    }
   });
 
   test("batch path: two Auslagen → submit → batch confirmation with a total", async ({

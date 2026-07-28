@@ -6,7 +6,7 @@
 	import AuslageStatusDetail from '$lib/components/public/AuslageStatusDetail.svelte';
 	import BatchStatusGroup, { type BatchNode, type TallyChip } from '$lib/components/public/BatchStatusGroup.svelte';
 	import { statusPresentation } from '$lib/components/auslagen/status-presentation.js';
-	import { buildNodeDetail, buildSingleAside, type StatusNode } from '$lib/components/auslagen/status-detail-builder.js';
+	import { buildNodeDetail, buildSingleAside, deDate, type StatusNode } from '$lib/components/auslagen/status-detail-builder.js';
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
 	import type { AuslageStatus } from '$lib/server/domain/auslage-status.js';
 	import Check from '@lucide/svelte/icons/check';
@@ -24,7 +24,7 @@
 	const nodes = $derived(data.nodes as StatusNode[]);
 	const isBatch = $derived(nodes.length > 1);
 	const focus = $derived(nodes.find((n) => n.ausId === data.focusAusId) ?? nodes[0]!);
-	const submittedLabel = $derived(new Date(data.submittedAt).toLocaleDateString('de-DE'));
+	const submittedLabel = $derived(deDate(data.submittedAt) ?? '');
 
 	// Shell tone follows the focused node (single); a batch stays neutral so one
 	// node's fate never washes the whole group.

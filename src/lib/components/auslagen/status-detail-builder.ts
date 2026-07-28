@@ -27,10 +27,18 @@ export interface StatusNode {
   belegFileName: string | null;
 }
 
-function deDate(iso: string | null): string | null {
+export function deDate(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString("de-DE");
+  // Zero-padded TT.MM.JJJJ so it matches the DateField display convention and
+  // never shows "19.7." next to a "19.07." on the same page (board minor d).
+  return Number.isNaN(d.getTime())
+    ? null
+    : d.toLocaleDateString("de-DE", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
 }
 
 function amountRow(cents: number): FactRow {

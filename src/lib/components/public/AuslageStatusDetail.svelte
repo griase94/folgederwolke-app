@@ -54,7 +54,7 @@
 <div class={cn('flex flex-col', className)} data-slot="auslage-status-detail">
 	<FactsTable
 		rows={factsRows}
-		labelWidth={compact ? '92px' : '150px'}
+		labelWidth={compact ? '104px' : '164px'}
 		class="rounded-[16px] border border-border px-4"
 	/>
 
