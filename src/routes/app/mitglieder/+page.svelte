@@ -10,6 +10,7 @@
 	import MemberMatrix from '$lib/components/admin/members/MemberMatrix.svelte';
 	import MemberDialog from '$lib/components/admin/members/MemberDialog.svelte';
 	import SendReminderBulkSheet from '$lib/components/admin/members/SendReminderBulkSheet.svelte';
+	import BulkMarkBar from '$lib/components/admin/members/BulkMarkBar.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
 	import type { ReminderCandidate } from '$lib/domain/reminder-candidate.js';
 	import { projectForList } from '$lib/domain/beitrag-state.js';
@@ -308,11 +309,10 @@
 					Auswählen
 				</button>
 			{:else}
-				<div
-					class="flex w-full flex-wrap items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2.5"
-					role="region"
-					aria-label="Sammel-Aktion"
-				>
+				<!-- S4 #4: the docked BulkMarkBar (Kit DateField + „Heute" + emerald
+				     commit + gate-line) replaces the inline raw <input type=date> bar.
+				     The „Alle offenen"-Select-all stays as the bulk-select helper. -->
+				<div class="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
 					<Checkbox
 						size="sm"
 						checked={allSelectableSelected}
@@ -322,30 +322,15 @@
 					>
 						Alle offenen{bulkYear !== null ? ` (${bulkYear})` : ''}
 					</Checkbox>
-					<span class="text-sm text-muted-foreground" aria-live="polite">
-						{selectedIds.size} ausgewählt
-					</span>
-					<div class="ml-auto flex flex-wrap items-center gap-2">
-						<label class="flex items-center gap-1.5 text-xs text-muted-foreground">
-							<span>Bezahlt am</span>
-							<input
-								type="date"
-								lang="de"
-								bind:value={bulkDate}
-								disabled={bulkSubmitting}
-								class="min-h-9 rounded-md border border-border bg-background px-2 py-1 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 dark:bg-input/30"
-							/>
-						</label>
-						<Button
-							onclick={submitBulkPaid}
-							disabled={bulkSubmitting || bulkYear === null || selectedIds.size === 0}
-							data-testid="members-bulk-pay"
-						>
-							Als bezahlt markieren
-						</Button>
-						<Button variant="ghost" onclick={exitSelectMode} disabled={bulkSubmitting}>
-							Abbrechen
-						</Button>
+					<div class="min-w-0 flex-1">
+						<BulkMarkBar
+							count={selectedIds.size}
+							bind:gezahltAm={bulkDate}
+							submitting={bulkSubmitting}
+							onCommit={() => submitBulkPaid()}
+							onCancel={exitSelectMode}
+							data-testid="members-bulk"
+						/>
 					</div>
 				</div>
 			{/if}
