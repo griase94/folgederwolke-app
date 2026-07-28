@@ -584,8 +584,13 @@
 
 <!-- max-w-full + min-w-0 pin the scroll wrapper to its parent's width so the
      min-w-[500px] grid scrolls INSIDE it instead of widening the page (M8 —
-     no mobile page h-scroll; the honest scroll-matrix stays, card-stack is C2). -->
-<div class="w-full min-w-0 max-w-full overflow-x-auto rounded-xl border border-border">
+     no mobile page h-scroll; the honest scroll-matrix stays, card-stack is C2).
+     `relative` is load-bearing: the compact BeitragCell labels render as
+     position:absolute sr-only spans; without a positioned ancestor they escape
+     this overflow clip and their in-flow x (~480, inside the 520px grid) widens
+     documentElement to 478 at 390. Making the wrapper their containing block
+     clips them with the grid (verified via scrollWidth@390). -->
+<div class="relative w-full min-w-0 max-w-full overflow-x-auto rounded-xl border border-border">
 	{#if filter}
 		<div
 			class="border-b border-border bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800 dark:bg-amber-950/30 dark:text-amber-300"

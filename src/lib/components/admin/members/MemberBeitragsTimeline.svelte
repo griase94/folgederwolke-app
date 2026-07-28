@@ -309,22 +309,22 @@
 	<!-- Summary totals (only when there are historical rows) -->
 	{#if beitrags.length > 0}
 		<div class="grid grid-cols-2 gap-3">
-			<div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-				<p class="text-xs font-medium text-emerald-700">Gesamt bezahlt</p>
-				<p class="mt-0.5 text-lg font-bold text-emerald-800">{fmtEur(totalPaidCents)}</p>
+			<div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 dark:border-emerald-400/25 dark:bg-emerald-500/15">
+				<p class="text-xs font-medium text-emerald-700 dark:text-emerald-300">Gesamt bezahlt</p>
+				<p class="mt-0.5 text-lg font-bold text-emerald-800 dark:text-emerald-300">{fmtEur(totalPaidCents)}</p>
 			</div>
 			<div
 				class="rounded-xl border px-4 py-3
 				{totalOpenCents > 0
-					? 'border-amber-200 bg-amber-50'
+					? 'border-amber-200 bg-amber-50 dark:border-amber-400/25 dark:bg-amber-500/15'
 					: 'border-border bg-muted'}"
 			>
-				<p class="text-xs font-medium {totalOpenCents > 0 ? 'text-amber-700' : 'text-muted-foreground'}">
+				<p class="text-xs font-medium {totalOpenCents > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-muted-foreground'}">
 					Gesamt offen
 				</p>
 				<p
 					class="mt-0.5 text-lg font-bold {totalOpenCents > 0
-						? 'text-amber-800'
+						? 'text-amber-800 dark:text-amber-300'
 						: 'text-muted-foreground'}"
 				>
 					{fmtEur(totalOpenCents)}
@@ -336,7 +336,7 @@
 	<!-- Exempt banner above timeline -->
 	{#if beitragExempt}
 		<div
-			class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+			class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/25 dark:bg-amber-500/15 dark:text-amber-200"
 			data-testid="beitragsverlauf-exempt-banner"
 		>
 			<p class="font-medium">Beitragspflicht ausgesetzt</p>
