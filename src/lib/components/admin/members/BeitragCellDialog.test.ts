@@ -24,19 +24,45 @@ const base = {
 };
 
 describe("BeitragCellDialog — mark-paid (§1)", () => {
-  it("prefills Betrag with the open remainder for a partial member", () => {
+  it("prefills Betrag with the FULL total for a partial member + seeds the note (B1)", () => {
+    // Submit is SET-semantics: the server SETS paid_cents to this value. Prefilling
+    // the remainder (30,00) would erase the 30,00 already paid — the new total
+    // (60,00) is the money-truthful default. The existing note is seeded so the
+    // submit preserves it instead of clobbering it to null.
     render(BeitragCellDialog, {
       props: {
         ...base,
         initialVariant: "mark-paid",
         betragCents: 6000,
         paidCents: 3000,
+        notes: "Ratenzahlung",
       },
     });
     const betrag = screen.getByTestId(
       "beitrag-dialog-betrag",
     ) as HTMLInputElement;
-    expect(betrag.value).toBe("30,00");
+    expect(betrag.value).toBe("60,00");
+    expect(
+      (screen.getByLabelText("Notiz (optional)") as HTMLInputElement).value,
+    ).toBe("Ratenzahlung");
+  });
+
+  it("submitting the partial→full default emits the full total + preserves the note (B1)", async () => {
+    const onPaid = vi.fn();
+    render(BeitragCellDialog, {
+      props: {
+        ...base,
+        initialVariant: "mark-paid",
+        betragCents: 6969,
+        paidCents: 3000,
+        notes: "Ratenzahlung",
+        onPaid,
+      },
+    });
+    await fireEvent.click(screen.getByTestId("beitrag-dialog-submit"));
+    expect(onPaid).toHaveBeenCalledWith(
+      expect.objectContaining({ paidCents: 6969, notes: "Ratenzahlung" }),
+    );
   });
 
   it("'Voller Betrag' chip fills the full Soll", async () => {

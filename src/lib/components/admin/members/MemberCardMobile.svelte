@@ -79,6 +79,9 @@
 		currentYear !== null &&
 			displayState !== null &&
 			(displayState === 'open' || displayState === 'partial') &&
+			// A festgeschriebenes Jahr is read-only: the server 409s the write, so the
+			// UI must not invite it either (the Matrix already gates on isLocked). M3.
+			!currentCell?.isLocked &&
 			!member.beitragExempt &&
 			!member.austrittsDatum,
 	);
@@ -140,6 +143,7 @@
 			memberName="{member.vorname} {member.nachname}"
 			betragCents={currentCell?.betragCents ?? 0}
 			paidCents={currentCell?.paidCents ?? 0}
+			notes={currentCell?.notes ?? null}
 			allowExempt={false}
 		>
 			{#snippet trigger({ props })}

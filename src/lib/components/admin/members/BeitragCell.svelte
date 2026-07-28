@@ -96,14 +96,16 @@
 	});
 
 	/**
-	 * Tone classes per state — Aurora tokens only, NO hardcoded hex. Amber
-	 * (severity-warn) is reserved for overdue; open/partial carry the calm
-	 * --neutral-open family so a merely-open Beitrag never reads as a warning.
+	 * Tone classes per state — Aurora tokens + Tailwind palettes, NO hardcoded hex.
+	 * Amber (severity-warn) is reserved for overdue; open/partial carry the calm
+	 * --neutral-open family so a merely-open Beitrag never reads as a warning. Paid
+	 * uses the app-wide emerald paid-badge convention WITH a dark path (M1) so the
+	 * chip is not a static light-green stranded on the dark surface.
 	 */
 	const toneClass = $derived.by(() => {
 		switch (state) {
 			case 'paid':
-				return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+				return 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-500/15 dark:text-emerald-300';
 			case 'overdue':
 				return 'border-severity-warn/30 bg-severity-warn/10 text-severity-warn-text';
 			case 'open':

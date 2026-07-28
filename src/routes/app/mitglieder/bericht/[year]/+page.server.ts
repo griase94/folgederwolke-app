@@ -194,6 +194,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
     ) {
       continue;
     }
+    // M6: no Beitragssatz configured for the year AND no recorded payment row →
+    // the member has NO defined obligation for the year, so they don't belong on
+    // the owing roster. Without this, resolveBeitragState returns "overdue"
+    // (past the default Fälligkeit) with betragCents=0 → a phantom "Überfällig
+    // 0,00 €" that reads as invented debt. The year-level satzMissing hint
+    // explains the empty/short roster. (Years WITH a Satz — e.g. the migration-
+    // 0026 pre-seeded 2020–2027 — are unaffected: their debt is real, not fabricated.)
+    if (satzCents === null && !beitrag) {
+      continue;
+    }
     const status = resolved.state;
 
     const isExemptState =

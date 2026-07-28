@@ -138,6 +138,7 @@ function makeMatrix(): MatrixData {
         betragCents: 6969,
         paidCents: 0,
         gezahltAm: null,
+        notes: null,
         exemptReason: null,
         daysOverdue: null,
       },

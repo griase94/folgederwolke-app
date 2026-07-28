@@ -63,6 +63,7 @@ function cell(
     betragCents: opts.betragCents ?? 6000,
     paidCents: opts.paidCents ?? 0,
     gezahltAm: opts.gezahltAm ?? null,
+    notes: null,
     exemptReason: null,
     daysOverdue: null,
   };

@@ -129,9 +129,13 @@
 	// ── state (transient; parent keys the component per open) ──────────────────
 	let variant = $state<BeitragDialogVariant>(untrack(() => initialVariant));
 
-	// Prefill the Betrag input: mark-paid → open remainder; edit → the recorded amount.
+	// Prefill the Betrag input. Submit is SET-semantics (the server SETS paid_cents
+	// to this value, it never adds), so mark-paid must prefill the NEW TOTAL — the
+	// full Soll — not the open remainder. Prefilling the remainder on a partial cell
+	// would SET paid_cents to the remainder and silently erase the already-paid
+	// amount (B1 money-truth). edit → the recorded amount being corrected.
 	const seedCents = untrack(() =>
-		initialVariant === 'edit' ? paidCents : Math.max(0, betragCents - paidCents)
+		initialVariant === 'edit' ? paidCents : betragCents
 	);
 
 	let betragInput = $state(centsToDeDE(seedCents));

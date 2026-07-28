@@ -189,6 +189,7 @@ export async function loadMatrix(opts: {
         betragCents: resolved.betragCents,
         paidCents: resolved.paidCents,
         gezahltAm: dbRow?.gezahltAm ?? null,
+        notes: dbRow?.notes ?? null,
         exemptReason: m.beitragExempt
           ? (m.beitragExemptReason ?? null)
           : (dbRow?.exemptReason ?? null),

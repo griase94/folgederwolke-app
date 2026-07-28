@@ -85,6 +85,7 @@
 	let markPaidYear = $state<number | null>(null);
 	let markPaidBetragCents = $state(0);
 	let markPaidPaidCents = $state(0);
+	let markPaidNotes = $state<string | null>(null);
 
 	const currentYear = $derived(
 		years.length > 0 ? clampYearToAvailable(currentBuchungsjahr(), years) : null,
@@ -106,6 +107,9 @@
 		currentYear !== null &&
 			currentYearDisplayState !== null &&
 			(currentYearDisplayState === 'open' || currentYearDisplayState === 'partial') &&
+			// Festgeschriebenes Jahr → read-only; don't invite a write the server 409s
+			// (the Matrix already gates on isLocked). M3.
+			!currentCell?.isLocked &&
 			!member.beitragExempt &&
 			!member.austrittsDatum,
 	);
@@ -115,6 +119,7 @@
 		markPaidYear = year;
 		markPaidBetragCents = cell?.betragCents ?? 0;
 		markPaidPaidCents = cell?.paidCents ?? 0;
+		markPaidNotes = cell?.notes ?? null;
 		dropdownOpen = false;
 		queueMicrotask(() => (markPaidOpen = true));
 	}
@@ -173,8 +178,12 @@
 		if (bulkYear === null) return true;
 		if (member.beitragExempt || !!member.austrittsDatum) return true;
 		const cell = cells.get(`${member.id}:${bulkYear}`);
-		if (!cell) return true;
-		return projectForList(cell.state) !== 'open';
+		// Festgeschriebene Jahre are read-only. Owing cells are selectable: the
+		// brief wants "offene/teilbezahlte wählbar", so allow open/overdue (folded
+		// to 'open' by the list projection) AND partial — not open-only.
+		if (!cell || cell.isLocked) return true;
+		const proj = projectForList(cell.state);
+		return proj !== 'open' && proj !== 'partial';
 	}
 </script>
 
@@ -222,7 +231,7 @@
 	<!-- Single current-year Beitrag pill (one pill, not N year chips).
 	     Hidden in bulk-select mode where the checkbox drives the whole row. -->
 	{#if !selectable && currentYear !== null && currentCell !== null && currentYearDisplayState !== null}
-		<div class="hidden items-center sm:flex">
+		<div class="hidden w-28 shrink-0 items-center justify-end sm:flex">
 			<BeitragCell
 				variant="pill"
 				state={currentYearDisplayState}
@@ -239,25 +248,31 @@
 	<!-- One-tap pay trigger: appears for open/partial state only.
 	     Opens the MarkPaidControl directly (no kebab intermediary).
 	     min-h-11 (44px) for mobile touch target. -->
-	{#if showPayTrigger && currentYear !== null && !selectable}
-		<button
-			type="button"
-			data-testid="member-row-pay"
-			aria-label="Beitrag {currentYear} erfassen für {member.vorname} {member.nachname}"
-			onclick={() => openMarkPaid(currentYear!)}
-			class="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/8 text-primary-text transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-		>
-			<svg
-				class="h-5 w-5"
-				fill="none"
-				viewBox="0 0 24 24"
-				stroke="currentColor"
-				stroke-width="2"
-				aria-hidden="true"
-			>
-				<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-			</svg>
-		</button>
+	<!-- Reserve the pay-trigger track even when the button is absent (paid rows)
+	     so the Beitrag pill column stays put row-to-row (M2 — no column flight). -->
+	{#if !selectable}
+		<div class="hidden w-11 shrink-0 items-center justify-center sm:flex">
+			{#if showPayTrigger && currentYear !== null}
+				<button
+					type="button"
+					data-testid="member-row-pay"
+					aria-label="Beitrag {currentYear} erfassen für {member.vorname} {member.nachname}"
+					onclick={() => openMarkPaid(currentYear!)}
+					class="flex min-h-11 min-w-11 items-center justify-center rounded-full border border-primary/30 bg-primary/8 text-primary-text transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				>
+					<svg
+						class="h-5 w-5"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke="currentColor"
+						stroke-width="2"
+						aria-hidden="true"
+					>
+						<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+					</svg>
+				</button>
+			{/if}
+		</div>
 	{/if}
 
 	<!-- Actions kebab — secondary overflow (edit, reminder, delete).
@@ -405,6 +420,7 @@
 				memberName="{member.vorname} {member.nachname}"
 				betragCents={markPaidBetragCents}
 				paidCents={markPaidPaidCents}
+				notes={markPaidNotes}
 				isOverdue={false}
 				allowExempt={false}
 			/>

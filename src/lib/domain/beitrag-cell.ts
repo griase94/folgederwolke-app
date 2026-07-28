@@ -37,6 +37,9 @@ export type MatrixCell = {
   betragCents: number;
   paidCents: number;
   gezahltAm: string | null;
+  /** Payment note (member_beitrags.notes) — seeds the dialog so mark-paid / edit
+   *  preserve it instead of clobbering it to null on the SET-semantics submit. */
+  notes: string | null;
   /** Populated only for exempt / permanently_exempt cells. */
   exemptReason: string | null;
   /** Populated only when state === "overdue". */

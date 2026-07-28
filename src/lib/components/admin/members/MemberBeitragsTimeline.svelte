@@ -121,11 +121,34 @@
 	const totalPaidCents = $derived(
 		visibleBeitrags.reduce((sum, b) => sum + Math.min(b.paidCents, b.betragCents), 0),
 	);
+	// The current (hero) year's open obligation exists even when the member has no
+	// member_beitrags row yet (unpaid → no row). A row-only sum reports "Gesamt
+	// offen 0,00" while the hero shows the year owing (M4 detail-truth). Count the
+	// hero year via heroState, then sum the OTHER visible rows' open.
+	const heroOpenCents = $derived(
+		heroState.state === 'open' ||
+			heroState.state === 'partial' ||
+			heroState.state === 'overdue'
+			? Math.max(0, heroState.betragCents - heroState.paidCents)
+			: 0,
+	);
 	const totalOpenCents = $derived(
 		beitragExempt
 			? 0
-			: visibleBeitrags.reduce((sum, b) => sum + Math.max(0, b.betragCents - b.paidCents), 0),
+			: heroOpenCents +
+				visibleBeitrags
+					.filter((b) => b.year !== heroYear)
+					.reduce((sum, b) => sum + Math.max(0, b.betragCents - b.paidCents), 0),
 	);
+
+	// Overdue days for the hero amber accent ("seit N Tagen überfällig", brief §2).
+	// Consistent with heroState's own overdue derivation (default Fälligkeit 31.03).
+	const heroDaysOverdue = $derived.by(() => {
+		if (heroState.state !== 'overdue') return null;
+		const faellig = new Date(`${heroYear}-03-31T00:00:00Z`);
+		const days = Math.floor((Date.now() - faellig.getTime()) / 86_400_000);
+		return days > 0 ? days : null;
+	});
 
 	function fmtEur(cents: number): string {
 		return (cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
@@ -200,7 +223,7 @@
 				<div class="mt-1">
 					<BeitragCell
 						variant="pill"
-						state={heroDisplayState}
+						state={heroState.state}
 						year={heroYear}
 						paidCents={heroState.paidCents}
 						betragCents={heroState.betragCents}
@@ -222,6 +245,14 @@
 					<p class="text-sm font-semibold text-foreground tabular-nums">
 						{fmtEur(heroState.betragCents)}
 					</p>
+					{#if heroDaysOverdue !== null}
+						<p
+							class="text-xs font-medium text-severity-warn-text"
+							data-testid="beitrags-hero-overdue"
+						>
+							seit {heroDaysOverdue} {heroDaysOverdue === 1 ? 'Tag' : 'Tagen'} überfällig
+						</p>
+					{/if}
 				{:else if heroState.satzMissing}
 					<p class="text-xs text-muted-foreground">Beitragssatz {heroYear} fehlt</p>
 				{/if}
@@ -239,6 +270,7 @@
 				memberName={displayName}
 				betragCents={heroState.betragCents}
 				paidCents={heroState.paidCents}
+				notes={heroRow?.notes ?? null}
 				actionBase="/app/mitglieder"
 				allowExempt={false}
 			>
@@ -433,6 +465,7 @@
 								memberName={displayName}
 								betragCents={b.betragCents}
 								paidCents={b.paidCents}
+								notes={b.notes}
 								actionBase="/app/mitglieder"
 								allowExempt={false}
 							>

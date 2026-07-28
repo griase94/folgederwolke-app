@@ -304,6 +304,7 @@
 			betragCents,
 			paidCents: paid,
 			gezahltAm: detail.gezahltAm,
+			notes: detail.notes,
 			exemptReason: null,
 			daysOverdue: null
 		});
@@ -394,6 +395,7 @@
 			betragCents: prior?.betragCents ?? 0,
 			paidCents: 0,
 			gezahltAm: null,
+			notes: null,
 			exemptReason: detail.reason,
 			daysOverdue: null
 		});
@@ -450,6 +452,7 @@
 			betragCents: prior?.betragCents ?? 0,
 			paidCents: 0,
 			gezahltAm: null,
+			notes: null,
 			exemptReason: null,
 			daysOverdue: null
 		});
@@ -492,6 +495,7 @@
 			betragCents: prior?.betragCents ?? 0,
 			paidCents: 0,
 			gezahltAm: null,
+			notes: null,
 			exemptReason: null,
 			daysOverdue: null
 		});
@@ -578,7 +582,10 @@
 	}
 </script>
 
-<div class="overflow-x-auto rounded-xl border border-border">
+<!-- max-w-full + min-w-0 pin the scroll wrapper to its parent's width so the
+     min-w-[500px] grid scrolls INSIDE it instead of widening the page (M8 —
+     no mobile page h-scroll; the honest scroll-matrix stays, card-stack is C2). -->
+<div class="w-full min-w-0 max-w-full overflow-x-auto rounded-xl border border-border">
 	{#if filter}
 		<div
 			class="border-b border-border bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
@@ -773,6 +780,7 @@
 				betragCents={activeCell.betragCents}
 				paidCents={activeCell.paidCents}
 				gezahltAm={activeCell.gezahltAm}
+				notes={activeCell.notes}
 				exemptReason={activeCell.exemptReason}
 				initialVariant={dialogVariant}
 				{isLocked}

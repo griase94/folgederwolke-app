@@ -107,8 +107,10 @@
 		role="list"
 		aria-label="Mitgliederliste"
 	>
-		<!-- Package D: column header row -->
-		{#if headerYear !== null}
+		<!-- Package D: column header row. Fixed-width tracks match MemberRow so the
+		     Beitrag pills line up as one column across all rows (M2). Hidden in bulk
+		     mode, where the pill column gives way to the checkbox selection flow. -->
+		{#if headerYear !== null && !selectable}
 			<div
 				data-testid="member-list-beitrag-header"
 				class="flex items-center gap-3 px-4 pb-1 text-xs font-medium text-muted-foreground"
@@ -117,8 +119,10 @@
 				<!-- Spacer matching avatar + name columns -->
 				<div class="h-10 w-10 shrink-0"></div>
 				<div class="min-w-0 flex-1"></div>
-				<span class="shrink-0">Beitrag {headerYear}</span>
-				<!-- Spacer matching pay-trigger + kebab -->
+				<!-- Beitrag column — same fixed width as MemberRow's pill track -->
+				<span class="hidden w-28 shrink-0 justify-end sm:flex">Beitrag {headerYear}</span>
+				<!-- Spacers matching the pay-trigger + kebab tracks -->
+				<div class="hidden w-11 shrink-0 sm:block"></div>
 				<div class="w-8 shrink-0"></div>
 			</div>
 		{/if}

@@ -204,8 +204,9 @@
 
 		{#if data.isLockedYear}
 			<p class="kb-trust" data-testid="bericht-trust-line">
-				Buchungsjahr {data.year} festgeschrieben{#if data.festgeschriebenAm}
-					am {fmtTimestampDe(data.festgeschriebenAm)}{/if} — Zahlen unveränderlich.
+				Buchungsjahr {data.year} festgeschrieben{#if data.festgeschriebenAm}{' '}am {fmtTimestampDe(
+						data.festgeschriebenAm,
+					)}{/if} — Zahlen unveränderlich.
 			</p>
 		{/if}
 

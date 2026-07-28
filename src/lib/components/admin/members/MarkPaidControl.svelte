@@ -33,6 +33,7 @@
 		memberName,
 		betragCents,
 		paidCents = 0,
+		notes = null,
 		isOverdue = false,
 		isLocked = false,
 		allowExempt = true,
@@ -46,8 +47,11 @@
 		year: number;
 		memberName: string;
 		betragCents: number;
-		/** Already-paid cents — forwarded to BeitragCellDialog to prefill the open remainder. */
+		/** Already-paid cents — forwarded to BeitragCellDialog to prefill the total. */
 		paidCents?: number;
+		/** Existing payment note — forwarded so mark-paid preserves it on the
+		 *  SET-semantics submit instead of clobbering it to null. */
+		notes?: string | null;
 		/**
 		 * Gate the "Erinnerung senden" ghost inside the dialog. The list/card pass
 		 * false; the detail timeline passes true for overdue years. The server
@@ -235,6 +239,7 @@
 			{memberName}
 			{betragCents}
 			{paidCents}
+			{notes}
 			initialVariant="mark-paid"
 			{isLocked}
 			{allowExempt}
