@@ -1,24 +1,38 @@
 <script lang="ts">
-	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card/index.js';
+	// Public Auslage BATCH form (Aurora A-flow S1). Extern-only (no payer radio —
+	// members self-serve in the portal), multi-Auslage: one identity, N blocks,
+	// one confirmation. Submits multipart via use:enhance (the repeater needs JS
+	// anyway): `data` = JSON batch payload, `beleg_<i>` = each block's compressed
+	// Beleg. F1 (betrag>0), F2 (hide "+ weitere" at maxBatchItems), F3 (IBAN) are
+	// enforced form-level here and re-checked server-side.
+	import { enhance } from '$app/forms';
+	import { page } from '$app/state';
+	import { browser } from '$app/environment';
+	import { onMount } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import DateField from '$lib/components/ui/date-field/DateField.svelte';
-	import BezahltVonPicker from './BezahltVonPicker.svelte';
+	import AmountField from '$lib/components/ui/hero-field/AmountField.svelte';
+	import DateField from '$lib/components/ui/hero-field/DateField.svelte';
 	import BelegUpload from './BelegUpload.svelte';
+	import AuslageBlock from './AuslageBlock.svelte';
+	import BatchReviewList from './BatchReviewList.svelte';
+	import Callout from '$lib/components/public/Callout.svelte';
+	import LoginNudge from '$lib/components/public/LoginNudge.svelte';
+	import { formatMoney } from '$lib/components/ui/money/money.svelte';
 	import { datenschutzText, DATENSCHUTZ_VERSION } from '$lib/domain/datenschutz.js';
-	import { makeDebouncedSave, saveDraft, loadDraft, clearDraft, type DraftMetadata } from '$lib/client/drafts.js';
-	import { parseBetragCents } from '$lib/client/parse-betrag.js';
-	import { browser } from '$app/environment';
-	import { page } from '$app/state';
-	import { onMount } from 'svelte';
-	import { beforeNavigate } from '$app/navigation';
-
-	interface Member {
-		id: string;
-		display_name: string;
-		email?: string;
-	}
+	import {
+		makeDebouncedSave,
+		saveBatchDraft,
+		loadBatchDraft,
+		clearDraft
+	} from '$lib/client/drafts.js';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Send from '@lucide/svelte/icons/send';
+	import CircleAlert from '@lucide/svelte/icons/circle-alert';
+	import Info from '@lucide/svelte/icons/info';
+	import ShieldCheck from '@lucide/svelte/icons/shield-check';
 
 	interface Project {
 		id: string;
@@ -26,729 +40,560 @@
 	}
 
 	interface Props {
-		/** Action URL — defaults to the current page (SvelteKit default). */
 		action?: string;
-		members?: Member[];
 		projects?: Project[];
-		/** If set, show server-side error after a failed submission. */
+		maxBatchItems?: number;
 		serverError?: string | null;
-		/**
-		 * Per-field validation errors returned by the server action (e.g. Zod
-		 * issues). Merged into local `fieldErrors` state on mount/update so the
-		 * errors render immediately under each field. Field keys match the
-		 * client-side ones (`bezeichnung`, `betragCents`, `bezahlt_von.iban`,
-		 * `consent`, …).
-		 */
-		serverFieldErrors?: Record<string, string[]> | null;
-		/**
-		 * Optional initial values for the form. Used by the PWA share_target
-		 * (M2) redirect bridge so the form opens pre-populated with the
-		 * bezeichnung/kommentar the user shared. Falsy values are ignored —
-		 * the form keeps its empty default. Draft restore wins over these:
-		 * if a draft exists the user gets their in-progress work back.
-		 */
+		formErrors?: string[] | null;
+		identityErrors?: Record<string, string[]> | null;
+		itemErrors?: Record<string, Record<string, string[]>> | null;
 		initialBezeichnung?: string;
 		initialKommentar?: string;
 	}
 
 	let {
-		// '' = post to the route's base URL → SvelteKit's default action.
-		// Was '?/default' which SvelteKit explicitly rejects as a reserved
-		// action name when the only registered action IS `default`. Caught
-		// by the 2026-05-19 Auslagen-tester agent as AT-001 (P0).
 		action = '',
-		members = [],
 		projects = [],
+		maxBatchItems = 10,
 		serverError = null,
-		serverFieldErrors = null,
+		formErrors = null,
+		identityErrors = null,
+		itemErrors = null,
 		initialBezeichnung = '',
 		initialKommentar = ''
 	}: Props = $props();
 
-	// ---------------------------------------------------------------------------
-	// Form state
-	// ---------------------------------------------------------------------------
+	// ── block model ───────────────────────────────────────────────────────────
+	interface Block {
+		clientKey: string;
+		nonce: string;
+		bezeichnung: string;
+		betragCents: number | null;
+		rechnungsdatum: string; // ISO YYYY-MM-DD
+		wofuer: string;
+		kommentar: string;
+		file: File | null;
+		open: boolean;
+	}
 
-	let bezahltVonKind = $state<'verein' | 'member' | 'extern'>('verein');
-	let memberId = $state('');
-	let memberDisplayName = $state('');
-	let memberEmail = $state('');
-	let externName = $state('');
-	let externIban = $state('');
-	let externEmail = $state('');
-
-	// Editable form fields. `bezeichnung` and `kommentar` are seeded from
-	// props (PWA share_target M2 prefill) but MUST remain editable. In
-	// Svelte 5 the idiom for this is a *writable derived*: $derived returns
-	// the prop value, and the user's edits temporarily override it (same
-	// pattern as the official "optimistic UI" example in the $derived
-	// docs). Whenever the parent passes a new initial value the derived
-	// re-syncs; the user's edits before that point are intentionally
-	// discarded only on prop change (which in practice never happens — the
-	// share prefill is a one-shot navigation). Draft restore runs from
-	// onMount and writes through these bindings, so an in-progress draft
-	// still wins over a share prefill (matches the PWA M2 spec).
-	//
-	// Doing this with `let x = $state(initialX)` triggers
-	// `state_referenced_locally` (svelte/state-referenced-locally) because
-	// $state captures the value once and never re-syncs.
-	// Doing it with `$state + $effect` triggers svelte/prefer-writable-derived.
-	// $derived is the documented answer.
-	let bezeichnung = $derived(initialBezeichnung);
-	let betrag = $state('');
-	let rechnungsdatum = $state(new Date().toISOString().split('T')[0]!);
-	let wofuer = $state('');
-	let kommentar = $derived(initialKommentar);
-
-	let belegFile = $state<File | null>(null);
-	let datenschutzConsent = $state(false);
-
-	// Validation errors (shown after blur)
-	let fieldErrors = $state<Record<string, string[]>>({});
-	let blurred = $state<Record<string, boolean>>({});
-
-	// Merge server-side per-field errors into local validation state whenever
-	// the action returns a new `form?.errors` payload. Marking the field as
-	// blurred forces the error to render immediately (matching the visible-
-	// after-touch UX rule for client-only errors).
-	$effect(() => {
-		const incoming = serverFieldErrors;
-		if (!incoming) return;
-		const merged: Record<string, string[]> = { ...fieldErrors };
-		const blurredNext: Record<string, boolean> = { ...blurred };
-		for (const [field, msgs] of Object.entries(incoming)) {
-			if (Array.isArray(msgs) && msgs.length > 0) {
-				merged[field] = msgs;
-				blurredNext[field] = true;
-			}
-		}
-		fieldErrors = merged;
-		blurred = blurredNext;
-	});
-
-	// UI state
-	let isSubmitting = $state(false);
-	let draftRestored = $state(false);
-	let hasUnsavedChanges = $state(false);
-	let ctaBottomOffset = $state(0);
-	/** Set when the user tries to submit while offline — cleared on next submit attempt. */
-	let offlineError = $state(false);
-
-	// Idempotency key (C8 + Deliverable A): a STABLE nonce that survives
-	// retries — a full page reload after a flaky network, a double-tap, or a
-	// PWA re-POST must re-send the SAME value so the server resolves the retry
-	// to the original submission instead of creating a duplicate (+ a second
-	// Beleg Blob, + a burned AUS-id). We persist it in sessionStorage under a
-	// fixed key, seeded ONCE; it is rotated only after a confirmed success (the
-	// success page clears the key, so the next fresh submission gets a new
-	// nonce). SSR renders a throwaway UUID into the hidden input; onMount swaps
-	// in the session-stable value before the user can submit.
-	const NONCE_STORAGE_KEY = 'fdw-auslage-submission-nonce';
-
-	function loadStableNonce(): string {
+	const NONCE_PREFIX = 'fdw-auslage-submission-nonce';
+	function loadNonce(clientKey: string): string {
 		if (!browser) return crypto.randomUUID();
 		try {
-			const existing = sessionStorage.getItem(NONCE_STORAGE_KEY);
+			const key = `${NONCE_PREFIX}:${clientKey}`;
+			const existing = sessionStorage.getItem(key);
 			if (existing) return existing;
 			const fresh = crypto.randomUUID();
-			sessionStorage.setItem(NONCE_STORAGE_KEY, fresh);
+			sessionStorage.setItem(key, fresh);
 			return fresh;
 		} catch {
-			// sessionStorage blocked (private mode / quota) → fall back to a
-			// per-load UUID. Idempotency degrades to "no dedup across reloads",
-			// which matches legacy behaviour — never worse than before.
 			return crypto.randomUUID();
 		}
 	}
 
-	let submissionNonce = $state(loadStableNonce());
-
-	onMount(() => {
-		// Re-seed from sessionStorage on the client (SSR produced a throwaway).
-		submissionNonce = loadStableNonce();
-	});
-
-	// ---------------------------------------------------------------------------
-	// Draft persistence
-	// ---------------------------------------------------------------------------
-
-	const debouncedSave = makeDebouncedSave(1000);
-
-	function getDraftMetadata(): Omit<DraftMetadata, 'savedAt'> {
+	let blockSeq = 0;
+	function newBlock(seed?: Partial<Block>): Block {
+		const clientKey = `b${Date.now().toString(36)}-${blockSeq++}`;
 		return {
-			bezahltVonKind,
-			memberId,
-			memberDisplayName,
-			memberEmail,
-			externName,
-			externIban,
-			externEmail,
-			bezeichnung,
-			betrag,
-			rechnungsdatum,
-			wofuer,
-			kommentar
+			clientKey,
+			nonce: loadNonce(clientKey),
+			bezeichnung: seed?.bezeichnung ?? '',
+			betragCents: seed?.betragCents ?? null,
+			rechnungsdatum: seed?.rechnungsdatum ?? '',
+			wofuer: seed?.wofuer ?? '',
+			kommentar: seed?.kommentar ?? '',
+			file: seed?.file ?? null,
+			open: true
 		};
 	}
 
-	function triggerDraftSave() {
-		hasUnsavedChanges = true;
-		if (browser) {
-			debouncedSave(getDraftMetadata(), belegFile);
-		}
+	// ── state ─────────────────────────────────────────────────────────────────
+	let externName = $state('');
+	let externEmail = $state('');
+	let externIban = $state('');
+	let consent = $state(false);
+	// One-time share-prefill seed of block 1 (PWA share_target); later edits are
+	// user-driven. Draft restore (onMount) replaces the array outright.
+	// svelte-ignore state_referenced_locally
+	let blocks = $state<Block[]>([
+		newBlock({ bezeichnung: initialBezeichnung, kommentar: initialKommentar })
+	]);
+
+	let submitting = $state(false);
+	let offlineError = $state(false);
+	let draftRestored = $state(false);
+	let attempted = $state(false); // becomes true after first submit attempt (shows errors)
+
+	const todayIso = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' });
+
+	function centsToInput(cents: number | null): string {
+		return cents == null ? '' : (cents / 100).toFixed(2).replace('.', ',');
 	}
 
-	function applyDraft(draft: { metadata: DraftMetadata; file: File | null }) {
-		const m = draft.metadata;
-		bezahltVonKind = m.bezahltVonKind;
-		memberId = m.memberId ?? '';
-		memberDisplayName = m.memberDisplayName ?? '';
-		memberEmail = m.memberEmail ?? '';
-		externName = m.externName ?? '';
-		externIban = m.externIban ?? '';
-		externEmail = m.externEmail ?? '';
-		bezeichnung = m.bezeichnung;
-		betrag = m.betrag;
-		rechnungsdatum = m.rechnungsdatum;
-		wofuer = m.wofuer;
-		kommentar = m.kommentar;
-		belegFile = draft.file;
-		draftRestored = true;
+	// ── validation (F1/F3 form-level) ──────────────────────────────────────────
+	const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+	const identityValid = $derived(
+		externName.trim().length > 0 &&
+			emailRe.test(externEmail.trim()) &&
+			externIban.replace(/\s+/g, '').length >= 15
+	);
+	function blockValid(b: Block): boolean {
+		return (
+			b.bezeichnung.trim().length >= 3 &&
+			b.betragCents != null &&
+			b.betragCents > 0 && // F1
+			/^\d{4}-\d{2}-\d{2}$/.test(b.rechnungsdatum) &&
+			b.file != null
+		);
+	}
+	function blockComplete(b: Block): boolean {
+		return blockValid(b);
+	}
+	const allValid = $derived(blocks.every(blockValid));
+	const formValid = $derived(identityValid && allValid && consent);
+	const gesamtCents = $derived(
+		blocks.reduce((s, b) => s + (blockValid(b) ? (b.betragCents ?? 0) : 0), 0)
+	);
+	const canAddMore = $derived(blocks.length < maxBatchItems); // F2
+
+	// server per-field errors (only surfaced after an attempt)
+	function identityError(field: string): string | undefined {
+		return attempted ? identityErrors?.[field]?.[0] : undefined;
+	}
+	function itemError(clientKey: string, field: string): string | undefined {
+		return attempted ? itemErrors?.[clientKey]?.[field]?.[0] : undefined;
+	}
+
+	// ── batch operations ────────────────────────────────────────────────────────
+	function addBlock() {
+		if (!canAddMore) return;
+		// collapse valid blocks so the new one is the focus
+		for (const b of blocks) if (blockValid(b)) b.open = false;
+		blocks.push(newBlock());
+		triggerSave();
+	}
+	function removeBlock(clientKey: string) {
+		if (blocks.length === 1) return;
+		const b = blocks.find((x) => x.clientKey === clientKey);
+		const hasContent = b && (b.bezeichnung || b.betragCents != null || b.file);
+		if (hasContent && !confirm('Diese Auslage entfernen?')) return;
+		if (browser) {
+			try {
+				sessionStorage.removeItem(`${NONCE_PREFIX}:${clientKey}`);
+			} catch {
+				/* ignore */
+			}
+		}
+		blocks = blocks.filter((x) => x.clientKey !== clientKey);
+		triggerSave();
+	}
+	function editBlock(clientKey: string) {
+		const b = blocks.find((x) => x.clientKey === clientKey);
+		if (b) b.open = true;
+	}
+	function toggleBlock(clientKey: string) {
+		const b = blocks.find((x) => x.clientKey === clientKey);
+		if (b) b.open = !b.open;
+	}
+
+	// ── draft persistence ────────────────────────────────────────────────────────
+	const debouncedSave = makeDebouncedSave(1000);
+	function draftPayload() {
+		return {
+			identity: { name: externName, email: externEmail, iban: externIban },
+			blocks: blocks.map((b) => ({
+				clientKey: b.clientKey,
+				bezeichnung: b.bezeichnung,
+				betragCents: b.betragCents,
+				rechnungsdatum: b.rechnungsdatum,
+				wofuer: b.wofuer,
+				kommentar: b.kommentar
+			}))
+		};
+	}
+	function draftFiles(): Record<string, File> {
+		const out: Record<string, File> = {};
+		for (const b of blocks) if (b.file) out[b.clientKey] = b.file;
+		return out;
+	}
+	function triggerSave() {
+		if (browser) debouncedSave(draftPayload(), draftFiles());
 	}
 
 	onMount(() => {
-		if (!browser) return;
-
-		// Load draft asynchronously (best-effort, non-blocking)
-		loadDraft().then((draft) => {
-			if (draft) applyDraft(draft);
-		});
-
-		// Warn on native browser navigation away with unsaved changes
-		const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-			if (hasUnsavedChanges && !isSubmitting) {
-				e.preventDefault();
+		loadBatchDraft().then((draft) => {
+			if (!draft) return;
+			externName = draft.metadata.identity.name ?? '';
+			externEmail = draft.metadata.identity.email ?? '';
+			externIban = draft.metadata.identity.iban ?? '';
+			if (draft.metadata.blocks.length > 0) {
+				blocks = draft.metadata.blocks.map((mb) =>
+					newBlock({
+						bezeichnung: mb.bezeichnung,
+						betragCents: mb.betragCents,
+						rechnungsdatum: mb.rechnungsdatum,
+						wofuer: mb.wofuer,
+						kommentar: mb.kommentar,
+						file: draft.files[mb.clientKey] ?? null
+					})
+				);
+				draftRestored = true;
 			}
-		};
-		window.addEventListener('beforeunload', handleBeforeUnload);
-
-		// VisualViewport-aware sticky CTA: keep CTA visible when virtual keyboard opens
-		if (window.visualViewport) {
-			const vv = window.visualViewport;
-			const update = () => {
-				ctaBottomOffset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-			};
-			vv.addEventListener('resize', update);
-			vv.addEventListener('scroll', update);
-			update();
-			return () => {
-				window.removeEventListener('beforeunload', handleBeforeUnload);
-				vv.removeEventListener('resize', update);
-				vv.removeEventListener('scroll', update);
-			};
-		}
-
-		return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+		});
 	});
 
-	// SvelteKit navigation guard (C2)
-	// Leaving the form in-app is NON-destructive: the in-progress entry is
-	// persisted to IndexedDB and restored on return (the "Entwurf
-	// wiederhergestellt" banner). So instead of the old scary "Wirklich
-	// verlassen?" confirm — which wrongly implied data loss and made the
-	// "Vereins-Login" escape feel like a trap — we just force-flush the latest
-	// keystrokes and let the navigation proceed. This is a client-side
-	// SvelteKit nav (SPA): the page does not unload, so the async IndexedDB
-	// write completes after navigation starts. The `beforeunload` handler in
-	// onMount still guards a real tab/PWA close, where an async write can't be
-	// guaranteed.
 	beforeNavigate(() => {
-		if (hasUnsavedChanges && !isSubmitting && browser) {
-			void saveDraft(getDraftMetadata(), belegFile);
-		}
+		if (browser && !submitting) void saveBatchDraft(draftPayload(), draftFiles());
 	});
 
-	// ---------------------------------------------------------------------------
-	// Client-side validation
-	// ---------------------------------------------------------------------------
-
-	function validate(): boolean {
-		const errs: Record<string, string[]> = {};
-
-		if (bezahltVonKind === 'member' && !memberId) {
-			errs['bezahlt_von.member_id'] = ['Bitte ein Vereinsmitglied auswählen.'];
-		}
-		if (bezahltVonKind === 'extern') {
-			if (!externName.trim()) errs['bezahlt_von.name'] = ['Name ist erforderlich.'];
-			if (!externIban.trim()) errs['bezahlt_von.iban'] = ['IBAN ist erforderlich.'];
-			if (!externEmail.trim()) errs['bezahlt_von.email'] = ['E-Mail ist erforderlich.'];
-		}
-		if (!bezeichnung.trim() || bezeichnung.trim().length < 3) {
-			errs['bezeichnung'] = ['Bitte mindestens 3 Zeichen eingeben.'];
-		}
-		const cents = parseBetragCents(betrag);
-		if (!cents || cents <= 0) {
-			errs['betragCents'] = ['Bitte einen gültigen Betrag eingeben (z.B. 12,50).'];
-		}
-		if (!rechnungsdatum || !/^\d{4}-\d{2}-\d{2}$/.test(rechnungsdatum)) {
-			// E4.1: DateField commits "" to the form when the user enters an
-			// invalid calendar date (e.g. 30.02.2026). Surface a field-level
-			// error so the parent's `aria-invalid` prop lights the field up
-			// even after the controlled-binding sync cycle re-runs.
-			errs['rechnungsdatum'] = ['Bitte ein gültiges Rechnungsdatum eingeben.'];
-		}
-		if (!datenschutzConsent) {
-			errs['consent'] = ['Bitte Datenschutzhinweis bestätigen.'];
-		}
-
-		fieldErrors = errs;
-		return Object.keys(errs).length === 0;
+	function discardDraft() {
+		draftRestored = false;
+		void clearDraft();
+		externName = '';
+		externEmail = '';
+		externIban = '';
+		blocks = [newBlock()];
 	}
 
-	function getError(field: string): string | undefined {
-		return blurred[field] ? fieldErrors[field]?.[0] : undefined;
-	}
+	// ── submit (use:enhance builds the multipart payload) ─────────────────────────
+	const submit = () => {
+		attempted = true;
+		if (typeof navigator !== 'undefined' && !navigator.onLine) {
+			offlineError = true;
+			void saveBatchDraft(draftPayload(), draftFiles());
+			return { cancelled: true };
+		}
+		offlineError = false;
+		if (!formValid) {
+			// expand the first invalid block + scroll to it
+			const firstInvalid = blocks.find((b) => !blockValid(b));
+			if (firstInvalid) firstInvalid.open = true;
+			return { cancelled: true };
+		}
+		return { ok: true };
+	};
 
-	function markBlurred(field: string) {
-		blurred[field] = true;
-		validate();
-	}
-
-	// ---------------------------------------------------------------------------
-	// Build the JSON payload (the action expects `data` as JSON string)
-	// ---------------------------------------------------------------------------
-
-	function buildPayload(): string {
-		const bv =
-			bezahltVonKind === 'verein'
-				? { kind: 'verein' as const, display_name: page.data.vereinName }
-				: bezahltVonKind === 'member'
-					? {
-							kind: 'member' as const,
-							member_id: memberId,
-							display_name: memberDisplayName,
-							email: memberEmail || undefined
-						}
-					: {
-							kind: 'extern' as const,
-							name: externName,
-							iban: externIban,
-							email: externEmail
-						};
-
+	function buildData(): string {
 		return JSON.stringify({
-			bezahlt_von: bv,
-			bezeichnung: bezeichnung.trim(),
-			betragCents: parseBetragCents(betrag) || 0,
-			currency: 'EUR',
-			rechnungsdatum: rechnungsdatum || null,
-			wofuer: wofuer || null,
-			kommentar: kommentar || undefined,
+			identity: {
+				name: externName.trim(),
+				iban: externIban.replace(/\s+/g, ''),
+				email: externEmail.trim()
+			},
 			consent_text_version: DATENSCHUTZ_VERSION,
-			submissionNonce
+			auslagen: blocks.map((b) => ({
+				client_key: b.clientKey,
+				submission_nonce: b.nonce,
+				bezeichnung: b.bezeichnung.trim(),
+				kommentar: b.kommentar.trim() || null,
+				rechnungsdatum: b.rechnungsdatum,
+				betrag_cents: b.betragCents ?? 0,
+				wofuer: b.wofuer.trim() || null
+			}))
 		});
 	}
 
-	// ---------------------------------------------------------------------------
-	// Submit handler (JS-enhanced path)
-	// ---------------------------------------------------------------------------
-
-	async function handleSubmit(e: SubmitEvent) {
-		// C6: Double-submit guard — must be synchronous and first
-		if (isSubmitting) {
-			e.preventDefault();
-			return;
-		}
-
-		// PR4: Offline guard — intercept before the native POST reaches the network.
-		// navigator.onLine is browser-only; this handler only runs in the browser
-		// (it's an event handler), so no SSR guard needed. When offline we:
-		//   1. prevent the native POST (which would show the browser's connection-error page)
-		//   2. ensure the current draft is flushed to IndexedDB immediately
-		//   3. show an honest inline message — no false auto-send promise
-		// The online path is completely unaffected: we only enter this branch when
-		// navigator.onLine === false.
-		if (typeof navigator !== 'undefined' && !navigator.onLine) {
-			e.preventDefault();
-			offlineError = true;
-			// Force-flush any pending debounced keystrokes to IndexedDB right now.
-			// saveDraft is best-effort; we never block the user on its result.
-			void saveDraft(getDraftMetadata(), belegFile);
-			return;
-		}
-
-		offlineError = false;
-		isSubmitting = true;
-
-		// Mark all fields as blurred to show all validation errors
-		blurred = {
-			'bezahlt_von.member_id': true,
-			'bezahlt_von.name': true,
-			'bezahlt_von.iban': true,
-			'bezahlt_von.email': true,
-			bezeichnung: true,
-			betragCents: true,
-			rechnungsdatum: true,
-			consent: true
-		};
-
-		if (!validate()) {
-			isSubmitting = false;
-			e.preventDefault();
-			// Scroll to first error
-			const firstError = document.querySelector('[aria-invalid="true"]');
-			firstError?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-			return;
-		}
-
-		// C9: Clear unsaved changes flag before submit to prevent beforeunload/beforeNavigate
-		// from firing during the 303 redirect. Actual clearDraft happens on the success page (C1).
-		hasUnsavedChanges = false;
-
-		// Let the native form submit proceed (no JS fetch — SSR fallback works)
-		// The hidden `data` field is set by the form's hidden input below.
-		// We update it right before submit via the hidden input binding.
-	}
-
-	// Reactive payload for the hidden input
-	let payloadJson = $derived(
-		browser
-			? buildPayload()
-			: JSON.stringify({
-					bezahlt_von: { kind: 'verein', display_name: page.data.vereinName },
-					bezeichnung: '',
-					betragCents: 0,
-					currency: 'EUR'
-				})
-	);
-
-	// C2-TAX: disable submit until the two tax-critical fields are filled.
-	// Mirrors the schema-level requireds (beleg + rechnungsdatum). The
-	// existing client-side validate() still runs on submit and surfaces
-	// detailed messages, but blocking the button is a clearer UX gate.
-	const submitDisabled = $derived(
-		isSubmitting || !belegFile || !rechnungsdatum
-	);
-
-	// Name only the field(s) actually missing so the hint is precise. Uses
-	// "Rechnungsdatum" to match the field's visible <Label>.
-	const submitHint = $derived.by(() => {
-		const missing: string[] = [];
-		if (!belegFile) missing.push('einen Beleg hochladen');
-		if (!rechnungsdatum) missing.push('das Rechnungsdatum angeben');
-		return missing.length > 0 ? `Bitte zuerst ${missing.join(' und ')}.` : '';
+	// CTA label (pluralized + summed)
+	const ctaLabel = $derived.by(() => {
+		const n = blocks.length;
+		const noun = n === 1 ? 'Auslage einreichen' : `${n} Auslagen einreichen`;
+		return formValid ? `${noun} — ${formatMoney(gesamtCents)}` : noun;
+	});
+	const missingHint = $derived.by(() => {
+		if (!identityValid) return 'Bitte zuerst Name, E-Mail und IBAN ausfüllen.';
+		const bad = blocks.findIndex((b) => !blockValid(b));
+		if (bad >= 0) return `Fehlt noch: Beleg, Betrag & Datum für Auslage ${bad + 1}.`;
+		if (!consent) return 'Bitte den Datenschutzhinweis bestätigen.';
+		return '';
 	});
 </script>
+
+{#snippet fieldError(id: string, msg: string | undefined)}
+	{#if msg}
+		<p {id} class="text-xs text-severity-critical-text" role="alert">{msg}</p>
+	{/if}
+{/snippet}
+
+{#snippet blockFields(block: Block)}
+	<div class="flex flex-col gap-4">
+		<div class="flex flex-col gap-1.5">
+			<Label for="bez-{block.clientKey}">Was war's <span class="text-primary-text" aria-hidden="true">*</span></Label>
+			<Input
+				id="bez-{block.clientKey}"
+				type="text"
+				maxlength={200}
+				placeholder="z. B. Getränke fürs Sommerfest"
+				bind:value={block.bezeichnung}
+				oninput={triggerSave}
+				aria-invalid={Boolean(itemError(block.clientKey, 'bezeichnung'))}
+			/>
+			{@render fieldError(`err-bez-${block.clientKey}`, itemError(block.clientKey, 'bezeichnung'))}
+		</div>
+
+		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+			<div class="flex flex-col gap-1.5">
+				<Label>Betrag <span class="text-primary-text" aria-hidden="true">*</span></Label>
+				<AmountField
+					name="_betrag_{block.clientKey}"
+					value={centsToInput(block.betragCents)}
+					sign="minus"
+					type="ausgabe"
+					aria-invalid={Boolean(itemError(block.clientKey, 'betrag_cents'))}
+					onchange={(c) => {
+						block.betragCents = c;
+						triggerSave();
+					}}
+				/>
+				<p class="text-xs leading-snug text-ink-500">
+					Wird als <b class="font-semibold">Auslage</b> erfasst — der Verein erstattet dir den Betrag.
+				</p>
+				{@render fieldError(`err-betrag-${block.clientKey}`, itemError(block.clientKey, 'betrag_cents'))}
+			</div>
+			<div class="flex flex-col gap-1.5">
+				<Label>Rechnungsdatum <span class="text-primary-text" aria-hidden="true">*</span></Label>
+				<DateField
+					name="_datum_{block.clientKey}"
+					value={block.rechnungsdatum}
+					max={todayIso}
+					aria-invalid={Boolean(itemError(block.clientKey, 'rechnungsdatum'))}
+					onchange={(iso) => {
+						block.rechnungsdatum = iso;
+						triggerSave();
+					}}
+				/>
+				{@render fieldError(`err-datum-${block.clientKey}`, itemError(block.clientKey, 'rechnungsdatum'))}
+			</div>
+		</div>
+
+		{#if projects.length > 0}
+			<div class="flex flex-col gap-1.5">
+				<Label for="proj-{block.clientKey}">Projekt / Event <span class="font-normal text-ink-300">optional</span></Label>
+				<select
+					id="proj-{block.clientKey}"
+					class="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none md:text-sm"
+					bind:value={block.wofuer}
+					onchange={triggerSave}
+				>
+					<option value="">🌥 Allgemein / kein konkretes Projekt</option>
+					{#each projects as p (p.id)}
+						<option value={p.name}>{p.name}</option>
+					{/each}
+				</select>
+			</div>
+		{/if}
+
+		<div class="flex flex-col gap-1.5">
+			<Label for="kom-{block.clientKey}">Kommentar <span class="font-normal text-ink-300">optional</span></Label>
+			<textarea
+				id="kom-{block.clientKey}"
+				rows={2}
+				maxlength={1000}
+				placeholder="Noch was, das Julia wissen sollte?"
+				class="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none md:text-sm"
+				bind:value={block.kommentar}
+				oninput={triggerSave}
+			></textarea>
+		</div>
+
+		<BelegUpload
+			bind:file={block.file}
+			errors={itemError(block.clientKey, 'beleg') ? { beleg: [itemError(block.clientKey, 'beleg')!] } : {}}
+			aria-invalid={Boolean(itemError(block.clientKey, 'beleg'))}
+			onchange={triggerSave}
+			onfile={(f) => {
+				block.file = f;
+				triggerSave();
+			}}
+		/>
+	</div>
+{/snippet}
 
 <form
 	{action}
 	method="post"
 	enctype="multipart/form-data"
-	class="flex flex-col gap-6 pb-32"
-	onsubmit={handleSubmit}
-	novalidate
+	class="flex flex-col gap-6 pb-40"
+	use:enhance={({ formData, cancel }) => {
+		const decision = submit();
+		if ('cancelled' in decision) {
+			cancel();
+			return;
+		}
+		// Rebuild the multipart body under our control: one JSON `data` field +
+		// one `beleg_<i>` per block (index = position in the auslagen array).
+		for (const k of [...formData.keys()]) formData.delete(k);
+		formData.set('data', buildData());
+		blocks.forEach((b, i) => {
+			if (b.file) formData.set(`beleg_${i}`, b.file);
+		});
+		submitting = true;
+		return async ({ update }) => {
+			submitting = false;
+			await update({ reset: false });
+		};
+	}}
 >
-	<!-- Hidden JSON payload field -->
-	<input type="hidden" name="data" value={payloadJson} />
-	<!-- Idempotency key (C8) -->
-	<input type="hidden" name="submissionNonce" value={submissionNonce} />
-
-	<!-- Draft restored banner -->
 	{#if draftRestored}
-		<div
-			class="bg-muted flex items-center justify-between rounded-lg px-4 py-3 text-sm"
-			role="status"
+		<Callout
+			tone="info"
+			title="Entwurf wiederhergestellt."
+			subtitle="Wir haben deine letzten Eingaben gesichert."
 		>
-			<span>Entwurf wiederhergestellt.</span>
-			<button
-				type="button"
-				class="text-muted-foreground ml-4 underline"
-				onclick={() => {
-					draftRestored = false;
-					clearDraft();
-				}}
-			>
-				Verwerfen
-			</button>
-		</div>
+			{#snippet icon()}<Info />{/snippet}
+			{#snippet actions()}
+				<button type="button" onclick={discardDraft} class="text-xs font-semibold text-ink-500 underline">Verwerfen</button>
+			{/snippet}
+		</Callout>
 	{/if}
 
-	<!-- PR4: Offline submit error -->
 	{#if offlineError}
-		<div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-lg px-4 py-3 text-sm" role="alert">
-			Keine Internetverbindung — dein Entwurf ist gespeichert. Bitte sende erneut ab, sobald du wieder online bist.
-		</div>
+		<Callout tone="warn" title="Keine Internetverbindung." subtitle="Dein Entwurf ist gespeichert. Sobald du wieder online bist, kannst du absenden.">
+			{#snippet icon()}<CircleAlert />{/snippet}
+		</Callout>
 	{/if}
 
-	<!-- Server error -->
 	{#if serverError}
-		<div class="bg-destructive/10 text-destructive rounded-lg px-4 py-3 text-sm" role="alert">
-			{serverError}
-		</div>
+		<Callout tone="crit" title="Senden hat gerade nicht geklappt." subtitle={serverError} data-testid="einreichen-server-error">
+			{#snippet icon()}<CircleAlert />{/snippet}
+		</Callout>
+	{/if}
+	{#if attempted && formErrors && formErrors.length > 0}
+		<Callout tone="crit" title="Bitte korrigiere die markierten Felder." subtitle={formErrors.join(' ')}>
+			{#snippet icon()}<CircleAlert />{/snippet}
+		</Callout>
 	{/if}
 
-	<!-- ── Section 1: Wer hat bezahlt? ──────────────────────────────────────── -->
-	<BezahltVonPicker
-		bind:kind={bezahltVonKind}
-		vereinName={page.data.vereinName}
-		{members}
-		bind:memberId
-		bind:memberDisplayName
-		bind:memberEmail
-		bind:externName
-		bind:externIban
-		bind:externEmail
-		errors={fieldErrors}
-		onchange={triggerDraftSave}
-	/>
+	<LoginNudge />
 
-	<!-- ── Section 2: Wofür ist die Auslage? ──────────────────────────────── -->
-	<Card>
-		<CardHeader>
-			<CardTitle>Wofür ist die Auslage?</CardTitle>
-		</CardHeader>
-		<CardContent class="flex flex-col gap-4">
-			<!-- Projekt (stub until Phase 3) -->
-			{#if projects.length > 0}
-				<div class="flex flex-col gap-1.5">
-					<Label for="wofuer-select">Projekt / Event</Label>
-					<p class="text-muted-foreground text-xs">
-						Bei einem konkreten Event das Event wählen. Bei allgemeinen Vereinsausgaben → Allgemein.
-					</p>
-					<select
-						id="wofuer-select"
-						name="wofuer_select"
-						class="border-input bg-background focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-base md:text-sm focus-visible:ring-2 focus-visible:outline-none"
-						onchange={(e) => {
-							wofuer = e.currentTarget.value;
-							triggerDraftSave();
-						}}
+	<!-- ── Section 1: Wer bekommt's zurück? (extern-only) ─────────────────────── -->
+	<section class="flex flex-col gap-4">
+		<h2 class="flex items-center gap-2 border-b border-hairline pb-2 text-[13px] font-extrabold text-ink-900">
+			<span class="grid size-[22px] place-items-center rounded-full bg-secondary text-[11.5px] font-bold text-ink-700">1</span>
+			Wer bekommt's zurück?
+			{#if blocks.length > 1}<span class="ml-auto text-[11px] font-semibold text-ink-500">einmal für alle</span>{/if}
+		</h2>
+		<div class="flex flex-col gap-1.5">
+			<Label for="ext-name">Name <span class="text-primary-text" aria-hidden="true">*</span></Label>
+			<Input id="ext-name" type="text" maxlength={120} placeholder="Vor- und Nachname" bind:value={externName} oninput={triggerSave} aria-invalid={Boolean(identityError('name'))} />
+			{@render fieldError('err-name', identityError('name'))}
+		</div>
+		<div class="flex flex-col gap-1.5">
+			<Label for="ext-email">E-Mail <span class="text-primary-text" aria-hidden="true">*</span></Label>
+			<Input id="ext-email" type="email" inputmode="email" autocapitalize="none" maxlength={254} placeholder="damit wir dich erreichen" bind:value={externEmail} oninput={triggerSave} aria-invalid={Boolean(identityError('email'))} />
+			{@render fieldError('err-email', identityError('email'))}
+		</div>
+		<div class="flex flex-col gap-1.5">
+			<Label for="ext-iban">IBAN <span class="text-primary-text" aria-hidden="true">*</span></Label>
+			<Input id="ext-iban" type="text" class="tabular-nums tracking-[0.04em]" maxlength={34} placeholder="DE00 0000 0000 0000 0000 00" bind:value={externIban} oninput={triggerSave} aria-invalid={Boolean(identityError('iban'))} />
+			<p class="text-xs leading-snug text-ink-500">Für die Rücküberweisung — geht <b class="font-semibold">verschlüsselt</b> direkt an den Vorstand.</p>
+			{@render fieldError('err-iban', identityError('iban'))}
+		</div>
+	</section>
+
+	<!-- ── Section 2: Auslagen ────────────────────────────────────────────────── -->
+	<section class="flex flex-col gap-4">
+		<h2 class="flex items-center gap-2 border-b border-hairline pb-2 text-[13px] font-extrabold text-ink-900">
+			<span class="grid size-[22px] place-items-center rounded-full bg-secondary text-[11.5px] font-bold text-ink-700">2</span>
+			{blocks.length > 1 ? 'Deine Auslagen' : "Wofür war's?"}
+		</h2>
+
+		<div class="flex flex-col gap-2.5" data-testid="auslage-repeater">
+			{#if blocks.length === 1}
+				{@render blockFields(blocks[0]!)}
+			{:else}
+				{#each blocks as block, i (block.clientKey)}
+					<AuslageBlock
+						index={i + 1}
+						open={block.open}
+						valid={blockComplete(block)}
+						removable={blocks.length > 1}
+						summary={blockComplete(block)
+							? {
+									title: block.bezeichnung,
+									amountLabel: formatMoney(block.betragCents ?? 0),
+									belegOk: block.file != null,
+									dateLabel: block.rechnungsdatum
+										? new Date(block.rechnungsdatum).toLocaleDateString('de-DE')
+										: null
+								}
+							: null}
+						onToggle={() => toggleBlock(block.clientKey)}
+						onRemove={() => removeBlock(block.clientKey)}
 					>
-						<option value="">🌥 Allgemein / kein konkretes Projekt</option>
-						{#each projects as p (p.id)}
-							<option value={p.name} selected={wofuer === p.name}>{p.name}</option>
-						{/each}
-					</select>
-				</div>
+						{#snippet body()}{@render blockFields(block, i)}{/snippet}
+					</AuslageBlock>
+				{/each}
 			{/if}
 
-			<!-- Bezeichnung -->
-			<div class="flex flex-col gap-1.5">
-				<Label for="bezeichnung">Was war's? <span aria-hidden="true">*</span></Label>
-				<p class="text-muted-foreground text-xs">
-					Kurze Beschreibung — z.B. „Bahnticket München → Berlin" oder „Deko-Material Sommerfest".
-				</p>
-				<Input
-					id="bezeichnung"
-					name="bezeichnung_display"
-					type="text"
-					maxlength={200}
-					placeholder="Bahnticket München → Berlin"
-					bind:value={bezeichnung}
-					oninput={triggerDraftSave}
-					onblur={() => markBlurred('bezeichnung')}
-					aria-invalid={!!getError('bezeichnung')}
-					aria-describedby={getError('bezeichnung') ? 'err-bezeichnung' : undefined}
-				/>
-				<div class="flex justify-between">
-					{#if getError('bezeichnung')}
-						<p id="err-bezeichnung" class="text-destructive text-xs" role="alert">{getError('bezeichnung')}</p>
-					{:else}
-						<span></span>
-					{/if}
-					<p class="text-muted-foreground text-xs">{bezeichnung.length}/200</p>
-				</div>
-			</div>
-
-			<!-- Betrag -->
-			<div class="flex flex-col gap-1.5">
-				<Label for="betrag">Betrag in Euro <span aria-hidden="true">*</span></Label>
-				<p class="text-muted-foreground text-xs">
-					Bruttobetrag (inkl. MwSt.) — was du tatsächlich gezahlt hast.
-				</p>
-				<div class="relative">
-					<span
-						class="text-muted-foreground absolute top-1/2 left-3 -translate-y-1/2 text-sm select-none"
-						aria-hidden="true">€</span
-					>
-					<Input
-						id="betrag"
-						name="betrag_display"
-						type="text"
-						inputmode="decimal"
-						placeholder="12,50"
-						class="pl-7"
-						bind:value={betrag}
-						oninput={triggerDraftSave}
-						onblur={() => markBlurred('betragCents')}
-						aria-invalid={!!getError('betragCents')}
-						aria-describedby={getError('betragCents') ? 'err-betragCents' : undefined}
-					/>
-				</div>
-				{#if getError('betragCents')}
-					<p id="err-betragCents" class="text-destructive text-xs" role="alert">{getError('betragCents')}</p>
-				{/if}
-			</div>
-
-			<!-- Rechnungsdatum -->
-			<!-- C2-TAX: required per EÜR §11 EStG — surface the * marker and
-			     wire aria-invalid + role=alert error rendering.
-			     E4.1 (Night-2 C6-FORM consumers): migrated to DateField
-			     primitive — TT.MM.JJJJ display, ISO YYYY-MM-DD on the hidden
-			     `rechnungsdatum` sibling input. AuslagenForm encodes its
-			     payload into the hidden `data` JSON, so we drive the
-			     `rechnungsdatum` $state directly via the DateField onchange
-			     hook (and keep `markBlurred` semantics for the inline error). -->
-			<div class="flex flex-col gap-1.5">
-				<Label for="rechnungsdatum">
-					Rechnungsdatum <span aria-hidden="true">*</span>
-				</Label>
-				<p class="text-muted-foreground text-xs">Datum vom Beleg.</p>
-				<DateField
-					id="rechnungsdatum"
-					name="rechnungsdatum"
-					value={rechnungsdatum}
-					required
-					max={new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Berlin' })}
-					aria-invalid={!!getError('rechnungsdatum')}
-					aria-describedby={getError('rechnungsdatum') ? 'err-rechnungsdatum' : undefined}
-					onchange={(iso) => {
-						rechnungsdatum = iso;
-						markBlurred('rechnungsdatum');
-						triggerDraftSave();
-					}}
-				/>
-				{#if getError('rechnungsdatum')}
-					<p id="err-rechnungsdatum" class="text-destructive text-xs" role="alert">
-						{getError('rechnungsdatum')}
-					</p>
-				{/if}
-			</div>
-
-			<!-- Kommentar -->
-			<div class="flex flex-col gap-1.5">
-				<Label for="kommentar">Kommentar <span class="text-muted-foreground font-normal">(optional)</span></Label>
-				<p class="text-muted-foreground text-xs">
-					Falls Kontext fehlt — z.B. „Anlass: Wochenende 18.–20.10." oder „Ersatzteil für Nebelmaschine".
-				</p>
-				<textarea
-					id="kommentar"
-					name="kommentar_display"
-					rows={3}
-					maxlength={1000}
-					placeholder="Optionaler Kommentar…"
-					class="border-input bg-background focus-visible:ring-ring flex w-full rounded-md border px-3 py-2 text-base md:text-sm focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-					bind:value={kommentar}
-					oninput={triggerDraftSave}
-				></textarea>
-				<p class="text-muted-foreground text-right text-xs">{kommentar.length}/1000</p>
-			</div>
-		</CardContent>
-	</Card>
-
-	<!-- ── Section 3: Beleg ──────────────────────────────────────────────────── -->
-	<!-- C2-TAX: pass aria-invalid through when the server / client validation
-	     reports a beleg-field error. -->
-	<BelegUpload
-		bind:file={belegFile}
-		errors={fieldErrors}
-		aria-invalid={Boolean(fieldErrors.beleg && fieldErrors.beleg.length > 0)}
-		onchange={triggerDraftSave}
-		onfile={(f) => {
-			belegFile = f;
-		}}
-	/>
-
-	<!-- ── Section 4: Datenschutz ───────────────────────────────────────────── -->
-	<Card>
-		<CardHeader>
-			<CardTitle>Datenschutz</CardTitle>
-		</CardHeader>
-		<CardContent class="flex flex-col gap-4">
-			<p class="text-muted-foreground whitespace-pre-line text-sm leading-relaxed">
-				{datenschutzText(page.data.kontaktEmail ?? '')}
-			</p>
-
-			<label class="flex cursor-pointer items-start gap-3">
-				<input
-					type="checkbox"
-					name="datenschutz_consent"
-					value={DATENSCHUTZ_VERSION}
-					bind:checked={datenschutzConsent}
-					onchange={() => {
-						markBlurred('consent');
-						triggerDraftSave();
-					}}
-					class="accent-primary mt-0.5 h-4 w-4 shrink-0"
-					aria-invalid={!!getError('consent')}
-					aria-describedby={getError('consent') ? 'err-consent' : undefined}
-				/>
-				<span class="text-sm">
-					Ich habe den Datenschutzhinweis gelesen und stimme der Verarbeitung meiner Daten zu.
-					<span aria-hidden="true"> *</span>
-				</span>
-			</label>
-
-			<!-- Link to full privacy policy (C12) -->
-			<!-- Note: /datenschutz is Phase 7.5 — link will 404 until that route is deployed -->
-			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-			<a href="/datenschutz" target="_blank" rel="noopener noreferrer" class="underline text-primary text-sm">Vollständige Datenschutzerklärung</a>
-
-			<!-- Hidden version stamp for server -->
-			<input type="hidden" name="consent_text_version" value={DATENSCHUTZ_VERSION} />
-
-			{#if getError('consent')}
-				<p id="err-consent" class="text-destructive text-xs" role="alert">{getError('consent')}</p>
+			{#if canAddMore}
+				<button
+					type="button"
+					onclick={addBlock}
+					data-testid="add-auslage"
+					class="flex items-center justify-center gap-2 rounded-[12px] border border-dashed border-border py-3 text-sm font-semibold text-ink-700 transition-colors hover:border-primary/50 hover:text-primary-text focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none [&_svg]:size-4"
+				>
+					<Plus aria-hidden="true" />Weitere Auslage hinzufügen
+				</button>
 			{/if}
-		</CardContent>
-	</Card>
+		</div>
+	</section>
 
-	<!-- ── Sticky CTA ──────────────────────────────────────────────────────── -->
-	<!-- C3: ctaBottomOffset shifts the bar up when virtual keyboard opens on mobile -->
-	<div
-		class="bg-background/95 fixed right-0 bottom-0 left-0 z-50 border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm"
-		style="bottom: {ctaBottomOffset}px;"
-	>
-		<div class="mx-auto max-w-xl">
-			{#if Object.keys(fieldErrors).length > 0 && Object.keys(blurred).length > 0}
-				<p class="text-destructive mb-2 text-center text-xs">
-					Bitte alle Pflichtfelder ausfüllen.
+	<!-- ── Section 3: Datenschutz ─────────────────────────────────────────────── -->
+	<section class="flex flex-col gap-3">
+		<label class="flex cursor-pointer items-start gap-3">
+			<input type="checkbox" bind:checked={consent} onchange={triggerSave} class="mt-0.5 size-4 shrink-0 accent-primary" aria-invalid={attempted && !consent} />
+			<span class="text-sm text-ink-700">
+				Ich bin einverstanden, dass meine Angaben zur Bearbeitung der Erstattung gespeichert werden.
+				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+				<a href="/datenschutz" target="_blank" rel="noopener noreferrer" class="font-semibold text-primary-text underline">Datenschutz</a>.
+				<span aria-hidden="true"> *</span>
+			</span>
+		</label>
+		<details class="text-xs text-ink-500">
+			<summary class="cursor-pointer font-medium">Datenschutzhinweis anzeigen</summary>
+			<p class="mt-2 whitespace-pre-line leading-relaxed">{datenschutzText(page.data.kontaktEmail ?? '')}</p>
+		</details>
+	</section>
+
+	<!-- ── Review list (≥2 blocks) ────────────────────────────────────────────── -->
+	{#if blocks.length > 1}
+		<BatchReviewList
+			items={blocks.map((b) => ({
+				clientKey: b.clientKey,
+				title: b.bezeichnung,
+				dateLabel: b.rechnungsdatum ? new Date(b.rechnungsdatum).toLocaleDateString('de-DE') : null,
+				betragCents: b.betragCents,
+				belegOk: b.file != null,
+				incomplete: !blockValid(b)
+			}))}
+			{gesamtCents}
+			onEdit={editBlock}
+			onRemove={removeBlock}
+		/>
+	{/if}
+
+	<!-- ── Sticky foot ────────────────────────────────────────────────────────── -->
+	<div class="fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-card/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
+		<div class="mx-auto flex max-w-xl flex-col gap-2">
+			{#if !formValid && missingHint}
+				<p class="flex items-center justify-center gap-1.5 text-center text-xs font-semibold text-severity-critical-text [&_svg]:size-4" data-testid="einreichen-gate">
+					<CircleAlert aria-hidden="true" />{missingHint}
 				</p>
 			{/if}
-			{#if submitDisabled && !isSubmitting && submitHint}
-				<p id="submit-hint" class="text-muted-foreground mb-2 text-center text-xs">
-					{submitHint}
-				</p>
-			{/if}
-			<Button
-				type="submit"
-				class="w-full"
-				size="lg"
-				disabled={submitDisabled}
-				aria-busy={isSubmitting}
-				aria-describedby={submitDisabled && !isSubmitting ? 'submit-hint' : undefined}
-				data-testid="auslage-submit"
-			>
-				{#if isSubmitting}
-					<svg
-						class="mr-2 h-4 w-4 animate-spin"
-						fill="none"
-						viewBox="0 0 24 24"
-						aria-hidden="true"
-					>
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
-						></circle>
-						<path
-							class="opacity-75"
-							fill="currentColor"
-							d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-						></path>
+			<Button type="submit" size="lg" class="min-h-[52px] w-full text-[15px]" disabled={!formValid || submitting} aria-busy={submitting} data-testid="auslage-submit">
+				{#if submitting}
+					<svg class="mr-2 size-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 					</svg>
 					Wird eingereicht…
 				{:else}
-					Auslage einreichen
+					<Send aria-hidden="true" class="mr-1.5 size-4" />{ctaLabel}
 				{/if}
 			</Button>
+			<p class="flex items-center justify-center gap-1.5 text-[11.5px] text-ink-500 [&_svg]:size-3.5 [&_svg]:text-type-einnahme">
+				<ShieldCheck aria-hidden="true" />Verschlüsselt · deine Daten gehen direkt an den Vorstand.
+			</p>
 		</div>
 	</div>
 </form>

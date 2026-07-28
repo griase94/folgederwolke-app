@@ -139,27 +139,32 @@ async function submit(
   opts: SubmitOpts = {},
 ): Promise<{ redirectLocation?: string; status?: number; data?: unknown }> {
   const fd = new FormData();
-  const payload: Record<string, unknown> = {
-    bezahlt_von: {
-      kind: "extern",
+  // Batch shape (Aurora A-flow S1): extern-only identity + N Auslage items.
+  // These route-level tests exercise a 1-item batch; the multi-item batch core
+  // (dedup/atomicity) is covered by tests/integration/auslage-submit-batch.test.ts.
+  const item: Record<string, unknown> = {
+    client_key: "a1",
+    bezeichnung: opts.bezeichnung ?? "Bahnticket München → Berlin",
+    betrag_cents: 1250,
+    rechnungsdatum: "2026-03-01",
+    wofuer: null,
+  };
+  // Only include the per-item nonce when explicitly provided (undefined → omit
+  // to model legacy clients; null → also omit).
+  if (opts.nonce) item["submission_nonce"] = opts.nonce;
+
+  const payload = {
+    identity: {
       name: "Jane Doe",
       iban: "DE89370400440532013000",
       email: "jane@example.org",
     },
-    bezeichnung: opts.bezeichnung ?? "Bahnticket München → Berlin",
-    betragCents: 1250,
-    currency: "EUR",
-    rechnungsdatum: "2026-03-01",
-    wofuer: null,
     consent_text_version: DATENSCHUTZ_VERSION,
+    auslagen: [item],
   };
-  // Only include the nonce when explicitly provided (undefined → omit field
-  // to model legacy clients; null → also omit).
-  if (opts.nonce) payload["submissionNonce"] = opts.nonce;
 
   fd.set("data", JSON.stringify(payload));
-  fd.set("beleg", belegFile());
-  if (opts.nonce) fd.set("submissionNonce", opts.nonce);
+  fd.set("beleg_0", belegFile());
 
   _setFileStorageOverride(storage);
 
