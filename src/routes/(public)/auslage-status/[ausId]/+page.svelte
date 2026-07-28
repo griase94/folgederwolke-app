@@ -1,176 +1,133 @@
 <script lang="ts">
 	import { page } from '$app/state';
-  import type { PageData } from './$types.js';
+	import StatusSplitShell, { type StatusShellTone } from '$lib/components/public/StatusSplitShell.svelte';
+	import StatusMedallion, { type MedallionTone } from '$lib/components/ui/StatusMedallion.svelte';
+	import IdChip from '$lib/components/ui/id-chip/IdChip.svelte';
+	import AuslageStatusDetail from '$lib/components/public/AuslageStatusDetail.svelte';
+	import BatchStatusGroup, { type BatchNode, type TallyChip } from '$lib/components/public/BatchStatusGroup.svelte';
+	import { statusPresentation } from '$lib/components/auslagen/status-presentation.js';
+	import { buildNodeDetail, buildSingleAside, type StatusNode } from '$lib/components/auslagen/status-detail-builder.js';
+	import { formatMoney } from '$lib/components/ui/money/money.svelte';
+	import type { AuslageStatus } from '$lib/server/domain/auslage-status.js';
+	import Check from '@lucide/svelte/icons/check';
+	import Clock from '@lucide/svelte/icons/clock';
+	import ShieldCheck from '@lucide/svelte/icons/shield-check';
+	import CircleCheck from '@lucide/svelte/icons/circle-check';
+	import CircleX from '@lucide/svelte/icons/circle-x';
+	import Receipt from '@lucide/svelte/icons/receipt';
+	import HandCoins from '@lucide/svelte/icons/hand-coins';
+	import Lock from '@lucide/svelte/icons/lock';
+	import type { PageData } from './$types.js';
 
-  let { data }: { data: PageData } = $props();
+	let { data }: { data: PageData } = $props();
 
-  const STEPS = [
-    { key: 'eingegangen', label: 'Eingegangen', description: 'Wir haben deine Einreichung erhalten.' },
-    { key: 'in_pruefung', label: 'In Prüfung', description: 'Die Einreichung wird geprüft.' },
-    { key: 'geprueft', label: 'Geprüft', description: 'Die Prüfung ist abgeschlossen.' },
-    { key: 'erstattet', label: 'Erstattet', description: 'Der Betrag wurde überwiesen.' },
-  ] as const;
+	const nodes = $derived(data.nodes as StatusNode[]);
+	const isBatch = $derived(nodes.length > 1);
+	const focus = $derived(nodes.find((n) => n.ausId === data.focusAusId) ?? nodes[0]!);
+	const submittedLabel = $derived(new Date(data.submittedAt).toLocaleDateString('de-DE'));
 
-  const ABGELEHNT_STEP = {
-    key: 'abgelehnt',
-    label: 'Abgelehnt',
-    description: 'Die Einreichung wurde leider abgelehnt.',
-  };
+	// Shell tone follows the focused node (single); a batch stays neutral so one
+	// node's fate never washes the whole group.
+	const shellTone = $derived<StatusShellTone>(
+		isBatch
+			? 'default'
+			: focus.status === 'erstattet'
+				? 'done'
+				: focus.status === 'abgelehnt'
+					? 'reject'
+					: 'default'
+	);
+	const medallionTone = $derived<MedallionTone>(statusPresentation(focus.status).medallion);
+	const singleAside = $derived(buildSingleAside(focus));
 
-  type StepKey = (typeof STEPS)[number]['key'];
+	const TALLY_LABEL: Record<AuslageStatus, string> = {
+		eingegangen: 'in Prüfung',
+		in_pruefung: 'in Prüfung',
+		geprueft: 'freigegeben',
+		erstattet: 'erstattet',
+		abgelehnt: 'abgelehnt'
+	};
+	const tally = $derived.by((): TallyChip[] => {
+		const order: string[] = [];
+		const counts: Record<string, { variant: TallyChip['variant']; label: string; n: number }> = {};
+		for (const n of nodes) {
+			const label = TALLY_LABEL[n.status];
+			const variant = statusPresentation(n.status).chip;
+			const key = `${variant}:${label}`;
+			if (!counts[key]) {
+				counts[key] = { variant, label, n: 0 };
+				order.push(key);
+			}
+			counts[key].n += 1;
+		}
+		return order.map((k) => ({ variant: counts[k]!.variant, label: `${counts[k]!.n} ${counts[k]!.label}` }));
+	});
 
-  const STATUS_ORDER: Record<string, number> = {
-    eingegangen: 0,
-    in_pruefung: 1,
-    geprueft: 2,
-    erstattet: 3,
-    abgelehnt: 2, // branch-off after "geprüft" position
-  };
-
-  const currentIndex = $derived(STATUS_ORDER[data.status] ?? 0);
-  const isAbgelehnt = $derived(data.status === 'abgelehnt');
-
-  function formatDate(iso: string | null): string {
-    if (!iso) return '';
-    return new Date(iso).toLocaleDateString('de-DE', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
-  }
-
-  function formatBetrag(cents: number, currency: string): string {
-    return new Intl.NumberFormat('de-DE', {
-      style: 'currency',
-      currency,
-    }).format(cents / 100);
-  }
-
-  function isStepDone(stepKey: StepKey): boolean {
-    const stepIndex = STATUS_ORDER[stepKey] ?? 0;
-    return stepIndex < currentIndex || (stepIndex === currentIndex && !isAbgelehnt);
-  }
-
-  function isStepActive(stepKey: StepKey): boolean {
-    return data.status === stepKey;
-  }
+	const batchNodes = $derived<BatchNode[]>(
+		nodes.map((n) => ({
+			ausId: n.ausId,
+			bezeichnung: n.bezeichnung,
+			betragCents: n.betragCents,
+			chip: { variant: statusPresentation(n.status).chip, label: statusPresentation(n.status).pill },
+			detail: buildNodeDetail(n, { compact: true })
+		}))
+	);
 </script>
 
-<svelte:head>
-  <title>Status {data.ausId} – {page.data.vereinName}</title>
-</svelte:head>
+<svelte:head><title>Status {focus.ausId} — {page.data.vereinName}</title></svelte:head>
 
-<main class="container mx-auto max-w-2xl px-6 py-12">
-  <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-  <a href="/auslage-einreichen" class="text-muted-foreground hover:text-foreground mb-8 inline-flex items-center gap-1 text-sm transition-colors">
-    ← Neue Einreichung
-  </a>
+{#snippet medallionIcon(status: AuslageStatus)}
+	{#if status === 'eingegangen'}<Check />{:else if status === 'in_pruefung'}<Clock />{:else if status === 'geprueft'}<ShieldCheck />{:else if status === 'erstattet'}<CircleCheck />{:else}<CircleX />{/if}
+{/snippet}
 
-  <h1 class="text-foreground mb-2 text-2xl font-bold tracking-tight">
-    Einreichungs-Status
-  </h1>
-  <p class="font-mono text-muted-foreground mb-8 text-lg">{data.ausId}</p>
-
-  <!-- Summary card -->
-  <div class="bg-card border rounded-lg p-5 mb-8 space-y-3">
-    <div class="flex justify-between items-start gap-4">
-      <div>
-        <p class="text-sm text-muted-foreground font-medium">Bezeichnung</p>
-        <p class="font-medium">{data.bezeichnung}</p>
-      </div>
-      <div class="text-right shrink-0">
-        <p class="text-sm text-muted-foreground font-medium">Betrag</p>
-        <p class="font-semibold">{formatBetrag(data.betragCents, data.currency)}</p>
-      </div>
-    </div>
-    <div class="flex justify-between items-start gap-4">
-      <div>
-        <p class="text-sm text-muted-foreground font-medium">Eingereicht am</p>
-        <p>{formatDate(data.submittedAt)}</p>
-      </div>
-      <div class="text-right shrink-0">
-        <p class="text-sm text-muted-foreground font-medium">Bezahlt von</p>
-        <p>{data.bezahltVonDisplay}</p>
-      </div>
-    </div>
-    {#if data.maskedIban}
-      <div>
-        <p class="text-sm text-muted-foreground font-medium">IBAN (maskiert)</p>
-        <p class="font-mono text-sm">{data.maskedIban}</p>
-      </div>
-    {/if}
-  </div>
-
-  <!-- Timeline -->
-  <div class="space-y-0">
-    {#each STEPS as step, i (step.key)}
-      {@const done = isStepDone(step.key)}
-      {@const active = isStepActive(step.key)}
-      {@const last = i === STEPS.length - 1}
-
-      <div class="flex gap-4">
-        <!-- Connector column -->
-        <div class="flex flex-col items-center">
-          <div
-            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-bold transition-colors {done
-              ? 'border-green-500 bg-green-500 text-white'
-              : active
-                ? 'border-primary-strong bg-primary-strong text-primary-foreground'
-                : 'border-muted-foreground/30 bg-background text-muted-foreground/50'}"
-            aria-current={active ? 'step' : undefined}
-          >
-            {#if done && !active}
-              ✓
-            {:else}
-              {i + 1}
-            {/if}
-          </div>
-          {#if !last}
-            <div class="w-0.5 flex-1 my-1 {done ? 'bg-green-500' : 'bg-muted-foreground/20'}"></div>
-          {/if}
-        </div>
-
-        <!-- Content -->
-        <div class="pb-6 pt-1 {last ? 'pb-0' : ''}">
-          <p class="font-medium leading-tight {done || active ? 'text-foreground' : 'text-muted-foreground/60'}">
-            {step.label}
-          </p>
-          {#if done || active}
-            <p class="text-muted-foreground mt-0.5 text-sm">{step.description}</p>
-            {#if step.key === 'eingegangen' && data.submittedAt}
-              <p class="text-muted-foreground mt-0.5 text-xs">{formatDate(data.submittedAt)}</p>
-            {/if}
-            {#if (step.key === 'geprueft' || step.key === 'erstattet') && data.decidedAt}
-              <p class="text-muted-foreground mt-0.5 text-xs">{formatDate(data.decidedAt)}</p>
-            {/if}
-          {/if}
-        </div>
-      </div>
-    {/each}
-
-    <!-- Abgelehnt branch (only shown when rejected) -->
-    {#if isAbgelehnt}
-      <div class="flex gap-4 mt-2">
-        <div class="flex flex-col items-center">
-          <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-destructive bg-destructive text-destructive-foreground text-sm font-bold">
-            ✕
-          </div>
-        </div>
-        <div class="pt-1">
-          <p class="font-medium text-destructive">{ABGELEHNT_STEP.label}</p>
-          <p class="text-muted-foreground mt-0.5 text-sm">{ABGELEHNT_STEP.description}</p>
-          {#if data.decidedAt}
-            <p class="text-muted-foreground mt-0.5 text-xs">{formatDate(data.decidedAt)}</p>
-          {/if}
-        </div>
-      </div>
-    {/if}
-  </div>
-
-  <div class="mt-10 border-t pt-8">
-    <p class="text-muted-foreground text-sm">
-      Fragen? Schreib uns und nenne deine Einreichungs-ID
-      <span class="font-mono font-medium">{data.ausId}</span>.
-    </p>
-  </div>
+<main class="mx-auto w-full max-w-5xl px-3 py-6 lg:px-6 lg:py-10">
+	<StatusSplitShell tone={shellTone}>
+		{#snippet aside()}
+			{#if isBatch}
+				<div class="flex flex-1 flex-col">
+					<StatusMedallion class="mb-4" tone="pruef" size="lg">{#snippet icon()}<Receipt />{/snippet}</StatusMedallion>
+					<span class="text-[11px] font-bold tracking-wide text-ink-500 uppercase">Deine Einreichung</span>
+					<h1 class="mt-2 text-[25px] leading-tight font-extrabold tracking-tight text-ink-900">{nodes.length} Auslagen auf einmal</h1>
+					<p class="mt-3 max-w-[332px] text-[13.5px] leading-relaxed text-ink-700">
+						Vom {submittedLabel} — {nodes.length} Auslagen, jede mit eigener Nummer und eigenem Stand. Jede
+						deiner Nummern öffnet die ganze Gruppe — Hauptsache, du hast eine parat.
+					</p>
+					<span class="mt-4 inline-flex w-fit items-center gap-1.5 rounded-full border border-hairline bg-card px-3 py-1.5 text-[12.5px] font-bold text-ink-700 shadow-[var(--shadow-card)] [&_svg]:size-3.5 [&_svg]:text-ink-300">
+						<HandCoins aria-hidden="true" />Gesamt&nbsp;·&nbsp;<span class="tabular-nums text-type-ausgabe">{formatMoney(data.gesamtCents)}</span>
+					</span>
+					<div class="mt-auto flex items-center gap-2 pt-5 text-[12px] font-semibold text-type-einnahme [&_svg]:size-4">
+						<Lock aria-hidden="true" />Nur wer deine Nummer hat, sieht den Stand — deine Kontodaten bleiben verdeckt.
+					</div>
+				</div>
+			{:else}
+				<div class="flex flex-1 flex-col">
+					<StatusMedallion class="mb-4" tone={medallionTone} size="lg">{#snippet icon()}{@render medallionIcon(focus.status)}{/snippet}</StatusMedallion>
+					<span
+						class="text-[11px] font-bold tracking-wide uppercase {focus.status === 'erstattet'
+							? 'text-type-einnahme'
+							: focus.status === 'abgelehnt'
+								? 'text-severity-critical-text'
+								: 'text-ink-500'}">{singleAside.eyebrow}</span
+					>
+					<h1 class="mt-2 max-w-[342px] text-[25px] leading-tight font-extrabold tracking-tight text-ink-900">{singleAside.headline}</h1>
+					<p class="mt-3 max-w-[332px] text-[13.5px] leading-relaxed text-ink-700">{singleAside.sub}</p>
+					<IdChip class="mt-4 w-fit" value={focus.ausId}>{#snippet icon()}<Receipt />{/snippet}</IdChip>
+					<div class="mt-auto flex items-center gap-2 pt-5 text-[12px] font-semibold text-type-einnahme [&_svg]:size-4">
+						<Lock aria-hidden="true" />Nur wer deine Nummer hat, sieht den Stand — deine Kontodaten bleiben verdeckt.
+					</div>
+				</div>
+			{/if}
+		{/snippet}
+		{#snippet main()}
+			{#if isBatch}
+				<BatchStatusGroup {submittedLabel} gesamtCents={data.gesamtCents} {tally} nodes={batchNodes} focusAusId={data.focusAusId} />
+			{:else}
+				<div class="mb-5 flex items-baseline justify-between gap-3">
+					<span class="text-[18px] font-extrabold tracking-tight text-ink-900">Deine Auslage</span>
+					<span class="text-[11px] font-bold tracking-wide text-ink-500 uppercase">Übersicht &amp; Verlauf</span>
+				</div>
+				<AuslageStatusDetail {...buildNodeDetail(focus)} />
+			{/if}
+		{/snippet}
+	</StatusSplitShell>
 </main>
