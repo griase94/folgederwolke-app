@@ -39,6 +39,7 @@
 	import Users from '@lucide/svelte/icons/users';
 	import { EmptyState } from '$lib/components/ui/empty-state/index.js';
 	import BeitragCell from './BeitragCell.svelte';
+	import MemberAvatar from './MemberAvatar.svelte';
 	import CellPopover from './CellPopover.svelte';
 	import BeitragCellDialog from './BeitragCellDialog.svelte';
 	import {
@@ -49,11 +50,16 @@
 		type BeitragDialogVariant
 	} from '$lib/domain/beitrag-cell.js';
 	import { currentBuchungsjahr } from '$lib/domain/year.js';
+	import { projectForList } from '$lib/domain/beitrag-state.js';
 
 	let {
 		matrix,
 		filter = null,
-		onRemind
+		onRemind,
+		selectable = false,
+		selectedIds,
+		bulkYear = null,
+		onToggleSelect
 	}: {
 		matrix: MatrixData;
 		/** ?filter=ueberfaellig|offen — highlights matching cells. */
@@ -65,6 +71,17 @@
 		 * action — a past festgeschriebenes year has no reminder ghost (Fork c).
 		 */
 		onRemind?: (memberId: string) => void;
+		/**
+		 * C2/S4 #3: bulk-select mode (brief §3b.5 "EIN Modell in beiden Modi"). When
+		 * on, the open/partial cells of the target year (`bulkYear`) become checkbox
+		 * toggles; every other cell renders as a static pill. Selection is by MEMBER
+		 * id — the exact same `selectedIds` set the Liste uses — so the shared
+		 * BulkMarkBar + "Alle offenen" select-all in +page.svelte drive both modes.
+		 */
+		selectable?: boolean;
+		selectedIds?: ReadonlySet<string>;
+		bulkYear?: number | null;
+		onToggleSelect?: (id: string, checked: boolean) => void;
 	} = $props();
 
 	const eur = (cents: number) =>
@@ -97,6 +114,20 @@
 	function memberName(memberId: string): string {
 		const mem = matrix.members.find((m) => m.id === memberId);
 		return mem ? `${mem.vorname} ${mem.nachname}` : '';
+	}
+
+	// C2/S4 #3: a cell is bulk-selectable only in the target year, for an active,
+	// non-exempt member, when its state projects to open/partial and the year is
+	// not festgeschrieben — the same gate the Liste's `selectableMembers` uses so a
+	// paid/exempt/locked cell can never be re-paid. Selection is per member id.
+	function isBulkEligible(memberId: string, year: number): boolean {
+		if (!selectable || bulkYear === null || year !== bulkYear) return false;
+		const mem = matrix.members.find((m) => m.id === memberId);
+		if (!mem || mem.beitragExempt || mem.austrittsJahr !== null) return false;
+		const cell = cellFor(memberId, year);
+		if (!cell || cell.isLocked) return false;
+		const proj = projectForList(cell.state);
+		return proj === 'open' || proj === 'partial';
 	}
 
 	// ── Dialog state (single controlled CellPopover surface — CellPopover owns
@@ -589,15 +620,65 @@
 	}
 </script>
 
-<!-- max-w-full + min-w-0 pin the scroll wrapper to its parent's width so the
-     min-w-[500px] grid scrolls INSIDE it instead of widening the page (M8 —
-     no mobile page h-scroll; the honest scroll-matrix stays, card-stack is C2).
-     `relative` is load-bearing: the compact BeitragCell labels render as
-     position:absolute sr-only spans; without a positioned ancestor they escape
-     this overflow clip and their in-flow x (~480, inside the 520px grid) widens
-     documentElement to 478 at 390. Making the wrapper their containing block
-     clips them with the grid (verified via scrollWidth@390). -->
-<div class="relative w-full min-w-0 max-w-full overflow-x-auto rounded-xl border border-border">
+<!-- Bulk-mode cell snippets (C2/S4 #3), shared by the desktop grid and the mobile
+     Karten-Stack. `selectableCell` is the target-year open/partial toggle (role=
+     checkbox, selection ring); `staticCell` is every other cell during bulk — a
+     read-only pill so only eligible cells invite a click. -->
+{#snippet selectableCell(memberId: string, year: number, state: MatrixCellData['state'], cell: MatrixCellData | undefined)}
+	{@const checked = selectedIds?.has(memberId) ?? false}
+	<button
+		type="button"
+		role="checkbox"
+		aria-checked={checked}
+		data-testid="matrix-bulk-cell"
+		data-member-id={memberId}
+		data-year={year}
+		aria-label="{memberName(memberId)} {year} auswählen"
+		onclick={() => onToggleSelect?.(memberId, !checked)}
+		class="rounded-full ring-offset-1 transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {checked
+			? 'ring-2 ring-primary'
+			: 'ring-1 ring-primary/40 hover:ring-primary/70'}"
+	>
+		<BeitragCell
+			variant="pill"
+			{state}
+			memberId={memberId}
+			{year}
+			memberName={memberName(memberId)}
+			betragCents={cell?.betragCents ?? 0}
+			paidCents={cell?.paidCents ?? 0}
+			compact
+		/>
+	</button>
+{/snippet}
+
+{#snippet staticCell(memberId: string, year: number, state: MatrixCellData['state'], cell: MatrixCellData | undefined)}
+	<BeitragCell
+		variant="pill"
+		{state}
+		isLocked={cell?.isLocked ?? false}
+		memberId={memberId}
+		{year}
+		memberName={memberName(memberId)}
+		betragCents={cell?.betragCents ?? 0}
+		paidCents={cell?.paidCents ?? 0}
+		gezahltAm={cell?.gezahltAm ?? null}
+		exemptReason={cell?.exemptReason ?? null}
+		daysOverdue={cell?.daysOverdue ?? null}
+		compact
+	/>
+{/snippet}
+
+<!-- DESKTOP (≥md): the honest scroll-matrix. max-w-full + min-w-0 pin the scroll
+     wrapper to its parent's width so the min-w-[500px] grid scrolls INSIDE it
+     instead of widening the page (M8 — no page h-scroll). `relative` is
+     load-bearing: the compact BeitragCell labels render as position:absolute
+     sr-only spans; without a positioned ancestor they escape this overflow clip
+     and their in-flow x widens documentElement. Making the wrapper their
+     containing block clips them with the grid (verified via scrollWidth).
+     Below md the matrix is NOT squeezed — the Karten-Stack below renders instead
+     (C2-S4 #2, brief §Mobile-390). -->
+<div class="relative hidden w-full min-w-0 max-w-full overflow-x-auto rounded-xl border border-border md:block">
 	{#if filter}
 		<div
 			class="border-b border-border bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
@@ -688,7 +769,11 @@
 								? 'bg-amber-50/60 dark:bg-amber-950/20'
 								: ''}"
 						>
-							{#if canCtx}
+							{#if selectable && isBulkEligible(member.id, year)}
+								{@render selectableCell(member.id, year, state, cell)}
+							{:else if selectable}
+								{@render staticCell(member.id, year, state, cell)}
+							{:else if canCtx}
 								<ContextMenu.Root>
 									<ContextMenu.Trigger>
 										<BeitragCell
@@ -769,6 +854,105 @@
 			{/each}
 		{/if}
 	</div>
+</div>
+
+<!-- MOBILE (<md): Karten-Stack — the matrix is NOT squeezed (brief §Mobile-390,
+     C2-S4 #2). One card per member: idcard (avatar + name + email + lifecycle
+     chip) above a horizontal .bcell row of the year chips. Each chip is the same
+     interactive BeitragCell that opens the CellPopover, which renders as a bottom
+     Sheet below sm — so every state stays reachable (no dead-end). role=grid/row/
+     rowheader mirrors the desktop semantics so the gridcells stay valid. -->
+<div class="space-y-3 md:hidden" role="grid" aria-label="Beitragsmatrix">
+	{#if filter}
+		<div
+			class="rounded-xl border border-border bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
+			role="status"
+		>
+			Gefiltert: {filter === 'ueberfaellig' ? 'überfällige' : 'offene'} Beiträge hervorgehoben
+		</div>
+	{/if}
+
+	{#if matrix.members.length === 0}
+		<EmptyState
+			title="Noch keine Mitglieder"
+			description="Füge das erste Mitglied hinzu, um Beiträge zu verwalten."
+		>
+			{#snippet icon()}
+				<Users size={32} aria-hidden="true" />
+			{/snippet}
+		</EmptyState>
+	{:else}
+		{#each matrix.members as member (member.id)}
+			<div role="row" class="rounded-xl border border-border bg-card p-4 shadow-sm">
+				<!-- idcard -->
+				<div role="rowheader" class="flex items-center gap-3">
+					<MemberAvatar vorname={member.vorname} nachname={member.nachname} size="md" />
+					<div class="min-w-0 flex-1">
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<a
+							href="/app/mitglieder/{member.id}"
+							class="block truncate font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+						>
+							{member.nachname}, {member.vorname}
+						</a>
+						{#if member.email}
+							<span class="block truncate text-xs text-muted-foreground">{member.email}</span>
+						{/if}
+					</div>
+					{#if member.austrittsJahr !== null}
+						<span
+							class="shrink-0 rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+						>
+							Ausgetreten {member.austrittsJahr}
+						</span>
+					{/if}
+				</div>
+
+				<!-- Jahres-Chips 24/25/26 als horizontale .bcell-Reihe (compact wie im
+				     Desktop-Grid, damit 3 nebeneinander bei 390 nie überlaufen). -->
+				<div class="mt-3 flex items-stretch gap-2">
+					{#each matrix.years as year (year)}
+						{@const cell = cellFor(member.id, year)}
+						{@const state = cell?.state ?? 'open'}
+						{@const yearLocked =
+							matrix.festgeschriebenBis !== null && year <= matrix.festgeschriebenBis}
+						<div class="flex flex-1 flex-col items-center gap-1">
+							<span
+								class="flex items-center gap-0.5 text-[11px] font-medium text-muted-foreground tabular-nums"
+							>
+								{year}
+								{#if yearLocked}
+									<Lock size={10} aria-label="Festgeschrieben" />
+								{/if}
+							</span>
+							{#if selectable && isBulkEligible(member.id, year)}
+								{@render selectableCell(member.id, year, state, cell)}
+							{:else if selectable}
+								{@render staticCell(member.id, year, state, cell)}
+							{:else}
+								<BeitragCell
+									variant="cell"
+									{state}
+									isLocked={cell?.isLocked ?? false}
+									memberId={member.id}
+									{year}
+									memberName={`${member.vorname} ${member.nachname}`}
+									betragCents={cell?.betragCents ?? 0}
+									paidCents={cell?.paidCents ?? 0}
+									gezahltAm={cell?.gezahltAm ?? null}
+									exemptReason={cell?.exemptReason ?? null}
+									daysOverdue={cell?.daysOverdue ?? null}
+									compact
+									onOpenPopover={openPopover}
+									onLocked={handleLocked}
+								/>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/each}
+	{/if}
 </div>
 
 <!-- Single controlled surface: CellPopover owns the anchored Popover (≥sm) /

@@ -112,14 +112,21 @@ async function seed(): Promise<void> {
   }
 }
 
-/** Find a gridcell button by member + year via the data attributes. */
+/**
+ * Find a gridcell button by member + year via the data attributes.
+ *
+ * The matrix renders TWICE: the desktop scroll-grid (≥md) and the mobile
+ * Karten-Stack (<md), both with `role="gridcell"` cells carrying the same
+ * data attributes. Exactly one is `display:none` at any viewport, so `:visible`
+ * resolves to the single active cell regardless of desktop/phone viewport.
+ */
 function cell(
   page: import("@playwright/test").Page,
   memberId: string,
   year: number,
 ) {
   return page.locator(
-    `[role="gridcell"][data-member-id="${memberId}"][data-year="${year}"]`,
+    `[role="gridcell"][data-member-id="${memberId}"][data-year="${year}"]:visible`,
   );
 }
 

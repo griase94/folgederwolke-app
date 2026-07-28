@@ -72,7 +72,12 @@
 			: filteredMembers.filter((m) => {
 					if (m.beitragExempt || m.austrittsDatum) return false;
 					const cell = cellMap.get(`${m.id}:${bulkYear}`);
-					return cell ? projectForList(cell.state) === 'open' : false;
+					// Owing = open (incl. overdue, folded by projectForList) or partial;
+					// festgeschriebene cells are read-only. Same gate as the MemberRow
+					// checkbox and the Matrix isBulkEligible so all three agree.
+					if (!cell || cell.isLocked) return false;
+					const proj = projectForList(cell.state);
+					return proj === 'open' || proj === 'partial';
 				})
 	);
 	const allSelectableSelected = $derived(
@@ -292,10 +297,16 @@
 		</div>
 	</div>
 
-	<!-- Bulk-select control bar (list view only). On a phone this lives in the
-	     desktop row list, so the toggle is hidden < md to match. -->
-	{#if data.view === 'list' && data.members.length > 0}
-		<div class="mb-3 hidden items-center justify-between gap-3 md:flex">
+	<!-- Bulk-select control bar. The Liste's mobile cards carry no checkboxes, so
+	     list-mode bulk stays desktop-only (md:flex); the Matrix card-stack has
+	     selectable cells, so matrix-mode bulk shows at all widths. Both modes feed
+	     the SAME selectedIds + BulkMarkBar (brief §3b.5 „EIN Modell in beiden Modi"). -->
+	{#if data.members.length > 0}
+		<div
+			class="mb-3 {data.view === 'list'
+				? 'hidden md:flex'
+				: 'flex'} items-center justify-between gap-3"
+		>
 			{#if !selectMode}
 				<button
 					type="button"
@@ -339,7 +350,15 @@
 
 	<!-- Main view -->
 	{#if data.view === 'matrix'}
-		<MemberMatrix matrix={data.matrix} filter={data.filter} onRemind={openReminderFor} />
+		<MemberMatrix
+			matrix={data.matrix}
+			filter={data.filter}
+			onRemind={openReminderFor}
+			selectable={selectMode}
+			{selectedIds}
+			{bulkYear}
+			onToggleSelect={toggleSelect}
+		/>
 	{:else}
 		<MemberList
 			members={filteredMembers}
