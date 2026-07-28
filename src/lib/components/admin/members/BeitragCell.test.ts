@@ -65,6 +65,26 @@ describe("BeitragCell — tone contract (amber-discipline)", () => {
     expect(el.className).not.toMatch(/severity-warn|amber/);
   });
 
+  it("partial + compact (Matrix cell): only the paid amount is visible, the full fraction stays in the aria-label", () => {
+    const { container } = render(BeitragCell, {
+      props: {
+        state: "partial",
+        variant: "cell",
+        compact: true,
+        paidCents: 3000,
+        betragCents: 6969,
+        year: 2025,
+        memberName: "Tim Schäfer",
+      },
+    });
+    const el = container.querySelector("[data-state='partial']")!;
+    // Visible in the dense 120px track: paid amount only — NOT the „/ 69,69".
+    expect(el.textContent).toMatch(/30,00/);
+    expect(el.textContent).not.toMatch(/69,69/);
+    // Full „X von Y" truth is preserved for assistive tech.
+    expect(el.getAttribute("aria-label")).toMatch(/30,00.*von.*69,69/);
+  });
+
   it("exempt / permanently_exempt: slate/ink, 'Befreit', no emerald", () => {
     for (const state of ["exempt", "permanently_exempt"] as const) {
       const { container } = render(BeitragCell, {

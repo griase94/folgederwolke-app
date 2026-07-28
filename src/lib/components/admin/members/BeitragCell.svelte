@@ -208,7 +208,14 @@
 		<Lock size={13} aria-hidden="true" class="shrink-0" />
 	{/if}
 	{#if state === 'partial'}
-		<span class="tabular-nums">{eur(paidCents)} / {eur(betragCents)}</span>
+		{#if compact}
+			<!-- Dense cell (Matrix): only the paid amount so the pill fits a fixed
+			     120px track; the full „X von Y" fraction lives in the aria-label +
+			     the click-popover. -->
+			<span class="tabular-nums">{eur(paidCents)}</span>
+		{:else}
+			<span class="tabular-nums">{eur(paidCents)} / {eur(betragCents)}</span>
+		{/if}
 	{:else if hasChrome}
 		{#if compact}
 			<span class="sr-only">{label}</span>

@@ -614,7 +614,7 @@
 				<div
 					role="columnheader"
 					aria-label={headerAria(h)}
-					class="flex min-w-[120px] flex-col items-center px-4 py-2.5 text-center"
+					class="flex w-[120px] shrink-0 flex-col items-center px-4 py-2.5 text-center"
 				>
 					<div class="flex items-center gap-1 text-sm font-semibold text-foreground">
 						{h.year}
@@ -675,7 +675,7 @@
 						{@const state = cell?.state ?? 'open'}
 						{@const canCtx = state === 'open' || state === 'overdue' || state === 'partial'}
 						<div
-							class="flex min-w-[120px] items-center justify-center px-4 py-2.5 {filterHighlight(
+							class="flex w-[120px] shrink-0 items-center justify-center px-2 py-2.5 {filterHighlight(
 								state
 							)
 								? 'bg-amber-50/60 dark:bg-amber-950/20'

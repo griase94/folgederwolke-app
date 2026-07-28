@@ -203,11 +203,15 @@
 					</svg>
 					E-Mail
 				</dt>
-				<dd class="min-w-0 flex-1 break-all text-sm font-medium text-foreground">
+				<dd class="min-w-0 flex-1 [overflow-wrap:anywhere] text-sm font-medium text-foreground">
 					{#if member.email}
-						<a href="mailto:{member.email}" class="hover:text-primary hover:underline">
-							{member.email}
-						</a>
+						{@const atIdx = member.email.indexOf('@')}
+						<!-- Break the address at the „@" (a natural boundary) instead of
+						     mid-word; overflow-wrap:anywhere is the fallback for a
+						     pathologically long local part. -->
+						<a href="mailto:{member.email}" class="hover:text-primary hover:underline"
+							>{member.email.slice(0, atIdx + 1)}<wbr />{member.email.slice(atIdx + 1)}</a
+						>
 					{:else}
 						<span class="text-muted-foreground">—</span>
 					{/if}
