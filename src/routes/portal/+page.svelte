@@ -19,7 +19,7 @@
 	<h1 class="text-2xl font-semibold tracking-tight text-ink-900">
 		Servus, {vorname} — schön, dass du da bist.
 	</h1>
-	<p class="mt-1.5 text-sm text-ink-600">
+	<p class="mt-1.5 text-sm text-ink-500">
 		Hier siehst du deine eingereichten Auslagen und wo sie gerade stehen.
 	</p>
 </section>
@@ -31,7 +31,7 @@
 		</h2>
 		{#if auslagen.length > 0}
 			<span
-				class="grid min-w-6 place-items-center rounded-full bg-secondary px-1.5 text-xs font-semibold text-ink-600 tabular-nums"
+				class="grid min-w-6 place-items-center rounded-full bg-secondary px-1.5 text-xs font-semibold text-ink-700 tabular-nums"
 				data-testid="portal-auslagen-count">{auslagen.length}</span
 			>
 		{/if}
@@ -51,6 +51,7 @@
 		<div
 			class="border-hairline divide-hairline divide-y overflow-hidden rounded-2xl border bg-card"
 			data-testid="portal-auslagen-list"
+			role="list"
 		>
 			{#each auslagen as row (row.businessId)}
 				<MemberAuslageRow

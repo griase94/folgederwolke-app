@@ -25,6 +25,7 @@ import { and, eq, gt, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { canonicalizeEmail } from "$lib/domain/email.js";
+import { bus } from "$lib/server/events/bus.js";
 
 /** Read-only DB handle — a pooled client or an in-flight transaction. */
 type MemberReader = Pick<ReturnType<typeof getDb>, "select">;
@@ -59,6 +60,14 @@ const activeMember = or(
  * Return the ACTIVE member whose email canonicalizes to `canonical`, or null.
  * Used by the magic-link issue + consume paths to decide member eligibility.
  * Pass `client` (a `tx`) to run inside a transaction.
+ *
+ * COLLISION SAFETY (Board #163 A-min): two active members can canonicalize to
+ * the SAME email (e.g. `a.b@gmail.com` and `ab@gmail.com`). Binding a login to
+ * whichever the scan hits first is arbitrary AND a privilege leak (wrong
+ * member_id → wrong member's Auslagen). So we collect ALL matches: exactly one
+ * → bind it; more than one → refuse (null) and emit `auth.member_ambiguous`
+ * so an admin can disambiguate. The emit is best-effort — the denial stands
+ * regardless of whether the audit write succeeds.
  */
 export async function findActiveMemberByEmail(
   canonical: string,
@@ -69,11 +78,25 @@ export async function findActiveMemberByEmail(
     .from(members)
     .where(and(isNotNull(members.email), activeMember));
 
-  for (const row of rows) {
-    if (row.email && canonicalizeEmail(row.email) === canonical) {
-      return row;
+  const matches = rows.filter(
+    (row) => row.email && canonicalizeEmail(row.email) === canonical,
+  );
+
+  if (matches.length === 1) return matches[0]!;
+
+  if (matches.length > 1) {
+    try {
+      await bus.emit("auth.member_ambiguous", {
+        canonicalEmail: canonical,
+        memberIds: matches.map((m) => m.id),
+      });
+    } catch (e) {
+      // Observability only — the deny (null) is the security guarantee.
+      console.error("[member-allowlist] ambiguity emit failed:", e);
     }
+    return null;
   }
+
   return null;
 }
 

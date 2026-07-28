@@ -62,7 +62,7 @@
 				<a
 					href="/portal"
 					aria-current="page"
-					class="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-secondary px-3 text-sm font-medium text-ink-700"
+					class="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-secondary px-3 text-sm font-medium text-ink-700 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 				>
 					<LayoutDashboard class="size-4" aria-hidden="true" />
 					Übersicht
@@ -85,7 +85,7 @@
 				<form method="POST" action="/sign-out?/signout">
 					<button
 						type="submit"
-						class="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] px-2.5 text-sm font-medium text-ink-500 transition-colors hover:text-primary-text focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+						class="inline-flex min-h-11 min-w-11 items-center justify-center gap-1.5 rounded-[10px] px-2.5 text-sm font-medium text-ink-500 transition-colors hover:text-primary-text focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:min-w-0 sm:justify-start"
 						data-testid="member-sign-out"
 					>
 						<LogOut class="size-4" aria-hidden="true" />

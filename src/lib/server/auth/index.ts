@@ -177,7 +177,13 @@ export async function issueMagicLink(
     entity_kind: "user",
     entity_id: magicLinkRow!.id,
     to: canonical,
-    props: { magicUrl: verifyUrl, email: canonical, expiresInMinutes: 15 },
+    props: {
+      magicUrl: verifyUrl,
+      email: canonical,
+      expiresInMinutes: 15,
+      // Board #163 J-M3: members get portal wording, admins the Buchhaltung.
+      audience: isAdmin ? "admin" : "member",
+    },
   });
 
   // Device-binding intent cookie (MUST-fix #7)

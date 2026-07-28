@@ -78,9 +78,14 @@ const authHandle: Handle = async ({ event, resolve }) => {
     }
     // A self-service member never reaches the admin app — send them to their
     // portal (Aurora A-flow S2a). Admins (incl. admins who are also members)
-    // pass through unchanged.
+    // pass through unchanged. Any OTHER role (e.g. steuerberater) has no admin
+    // app either — defense-in-depth (resolveSession already denies such a
+    // session, so this else-if is currently unreachable but keeps the gate
+    // fail-closed if a future role is added).
     if (role === "member_self_service") {
       redirect(303, "/portal");
+    } else if (role !== "admin") {
+      redirect(303, "/sign-in");
     }
   }
 

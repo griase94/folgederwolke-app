@@ -19,12 +19,13 @@
 import { describe, it, expect } from "vitest";
 import { randomBytes } from "node:crypto";
 import type { Cookies } from "@sveltejs/kit";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { magicLinks, sessions, users } from "$lib/server/db/schema/users.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { sha256 } from "$lib/server/auth/hash.js";
 import { canonicalizeEmail } from "$lib/domain/email.js";
+import { registerHandlers } from "$lib/server/events/index.js";
 import {
   consumeMagicLink,
   issueMagicLink,
@@ -145,6 +146,34 @@ describe("@phase-2 member-allowlist matching", () => {
       .set({ austrittsDatum: "2020-01-02" })
       .where(eq(members.id, seeded.id));
     expect(await getActiveMemberById(seeded.id)).toBeNull();
+  });
+
+  it("refuses to bind on a canonical-email collision and audits it (Board #163 A-min)", async () => {
+    // The bus handler that writes the audit row must be registered.
+    registerHandlers();
+
+    // Two distinct raw emails that canonicalize to the SAME address.
+    const base = `amb${Date.now()}${seq++}`;
+    const canonical = `${base}@gmail.com`;
+    const email1 = `${base.slice(0, 2)}.${base.slice(2)}@gmail.com`; // dot → stripped
+    const email2 = `${base}+tag@gmail.com`; // +suffix → stripped
+    expect(canonicalizeEmail(email1)).toBe(canonical);
+    expect(canonicalizeEmail(email2)).toBe(canonical);
+
+    await seedMember({ email: email1 });
+    await seedMember({ email: email2 });
+
+    // Ambiguous → refuse to bind (no arbitrary heap-order pick).
+    expect(await findActiveMemberByEmail(canonical)).toBeNull();
+
+    // …and the collision is recorded for an admin to disambiguate.
+    const rows = (await getDb().execute(sql`
+      SELECT 1 FROM audit_log
+       WHERE payload->>'reason' = 'AMBIGUOUS_MEMBER_MATCH'
+         AND payload->>'canonicalEmail' = ${canonical}
+       LIMIT 1
+    `)) as unknown as unknown[];
+    expect(rows.length).toBe(1);
   });
 });
 
