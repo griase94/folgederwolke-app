@@ -9,10 +9,11 @@
 	 * selection with an honest gate-line reason (never a silently dead button).
 	 */
 	import DateField from '$lib/components/ui/date-field/DateField.svelte';
+	import { berlinYmd } from '$lib/domain/year.js';
 
 	let {
 		count,
-		gezahltAm = $bindable(new Date().toISOString().slice(0, 10)),
+		gezahltAm = $bindable(berlinYmd()),
 		submitting = false,
 		onCommit,
 		onCancel,
@@ -50,6 +51,14 @@
 			value={gezahltAm}
 			onchange={(iso) => (gezahltAm = iso)}
 		/>
+		<button
+			type="button"
+			onclick={() => (gezahltAm = berlinYmd())}
+			data-testid="{testId}-heute"
+			class="inline-flex h-10 items-center rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+		>
+			Heute
+		</button>
 	</div>
 
 	<div class="ml-auto flex items-center gap-2">

@@ -178,7 +178,17 @@ export async function loadMatrix(opts: {
       if (resolved.state === "overdue") {
         const faelligkeitStr = satz?.faelligkeitAt ?? `${y}-03-31`;
         const faelligkeitDate = new Date(`${faelligkeitStr}T00:00:00Z`);
-        daysOverdue = daysBetween(faelligkeitDate, todayDate);
+        // Clamp the overdue clock to the LATER of Fälligkeit and the member's
+        // Eintritt: someone who joined AFTER the due date isn't overdue "since
+        // Fälligkeit" (Zoe case — a mid-year joiner must not show inflated days).
+        const eintrittDate = m.eintrittsDatum
+          ? new Date(`${m.eintrittsDatum}T00:00:00Z`)
+          : null;
+        const clockStart =
+          eintrittDate && eintrittDate.getTime() > faelligkeitDate.getTime()
+            ? eintrittDate
+            : faelligkeitDate;
+        daysOverdue = daysBetween(clockStart, todayDate);
       }
 
       cells.push({

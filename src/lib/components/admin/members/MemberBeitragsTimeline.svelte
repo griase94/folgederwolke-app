@@ -182,7 +182,9 @@
 	}
 
 	function rowDisplayState(b: BeitragRow): CellState {
-		return projectForList(rowResolve(b).state);
+		// The detail history shows the honest state incl. Überfällig — no list fold
+		// (a past unpaid year should read "Überfällig", not a flat "offen").
+		return rowResolve(b).state;
 	}
 
 	// Status label for timeline rows
@@ -190,7 +192,7 @@
 		paid: 'bezahlt',
 		partial: 'teilweise bezahlt',
 		open: 'offen',
-		overdue: 'offen',
+		overdue: 'überfällig',
 		exempt: 'befreit',
 		permanently_exempt: 'befreit',
 		not_applicable_pre_join: '—',
@@ -199,10 +201,10 @@
 	};
 
 	const statusClasses: Record<string, string> = {
-		paid: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+		paid: 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:border-emerald-400/25 dark:bg-emerald-500/15 dark:text-emerald-300',
 		partial: 'bg-severity-warn/10 text-severity-warn-text border-severity-warn/30',
 		open: 'bg-primary/8 text-primary-text border-primary/20',
-		overdue: 'bg-primary/8 text-primary-text border-primary/20',
+		overdue: 'bg-severity-warn/10 text-severity-warn-text border-severity-warn/30',
 		exempt: 'bg-ink-300/10 text-ink-500 border-hairline',
 		permanently_exempt: 'bg-ink-300/10 text-ink-500 border-hairline',
 		not_applicable_pre_join: 'bg-transparent text-ink-300',
