@@ -1,18 +1,31 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import AuslagenForm from '$lib/components/forms/AuslagenForm.svelte';
+	import SplitCardShell from '$lib/components/public/SplitCardShell.svelte';
+	import TrustJourney from '$lib/components/public/TrustJourney.svelte';
+	import Callout from '$lib/components/public/Callout.svelte';
+	import Info from '@lucide/svelte/icons/info';
 	import type { PageData, ActionData } from './$types.js';
 
-	// `form` carries ActionData from the POST action. auto-fix-B's action returns
-	// `fail(400, { error, errors })` where `errors` is a per-field
-	// `Record<string, string[]>`. Until B's full type lands we shape it as a
-	// loose intersection that surfaces both `error` (page-level) and `errors`
-	// (per-field) into the form component.
+	// The batch action returns fail() with a page-level `error` plus per-field
+	// error maps (identity + item, keyed by client_key). Until the generated
+	// ActionData narrows, we shape it as a loose intersection.
 	type FormShape =
-		| (ActionData & { error?: string; errors?: Record<string, string[]> })
+		| (ActionData & {
+				error?: string;
+				formErrors?: string[];
+				identityErrors?: Record<string, string[]>;
+				itemErrors?: Record<string, Record<string, string[]>>;
+		  })
 		| null
 		| undefined;
 	let { data, form }: { data: PageData; form: FormShape } = $props();
+
+	const journeySteps = [
+		{ title: 'Du reichst ein', subtitle: 'Beleg, Betrag, was es war — in zwei Minuten.' },
+		{ title: 'Julia prüft', subtitle: 'Der Vorstand schaut kurz drüber.' },
+		{ title: 'Geld kommt zurück', subtitle: 'Erstattung aufs Konto, meist 1–2 Wochen.' }
+	];
 </script>
 
 <svelte:head>
@@ -21,70 +34,59 @@
 		name="description"
 		content="Auslagen-Erstattung für {page.data.vereinName} — Beleg einreichen und Erstattung erhalten."
 	/>
-	<!-- viewport-fit=cover for iOS notch / safe-area support -->
 	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 </svelte:head>
 
 {#if data.formEnabled === false}
-	<!--
-		B-2 soft-fallback: PUBLIC_FORM_ENABLED is off (or unset) so the form
-		cannot accept submissions. We render a friendly 200 message instead of
-		a 404 so misconfigured env state never costs us a share-target POST
-		into the void. Form action remains gated server-side (returns 404).
-	-->
-	<main
-		class="mx-auto max-w-xl px-4 py-16 text-center"
-		data-testid="auslage-form-disabled-fallback"
-	>
-		<h1 class="mb-3 text-2xl font-bold tracking-tight">Vorübergehend nicht verfügbar</h1>
-		<p class="text-muted-foreground leading-relaxed">
-			Das Auslagen-Formular ist gerade nicht aktiv. Bitte schreibe deinen Vorstand
-			direkt an
-			<a class="underline" href="mailto:folgederwolke@gmail.com">folgederwolke@gmail.com</a>
+	<main class="mx-auto max-w-xl px-4 py-16 text-center" data-testid="auslage-form-disabled-fallback">
+		<h1 class="mb-3 text-2xl font-bold tracking-tight text-ink-900">Vorübergehend nicht verfügbar</h1>
+		<p class="leading-relaxed text-ink-500">
+			Das Auslagen-Formular ist gerade nicht aktiv. Bitte schreibe deinen Vorstand direkt an
+			<a class="underline" href="mailto:{page.data.kontaktEmail ?? 'folgederwolke@gmail.com'}">{page.data.kontaktEmail ?? 'folgederwolke@gmail.com'}</a>
 			oder versuche es später erneut.
 		</p>
 	</main>
 {:else}
-	<main class="mx-auto max-w-xl px-4 py-8">
-		<header class="mb-6">
-			<h1 class="text-2xl font-bold tracking-tight">Auslage einreichen</h1>
-			<p class="text-muted-foreground mt-2 text-sm leading-relaxed">
-				Hier reichst du Auslagen ein, die du für den Verein gezahlt hast. Wir prüfen, importieren in
-				unsere Buchhaltung und überweisen zurück. Eingangsbestätigung kommt direkt; Erstattung in der
-				Regel innerhalb der nächsten Tage.
-			</p>
-			<p class="text-muted-foreground mt-2 text-sm">
-				Pro Auslage: ein Kauf, ein Beleg. Bei mehreren Käufen oder Belegen bitte einzeln einreichen.
-			</p>
-		</header>
-
-		{#if data.sharePrefill}
-			<div
-				role="status"
-				data-testid="share-prefill-banner"
-				class="mb-6 rounded-md border border-pink-200 bg-pink-50 p-4 text-sm text-pink-900"
-			>
-				<p class="font-medium">Aus dem Teilen-Menü übernommen</p>
-				<p class="mt-1 leading-relaxed">
-					Wir haben den Titel und Kommentar aus deiner Freigabe vorbefüllt. Bitte ergänze
-					Betrag, Auszahlungsdetails (IBAN bzw. Mitglied) und Datenschutz-Zustimmung.
-					{#if data.sharePrefill.fileNotice}
-						<br />
-						<strong>Hinweis:</strong> Der geteilte Beleg konnte aus technischen Gründen noch
-						nicht übernommen werden — bitte unten erneut anhängen. (Folgt in einer späteren
-						Version.)
-					{/if}
-				</p>
-			</div>
-		{/if}
-
-		<AuslagenForm
-			members={data.members ?? []}
-			projects={data.projects ?? []}
-			serverError={form?.error ?? null}
-			serverFieldErrors={form?.errors ?? null}
-			initialBezeichnung={data.sharePrefill?.bezeichnung ?? ''}
-			initialKommentar={data.sharePrefill?.kommentar ?? ''}
-		/>
+	<main class="mx-auto w-full max-w-5xl px-3 py-6 lg:px-6 lg:py-10">
+		<SplitCardShell>
+			{#snippet aside()}
+				<div>
+					<span class="text-[11px] font-bold tracking-wide text-ink-500 uppercase">Auslage einreichen</span>
+					<h1 class="mt-3 text-[28px] leading-[1.06] font-extrabold tracking-tight text-ink-900">
+						Vorgestreckt?<br />Kriegst zurück.
+					</h1>
+					<p class="mt-3.5 max-w-[34ch] text-[14.5px] leading-relaxed text-ink-500">
+						Du hast was für den Verein bezahlt — reich's hier ein. Wir überweisen dir das Geld zurück,
+						meist in ein, zwei Wochen.
+					</p>
+				</div>
+				<div class="mt-auto hidden lg:block">
+					<TrustJourney steps={journeySteps} doneUntil={0} trust="Verschlüsselt direkt an den Vorstand." />
+				</div>
+			{/snippet}
+			{#snippet main()}
+				{#if data.sharePrefill}
+					<Callout
+						class="mb-5"
+						tone="brand"
+						title="Aus dem Teilen-Menü übernommen."
+						subtitle="Wir haben Bezeichnung und Kommentar schon eingetragen — schau nur kurz drüber."
+						data-testid="share-prefill-banner"
+					>
+						{#snippet icon()}<Info />{/snippet}
+					</Callout>
+				{/if}
+				<AuslagenForm
+					projects={data.projects ?? []}
+					maxBatchItems={data.maxBatchItems}
+					serverError={form?.error ?? null}
+					formErrors={form?.formErrors ?? null}
+					identityErrors={form?.identityErrors ?? null}
+					itemErrors={form?.itemErrors ?? null}
+					initialBezeichnung={data.sharePrefill?.bezeichnung ?? ''}
+					initialKommentar={data.sharePrefill?.kommentar ?? ''}
+				/>
+			{/snippet}
+		</SplitCardShell>
 	</main>
 {/if}

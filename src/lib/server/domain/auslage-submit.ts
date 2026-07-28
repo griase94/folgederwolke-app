@@ -35,6 +35,13 @@ import { logAudit } from "$lib/server/audit-log/index.js";
 import { bus } from "$lib/server/events/index.js";
 import { berlinYear } from "$lib/domain/year.js";
 
+/**
+ * Hard cap on Auslagen per batch (board #160 F2). The public/member forms hide
+ * "+ weitere Auslage" once this many blocks exist; this constant is the single
+ * source of truth so the domain backstop below and the UI stay in lockstep.
+ */
+export const MAX_BATCH_ITEMS = 10;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -134,6 +141,25 @@ export async function submitAuslagenBatch(
 ): Promise<SubmitAuslagenBatchResult> {
   if (input.items.length === 0) {
     throw new Error("submitAuslagenBatch: items must not be empty");
+  }
+  // F2 (board #160): hard batch cap — the domain backstop for the form's
+  // hide-"+ weitere"-at-10. A caller that posts >10 items (tampering / a
+  // programmatic client) is rejected before any allocation or insert.
+  if (input.items.length > MAX_BATCH_ITEMS) {
+    throw new Error(
+      `submitAuslagenBatch: batch exceeds ${MAX_BATCH_ITEMS} items (got ${input.items.length})`,
+    );
+  }
+  // F1 (board #160): every item's amount must be a positive integer cent value
+  // (ADR-0003). The batch boundary is the last line of defence behind the form
+  // validation — a tampered/programmatic caller must never persist a zero,
+  // negative, or fractional Auslage.
+  for (const it of input.items) {
+    if (!Number.isInteger(it.betragCents) || it.betragCents <= 0) {
+      throw new Error(
+        `submitAuslagenBatch: betragCents must be a positive integer (got ${it.betragCents})`,
+      );
+    }
   }
 
   const db = getDb();

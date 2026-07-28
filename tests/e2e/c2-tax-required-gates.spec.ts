@@ -64,14 +64,23 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     }
     await page.waitForLoadState("networkidle");
 
-    // Fill bezeichnung + Betrag — leave Beleg empty.
+    // A-flow S1: the form is extern-only + batch. Fill identity + the Auslage
+    // fields — leave Beleg empty so it is the ONLY missing gate.
+    await page.getByPlaceholder("Vor- und Nachname").fill("Anna Müller");
+    await page
+      .getByPlaceholder("damit wir dich erreichen")
+      .fill("anna@example.org");
+    await page.getByPlaceholder(/^DE00/).fill("DE89 3704 0044 0532 0130 00");
     await page.getByLabel(/was war.s/i).fill("Test ohne Beleg");
-    await page.getByLabel(/betrag in euro/i).fill("12,50");
-    // Rechnungsdatum defaults to today in the form; keep it.
+    await page.getByTestId("amount-field-input").fill("12,50");
+    const datum = page.getByTestId("date-field-input");
+    await datum.fill("04.07.2026");
+    await datum.blur();
 
-    // The submit button must be disabled because Beleg is missing.
-    const submit = page.getByTestId("auslage-submit");
-    await expect(submit).toBeDisabled();
+    // The submit button stays disabled purely because Beleg is missing, and the
+    // footer gate names it (C2-TAX: no receipt-less Auslage).
+    await expect(page.getByTestId("auslage-submit")).toBeDisabled();
+    await expect(page.getByTestId("einreichen-gate")).toContainText(/Beleg/);
   });
 
   test("ausgaben/neu submit blocked without Beleg (M4 gate: CTA disabled + gate-line names Beleg)", async ({

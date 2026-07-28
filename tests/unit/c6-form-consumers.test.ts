@@ -34,10 +34,10 @@ const MIGRATIONS: ReadonlyArray<{
   file: string;
   fields: readonly string[];
 }> = [
-  {
-    file: "src/lib/components/forms/AuslagenForm.svelte",
-    fields: ["rechnungsdatum"],
-  },
+  // Aurora A-flow S1: AuslagenForm became the extern-only BATCH form — its date
+  // fields are per-block with DYNAMIC names (`_datum_<clientKey>`) and use the
+  // HERO DateField (ui/hero-field), so it can't ride the literal-name loop
+  // below. Its no-native-date + DateField contract is asserted separately.
   // Phase 8 T6: src/routes/app/transactions/neu/+page.svelte deleted.
   // The date-field migration contract for Ausgabe neu is now covered
   // by src/routes/app/ausgaben/neu/+page.svelte (per-tab route).
@@ -120,6 +120,21 @@ describe("C6-FORM consumer migrations — Night 2 E4", () => {
       });
     });
   }
+
+  describe("src/lib/components/forms/AuslagenForm.svelte (batch)", () => {
+    const file = "src/lib/components/forms/AuslagenForm.svelte";
+    it('no native <input type="date"> remains', () => {
+      const src = read(file);
+      expect(/<[Ii]nput\b[^>]*type=["']date["']/s.test(src)).toBe(false);
+    });
+    it("uses the hero DateField primitive", () => {
+      const src = read(file);
+      expect(
+        src.includes("$lib/components/ui/hero-field/DateField.svelte"),
+      ).toBe(true);
+      expect(/<DateField\b/s.test(src)).toBe(true);
+    });
+  });
 
   it("DateField primitive still hardcodes TT.MM.JJJJ placeholder (Plan-1 contract)", () => {
     const src = read("src/lib/components/ui/date-field/DateField.svelte");

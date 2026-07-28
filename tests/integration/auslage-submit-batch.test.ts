@@ -19,6 +19,7 @@ import { getDb } from "$lib/server/db/index.js";
 import { registerHandlers } from "$lib/server/events/index.js";
 import {
   submitAuslagenBatch,
+  MAX_BATCH_ITEMS,
   type AuslageBatchItem,
 } from "$lib/server/domain/auslage-submit.js";
 import { allocateBusinessIds } from "$lib/server/domain/id-allocator.js";
@@ -323,5 +324,54 @@ describe("submitAuslagenBatch", () => {
         consentTextVersion: DATENSCHUTZ_VERSION,
       }),
     ).rejects.toThrow(/items must not be empty/);
+  });
+
+  it("F2: >10 items → throws, nothing inserted (batch cap backstop)", async () => {
+    const many = Array.from({ length: MAX_BATCH_ITEMS + 1 }, () => item());
+    await expect(
+      submitAuslagenBatch({
+        bezahltVon: {
+          kind: "extern",
+          name: "J",
+          iban: IBAN_A,
+          email: "j@e.org",
+        },
+        items: many,
+        consentTextVersion: DATENSCHUTZ_VERSION,
+      }),
+    ).rejects.toThrow(/exceeds 10 items/);
+    const count = (await getDb().execute(
+      sql`SELECT count(*)::int AS c FROM auslagen_submissions`,
+    )) as unknown as Array<{ c: number }>;
+    expect(count[0]!.c).toBe(0);
+
+    // Exactly MAX_BATCH_ITEMS is allowed.
+    const ok = await submitAuslagenBatch({
+      bezahltVon: { kind: "extern", name: "J", iban: IBAN_A, email: "j@e.org" },
+      items: Array.from({ length: MAX_BATCH_ITEMS }, () => item()),
+      consentTextVersion: DATENSCHUTZ_VERSION,
+    });
+    expect(ok.submissions).toHaveLength(MAX_BATCH_ITEMS);
+  });
+
+  it("F1: non-positive or fractional betragCents → throws, nothing inserted", async () => {
+    for (const bad of [0, -50, 12.5, Number.NaN]) {
+      await expect(
+        submitAuslagenBatch({
+          bezahltVon: {
+            kind: "extern",
+            name: "J",
+            iban: IBAN_A,
+            email: "j@e.org",
+          },
+          items: [item({ betragCents: bad })],
+          consentTextVersion: DATENSCHUTZ_VERSION,
+        }),
+      ).rejects.toThrow(/positive integer/);
+    }
+    const count = (await getDb().execute(
+      sql`SELECT count(*)::int AS c FROM auslagen_submissions`,
+    )) as unknown as Array<{ c: number }>;
+    expect(count[0]!.c).toBe(0);
   });
 });
