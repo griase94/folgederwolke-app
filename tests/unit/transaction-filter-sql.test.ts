@@ -101,6 +101,16 @@ describe("einnahmen WHERE builder", () => {
 });
 
 describe("spenden WHERE builder", () => {
+  it("always excludes Storno originals (supersedes_id IS NULL) — mirrors the EÜR/Hub so the feed can't over-count in a Storno year", () => {
+    const conds = buildSpendenWhere(
+      parseFilterState("spenden", new URLSearchParams("")),
+      2025,
+    );
+    const { sql } = compile(conds);
+    expect(sql).toContain("supersedes_id");
+    expect(sql.toLowerCase()).toContain("is null");
+  });
+
   it("filters spendenart, zweckbindung, spender member id, and search", () => {
     // Must be a valid UUIDv4 — parseFilterState validates member-picker ids via z.uuid().
     const memberId = "11111111-2222-4333-8444-555555555555";

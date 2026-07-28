@@ -1,19 +1,50 @@
+<!--
+	BuchungslisteTab — the flat, sortable, filterable ledger behind the EÜR
+	(D-Flow §2.3, plate buchungsliste-v1). „Zeig mir, woraus die 24.410 €
+	bestehen." A read tool: no loud primary action.
+
+	  · Toolbar: Art-Chips (Counts eingebacken) + Sphäre/Kategorie/Projekt-Selects
+	    (inkl. „(ohne Kategorie)" — Ziel des Pre-Flight-#1-Links) + Count-Readout
+	    + CSV-Ghost (ganzes Jahr, nie die Filter-Sicht — D4a).
+	  · Sticky SortHeader (Datum ▾ · Betrag ▾) auf demselben Lineal wie die Zeilen.
+	  · Ledger-Zeilen: Glyph · Bezeichnung + Kategorie-Meta · Beleg-Nr · Datum ·
+	    Sphäre · Beleg-Chip · Betrag (typ-farbig). Ganze Zeile → Detail (Flow B).
+	  · Fuß: Summe der Sicht; ungefiltert = sichtbare Kreuzprobe zur EÜR.
+	  · Cap 2000 ehrlich ausgewiesen; „CSV enthält alles."
+-->
 <script lang="ts" module>
 	import type {
 		BuchungslisteFilters,
 		BuchungslisteRow
 	} from '$lib/server/eur/buchungsliste.js';
 
+	export interface KindCounts {
+		all: number;
+		income: number;
+		expense: number;
+		donation: number;
+	}
+
 	export interface BuchungslisteTabProps {
 		year: number;
 		filters: BuchungslisteFilters;
 		rows: BuchungslisteRow[];
 		allRowsCount: number;
-		// C9-JUL-lite — hide CTAs ("Erste Buchung anlegen") on festgeschriebene
-		// Jahre. The flag derives from settings.festgeschrieben_bis via
-		// `isYearClosed(year, { festgeschriebenBis })` in the layout loader.
+		kindCounts: KindCounts;
+		/** EÜR-Überschuss (cents) — the unfiltered feed-foot matches it only in a
+		 *  beitrag-free year (Kreuzprobe ✓). */
+		ueberschussCents: number;
+		/** Paid Mitgliedsbeiträge folded into the EÜR (single source from the EÜR
+		 *  composer). The feed excludes them; foot + this == EÜR-Überschuss. */
+		beitragEinnahmenCents: number;
+		kategorien: { id: string; name: string }[];
+		projects: { id: string; name: string }[];
 		closed?: boolean;
 	}
+
+	/** listTransaktionenFeedPage cap — mirrored in the load; the honest cap line
+	    fires when the year fills it. */
+	const FEED_CAP = 2000;
 
 	const SPHERE_LABELS: Record<string, string> = {
 		ideeller: 'Ideeller Bereich',
@@ -22,265 +53,736 @@
 		wirtschaftlich: 'Wirtschaftlicher Geschäftsbetrieb'
 	};
 
-	const SPHERE_CHIP: Record<string, string> = {
-		ideeller: 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300',
-		vermoegen: 'bg-purple-50 text-purple-700 dark:bg-purple-950/30 dark:text-purple-300',
-		zweckbetrieb: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300',
-		wirtschaftlich: 'bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300'
-	};
-
-	const KIND_LABEL: Record<string, string> = {
-		income: 'Einnahme',
-		expense: 'Ausgabe',
-		donation: 'Spende'
+	const KIND_TAB: Record<'income' | 'expense' | 'donation', string> = {
+		income: 'einnahmen',
+		expense: 'ausgaben',
+		donation: 'spenden'
 	};
 </script>
 
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button/index.js';
+	import { formatCentsAsEuro } from '$lib/domain/money.js';
+	import SortHeader, { type SortColumn, type SortDir } from './SortHeader.svelte';
 	import { EmptyState } from '$lib/components/ui/empty-state/index.js';
-	import { formatMoney } from '$lib/components/ui/money/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import Lock from '@lucide/svelte/icons/lock';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import FileCheck from '@lucide/svelte/icons/file-check';
+	import Download from '@lucide/svelte/icons/download';
+	import Plus from '@lucide/svelte/icons/plus';
+	import Minus from '@lucide/svelte/icons/minus';
+	import HeartHandshake from '@lucide/svelte/icons/heart-handshake';
 
 	let {
 		year,
 		filters,
 		rows,
 		allRowsCount,
+		kindCounts,
+		ueberschussCents,
+		beitragEinnahmenCents,
+		kategorien,
+		projects,
 		closed = false
 	}: BuchungslisteTabProps = $props();
 
-	// C1-M4 — distinguish "no rows because filters are too tight" from
-	// "no rows because the year is empty". If no filters are active AND the
-	// total row count is zero, show the "first booking" CTA instead of the
-	// misleading "filters too tight" copy.
+	const eur = (c: number) => formatCentsAsEuro(BigInt(Math.round(c)));
+
 	const filtersActive = $derived(
 		filters.sphere !== 'all' ||
 			filters.kind !== 'all' ||
 			!!filters.kategorieId ||
+			!!filters.uncategorizedOnly ||
 			!!filters.projectId
 	);
 
+	const base = $derived(`/app/jahresabschluss/${year}/buchungsliste`);
+
 	function hrefWith(overrides: Record<string, string | undefined>): string {
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local URL builder, not a Svelte reactive store
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local URL builder, not reactive state
 		const params = new URLSearchParams();
 		if (filters.sphere !== 'all') params.set('sphere', filters.sphere);
 		if (filters.kind !== 'all') params.set('kind', filters.kind);
-		if (filters.kategorieId) params.set('kategorie', filters.kategorieId);
+		if (filters.uncategorizedOnly) params.set('kategorie', 'ohne');
+		else if (filters.kategorieId) params.set('kategorie', filters.kategorieId);
 		if (filters.projectId) params.set('project', filters.projectId);
 		if (filters.sort !== 'date-desc') params.set('sort', filters.sort);
 		for (const [k, v] of Object.entries(overrides)) {
-			if (v === undefined || v === '' || v === 'all' || v === 'date-desc') {
-				params.delete(k);
-			} else {
-				params.set(k, v);
-			}
+			if (v === undefined || v === '' || v === 'all' || v === 'date-desc') params.delete(k);
+			else params.set(k, v);
 		}
 		const q = params.toString();
-		return `/app/jahresabschluss/${year}/buchungsliste${q ? '?' + q : ''}`;
+		return `${base}${q ? '?' + q : ''}`;
 	}
+
+	// ── Sort (SortHeader → sort param) ────────────────────────────────────────
+	const sortColumns: SortColumn[] = [
+		{ key: 'buchung', label: 'Buchung', sortable: false },
+		{ key: 'bnr', label: 'Beleg-Nr', sortable: false },
+		{ key: 'datum', label: 'Datum', sortable: true },
+		{ key: 'sphaere', label: 'Sphäre', sortable: false },
+		{ key: 'beleg', label: 'Beleg', sortable: false },
+		{ key: 'betrag', label: 'Betrag', sortable: true, num: true },
+		{ key: 'chev', label: '', sortable: false }
+	];
+	const LEDGER_COLS = 'minmax(0, 1fr) 112px 104px 148px 66px 128px 22px';
+
+	const activeSortKey = $derived(filters.sort.startsWith('betrag') ? 'betrag' : 'datum');
+	const activeSortDir = $derived<SortDir>(filters.sort.endsWith('asc') ? 'asc' : 'desc');
+	function sortHref(key: string, dir: SortDir): string {
+		const sort = key === 'betrag' ? `betrag-${dir}` : `date-${dir}`;
+		return hrefWith({ sort });
+	}
+
+	// ── Foot sum (client-side over the filtered view) ─────────────────────────
+	// The Buchungsliste is the TRANSACTION feed (income ∪ expense ∪ donation) —
+	// it does NOT carry Mitgliedsbeiträge. The EÜR-Überschuss additionally
+	// includes paid Mitgliedsbeiträge, so the feed-saldo equals the EÜR ONLY in a
+	// year without paid Beiträge. We show the ✓-Kreuzprobe when they truly match,
+	// and otherwise state the honest Mitgliedsbeitrags-delta (never a false ✓).
+	const footSum = $derived(
+		rows.reduce((a, r) => a + (r.kind === 'expense' ? -r.betragCents : r.betragCents), 0)
+	);
+	// When the feed hits the 2000-row cap the foot-sum is PARTIAL, so it can
+	// neither claim „= EÜR ✓" nor drive the Beitrags-Reconciliation.
+	const capReached = $derived(allRowsCount >= FEED_CAP);
+	// ✓ only when the feed-saldo TRULY equals the EÜR (beitrag-free, uncapped).
+	const kreuzOk = $derived(
+		!filtersActive &&
+			!capReached &&
+			beitragEinnahmenCents === 0 &&
+			footSum === ueberschussCents
+	);
+	// The Mitgliedsbeitrag component is the SINGLE-SOURCE value from the EÜR
+	// composer (not `EÜR − feed`, which couldn't catch a feed/EÜR mismatch). The
+	// identity `footSum + beitragEinnahmenCents === ueberschussCents` is asserted
+	// by the @aurora-impl-d-abschluss e2e. Suppressed when capped (partial sum).
+	const showBeitragNote = $derived(
+		!filtersActive && !capReached && beitragEinnahmenCents > 0
+	);
 
 	function formatDate(iso: string): string {
 		const d = new Date(iso);
 		if (Number.isNaN(d.getTime())) return iso;
-		return d.toLocaleDateString('de-DE', {
-			day: '2-digit',
-			month: '2-digit',
-			year: 'numeric'
-		});
+		return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 	}
-
-	// Phase 8 T6: /app/transactions/[id] retired → route to per-kind detail page.
-	const KIND_TAB: Record<"income" | "expense" | "donation", string> = {
-		income: "einnahmen",
-		expense: "ausgaben",
-		donation: "spenden"
-	};
-
 	function detailHref(r: BuchungslisteRow): string {
-		const tab = KIND_TAB[r.kind] ?? "ausgaben";
-		return `/app/${tab}/${r.id}`;
+		return `/app/${KIND_TAB[r.kind] ?? 'ausgaben'}/${r.id}`;
 	}
+
+	const artChips = $derived([
+		{ kind: 'all', label: 'Alle', count: kindCounts.all },
+		{ kind: 'income', label: 'Einnahmen', count: kindCounts.income },
+		{ kind: 'expense', label: 'Ausgaben', count: kindCounts.expense },
+		{ kind: 'donation', label: 'Spenden', count: kindCounts.donation }
+	]);
+
+	// Current select values (for the GET form). "" = Alle.
+	const kategorieValue = $derived(
+		filters.uncategorizedOnly ? 'ohne' : (filters.kategorieId ?? '')
+	);
 </script>
-
-<!-- eslint-disable svelte/no-navigation-without-resolve -->
-
 
 <svelte:head>
 	<title>Buchungsliste {year} – Jahresabschluss</title>
 </svelte:head>
 
-<div class="space-y-5">
-	<!-- Filter chips row -->
-	<div
-		data-testid="buchungsliste-filters"
-		class="rounded-xl border border-border bg-card p-4 shadow-sm"
-	>
-		<div class="space-y-3">
-			<!-- Sphere chips -->
-			<div>
-				<div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Sphäre</div>
-				<div class="mt-1.5 flex flex-wrap gap-1.5">
-					<a
-						href={hrefWith({ sphere: 'all' })}
-						data-active={filters.sphere === 'all'}
-						class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
-					>
-						Alle
-					</a>
-					{#each ['ideeller', 'vermoegen', 'zweckbetrieb', 'wirtschaftlich'] as s (s)}
-						<a
-							href={hrefWith({ sphere: s })}
-							data-active={filters.sphere === s}
-							data-testid={`filter-sphere-${s}`}
-							class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
-						>
-							{SPHERE_LABELS[s]}
-						</a>
-					{/each}
-				</div>
-			</div>
-
-			<!-- Kind chips -->
-			<div>
-				<div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Art</div>
-				<div class="mt-1.5 flex flex-wrap gap-1.5">
-					<a
-						href={hrefWith({ kind: 'all' })}
-						data-active={filters.kind === 'all'}
-						class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
-					>
-						Alle
-					</a>
-					{#each ['income', 'expense', 'donation'] as k (k)}
-						<a
-							href={hrefWith({ kind: k })}
-							data-active={filters.kind === k}
-							data-testid={`filter-kind-${k}`}
-							class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
-						>
-							{KIND_LABEL[k]}
-						</a>
-					{/each}
-				</div>
-			</div>
-
-			<!-- Sort chips -->
-			<div>
-				<div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-					Sortierung
-				</div>
-				<div class="mt-1.5 flex flex-wrap gap-1.5">
-					{#each [{ id: 'date-desc', label: 'Datum (neu)' }, { id: 'date-asc', label: 'Datum (alt)' }, { id: 'betrag-desc', label: 'Betrag (groß)' }, { id: 'betrag-asc', label: 'Betrag (klein)' }] as opt (opt.id)}
-						<a
-							href={hrefWith({ sort: opt.id })}
-							data-active={filters.sort === opt.id}
-							data-testid={`sort-${opt.id}`}
-							class="inline-flex items-center rounded-full border border-border px-3 py-1 text-xs font-medium hover:bg-muted data-[active=true]:border-primary data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
-						>
-							{opt.label}
-						</a>
-					{/each}
-				</div>
-			</div>
-		</div>
-
-		<div class="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-			<span data-testid="buchungsliste-count">
-				{rows.length} von {allRowsCount} Buchungen
-			</span>
-			{#if rows.length !== allRowsCount}
+<!-- eslint-disable svelte/no-navigation-without-resolve -->
+<div class="space-y-4">
+	<!-- Toolbar -->
+	<div class="toolbar" data-testid="buchungsliste-filters">
+		<!-- Art chips (counts baked in) -->
+		<div class="art-chips" role="group" aria-label="Nach Art filtern">
+			{#each artChips as c (c.kind)}
+				{@const active = filters.kind === c.kind || (c.kind === 'all' && filters.kind === 'all')}
 				<a
-					href={`/app/jahresabschluss/${year}/buchungsliste`}
-					class="font-medium text-primary hover:underline"
+					href={hrefWith({ kind: c.kind })}
+					class="chip"
+					data-active={active}
+					data-testid={c.kind === 'all' ? 'filter-kind-all' : `filter-kind-${c.kind}`}
+					aria-current={active ? 'true' : undefined}
 				>
-					Filter zurücksetzen
+					{c.label}
+					<span class="cnt">{c.count}</span>
 				</a>
-			{/if}
+			{/each}
 		</div>
+
+		<!-- Selects: Sphäre · Kategorie · Projekt (GET form, auto-submit) -->
+		<form method="GET" action={base} class="selects" data-testid="buchungsliste-selects">
+			{#if filters.kind !== 'all'}<input type="hidden" name="kind" value={filters.kind} />{/if}
+			{#if filters.sort !== 'date-desc'}<input type="hidden" name="sort" value={filters.sort} />{/if}
+
+			<label class="sel">
+				<span class="sel-lbl">Sphäre</span>
+				<select
+					name="sphere"
+					value={filters.sphere === 'all' ? '' : filters.sphere}
+					onchange={(e) => e.currentTarget.form?.requestSubmit()}
+					data-testid="filter-sphere-select"
+				>
+					<option value="">Alle Sphären</option>
+					{#each ['ideeller', 'vermoegen', 'zweckbetrieb', 'wirtschaftlich'] as s (s)}
+						<option value={s}>{SPHERE_LABELS[s]}</option>
+					{/each}
+				</select>
+			</label>
+
+			<label class="sel">
+				<span class="sel-lbl">Kategorie</span>
+				<select
+					name="kategorie"
+					value={kategorieValue}
+					onchange={(e) => e.currentTarget.form?.requestSubmit()}
+					data-testid="filter-kategorie-select"
+				>
+					<option value="">Alle Kategorien</option>
+					<option value="ohne">(ohne Kategorie)</option>
+					{#each kategorien as k (k.id)}
+						<option value={k.id}>{k.name}</option>
+					{/each}
+				</select>
+			</label>
+
+			<label class="sel">
+				<span class="sel-lbl">Projekt</span>
+				<select
+					name="project"
+					value={filters.projectId ?? ''}
+					onchange={(e) => e.currentTarget.form?.requestSubmit()}
+					data-testid="filter-project-select"
+				>
+					<option value="">Alle Projekte</option>
+					{#each projects as p (p.id)}
+						<option value={p.id}>{p.name}</option>
+					{/each}
+				</select>
+			</label>
+		</form>
+
+		<!-- Count readout + reset + CSV ghost -->
+		<div class="toolfoot">
+			<span class="count" data-testid="buchungsliste-count" aria-live="polite">
+				{#if filtersActive}
+					{rows.length} von {allRowsCount} Buchungen
+				{:else}
+					{allRowsCount} Buchungen
+				{/if}
+			</span>
+			<div class="tf-actions">
+				{#if filtersActive}
+					<a href={base} class="reset" data-testid="filter-reset">Zurücksetzen</a>
+				{/if}
+				<a
+					href={`/app/jahresabschluss/${year}/transactions.csv`}
+					class="csv-ghost"
+					data-testid="csv-ghost"
+					data-sveltekit-reload
+				>
+					<Download class="size-[15px]" aria-hidden="true" />
+					CSV
+				</a>
+			</div>
+		</div>
+		<p class="csv-hint">CSV enthält das ganze Jahr {year} — unabhängig von den Filtern.</p>
 	</div>
 
-	<!-- Rows -->
+	<!-- Ledger -->
 	{#if rows.length === 0}
 		{#if filtersActive}
 			<EmptyState
 				data-testid="buchungsliste-empty-filtered"
-				title="Keine Buchungen passen zu den Filtern"
-				description="Lockere die Filter oder wechsle zur Übersicht."
+				title="Keine Buchungen für diese Filter"
+				description="Lockere die Filter oder setze sie zurück."
 			>
 				{#snippet cta()}
-					<Button href={`/app/jahresabschluss/${year}/buchungsliste`} variant="outline">
-						Filter zurücksetzen
-					</Button>
+					<Button href={base} variant="outline">Filter zurücksetzen</Button>
 				{/snippet}
 			</EmptyState>
 		{:else}
 			<EmptyState
 				data-testid="buchungsliste-empty-new-year"
-				title={`Noch keine Buchungen für ${year}`}
+				title={`${year} hat noch keine Buchungen`}
 				description={closed
-					? `Das Buchungsjahr ${year} ist festgeschrieben. Es können keine Buchungen mehr angelegt werden.`
-					: 'Lege die erste Einnahme, Ausgabe oder Spende für dieses Buchungsjahr an.'}
+					? `Das Buchungsjahr ${year} ist festgeschrieben.`
+					: 'Lege die erste Einnahme, Ausgabe oder Spende an.'}
 			>
 				{#snippet cta()}
 					{#if !closed}
-						<Button href="/app/ausgaben/neu" variant="default">
-							Erste Buchung anlegen
-						</Button>
+						<Button href="/app/ausgaben/neu" variant="default">Erste Buchung anlegen</Button>
 					{/if}
 				{/snippet}
 			</EmptyState>
 		{/if}
 	{:else}
-		<div
-			data-testid="buchungsliste-table"
-			class="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
-		>
-			<div class="overflow-x-auto">
-				<table class="w-full text-sm">
-					<thead>
-						<tr class="border-b border-border bg-muted/40">
-							<th class="px-4 py-3 text-left font-medium text-muted-foreground">Datum</th>
-							<th class="px-4 py-3 text-left font-medium text-muted-foreground">Buchung</th>
-							<th class="px-4 py-3 text-left font-medium text-muted-foreground">Sphäre</th>
-							<th class="px-4 py-3 text-left font-medium text-muted-foreground">Art</th>
-							<th class="px-4 py-3 text-right font-medium text-muted-foreground">Betrag</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each rows as r (r.id)}
-							<tr
-								class="border-b border-border/50 hover:bg-muted/20"
-								data-testid="buchungsliste-row"
-								data-row-id={r.id}
-							>
-								<td class="px-4 py-3 whitespace-nowrap text-foreground tabular-nums">
-									{formatDate(r.gebuchtAm)}
-								</td>
-								<td class="px-4 py-3">
-									<a
-										href={detailHref(r)}
-										class="font-medium text-foreground hover:text-primary hover:underline"
-									>
-										{r.bezeichnung}
-									</a>
-									<div class="text-xs text-muted-foreground">{r.businessId}</div>
-								</td>
-								<td class="px-4 py-3">
-									<span
-										class={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${SPHERE_CHIP[r.sphereSnapshot] ?? ''}`}
-									>
-										{SPHERE_LABELS[r.sphereSnapshot] ?? r.sphereSnapshot}
-									</span>
-								</td>
-								<td class="px-4 py-3 text-muted-foreground">{KIND_LABEL[r.kind] ?? r.kind}</td>
-								<td class="px-4 py-3 text-right tabular-nums font-medium text-foreground">
-									{formatMoney(r.betragCents)}
-								</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
+		<!-- role=table gives the SortHeader's role=row + columnheader (with aria-sort)
+		     a valid parent; the rows below stay real links (whole-row navigation). -->
+		<div class="ledger" data-testid="buchungsliste-table" role="table" aria-label={`Buchungen ${year}`}>
+			<SortHeader
+				columns={sortColumns}
+				cols={LEDGER_COLS}
+				activeKey={activeSortKey}
+				activeDir={activeSortDir}
+				hrefFor={sortHref}
+			/>
+			<div class="rows">
+				{#each rows as r (r.id)}
+					{@const isEin = r.kind === 'income'}
+					{@const isSpe = r.kind === 'donation'}
+					<a
+						class="lrow"
+						style={`--cols: ${LEDGER_COLS}`}
+						href={detailHref(r)}
+						data-testid="buchungsliste-row"
+						data-row-id={r.id}
+					>
+						<span class="cell buchung">
+							<span class="glyph {isEin ? 'g-ein' : isSpe ? 'g-spe' : 'g-aus'}" aria-hidden="true">
+								{#if isEin}<Plus class="size-3.5" />{:else if isSpe}<HeartHandshake
+										class="size-3.5"
+									/>{:else}<Minus class="size-3.5" />{/if}
+							</span>
+							<span class="b-txt">
+								<span class="b-name">{r.bezeichnung}</span>
+								<span class="b-meta">
+									{r.kategorieNameSnapshot || 'Ohne Kategorie'}
+									{#if r.festgeschriebenAt}
+										<Lock class="inline-lock size-3" aria-hidden="true" />
+									{/if}
+								</span>
+							</span>
+						</span>
+						<span class="cell bnr"><span class="id-chip">{r.businessId}</span></span>
+						<span class="cell datum tabular">{formatDate(r.gebuchtAm)}</span>
+						<span class="cell sphaere">
+							<span class="sb" style={`background:var(--sphere-${r.sphereSnapshot})`}></span>
+							<span class="sph-txt">{SPHERE_LABELS[r.sphereSnapshot] ?? r.sphereSnapshot}</span>
+						</span>
+						<span class="cell beleg">
+							{#if r.hasBeleg}
+								<span class="bc bc-have" title="Beleg hinterlegt">
+									<FileCheck class="size-3.5" aria-hidden="true" />
+								</span>
+							{:else}
+								<span class="bc bc-none" aria-hidden="true">–</span>
+							{/if}
+						</span>
+						<span
+							class="cell betrag tabular"
+							class:ein={isEin}
+							class:spe={isSpe}
+							class:aus={r.kind === 'expense'}
+						>
+							{r.kind === 'expense' ? '−' : ''}{eur(r.betragCents)}
+						</span>
+						<span class="cell chev" aria-hidden="true"><ChevronRight class="size-4" /></span>
+					</a>
+				{/each}
+			</div>
+
+			<!-- Cap line -->
+			{#if capReached}
+				<p class="cap-line" data-testid="cap-line">
+					Zeige die ersten {FEED_CAP} Buchungen — die CSV enthält alles.
+				</p>
+			{/if}
+
+			<!-- Foot -->
+			<div class="lfoot" data-testid="buchungsliste-foot">
+				<div class="lf-main">
+					<span class="lf-lbl">
+						{filtersActive
+							? 'Summe der Sicht'
+							: capReached
+								? `Saldo der ersten ${FEED_CAP} — CSV für die Jahres-Kreuzprobe`
+								: 'Transaktions-Saldo'}
+					</span>
+					<span class="lf-amt tabular" class:ein={footSum >= 0} class:aus={footSum < 0}>
+						{footSum < 0 ? '−' : ''}{eur(Math.abs(footSum))}
+						{#if kreuzOk}<span class="lf-check" data-testid="foot-kreuzprobe">= EÜR ✓</span>{/if}
+					</span>
+				</div>
+				{#if showBeitragNote}
+					<!-- Honest reconciliation: the feed excludes Mitgliedsbeiträge, which the EÜR adds. -->
+					<p class="lf-note" data-testid="foot-beitrag-note">
+						+ {eur(beitragEinnahmenCents)} Mitgliedsbeiträge (nicht im Transaktions-Feed) =
+						EÜR-Überschuss <b>{eur(ueberschussCents)}</b>
+					</p>
+				{/if}
 			</div>
 		</div>
 	{/if}
 </div>
+
+<style>
+	/* ── Toolbar ────────────────────────────────────────────────────────────── */
+	.toolbar {
+		background: var(--card);
+		border: 1px solid var(--border);
+		border-radius: 14px;
+		box-shadow: var(--shadow-card);
+		padding: 14px 16px;
+	}
+	.art-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 7px;
+	}
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		padding: 5px 12px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		background: var(--card);
+		font-size: 12.5px;
+		font-weight: 600;
+		color: var(--ink-700);
+		text-decoration: none;
+		transition:
+			border-color 0.12s,
+			background 0.12s;
+	}
+	.chip:hover {
+		background: var(--secondary);
+	}
+	.chip[data-active='true'] {
+		border-color: color-mix(in srgb, var(--primary-text) 45%, transparent);
+		background: color-mix(in srgb, var(--primary-text) 10%, transparent);
+		color: var(--primary-text);
+	}
+	.chip .cnt {
+		font-size: 11px;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-500);
+	}
+	.chip[data-active='true'] .cnt {
+		color: var(--primary-text);
+	}
+	.selects {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px;
+		margin-top: 12px;
+	}
+	.sel {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		min-width: 0;
+	}
+	.sel-lbl {
+		font-size: 10.5px;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		color: var(--ink-500);
+	}
+	.sel select {
+		min-width: 168px;
+		max-width: 100%;
+		padding: 7px 10px;
+		border: 1px solid var(--border);
+		border-radius: 9px;
+		background: var(--card);
+		font-size: 13px;
+		color: var(--ink-900);
+	}
+	.sel select:focus-visible {
+		outline: none;
+		box-shadow: 0 0 0 2px var(--ring);
+	}
+	.toolfoot {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		margin-top: 12px;
+		padding-top: 12px;
+		border-top: 1px solid var(--hairline);
+	}
+	.count {
+		font-size: 12.5px;
+		font-weight: 600;
+		color: var(--ink-700);
+		font-variant-numeric: tabular-nums;
+	}
+	.tf-actions {
+		display: inline-flex;
+		align-items: center;
+		gap: 12px;
+	}
+	.reset {
+		font-size: 12.5px;
+		font-weight: 600;
+		color: var(--primary-text);
+		text-decoration: none;
+	}
+	.reset:hover {
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+	.csv-ghost {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 5px 11px;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		background: transparent;
+		font-size: 12.5px;
+		font-weight: 600;
+		color: var(--ink-700);
+		text-decoration: none;
+	}
+	.csv-ghost:hover {
+		background: var(--secondary);
+	}
+	.csv-hint {
+		margin: 8px 0 0;
+		font-size: 11px;
+		color: var(--ink-500);
+	}
+
+	/* ── Ledger ─────────────────────────────────────────────────────────────── */
+	.ledger {
+		background: var(--card);
+		border: 1px solid var(--border);
+		border-radius: 14px;
+		box-shadow: var(--shadow-card);
+		/* NO overflow:hidden — a clipping ancestor breaks the sticky SortHeader
+		   (position:sticky needs no overflow ancestor between it and the scroll
+		   root). Round the first/last children instead. */
+	}
+	.ledger :global(.sorthead) {
+		border-top-left-radius: 14px;
+		border-top-right-radius: 14px;
+	}
+	.rows {
+		display: flex;
+		flex-direction: column;
+	}
+	.lrow {
+		display: grid;
+		grid-template-columns: var(--cols);
+		align-items: center;
+		gap: 14px;
+		padding: 11px 16px;
+		border-top: 1px solid var(--hairline);
+		text-decoration: none;
+		color: var(--ink-900);
+		transition: background 0.1s;
+	}
+	.lrow:hover {
+		background: var(--secondary);
+	}
+	.cell {
+		min-width: 0;
+	}
+	.buchung {
+		display: flex;
+		align-items: center;
+		gap: 11px;
+		min-width: 0;
+	}
+	.glyph {
+		flex: none;
+		width: 26px;
+		height: 26px;
+		display: grid;
+		place-items: center;
+		border-radius: 8px;
+	}
+	.g-ein {
+		background: var(--type-einnahme-tint);
+		color: var(--type-einnahme);
+	}
+	.g-aus {
+		background: color-mix(in srgb, var(--type-ausgabe) 12%, transparent);
+		color: var(--type-ausgabe);
+	}
+	.g-spe {
+		background: var(--sphere-ideeller-tint);
+		color: var(--sphere-ideeller);
+	}
+	.b-txt {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.b-name {
+		font-size: 13.5px;
+		font-weight: 600;
+		color: var(--ink-900);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.b-meta {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 11.5px;
+		color: var(--ink-500);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.b-meta :global(.inline-lock) {
+		flex: none;
+		color: var(--ink-500);
+	}
+	.id-chip {
+		display: inline-block;
+		padding: 2px 7px;
+		border-radius: 6px;
+		background: var(--secondary);
+		font-size: 11px;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+		color: var(--ink-700);
+		white-space: nowrap;
+	}
+	.datum {
+		font-size: 12.5px;
+		color: var(--ink-700);
+		white-space: nowrap;
+	}
+	.tabular {
+		font-variant-numeric: tabular-nums;
+	}
+	.sphaere {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		min-width: 0;
+	}
+	.sb {
+		width: 9px;
+		height: 9px;
+		flex: none;
+		border-radius: 3px;
+	}
+	.sph-txt {
+		font-size: 12px;
+		color: var(--ink-700);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.beleg {
+		display: flex;
+		justify-content: center;
+	}
+	.bc {
+		display: inline-grid;
+		place-items: center;
+	}
+	.bc-have {
+		width: 24px;
+		height: 24px;
+		border-radius: 7px;
+		background: var(--type-einnahme-tint);
+		color: var(--type-einnahme);
+	}
+	.bc-none {
+		color: var(--ink-300);
+		font-weight: 600;
+	}
+	.betrag {
+		text-align: right;
+		font-size: 13.5px;
+		font-weight: 700;
+		white-space: nowrap;
+	}
+	.betrag.ein {
+		color: var(--type-einnahme);
+	}
+	.betrag.spe {
+		color: var(--type-spende);
+	}
+	.betrag.aus {
+		color: var(--type-ausgabe);
+	}
+	.chev {
+		display: flex;
+		justify-content: flex-end;
+		color: var(--ink-300);
+	}
+
+	/* ── Cap + foot ─────────────────────────────────────────────────────────── */
+	.cap-line {
+		margin: 0;
+		padding: 10px 16px;
+		border-top: 1px solid var(--hairline);
+		background: color-mix(in srgb, var(--sev-info) 7%, transparent);
+		font-size: 12px;
+		color: var(--ink-700);
+	}
+	.lfoot {
+		padding: 13px 16px;
+		border-top: 2px solid var(--border);
+		background: var(--secondary);
+		border-bottom-left-radius: 14px;
+		border-bottom-right-radius: 14px;
+	}
+	.lf-main {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 14px;
+	}
+	.lf-note {
+		margin: 8px 0 0;
+		font-size: 11.5px;
+		line-height: 1.45;
+		color: var(--ink-500);
+	}
+	.lf-note b {
+		color: var(--type-einnahme);
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+	}
+	.lf-lbl {
+		font-size: 12.5px;
+		font-weight: 700;
+		color: var(--ink-900);
+	}
+	.lf-amt {
+		font-size: 15px;
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+	}
+	.lf-amt.ein {
+		color: var(--type-einnahme);
+	}
+	.lf-amt.aus {
+		color: var(--type-ausgabe);
+	}
+	.lf-check {
+		margin-left: 6px;
+		color: var(--type-einnahme);
+		font-weight: 800;
+	}
+
+	/* ── Mobile: buchung + betrag on one row; rest hidden (S4 adds the sheet) ── */
+	@media (max-width: 640px) {
+		.ledger :global(.sorthead) {
+			display: none;
+		}
+		.lrow {
+			grid-template-columns: minmax(0, 1fr) auto;
+			gap: 12px;
+		}
+		.bnr,
+		.datum,
+		.sphaere,
+		.beleg,
+		.chev {
+			display: none;
+		}
+	}
+</style>

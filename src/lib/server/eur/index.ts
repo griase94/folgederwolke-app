@@ -266,12 +266,11 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
       detail: `${input.uncategorizedCount} Buchung${
         input.uncategorizedCount === 1 ? "" : "en"
       } ohne Kategorie. Bitte zuordnen, bevor das Jahr festgeschrieben wird.`,
-      // Phase 8 T6: /app/transactions retired. The old `?kategorie=missing`
-      // sentinel filter does not exist on /app/ausgaben — and post-§4.6
-      // kategorie_id is NOT NULL, so a "Unkategorisiert" filter would be
-      // permanently empty anyway. Drop fixHref: users resolve via the
-      // Buchungsliste tab in Jahresabschluss which shows all entries.
-      fixHref: undefined,
+      // D-Flow §3b: point at the Jahresabschluss Buchungsliste filtered to the
+      // uncategorized rows (parseBuchungslisteFilters understands kategorie=ohne).
+      // The block only fires when uncategorizedCount > 0, so the link always
+      // lands on a non-empty, in-context list.
+      fixHref: `/app/jahresabschluss/${input.year}/buchungsliste?kategorie=ohne`,
     });
   } else {
     items.push({
@@ -380,7 +379,9 @@ export function computePreFlight(input: PreFlightInput): PreFlightChecklist {
       detail: `${missingBescheinigungenCount} Spende${
         missingBescheinigungenCount === 1 ? "" : "n"
       } ≥ 300 € ohne Bescheinigungs-Nummer. Nach Festschreibung ist eine Neuvergabe der Nummern aufwendig — wir empfehlen, sie jetzt auszustellen.`,
-      fixHref: `/app/spenden?year=${input.year}&bescheinigung=ausstehend`,
+      // D-Flow §3b: stay in-flow — the Jahresabschluss Spenden tab (not the
+      // cross-flow /app/spenden list).
+      fixHref: `/app/jahresabschluss/${input.year}/spenden`,
     });
   } else {
     items.push({

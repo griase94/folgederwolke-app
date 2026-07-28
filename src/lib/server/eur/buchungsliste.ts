@@ -24,6 +24,9 @@ export interface BuchungslisteFilters {
   sphere: SphereFilter;
   kind: TransactionKindFilter;
   kategorieId?: string;
+  /** `kategorie=ohne` sentinel — show only rows with no Kategorie (kategorieId
+   *  NULL). Target of the pre-flight "Unkategorisierte Buchungen" fix-link. */
+  uncategorizedOnly?: boolean;
   projectId?: string;
   sort: BuchungslisteSort;
 }
@@ -41,7 +44,7 @@ export interface BuchungslisteRow {
   kategorieId: string | null;
   kategorieNameSnapshot: string;
   projectId: string | null;
-  belegDriveFileId: string | null;
+  hasBeleg: boolean;
   festgeschriebenAt: string | null;
 }
 
@@ -84,14 +87,17 @@ export function parseBuchungslisteFilters(
     : "all";
 
   const kategorieIdRaw = searchParams.get("kategorie");
+  const uncategorizedOnly = kategorieIdRaw === "ohne";
   const kategorieId =
-    kategorieIdRaw && kategorieIdRaw.length > 0 ? kategorieIdRaw : undefined;
+    !uncategorizedOnly && kategorieIdRaw && kategorieIdRaw.length > 0
+      ? kategorieIdRaw
+      : undefined;
 
   const projectIdRaw = searchParams.get("project");
   const projectId =
     projectIdRaw && projectIdRaw.length > 0 ? projectIdRaw : undefined;
 
-  return { sphere, kind, kategorieId, projectId, sort };
+  return { sphere, kind, kategorieId, uncategorizedOnly, projectId, sort };
 }
 
 export function filterAndSortRows(
@@ -106,7 +112,9 @@ export function filterAndSortRows(
   if (filters.kind !== "all") {
     out = out.filter((r) => r.kind === filters.kind);
   }
-  if (filters.kategorieId) {
+  if (filters.uncategorizedOnly) {
+    out = out.filter((r) => r.kategorieId === null);
+  } else if (filters.kategorieId) {
     out = out.filter((r) => r.kategorieId === filters.kategorieId);
   }
   if (filters.projectId) {

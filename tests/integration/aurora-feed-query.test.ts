@@ -12,6 +12,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import postgres from "postgres";
 import { listTransaktionenFeedPage } from "$lib/server/domain/transactions.js";
+import { loadEurWorkspaceData } from "$lib/server/eur/load.js";
 import { parseFilterState } from "$lib/domain/transaction-filters.js";
 
 const dbConfigured = (process.env["DIRECT_DATABASE_URL"] ?? "").length > 0;
@@ -67,6 +68,31 @@ describe.skipIf(!dbConfigured)("listTransaktionenFeedPage", () => {
           'Geldspende zweckfrei', 'geldspende', 'zweckfrei', 'Feed Pivot Spenderin',
           '2097-06-01', '2097-07-01T10:00:00+02'
         ) ON CONFLICT DO NOTHING`;
+
+      // Storno year 2096: two donation rows where B supersedes A. The feed AND
+      // the gobd-export counter must BOTH count only the `supersedes_id IS NULL`
+      // row, so the e2e identity gobd-counter == Buchungslisten-Art-count holds
+      // even with Storno (Verifier LOW + supersedes MED).
+      const [rowA] = await client<{ id: string }[]>`
+        INSERT INTO donations (
+          business_id, betrag_cents, currency, sphere_snapshot, kategorie_id,
+          kategorie_name_snapshot, spende_kind, zweckbindung_kind, spender_name,
+          zugewendet_am, gebucht_am
+        ) VALUES (
+          'S-2096-990002', 5000, 'EUR', 'ideeller', ${donKat.id},
+          'Geldspende zweckfrei', 'geldspende', 'zweckfrei', 'Storno Spenderin',
+          '2096-06-01', '2096-07-01T10:00:00+02'
+        ) RETURNING id`;
+      await client`
+        INSERT INTO donations (
+          business_id, betrag_cents, currency, sphere_snapshot, kategorie_id,
+          kategorie_name_snapshot, spende_kind, zweckbindung_kind, spender_name,
+          zugewendet_am, gebucht_am, supersedes_id
+        ) VALUES (
+          'S-2096-990003', 5000, 'EUR', 'ideeller', ${donKat.id},
+          'Geldspende zweckfrei', 'geldspende', 'zweckfrei', 'Storno Spenderin',
+          '2096-06-01', '2096-07-01T10:00:00+02', ${rowA!.id}
+        ) ON CONFLICT DO NOTHING`;
     } finally {
       await client.end();
     }
@@ -112,6 +138,45 @@ describe.skipIf(!dbConfigured)("listTransaktionenFeedPage", () => {
     expect(inc.bezeichnung).toBe("Feed Pivot Einnahme");
     expect(inc.sphereEffective).toBe("ideeller");
     expect(typeof inc.gebuchtAm).toBe("string");
+  });
+
+  it("Storno year: the feed Art-count and the gobd counter both count only supersedes_id IS NULL (identity holds)", async () => {
+    const { rows } = await listTransaktionenFeedPage({
+      state: feedState(),
+      year: 2096,
+      limit: 50,
+      offset: 0,
+    });
+    const feedSpenden = rows.filter((r) => r.kind === "donation");
+    // The feed excludes the superseding row (B) → exactly the kept A remains.
+    expect(feedSpenden.map((r) => r.businessId)).toEqual(["S-2096-990002"]);
+
+    const client = postgres(process.env["DATABASE_URL"] ?? "", {
+      prepare: false,
+      max: 1,
+    });
+    try {
+      const [gobd] = await client<{ c: string }[]>`
+        SELECT count(*)::text AS c FROM donations
+         WHERE year_of_buchung = 2096 AND supersedes_id IS NULL`;
+      // gobd-export counter == Buchungslisten-Art-count, even in a Storno year.
+      expect(Number(gobd!.c)).toBe(feedSpenden.length);
+    } finally {
+      await client.end();
+    }
+
+    // DIRECT numeric reconciliation identity (was only pinned by construction):
+    // feed-foot + EÜR-Beitragskomponente === EÜR-Überschuss. This requires BOTH
+    // the feed AND the EÜR to filter supersedes consistently — a Storno double-
+    // count on either side would break it. 2096: one kept 5000-donation only.
+    const footSum = rows.reduce(
+      (a, r) => a + (r.kind === "expense" ? -r.betragCents : r.betragCents),
+      0,
+    );
+    const ws = await loadEurWorkspaceData(2096);
+    expect(footSum + ws.beitragEinnahmenCents).toBe(
+      ws.eur.totalUeberschussCents,
+    );
   });
 
   it("LIMIT/OFFSET pages the union window while total stays constant (page-clamp contract)", async () => {

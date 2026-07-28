@@ -23,7 +23,7 @@ function makeRow(over: Partial<BuchungslisteRow> = {}): BuchungslisteRow {
     kategorieId: "k1",
     kategorieNameSnapshot: "Bürobedarf",
     projectId: null,
-    belegDriveFileId: null,
+    hasBeleg: false,
     festgeschriebenAt: null,
     ...over,
   };
@@ -81,6 +81,12 @@ describe("parseBuchungslisteFilters", () => {
     expect(f.kategorieId).toBe("k1");
     expect(f.projectId).toBe("p1");
   });
+
+  it("kategorie=ohne is the uncategorized sentinel (not a literal id)", () => {
+    const f = parseBuchungslisteFilters(new URLSearchParams("kategorie=ohne"));
+    expect(f.uncategorizedOnly).toBe(true);
+    expect(f.kategorieId).toBeUndefined();
+  });
 });
 
 describe("filterAndSortRows", () => {
@@ -137,6 +143,20 @@ describe("filterAndSortRows", () => {
       sort: "date-desc",
     });
     expect(out.map((r) => r.id)).toEqual(["2"]);
+  });
+
+  it("uncategorizedOnly keeps only rows with a NULL kategorieId", () => {
+    const withNull = [
+      ...rows,
+      makeRow({ id: "4", kategorieId: null, gebuchtAm: "2025-09-01" }),
+    ];
+    const out = filterAndSortRows(withNull, {
+      sphere: "all",
+      kind: "all",
+      uncategorizedOnly: true,
+      sort: "date-desc",
+    });
+    expect(out.map((r) => r.id)).toEqual(["4"]);
   });
 
   it("filters by projectId strictly", () => {
