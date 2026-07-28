@@ -21,6 +21,7 @@ import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 import { sentMails } from "$lib/server/db/schema/mails.js";
 import { sendBeitragReminderBulk } from "$lib/server/domain/members-actions.js";
 import { reminderSendAttempt } from "$lib/server/domain/beitrag-reminder.js";
+import { dispatchBeitragsreminder } from "$lib/server/domain/cron-tasks.js";
 
 // 2026 is the current Buchungsjahr in the seeded test DB (festgeschrieben_bis=2024,
 // Satz 6969 fällig 2026-03-31) — a clean, non-festgeschriebenes year.
@@ -35,14 +36,10 @@ const OWING = [M_OWING1, M_OWING2];
 
 async function cleanup(): Promise<void> {
   const db = getDb();
-  await db
-    .delete(sentMails)
-    .where(
-      and(
-        eq(sentMails.template, "beitrag_reminder"),
-        inArray(sentMails.entityId, ALL),
-      ),
-    );
+  // Blanket-delete ALL beitrag_reminder rows — the cron path (below) scans every
+  // owing member, so it can create collateral rows for the fixture roster; this
+  // keeps the shared reset-lane DB clean for the other specs.
+  await db.delete(sentMails).where(eq(sentMails.template, "beitrag_reminder"));
   await db.delete(memberBeitrags).where(inArray(memberBeitrags.memberId, ALL));
   await db.delete(members).where(inArray(members.id, ALL));
 }
@@ -157,5 +154,43 @@ describe("S3a — Beitrags-Reminder event-bus path", () => {
     if (res.ok) return;
     expect(res.status).toBe(403);
     expect(await reminderRows()).toHaveLength(0);
+  });
+});
+
+describe("S3a-Nachtrag — the annual cron shares the (member, year) dedup key", () => {
+  it("cron emits at year-2020 and does NOT double-send against a manual reminder", async () => {
+    // 1) A manual reminder to M_OWING1 writes the (member, year) sent_mails row.
+    const manual = await sendBeitragReminderBulk({
+      memberIds: [M_OWING1],
+      year: YEAR,
+      actorUserId: null,
+      actorRole: "admin",
+    });
+    expect(manual.ok).toBe(true);
+
+    // 2) The annual cron scans ALL owing members for YEAR. M_OWING1 was already
+    // reminded (by the manual send) → the shared pre-check skips it (no 2nd row);
+    // M_OWING2 (owing, not yet reminded) → sent. This IS the double-send proof:
+    // cron + manual dedup on ONE key. (Fixture-roster owing members are collateral;
+    // we assert only on OUR seeded members via reminderRows().)
+    const result = await dispatchBeitragsreminder({
+      iban: "DE21701500000123456789",
+      bic: "SSKMDEMMXXX",
+      bank: "Stadtsparkasse München",
+      empfaenger: "Folge der Wolke e.V.",
+      year: YEAR,
+    });
+    expect(result.sent).toBeGreaterThanOrEqual(1); // ≥ M_OWING2
+    expect(result.skipped).toBeGreaterThanOrEqual(1); // ≥ M_OWING1 (dedup)
+
+    const rows = await reminderRows();
+    const perMember = new Map<string, number>();
+    for (const r of rows) {
+      if (r.entityId)
+        perMember.set(r.entityId, (perMember.get(r.entityId) ?? 0) + 1);
+      expect(r.sendAttempt).toBe(reminderSendAttempt(YEAR)); // one shared key
+    }
+    expect(perMember.get(M_OWING1)).toBe(1); // NOT double-sent by the cron
+    expect(perMember.get(M_OWING2)).toBe(1); // cron picked up the un-reminded one
   });
 });

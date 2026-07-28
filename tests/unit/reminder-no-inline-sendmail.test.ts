@@ -1,36 +1,60 @@
 /**
- * Grep-guard (§4.1.1 #2): the Mitglieder reminder actions must dispatch the
- * BeitragsReminder mail through the event bus (`beitrag.reminder_requested`),
- * never by importing/calling `sendMail` inline. A regression that re-introduces
- * an inline send would bypass the bus (and its ADR-0005 idempotency handler),
- * so it is cheaper to fail here than in a board.
+ * Global grep-guard (§4.1.1 #2): the BeitragsReminder mail dispatches through the
+ * event bus (`beitrag.reminder_requested`) from EXACTLY ONE place — the event
+ * handler. No route action, domain helper, or cron may call `sendMail` for the
+ * reminder inline (that would bypass the bus + its ADR-0005 idempotency).
  *
- * Scope = the two mitglieder route action files. The annual cron
- * (cron-tasks.ts) still sends inline (Flow-G territory) and is intentionally
- * out of this guard's scope.
+ * C2 unified all three trigger paths (manual single, Bulk sheet, annual cron)
+ * onto the one event, so this guard is now repo-wide, not scoped to the routes.
  *
  * @aurora-impl-c2
  */
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const FILES = [
-  "src/routes/app/mitglieder/+page.server.ts",
-  "src/routes/app/mitglieder/[id]/+page.server.ts",
-];
+const SRC = join(process.cwd(), "src");
 
-describe("reminder path emits via the event bus, never inline sendMail", () => {
-  for (const rel of FILES) {
-    it(`${rel} contains no inline sendMail call or import`, () => {
-      const src = readFileSync(join(process.cwd(), rel), "utf8");
-      // A real call `sendMail(` (no space — prettier-normalized) or an import
-      // of it. The prose "inline sendMail (§…)" has a space before the paren,
-      // so it is not a call and is correctly ignored.
-      expect(src).not.toMatch(/sendMail\(/);
-      expect(src).not.toMatch(/import[^;]*\bsendMail\b/);
-      // And it DOES emit the reminder event (positive assertion).
-      expect(src).toContain("beitrag.reminder_requested");
-    });
+function walk(dir: string, acc: string[] = []): string[] {
+  for (const entry of readdirSync(dir)) {
+    const p = join(dir, entry);
+    if (statSync(p).isDirectory()) walk(p, acc);
+    else if (/\.(ts|svelte)$/.test(entry)) acc.push(p);
   }
+  return acc;
+}
+
+describe("BeitragsReminder dispatches ONLY via the event bus (repo-wide)", () => {
+  const files = walk(SRC);
+
+  it("the `beitrag_reminder` sendMail call lives ONLY in the event handler", () => {
+    // A `template: "beitrag_reminder"` argument to sendMail is the actual send.
+    // (mail/index.ts + subjectFor use `case "beitrag_reminder"`, not `template:`.)
+    const callers = files
+      .filter((f) =>
+        /template:\s*["']beitrag_reminder["']/.test(readFileSync(f, "utf-8")),
+      )
+      .map((f) => f.slice(SRC.length + 1).replace(/\\/g, "/"))
+      .sort();
+    expect(callers).toEqual(["lib/server/events/handlers.ts"]);
+  });
+
+  it("every reminder trigger path emits the event (no inline sendMail call)", () => {
+    const REMINDER_PATHS = [
+      "src/routes/app/mitglieder/+page.server.ts",
+      "src/routes/app/mitglieder/[id]/+page.server.ts",
+      "src/lib/server/domain/cron-tasks.ts",
+    ];
+    for (const rel of REMINDER_PATHS) {
+      const src = readFileSync(join(process.cwd(), rel), "utf-8");
+      // A real call `sendMail(` (no space); the prose "inline sendMail (§…)" has
+      // a space before the paren and is ignored.
+      expect(src, `${rel} must not call sendMail inline`).not.toMatch(
+        /sendMail\(/,
+      );
+      expect(src, `${rel} must emit the reminder event`).toContain(
+        "beitrag.reminder_requested",
+      );
+    }
+  });
 });
