@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import EditMemberDialog from './EditMemberDialog.svelte';
+	import MemberDialog from './MemberDialog.svelte';
 	import BeitragCell from './BeitragCell.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
 	import type { ResolveBeitragStateResult } from '$lib/domain/beitrag-state.js';
@@ -430,4 +430,4 @@
 	</Card.Content>
 </Card.Root>
 
-<EditMemberDialog bind:open={editOpen} member={memberView} />
+<MemberDialog bind:open={editOpen} mode="edit" member={memberView} />

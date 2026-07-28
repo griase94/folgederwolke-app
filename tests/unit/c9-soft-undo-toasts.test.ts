@@ -22,8 +22,10 @@ const DESTRUCTIVE = [
     keyword: "archiviert",
   },
   {
-    path: "src/lib/components/admin/members/EditMemberDialog.svelte",
-    keyword: "Mitglied",
+    // C2/S3c: consolidated into MemberDialog; the austragen toast keeps the
+    // 8s "Rückgängig" undo → ?/restore.
+    path: "src/lib/components/admin/members/MemberDialog.svelte",
+    keyword: "ausgetragen",
   },
 ];
 

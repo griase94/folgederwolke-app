@@ -46,7 +46,8 @@ const MIGRATIONS: ReadonlyArray<{
     fields: ["rechnungsdatum", "leistungsDatum", "faelligkeitsDatum"],
   },
   {
-    file: "src/lib/components/admin/members/EditMemberDialog.svelte",
+    // C2/S3c: consolidated into MemberDialog (both dates use DateField).
+    file: "src/lib/components/admin/members/MemberDialog.svelte",
     fields: ["date_of_birth", "eintritts_datum"],
   },
   // Phase 6 (Tier C3): AddSpendeDialog/EditSpendeDialog were RETIRED with the

@@ -8,8 +8,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import MemberList from '$lib/components/admin/members/MemberList.svelte';
 	import MemberMatrix from '$lib/components/admin/members/MemberMatrix.svelte';
-	import AddMemberDialog from '$lib/components/admin/members/AddMemberDialog.svelte';
-	import EditMemberDialog from '$lib/components/admin/members/EditMemberDialog.svelte';
+	import MemberDialog from '$lib/components/admin/members/MemberDialog.svelte';
 	import SendReminderBulkSheet from '$lib/components/admin/members/SendReminderBulkSheet.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
 	import { projectForList } from '$lib/domain/beitrag-state.js';
@@ -358,8 +357,8 @@
 	{/if}
 </div>
 
-<AddMemberDialog bind:open={addOpen} />
-<EditMemberDialog bind:open={editOpen} member={editMember} />
+<MemberDialog bind:open={addOpen} mode="add" />
+<MemberDialog bind:open={editOpen} mode="edit" member={editMember} />
 <SendReminderBulkSheet
 	bind:open={reminderOpen}
 	candidates={data.reminderCandidates}
