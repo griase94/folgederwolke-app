@@ -14,12 +14,13 @@
  */
 
 import { error, fail } from "@sveltejs/kit";
-import { and, eq, desc, inArray } from "drizzle-orm";
+import { and, eq, desc, inArray, sql } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
+import { users } from "$lib/server/db/schema/users.js";
 import { sentMails } from "$lib/server/db/schema/mails.js";
 import {
   editMember,
@@ -63,9 +64,21 @@ export const load: PageServerLoad = async ({ params }) => {
     .orderBy(desc(memberBeitrags.year));
 
   // ── Fetch activity: audit_log entries for this member ────────────────────
+  // S4 #7: LEFT JOIN users for the actor name — COALESCE(u.name, u.email,
+  // 'System'). users.name is nullable today (real-name fill is the G-Lane
+  // mini-profil screen, Wave 4); the COALESCE falls back to the login e-mail so
+  // a later name-fill "shines through" without any change here.
   const auditRows = await db
-    .select()
+    .select({
+      id: auditLog.id,
+      occurredAt: auditLog.occurredAt,
+      action: auditLog.action,
+      actorKind: auditLog.actorKind,
+      payload: auditLog.payload,
+      actorName: sql<string>`COALESCE(${users.name}, ${users.email}, 'System')`,
+    })
     .from(auditLog)
+    .leftJoin(users, eq(users.id, auditLog.actorUserId))
     .where(and(eq(auditLog.entityKind, "member"), eq(auditLog.entityId, id)))
     .orderBy(desc(auditLog.occurredAt))
     .limit(50);
@@ -152,6 +165,7 @@ export const load: PageServerLoad = async ({ params }) => {
         occurredAt: a.occurredAt.toISOString(),
         action: a.action,
         actorKind: a.actorKind,
+        actorName: a.actorName,
         payload: a.payload as Record<string, unknown> | null,
       })),
       sentMails: mailRows.map((m) => ({

@@ -4,6 +4,8 @@
 		occurredAt: string;
 		action: string;
 		actorKind: string;
+		/** COALESCE(users.name, users.email, 'System') — S4 #7 actor-join. */
+		actorName?: string;
 		payload: Record<string, unknown> | null;
 	};
 
@@ -203,6 +205,8 @@
 									</p>
 									{#if audit.actorKind === 'system'}
 										<p class="mt-0.5 text-xs text-muted-foreground">System-Aktion</p>
+									{:else if audit.actorName}
+										<p class="mt-0.5 text-xs text-muted-foreground">von {audit.actorName}</p>
 									{/if}
 								</div>
 								<time
