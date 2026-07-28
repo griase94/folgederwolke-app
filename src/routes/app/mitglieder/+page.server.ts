@@ -13,16 +13,10 @@
  */
 
 import { fail } from "@sveltejs/kit";
-import { and, inArray } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
-import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
-import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
-import {
-  beitragYearsRange,
-  memberBeitragsTotals,
-  type MemberBeitragsTotals,
-} from "$lib/server/domain/members.js";
+import { members } from "$lib/server/db/schema/members.js";
+import { beitragYearsRange } from "$lib/server/domain/members.js";
 import {
   addMember,
   editMember,
@@ -73,68 +67,18 @@ export const load: PageServerLoad = async ({ url, depends }) => {
     .from(members)
     .orderBy(members.nachname, members.vorname);
 
-  const memberIds = allMembers.map((m) => m.id);
-
-  let beitrags: (typeof memberBeitrags.$inferSelect)[] = [];
-  if (memberIds.length > 0) {
-    beitrags = await db
-      .select()
-      .from(memberBeitrags)
-      .where(
-        and(
-          inArray(memberBeitrags.memberId, memberIds),
-          inArray(memberBeitrags.year, years),
-        ),
-      );
-  }
-
-  // Per-year Beitragssatz (configured fee) for the window. Used to seed the
-  // mark-paid popover's amount when a member has NO member_beitrags row yet for
-  // an open year — otherwise the confirm heading shows "0,00 €" while the server
-  // would actually book the configured Satz (markpaid-popover-zero-betrag).
-  let satzRows: { year: number; cents: bigint }[] = [];
-  if (years.length > 0) {
-    satzRows = await db
-      .select({
-        year: beitragssatzByYear.year,
-        cents: beitragssatzByYear.cents,
-      })
-      .from(beitragssatzByYear)
-      .where(inArray(beitragssatzByYear.year, years));
-  }
-  const satzByYear: Record<number, number> = {};
-  for (const s of satzRows) satzByYear[s.year] = Number(s.cents);
-
-  // Build a lookup map: memberId → year → beitrag row
-  const beitragMap: Record<string, Record<number, (typeof beitrags)[0]>> = {};
-  for (const b of beitrags) {
-    if (!beitragMap[b.memberId]) beitragMap[b.memberId] = {};
-    (beitragMap[b.memberId] as Record<number, (typeof beitrags)[0]>)[b.year] =
-      b;
-  }
-
-  // C5-MEM-lite — €-summen header for the Mitglieder-Matrix. Compute per-year
-  // totals in parallel so the year-tab switcher can render counts/sums for
-  // any year in the 3-year window without an extra fetch on the client.
-  const totalsArr = await Promise.all(
-    years.map((y) => memberBeitragsTotals(y)),
-  );
-  const totalsByYear: Record<number, MemberBeitragsTotals> = {};
-  years.forEach((y, i) => {
-    totalsByYear[y] = totalsArr[i] as MemberBeitragsTotals;
-  });
-
-  // Task 2.0: matrix loader — per-cell state + year-header totals + filter support.
-  // Loaded in parallel with legacy data to keep backward compat during Phase 2 transition.
+  // Single source of beitrag cell state: per-(member, year) state + year-header
+  // totals + the festBis lock, all derived once via resolveBeitragState. The
+  // list surfaces (pills + bulk gate) read cells from here — there is no parallel
+  // member_beitrags projection any more (Aurora C-S2: legacy dual model dropped).
   const matrix = await loadMatrix({ years });
 
   return {
     view,
     filter,
     years,
-    totalsByYear,
-    satzByYear,
     matrix,
+    // Member identity/contact only — beitrag state lives in `matrix`.
     members: allMembers.map((m) => ({
       id: m.id,
       vorname: m.vorname,
@@ -147,30 +91,10 @@ export const load: PageServerLoad = async ({ url, depends }) => {
       role: m.role,
       eintrittsDatum: m.eintrittsDatum,
       austrittsDatum: m.austrittsDatum,
-      // Night-2 C5-MEM-full: surface exempt-flag + reason to the client so
-      // MemberRow can render the `befreit` badge and EditMemberDialog can
-      // pre-fill the toggle on edit.
       beitragExempt: m.beitragExempt,
       beitragExemptReason: m.beitragExemptReason,
       isFixture: m.isFixture,
       createdAt: m.createdAt.toISOString(),
-      beitrags: Object.fromEntries(
-        years.map((y) => {
-          const b = beitragMap[m.id]?.[y];
-          return [
-            y,
-            b
-              ? {
-                  id: b.id,
-                  betragCents: Number(b.betragCents),
-                  paidCents: Number(b.paidCents),
-                  gezahltAm: b.gezahltAm,
-                  isExempt: b.isExempt ?? false,
-                }
-              : null,
-          ];
-        }),
-      ),
     })),
   };
 };

@@ -53,16 +53,16 @@ function mockFetch(): { getBody: () => FormData } {
 
 // ── Package E review regression: paidCents wiring at callsites ────────────
 
-describe("MarkPaidControl — partial-member prefill regression (Package E review)", () => {
-  it("prefills Betrag input with the open remainder (betrag - paid) for a partial member", () => {
-    // betragCents=6000, paidCents=3000 → remainder = 3000 → "30,00"
-    // This guards the callsite wiring: passing paidCents correctly makes the
-    // popover show the remaining balance instead of the full betrag.
+describe("MarkPaidControl — partial-member prefill (B1 money-truth)", () => {
+  it("prefills Betrag input with the full total (SET-semantics) for a partial member", () => {
+    // betragCents=6000, paidCents=3000. Submit SETS paid_cents to this value, so
+    // the money-truthful default is the new TOTAL (60,00), NOT the remainder —
+    // prefilling the remainder would erase the 30,00 already paid (B1).
     render(MarkPaidControl, {
       props: { ...base, betragCents: 6000, paidCents: 3000, open: true },
     });
     const betragInput = screen.getByLabelText("Betrag (€)") as HTMLInputElement;
-    expect(betragInput.value).toBe("30,00");
+    expect(betragInput.value).toBe("60,00");
   });
 
   it("prefills Betrag with the full betrag when paidCents is 0 (no prior payment)", () => {

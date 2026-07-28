@@ -1,30 +1,31 @@
 <!--
   MemberCardMobile — compact card variant of MemberRow for use below the md
-  breakpoint (PM-009). Package D: uses resolveBeitragState + BeitragStatusPill
-  (single canonical resolver) instead of the old simpleBeitragStatus inline.
+  breakpoint (PM-009). Reads the pre-resolved matrix cell (single MatrixData
+  source) and renders a BeitragCell(variant='pill').
 
-  - shows a single BeitragStatusPill for the current Buchungsjahr
+  - shows a single BeitragCell pill for the current Buchungsjahr
   - card body is a tap-target → /app/mitglieder/{id}
   - open/partial (unpaid) rows get a trailing ≥44px pay affordance that opens
     MarkPaidControl (bottom-sheet on mobile).
 -->
 <script lang="ts">
 	import type { MemberView } from '$lib/domain/members.js';
-	import { currentBuchungsjahr, clampYearToAvailable, berlinYear } from '$lib/domain/year.js';
-	import { resolveBeitragState, projectForList } from '$lib/domain/beitrag-state.js';
-	import type { CellState } from '$lib/domain/beitrag-cell.js';
-	import BeitragStatusPill from './BeitragStatusPill.svelte';
+	import { currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
+	import { projectForList } from '$lib/domain/beitrag-state.js';
+	import type { CellState, MatrixCell } from '$lib/domain/beitrag-cell.js';
+	import BeitragCell from './BeitragCell.svelte';
 	import MarkPaidControl from './MarkPaidControl.svelte';
 
 	let {
 		member,
 		years,
-		satzByYear = {},
+		cells,
 	}: {
 		member: MemberView;
 		years: number[];
-		/** Per-year configured Beitragssatz (cents) — seeds the mark-paid popover. */
-		satzByYear?: Record<number, number>;
+		/** Pre-resolved matrix cells keyed `${memberId}:${year}` — the single source
+		 *  of beitrag state (replaces the client-side resolveBeitragState). */
+		cells: ReadonlyMap<string, MatrixCell>;
 	} = $props();
 
 	function nameHash(s: string): number {
@@ -62,38 +63,15 @@
 		years.length > 0 ? clampYearToAvailable(currentBuchungsjahr(), years) : null,
 	);
 
-	const eintrittsJahr = $derived(
-		member.eintrittsDatum ? Number(member.eintrittsDatum.slice(0, 4)) : berlinYear(),
-	);
-	const austrittsJahr = $derived(
-		member.austrittsDatum ? Number(member.austrittsDatum.slice(0, 4)) : null,
+	// Single source of beitrag state — the pre-resolved matrix cell for the
+	// current Buchungsjahr (carries the real festBis lock).
+	const currentCell = $derived<MatrixCell | null>(
+		currentYear !== null ? (cells.get(`${member.id}:${currentYear}`) ?? null) : null,
 	);
 
-	// Canonical resolver — single source of truth (Package D).
-	const currentYearState = $derived.by(() => {
-		if (currentYear === null) return null;
-		const row = member.beitrags[currentYear] ?? null;
-		return resolveBeitragState({
-			year: currentYear,
-			eintrittsJahr: eintrittsJahr,
-			austrittsJahr: austrittsJahr,
-			beitragExempt: member.beitragExempt,
-			row: row
-				? {
-						betragCents: row.betragCents,
-						paidCents: row.paidCents,
-						isExempt: row.isExempt,
-						gezahltAm: row.gezahltAm,
-					}
-				: null,
-			satzCents: satzByYear[currentYear] ?? null,
-			festBis: null,
-		});
-	});
-
-	// Projected state: overdue→open for list display
+	// Projected state: overdue→open for list display.
 	const displayState = $derived<CellState | null>(
-		currentYearState !== null ? projectForList(currentYearState.state) : null,
+		currentCell !== null ? projectForList(currentCell.state) : null,
 	);
 
 	// Show pay trigger only for open or partial, non-exempt, active members.
@@ -101,13 +79,11 @@
 		currentYear !== null &&
 			displayState !== null &&
 			(displayState === 'open' || displayState === 'partial') &&
+			// A festgeschriebenes Jahr is read-only: the server 409s the write, so the
+			// UI must not invite it either (the Matrix already gates on isLocked). M3.
+			!currentCell?.isLocked &&
 			!member.beitragExempt &&
 			!member.austrittsDatum,
-	);
-
-	// Seed betrag for the popover: the row's recorded amount if present, else satz.
-	const currentBetragCents = $derived(
-		currentYearState?.betragCents ?? 0,
 	);
 </script>
 
@@ -144,12 +120,15 @@
 		</div>
 
 		<!-- Single BeitragStatusPill for the current year (Package D). -->
-		{#if currentYear !== null && currentYearState !== null && displayState !== null}
-			<BeitragStatusPill
+		{#if currentYear !== null && currentCell !== null && displayState !== null}
+			<BeitragCell
+				variant="pill"
 				state={displayState}
+				memberName="{member.vorname} {member.nachname}"
 				year={currentYear}
-				paidCents={currentYearState.paidCents}
-				betragCents={currentYearState.betragCents}
+				paidCents={currentCell.paidCents}
+				betragCents={currentCell.betragCents}
+				isLocked={currentCell.isLocked}
 				compact
 				exemptReason={member.beitragExemptReason}
 			/>
@@ -163,8 +142,9 @@
 			memberId={member.id}
 			year={currentYear}
 			memberName="{member.vorname} {member.nachname}"
-			betragCents={currentBetragCents}
-			paidCents={currentYearState?.paidCents ?? 0}
+			betragCents={currentCell?.betragCents ?? 0}
+			paidCents={currentCell?.paidCents ?? 0}
+			notes={currentCell?.notes ?? null}
 			allowExempt={false}
 		>
 			{#snippet trigger({ props })}

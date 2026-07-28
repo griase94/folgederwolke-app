@@ -128,7 +128,7 @@
 					<div class="space-y-1.5">
 						<div class="flex gap-3">
 							<span class="w-16 shrink-0 text-xs font-medium text-muted-foreground uppercase tracking-wide pt-0.5">An</span>
-							<span class="text-foreground">{member.email ?? '—'}</span>
+							<span class="min-w-0 break-all text-foreground">{member.email ?? '—'}</span>
 						</div>
 						<div class="flex gap-3">
 							<span class="w-16 shrink-0 text-xs font-medium text-muted-foreground uppercase tracking-wide pt-0.5">Betreff</span>

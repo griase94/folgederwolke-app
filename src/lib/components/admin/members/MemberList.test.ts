@@ -33,15 +33,6 @@ const sampleMember: MemberView = {
   beitragExemptReason: null,
   isFixture: false,
   createdAt: "2025-01-15",
-  beitrags: {
-    2026: {
-      id: "b1",
-      betragCents: 5000,
-      paidCents: 5000,
-      gezahltAm: "2026-02-01",
-      isExempt: false,
-    },
-  },
 };
 
 describe("MemberList — mobile card variant (PM-009)", () => {

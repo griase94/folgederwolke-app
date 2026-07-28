@@ -178,7 +178,17 @@ export async function loadMatrix(opts: {
       if (resolved.state === "overdue") {
         const faelligkeitStr = satz?.faelligkeitAt ?? `${y}-03-31`;
         const faelligkeitDate = new Date(`${faelligkeitStr}T00:00:00Z`);
-        daysOverdue = daysBetween(faelligkeitDate, todayDate);
+        // Clamp the overdue clock to the LATER of Fälligkeit and the member's
+        // Eintritt: someone who joined AFTER the due date isn't overdue "since
+        // Fälligkeit" (Zoe case — a mid-year joiner must not show inflated days).
+        const eintrittDate = m.eintrittsDatum
+          ? new Date(`${m.eintrittsDatum}T00:00:00Z`)
+          : null;
+        const clockStart =
+          eintrittDate && eintrittDate.getTime() > faelligkeitDate.getTime()
+            ? eintrittDate
+            : faelligkeitDate;
+        daysOverdue = daysBetween(clockStart, todayDate);
       }
 
       cells.push({
@@ -189,6 +199,7 @@ export async function loadMatrix(opts: {
         betragCents: resolved.betragCents,
         paidCents: resolved.paidCents,
         gezahltAm: dbRow?.gezahltAm ?? null,
+        notes: dbRow?.notes ?? null,
         exemptReason: m.beitragExempt
           ? (m.beitragExemptReason ?? null)
           : (dbRow?.exemptReason ?? null),
@@ -225,6 +236,9 @@ export async function loadMatrix(opts: {
       paidSumCents: paidCells.reduce((s, c) => s + c.paidCents, 0),
       exemptCount: exemptCells.length,
       isLocked: festBis !== null && y <= festBis,
+      // §4.5: no Satz row for the year → header shows a "Beitragssatz fehlt" hint
+      // rather than implying a Soll of 0.
+      satzMissing: !satzByYear.has(y),
     };
   });
 
@@ -232,6 +246,7 @@ export async function loadMatrix(opts: {
     id: m.id,
     vorname: m.vorname,
     nachname: m.nachname,
+    email: m.email ?? null,
     eintrittsJahr: m.eintrittsDatum
       ? parseInt(m.eintrittsDatum.slice(0, 4), 10)
       : 0,

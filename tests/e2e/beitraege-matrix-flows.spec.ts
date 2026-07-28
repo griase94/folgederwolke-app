@@ -299,9 +299,13 @@ test.describe("@phase-2 Beitragsmatrix — storno + aufheben", () => {
     await expect(erikaCell).toHaveAttribute("data-state", "paid");
     await erikaCell.click();
 
-    // Two-step confirm
-    await page.getByRole("button", { name: "Zahlung stornieren" }).click();
-    await page.getByRole("button", { name: "Storno bestätigen" }).click();
+    // Two-step InlineConfirm (S2 consolidation): the paid-review dialog storno
+    // is one armed button — first click arms ("Stornieren" → "Wirklich
+    // stornieren?"), the second confirms. Same element across both gestures.
+    const storno = page.getByTestId("beitrag-dialog-storno");
+    await storno.click();
+    await expect(storno).toHaveAttribute("data-armed", "true");
+    await storno.click();
 
     await expect(cell(page, erika, ANCHOR)).toHaveAttribute(
       "data-state",
@@ -330,8 +334,12 @@ test.describe("@phase-2 Beitragsmatrix — storno + aufheben", () => {
     await klausCell.click();
 
     await expect(page.getByText("Grund: Härtefall")).toBeVisible();
-    await page.getByRole("button", { name: "Befreiung aufheben" }).click();
-    await page.getByRole("button", { name: "Aufheben bestätigen" }).click();
+    // Two-step InlineConfirm (S2 consolidation): exempt-review "Aufheben" arms,
+    // then confirms — one button, two deliberate clicks.
+    const aufheben = page.getByTestId("beitrag-dialog-aufheben");
+    await aufheben.click();
+    await expect(aufheben).toHaveAttribute("data-armed", "true");
+    await aufheben.click();
 
     // Wait for the invalidateAll + re-render cycle to settle before asserting.
     await page.waitForLoadState("networkidle");

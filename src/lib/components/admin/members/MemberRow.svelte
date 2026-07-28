@@ -3,28 +3,32 @@
 	import { toast } from 'svelte-sonner';
 	import { invalidateAll } from '$app/navigation';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
-	import BeitragStatusPill from './BeitragStatusPill.svelte';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
+	import BeitragCell from './BeitragCell.svelte';
 	import MarkPaidControl from './MarkPaidControl.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
-	import { currentBuchungsjahr, clampYearToAvailable, berlinYear } from '$lib/domain/year.js';
-	import {
-		resolveBeitragState,
-		projectForList,
-	} from '$lib/domain/beitrag-state.js';
-	import type { CellState } from '$lib/domain/beitrag-cell.js';
+	import { currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
+	import { projectForList } from '$lib/domain/beitrag-state.js';
+	import type { CellState, MatrixCell } from '$lib/domain/beitrag-cell.js';
 
 	let {
 		member,
 		years,
+		cells,
 		onEdit,
 		selectable = false,
 		selected = false,
 		bulkYear = null,
-		satzByYear = {},
 		onToggleSelect
 	}: {
 		member: MemberView;
 		years: number[];
+		/**
+		 * Pre-resolved matrix cells keyed `${memberId}:${year}` — the single source
+		 * of beitrag state (replaces the client-side resolveBeitragState re-derivation,
+		 * which passed festBis=null and so never reflected Festschreibung).
+		 */
+		cells: ReadonlyMap<string, MatrixCell>;
 		onEdit: (m: MemberView) => void;
 		/** Bulk-select mode — renders a leading checkbox + hides the kebab. */
 		selectable?: boolean;
@@ -37,8 +41,6 @@
 		 * ticked and re-paid.
 		 */
 		bulkYear?: number | null;
-		/** Per-year configured Beitragssatz (cents) — seeds the mark-paid popover. */
-		satzByYear?: Record<number, number>;
 		onToggleSelect?: (id: string, checked: boolean) => void;
 	} = $props();
 
@@ -84,61 +86,41 @@
 	let markPaidYear = $state<number | null>(null);
 	let markPaidBetragCents = $state(0);
 	let markPaidPaidCents = $state(0);
+	let markPaidNotes = $state<string | null>(null);
 
-	// Package D: canonical current-year resolver via resolveBeitragState.
-	// Single source of truth — replaces simpleBeitragStatus inline checks.
 	const currentYear = $derived(
 		years.length > 0 ? clampYearToAvailable(currentBuchungsjahr(), years) : null,
 	);
 
-	const eintrittsJahr = $derived(
-		member.eintrittsDatum ? Number(member.eintrittsDatum.slice(0, 4)) : berlinYear(),
-	);
-	const austrittsJahr = $derived(
-		member.austrittsDatum ? Number(member.austrittsDatum.slice(0, 4)) : null,
+	// Single source of beitrag state — the pre-resolved matrix cell for the current
+	// Buchungsjahr (no client-side re-derivation; carries the real festBis lock).
+	const currentCell = $derived<MatrixCell | null>(
+		currentYear !== null ? (cells.get(`${member.id}:${currentYear}`) ?? null) : null,
 	);
 
-	const currentYearState = $derived.by(() => {
-		if (currentYear === null) return null;
-		const row = member.beitrags[currentYear] ?? null;
-		const result = resolveBeitragState({
-			year: currentYear,
-			eintrittsJahr: eintrittsJahr,
-			austrittsJahr: austrittsJahr,
-			beitragExempt: member.beitragExempt,
-			row: row
-				? {
-						betragCents: row.betragCents,
-						paidCents: row.paidCents,
-						isExempt: row.isExempt,
-						gezahltAm: row.gezahltAm,
-					}
-				: null,
-			satzCents: satzByYear[currentYear] ?? null,
-			festBis: null,
-		});
-		return result;
-	});
-
-	// Projected state for the list: overdue→open (list shows single "Offen")
+	// Projected state for the list: overdue→open (list shows a single "Offen").
 	const currentYearDisplayState = $derived<CellState | null>(
-		currentYearState !== null ? projectForList(currentYearState.state) : null,
+		currentCell !== null ? projectForList(currentCell.state) : null,
 	);
 
-	// One-tap pay: show for open or partial states on non-exempt, active members
+	// One-tap pay: show for open or partial states on non-exempt, active members.
 	const showPayTrigger = $derived(
 		currentYear !== null &&
 			currentYearDisplayState !== null &&
 			(currentYearDisplayState === 'open' || currentYearDisplayState === 'partial') &&
+			// Festgeschriebenes Jahr → read-only; don't invite a write the server 409s
+			// (the Matrix already gates on isLocked). M3.
+			!currentCell?.isLocked &&
 			!member.beitragExempt &&
 			!member.austrittsDatum,
 	);
 
 	function openMarkPaid(year: number) {
-		const b = member.beitrags[year];
+		const cell = cells.get(`${member.id}:${year}`);
 		markPaidYear = year;
-		markPaidBetragCents = b?.betragCents ?? satzByYear[year] ?? 0;
-		markPaidPaidCents = b?.paidCents ?? 0;
+		markPaidBetragCents = cell?.betragCents ?? 0;
+		markPaidPaidCents = cell?.paidCents ?? 0;
+		markPaidNotes = cell?.notes ?? null;
 		dropdownOpen = false;
 		queueMicrotask(() => (markPaidOpen = true));
 	}
@@ -192,24 +174,17 @@
 		queueMicrotask(() => deleteFormEl?.requestSubmit());
 	}
 
-	// Bulk-select helper: mirror the gate logic without simpleBeitragStatus
+	// Bulk-select gate: enabled only when the bulk-year cell projects to "open".
 	function isSelectDisabledForBulk(): boolean {
 		if (bulkYear === null) return true;
 		if (member.beitragExempt || !!member.austrittsDatum) return true;
-		const row = member.beitrags[bulkYear] ?? null;
-		const result = resolveBeitragState({
-			year: bulkYear,
-			eintrittsJahr: eintrittsJahr,
-			austrittsJahr: austrittsJahr,
-			beitragExempt: member.beitragExempt,
-			row: row
-				? { betragCents: row.betragCents, paidCents: row.paidCents, isExempt: row.isExempt, gezahltAm: row.gezahltAm }
-				: null,
-			satzCents: satzByYear[bulkYear] ?? null,
-			festBis: null,
-		});
-		const projected = projectForList(result.state);
-		return projected !== 'open';
+		const cell = cells.get(`${member.id}:${bulkYear}`);
+		// Festgeschriebene Jahre are read-only. Owing cells are selectable: the
+		// brief wants "offene/teilbezahlte wählbar", so allow open/overdue (folded
+		// to 'open' by the list projection) AND partial — not open-only.
+		if (!cell || cell.isLocked) return true;
+		const proj = projectForList(cell.state);
+		return proj !== 'open' && proj !== 'partial';
 	}
 </script>
 
@@ -222,19 +197,14 @@
 	<!-- Bulk-select checkbox (only in select mode) -->
 	{#if selectable}
 		{@const selectDisabled = isSelectDisabledForBulk()}
-		<label
-			class="flex shrink-0 items-center {selectDisabled ? 'opacity-40' : ''}"
-			aria-label="{member.vorname} {member.nachname} auswählen"
-		>
-			<input
-				type="checkbox"
-				checked={selected}
-				disabled={selectDisabled}
-				data-testid="member-row-select"
-				onchange={(e) => onToggleSelect?.(member.id, e.currentTarget.checked)}
-				class="h-5 w-5 rounded border-input text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed"
-			/>
-		</label>
+		<Checkbox
+			checked={selected}
+			disabled={selectDisabled}
+			label="{member.vorname} {member.nachname} auswählen"
+			labelClass="shrink-0"
+			data-testid="member-row-select"
+			onchange={(e) => onToggleSelect?.(member.id, e.currentTarget.checked)}
+		/>
 	{/if}
 
 	<!-- Avatar -->
@@ -254,15 +224,18 @@
 		{/if}
 	</div>
 
-	<!-- Single current-year BeitragStatusPill (Package D: one pill, not N year chips).
+	<!-- Single current-year Beitrag pill (one pill, not N year chips).
 	     Hidden in bulk-select mode where the checkbox drives the whole row. -->
-	{#if !selectable && currentYear !== null && currentYearState !== null && currentYearDisplayState !== null}
-		<div class="hidden sm:flex items-center">
-			<BeitragStatusPill
+	{#if !selectable && currentYear !== null && currentCell !== null && currentYearDisplayState !== null}
+		<div class="hidden w-28 shrink-0 items-center justify-end sm:flex">
+			<BeitragCell
+				variant="pill"
 				state={currentYearDisplayState}
+				memberName="{member.vorname} {member.nachname}"
 				year={currentYear}
-				paidCents={currentYearState.paidCents}
-				betragCents={currentYearState.betragCents}
+				paidCents={currentCell.paidCents}
+				betragCents={currentCell.betragCents}
+				isLocked={currentCell.isLocked}
 				compact
 				exemptReason={member.beitragExemptReason}
 			/>
@@ -272,25 +245,31 @@
 	<!-- One-tap pay trigger: appears for open/partial state only.
 	     Opens the MarkPaidControl directly (no kebab intermediary).
 	     min-h-11 (44px) for mobile touch target. -->
-	{#if showPayTrigger && currentYear !== null && !selectable}
-		<button
-			type="button"
-			data-testid="member-row-pay"
-			aria-label="Beitrag {currentYear} erfassen für {member.vorname} {member.nachname}"
-			onclick={() => openMarkPaid(currentYear!)}
-			class="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/8 text-primary-text transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-		>
-			<svg
-				class="h-5 w-5"
-				fill="none"
-				viewBox="0 0 24 24"
-				stroke="currentColor"
-				stroke-width="2"
-				aria-hidden="true"
-			>
-				<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-			</svg>
-		</button>
+	<!-- Reserve the pay-trigger track even when the button is absent (paid rows)
+	     so the Beitrag pill column stays put row-to-row (M2 — no column flight). -->
+	{#if !selectable}
+		<div class="hidden w-11 shrink-0 items-center justify-center sm:flex">
+			{#if showPayTrigger && currentYear !== null}
+				<button
+					type="button"
+					data-testid="member-row-pay"
+					aria-label="Beitrag {currentYear} erfassen für {member.vorname} {member.nachname}"
+					onclick={() => openMarkPaid(currentYear!)}
+					class="flex min-h-11 min-w-11 items-center justify-center rounded-full border border-primary/30 bg-primary/8 text-primary-text transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				>
+					<svg
+						class="h-5 w-5"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke="currentColor"
+						stroke-width="2"
+						aria-hidden="true"
+					>
+						<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+					</svg>
+				</button>
+			{/if}
+		</div>
 	{/if}
 
 	<!-- Actions kebab — secondary overflow (edit, reminder, delete).
@@ -438,6 +417,7 @@
 				memberName="{member.vorname} {member.nachname}"
 				betragCents={markPaidBetragCents}
 				paidCents={markPaidPaidCents}
+				notes={markPaidNotes}
 				isOverdue={false}
 				allowExempt={false}
 			/>

@@ -33,18 +33,21 @@
 	import { invalidate } from '$app/navigation';
 	import { deserialize } from '$app/forms';
 	import { toast } from 'svelte-sonner';
-	import { Popover, ContextMenu } from 'bits-ui';
+	import { ContextMenu } from 'bits-ui';
 	import { SvelteMap } from 'svelte/reactivity';
 	import Lock from '@lucide/svelte/icons/lock';
 	import Users from '@lucide/svelte/icons/users';
 	import { EmptyState } from '$lib/components/ui/empty-state/index.js';
-	import * as Sheet from '$lib/components/ui/sheet/index.js';
-	import MatrixCell from './MatrixCell.svelte';
-	import MarkPaidPopover from './MarkPaidPopover.svelte';
-	import PaidCellPopover from './PaidCellPopover.svelte';
-	import ExemptCellPopover from './ExemptCellPopover.svelte';
-	import PermanentExemptPopover from './PermanentExemptPopover.svelte';
-	import type { MatrixData, MatrixCell as MatrixCellData, PopoverKind } from '$lib/domain/beitrag-cell.js';
+	import BeitragCell from './BeitragCell.svelte';
+	import CellPopover from './CellPopover.svelte';
+	import BeitragCellDialog from './BeitragCellDialog.svelte';
+	import {
+		variantForKind,
+		type MatrixData,
+		type MatrixCell as MatrixCellData,
+		type PopoverKind,
+		type BeitragDialogVariant
+	} from '$lib/domain/beitrag-cell.js';
 
 	let {
 		matrix,
@@ -87,51 +90,65 @@
 		return mem ? `${mem.vorname} ${mem.nachname}` : '';
 	}
 
-	// ── Popover / Sheet state (single controlled surface, anchored to the active
-	//    cell on desktop, bottom-sheet on mobile) ────────────────────────────────
+	// ── Dialog state (single controlled CellPopover surface — CellPopover owns
+	//    the Popover(≥sm)/Sheet(<sm) twin + isMobile detection) ──────────────────
 	let popoverOpen = $state(false);
-	let popoverKind = $state<Exclude<PopoverKind, null>>('mark-paid');
+	let dialogVariant = $state<BeitragDialogVariant>('mark-paid');
 	let activeMemberId = $state('');
 	let activeYear = $state(0);
 	let activeTrigger = $state<HTMLElement | null>(null);
-	let initialMode = $state<'mark-paid' | 'befreien'>('mark-paid');
 	let submitting = $state(false);
 
-	// ── Mobile detection (PR3b Task 3.2) ─────────────────────────────────────────
-	// Below `sm` (Tailwind sm = 640px) we present the mark-paid UI as a bottom
-	// Sheet rather than the anchored ~280px popover. matchMedia is SSR-guarded and
-	// kept in sync via its change event. No new dependency.
-	let isMobile = $state(false);
-	$effect(() => {
-		if (typeof window === 'undefined' || !window.matchMedia) return;
-		const mql = window.matchMedia('(max-width: 639px)');
-		isMobile = mql.matches;
-		const onChange = (e: MediaQueryListEvent) => (isMobile = e.matches);
-		mql.addEventListener('change', onChange);
-		return () => mql.removeEventListener('change', onChange);
-	});
-
-	// The active cell drives the popover/sheet content. It reads through the
-	// overlay so a freshly-flipped cell never re-opens onto stale data.
+	// The active cell drives the dialog content. It reads through the overlay so a
+	// freshly-flipped cell never re-opens onto stale data.
 	const activeCell = $derived(
 		activeMemberId && activeYear ? cellFor(activeMemberId, activeYear) : undefined
 	);
+	const activeMember = $derived(matrix.members.find((m) => m.id === activeMemberId) ?? null);
 	const isLocked = $derived(
 		matrix.festgeschriebenBis !== null && activeYear <= matrix.festgeschriebenBis
 	);
+	// Reminder ghost condition (§3b.4): a real open balance AND a member email.
+	// The server (checkReminderAllowed + the email check) stays the backstop.
+	const canRemindActive = $derived(
+		!!activeMember?.email &&
+			(activeCell?.state === 'open' ||
+				activeCell?.state === 'partial' ||
+				activeCell?.state === 'overdue')
+	);
+	// Plain-text reason for the readonly-mini ("—") cells (no dead-end, §1 var.7).
+	const activeMiniReason = $derived.by(() => {
+		if (!activeCell || !activeMember) return null;
+		if (activeCell.state === 'not_applicable_pre_join')
+			return `Kein Beitrag fällig — Eintritt ${activeMember.eintrittsJahr}.`;
+		if (activeCell.state === 'not_applicable_post_austritt')
+			return `Ausgetreten ${activeMember.austrittsJahr ?? ''}.`.trim();
+		return null;
+	});
 
+	// BeitragCell.onOpenPopover handler — forwards `kind`, maps to the entry
+	// variant via variantForKind (never re-derives).
 	function openPopover(detail: {
 		kind: Exclude<PopoverKind, null>;
 		memberId: string;
 		year: number;
 		triggerEl: HTMLElement;
-		mode?: 'mark-paid' | 'befreien';
 	}) {
-		popoverKind = detail.kind;
-		activeMemberId = detail.memberId;
-		activeYear = detail.year;
-		activeTrigger = detail.triggerEl;
-		initialMode = detail.mode ?? 'mark-paid';
+		openDialog(detail.memberId, detail.year, detail.triggerEl, variantForKind(detail.kind));
+	}
+
+	// Shared open for the cell click and the ctx-menu shortcuts (which pick an
+	// explicit entry variant, e.g. 'befreien').
+	function openDialog(
+		memberId: string,
+		year: number,
+		triggerEl: HTMLElement,
+		variant: BeitragDialogVariant
+	) {
+		dialogVariant = variant;
+		activeMemberId = memberId;
+		activeYear = year;
+		activeTrigger = triggerEl;
 		// Each open starts clean — never carry a stale suppress flag into a new
 		// surface (it must only skip the ONE close-complete that follows a success).
 		suppressTriggerRestore = false;
@@ -261,21 +278,33 @@
 		optimistic.delete(key);
 	}
 
-	async function handlePaid(detail: { memberId: string; year: number; gezahltAm: string }) {
+	async function handlePaid(detail: {
+		memberId: string;
+		year: number;
+		gezahltAm: string;
+		paidCents: number;
+		notes: string | null;
+	}) {
 		const key = `${detail.memberId}:${detail.year}`;
 		const prior = cellFor(detail.memberId, detail.year);
 		const betragCents = prior?.betragCents ?? 0;
+		// AC2: honour a partial payment — the cell flips to 'partial' (not 'paid')
+		// when the recorded amount is below the Soll, and the toast names the rest.
+		const paid =
+			Number.isFinite(detail.paidCents) && detail.paidCents > 0 ? detail.paidCents : betragCents;
+		const isFull = paid >= betragCents;
 
 		// (a) Optimistic flip + haptic + close — SYNCHRONOUS, before any await so
 		// the cell flips in <16ms independent of the network.
 		optimistic.set(key, {
 			memberId: detail.memberId,
 			year: detail.year,
-			state: 'paid',
+			state: isFull ? 'paid' : 'partial',
 			isLocked: false,
 			betragCents,
-			paidCents: betragCents,
+			paidCents: paid,
 			gezahltAm: detail.gezahltAm,
+			notes: detail.notes,
 			exemptReason: null,
 			daysOverdue: null
 		});
@@ -291,7 +320,9 @@
 			const result = await post('mark-beitrag-paid', {
 				memberId: detail.memberId,
 				year: String(detail.year),
-				gezahltAm: detail.gezahltAm
+				gezahltAm: detail.gezahltAm,
+				paidCents: String(paid),
+				notes: detail.notes ?? ''
 			});
 
 			if (!result.ok) {
@@ -303,13 +334,19 @@
 			}
 
 			await reconcileAndClear(key);
-			toast.success(`${memberName(detail.memberId)} ${detail.year} als bezahlt markiert`, {
-				duration: 10000,
-				action: {
-					label: 'Rückgängig',
-					onClick: () => undoMarkPaid(detail.memberId, detail.year)
+			const rest = betragCents - paid;
+			toast.success(
+				isFull
+					? `${memberName(detail.memberId)} ${detail.year} als bezahlt markiert`
+					: `${eur(paid)} erfasst — ${eur(rest)} noch offen`,
+				{
+					duration: 10000,
+					action: {
+						label: 'Rückgängig',
+						onClick: () => undoMarkPaid(detail.memberId, detail.year)
+					}
 				}
-			});
+			);
 			// Focus-hop AFTER reconcile so the re-rendered grid + toast are settled
 			// (the cell already flipped synchronously via the overlay; this is the
 			// §7.4 silent auto-focus nicety, not part of the <16ms flip). Suppress
@@ -358,6 +395,7 @@
 			betragCents: prior?.betragCents ?? 0,
 			paidCents: 0,
 			gezahltAm: null,
+			notes: null,
 			exemptReason: detail.reason,
 			daysOverdue: null
 		});
@@ -414,6 +452,7 @@
 			betragCents: prior?.betragCents ?? 0,
 			paidCents: 0,
 			gezahltAm: null,
+			notes: null,
 			exemptReason: null,
 			daysOverdue: null
 		});
@@ -456,6 +495,7 @@
 			betragCents: prior?.betragCents ?? 0,
 			paidCents: 0,
 			gezahltAm: null,
+			notes: null,
 			exemptReason: null,
 			daysOverdue: null
 		});
@@ -502,10 +542,10 @@
 
 	// ── Context-menu (right-click) shortcuts (Task 2.3a / §7.11) ─────────────────
 	function ctxBezahlt(memberId: string, year: number, triggerEl: HTMLElement) {
-		openPopover({ kind: 'mark-paid', memberId, year, triggerEl, mode: 'mark-paid' });
+		openDialog(memberId, year, triggerEl, 'mark-paid');
 	}
 	function ctxBefreien(memberId: string, year: number, triggerEl: HTMLElement) {
-		openPopover({ kind: 'mark-paid', memberId, year, triggerEl, mode: 'befreien' });
+		openDialog(memberId, year, triggerEl, 'befreien');
 	}
 
 	// Header aria-label per §16 B2.
@@ -513,21 +553,21 @@
 		return `${h.paidCount} von ${h.totalDueCount} bezahlt, ${eur(h.paidSumCents)} erhalten`;
 	}
 
-	const isOverdueActive = $derived(activeCell?.state === 'overdue');
-
 	// Accessible name for the mobile bottom Sheet (bits-ui Dialog requires a
 	// Title; without one it warns and the dialog has no accessible name). One
 	// label per variant, sr-only — the visible heading lives in the body content.
 	const sheetTitle = $derived.by(() => {
 		const who = activeMemberId ? `${memberName(activeMemberId)} · ${activeYear}` : '';
-		switch (popoverKind) {
+		switch (dialogVariant) {
 			case 'mark-paid':
+			case 'edit':
+			case 'befreien':
 				return `${who} · Beitrag bearbeiten`;
-			case 'paid':
+			case 'paid-review':
 				return `${who} · Zahlung`;
-			case 'exempt':
+			case 'exempt-review':
 				return `${who} · Befreiung`;
-			case 'permanently_exempt':
+			case 'perm-exempt':
 				return `${who} · Dauerhaft befreit`;
 			default:
 				return who;
@@ -542,56 +582,15 @@
 	}
 </script>
 
-{#snippet popoverBody()}
-	{#if activeCell}
-		{#if popoverKind === 'mark-paid'}
-			<MarkPaidPopover
-				memberId={activeMemberId}
-				year={activeYear}
-				memberName={memberName(activeMemberId)}
-				betragCents={activeCell.betragCents}
-				isOverdue={isOverdueActive}
-				{isLocked}
-				{initialMode}
-				{submitting}
-				onPaid={handlePaid}
-				onExempt={handleExempt}
-				onReminder={handleReminder}
-				onCancel={() => (popoverOpen = false)}
-			/>
-		{:else if popoverKind === 'paid'}
-			<PaidCellPopover
-				memberId={activeMemberId}
-				year={activeYear}
-				memberName={memberName(activeMemberId)}
-				betragCents={activeCell.betragCents}
-				gezahltAm={activeCell.gezahltAm}
-				{isLocked}
-				{submitting}
-				onStorno={handleStorno}
-			/>
-		{:else if popoverKind === 'exempt'}
-			<ExemptCellPopover
-				memberId={activeMemberId}
-				year={activeYear}
-				memberName={memberName(activeMemberId)}
-				exemptReason={activeCell.exemptReason}
-				{isLocked}
-				{submitting}
-				onAufheben={handleAufheben}
-			/>
-		{:else if popoverKind === 'permanently_exempt'}
-			<PermanentExemptPopover
-				memberId={activeMemberId}
-				year={activeYear}
-				memberName={memberName(activeMemberId)}
-				exemptReason={activeCell.exemptReason}
-			/>
-		{/if}
-	{/if}
-{/snippet}
-
-<div class="overflow-x-auto rounded-xl border border-border">
+<!-- max-w-full + min-w-0 pin the scroll wrapper to its parent's width so the
+     min-w-[500px] grid scrolls INSIDE it instead of widening the page (M8 —
+     no mobile page h-scroll; the honest scroll-matrix stays, card-stack is C2).
+     `relative` is load-bearing: the compact BeitragCell labels render as
+     position:absolute sr-only spans; without a positioned ancestor they escape
+     this overflow clip and their in-flow x (~480, inside the 520px grid) widens
+     documentElement to 478 at 390. Making the wrapper their containing block
+     clips them with the grid (verified via scrollWidth@390). -->
+<div class="relative w-full min-w-0 max-w-full overflow-x-auto rounded-xl border border-border">
 	{#if filter}
 		<div
 			class="border-b border-border bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
@@ -615,7 +614,7 @@
 				<div
 					role="columnheader"
 					aria-label={headerAria(h)}
-					class="flex min-w-[120px] flex-col items-center px-4 py-2.5 text-center"
+					class="flex w-[120px] shrink-0 flex-col items-center px-4 py-2.5 text-center"
 				>
 					<div class="flex items-center gap-1 text-sm font-semibold text-foreground">
 						{h.year}
@@ -676,7 +675,7 @@
 						{@const state = cell?.state ?? 'open'}
 						{@const canCtx = state === 'open' || state === 'overdue' || state === 'partial'}
 						<div
-							class="flex min-w-[120px] items-center justify-center px-4 py-2.5 {filterHighlight(
+							class="flex w-[120px] shrink-0 items-center justify-center px-2 py-2.5 {filterHighlight(
 								state
 							)
 								? 'bg-amber-50/60 dark:bg-amber-950/20'
@@ -685,7 +684,8 @@
 							{#if canCtx}
 								<ContextMenu.Root>
 									<ContextMenu.Trigger>
-										<MatrixCell
+										<BeitragCell
+											variant="cell"
 											{state}
 											isLocked={cell?.isLocked ?? false}
 											memberId={member.id}
@@ -739,7 +739,8 @@
 									</ContextMenu.Portal>
 								</ContextMenu.Root>
 							{:else}
-								<MatrixCell
+								<BeitragCell
+									variant="cell"
 									{state}
 									isLocked={cell?.isLocked ?? false}
 									memberId={member.id}
@@ -763,38 +764,41 @@
 	</div>
 </div>
 
-{#if isMobile}
-	<!-- Mobile (< sm): full-width bottom Sheet. Same handlers/content as the
-	     desktop popover — presentation only (PR3b Task 3.2). The anchored popover
-	     can escape a 390px viewport on the horizontal-scroll matrix; the sheet
-	     never does. -->
-	<Sheet.Root bind:open={popoverOpen} onOpenChangeComplete={(o) => { if (!o) restoreTriggerFocus(); }}>
-		<Sheet.Content
-			side="bottom"
-			class="rounded-t-2xl px-4 pb-[max(env(safe-area-inset-bottom),1rem)]"
-			data-testid="matrix-cell-sheet"
-		>
-			<!-- bits-ui Dialog requires a Title for an accessible name. sr-only so the
-			     visible heading stays inside the variant body. -->
-			<Sheet.Title class="sr-only">{sheetTitle}</Sheet.Title>
-			<div class="mx-auto w-full max-w-md py-2">
-				{@render popoverBody()}
-			</div>
-		</Sheet.Content>
-	</Sheet.Root>
-{:else}
-	<!-- Desktop (>= sm): single controlled popover, anchored to the active trigger cell. -->
-	<Popover.Root bind:open={popoverOpen} onOpenChangeComplete={(o) => { if (!o) restoreTriggerFocus(); }}>
-		<Popover.Portal>
-			<Popover.Content
-				customAnchor={activeTrigger}
-				side="bottom"
-				align="center"
-				sideOffset={6}
-				class="z-50 rounded-lg border border-border bg-popover p-3 shadow-lg outline-none"
-			>
-				{@render popoverBody()}
-			</Popover.Content>
-		</Popover.Portal>
-	</Popover.Root>
-{/if}
+<!-- Single controlled surface: CellPopover owns the anchored Popover (≥sm) /
+     bottom Sheet (<sm) twin + focus-restore. The BeitragCellDialog is re-keyed
+     per (member, year, variant) so its transient field/variant state starts
+     fresh on each open. -->
+<CellPopover
+	bind:open={popoverOpen}
+	anchor={activeTrigger}
+	title={sheetTitle}
+	onClose={restoreTriggerFocus}
+	popoverTestId="matrix-cell-popover"
+	sheetTestId="matrix-cell-sheet"
+>
+	{#if activeCell}
+		{#key `${activeMemberId}:${activeYear}:${dialogVariant}`}
+			<BeitragCellDialog
+				memberId={activeMemberId}
+				year={activeYear}
+				memberName={memberName(activeMemberId)}
+				betragCents={activeCell.betragCents}
+				paidCents={activeCell.paidCents}
+				gezahltAm={activeCell.gezahltAm}
+				notes={activeCell.notes}
+				exemptReason={activeCell.exemptReason}
+				initialVariant={dialogVariant}
+				{isLocked}
+				allowExempt={true}
+				canRemind={canRemindActive}
+				{submitting}
+				miniReason={activeMiniReason}
+				onPaid={handlePaid}
+				onExempt={handleExempt}
+				onStorno={handleStorno}
+				onAufheben={handleAufheben}
+				onReminder={handleReminder}
+			/>
+		{/key}
+	{/if}
+</CellPopover>

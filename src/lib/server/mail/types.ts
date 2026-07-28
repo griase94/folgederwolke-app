@@ -110,6 +110,18 @@ export interface BeitragsReminderProps {
   bic: string;
   bank: string;
   empfaenger: string;
+  /**
+   * Fälligkeit (ISO YYYY-MM-DD) → the {Frist} clause in the intro. Optional:
+   * when absent the "Zahlbar bis …" clause is omitted (the sentence stays
+   * well-formed). Sourced from `beitragssatz_by_year.faelligkeit_at`.
+   */
+  fristAt?: string | null;
+  /**
+   * Bulk-edited intro override (C2a). Only the intro paragraph is editable;
+   * subject + bank-fact block + Solidar-Absatz stay fixed. Resolved through the
+   * shared placeholder substitution (`$lib/domain/beitrag-reminder-copy`).
+   */
+  customIntro?: string | null;
 }
 
 export interface MagicLinkProps {

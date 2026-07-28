@@ -58,7 +58,6 @@ export type MemberView = {
   beitragExemptReason: string | null;
   isFixture: boolean;
   createdAt: string;
-  beitrags: Record<number, BeitragCell>;
 };
 
 // ---------------------------------------------------------------------------
