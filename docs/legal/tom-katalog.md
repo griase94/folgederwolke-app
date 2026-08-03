@@ -28,8 +28,10 @@ Bewusst kurz gehalten — für einen ~10-Personen-Verein angemessen.
 
 - Hosting: Vercel + Neon Postgres (EU Frankfurt). Neon bietet
   Point-in-Time-Recovery innerhalb der Plan-Retention.
-- Zusätzlich nächtlicher `pg_dump` in einen Drive-Ordner des
-  Kassenwarts (Konfiguration siehe Issue #31).
+- Zusätzlich nächtlicher `pg_dump`, age-verschlüsselt, in ein privates
+  GitHub-Repository und einen Drive-Ordner des Kassenwarts
+  (Workflow `.github/workflows/db-backup.yml`; Inhalte für GitHub/Google
+  nicht lesbar).
 
 ## Pseudonymisierung & Löschung
 
