@@ -10,7 +10,12 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { validateIban, normalizeIban } from "./iban.js";
+import {
+  validateIban,
+  normalizeIban,
+  maskIbanDisplay,
+  formatIban,
+} from "./iban.js";
 
 describe("validateIban — valid SEPA IBANs", () => {
   // These are canonical test IBANs from public examples. Each has a verified
@@ -60,7 +65,14 @@ describe("validateIban — invalid IBANs", () => {
   });
 
   it("rejects an IBAN containing invalid characters", () => {
-    expect(validateIban("DE89-3704-0044-0532-013000")).toBe(false);
+    expect(validateIban("DE89*3704*0044*0532*013000")).toBe(false);
+  });
+
+  // A-S2b: dashes are a typed visual separator, not a character class. The
+  // client stripped them and the server did not, so a dash-typed IBAN passed
+  // the form and failed the submit. One normalizer now, both sides.
+  it("accepts a dash-separated IBAN (client/server normalize identically)", () => {
+    expect(validateIban("DE89-3704-0044-0532-0130-00")).toBe(true);
   });
 
   it("rejects an empty string", () => {
@@ -76,6 +88,42 @@ describe("normalizeIban", () => {
   it("strips whitespace and uppercases", () => {
     expect(normalizeIban("de89 3704 0044\t0532 0130 00")).toBe(
       "DE89370400440532013000",
+    );
+  });
+
+  it("strips typed dashes too", () => {
+    expect(normalizeIban("de89-3704-0044-0532-0130-00")).toBe(
+      "DE89370400440532013000",
+    );
+  });
+});
+
+describe("maskIbanDisplay", () => {
+  it("keeps country + check digits and the last four readable", () => {
+    expect(maskIbanDisplay("DE89370400440532013000")).toBe("DE89 •••• 3000");
+  });
+
+  it("formats a grouped input the same way", () => {
+    expect(maskIbanDisplay("DE89 3704 0044 0532 0130 00")).toBe(
+      "DE89 •••• 3000",
+    );
+  });
+
+  it("returns null for a missing IBAN", () => {
+    expect(maskIbanDisplay(null)).toBeNull();
+    expect(maskIbanDisplay(undefined)).toBeNull();
+    expect(maskIbanDisplay("")).toBeNull();
+  });
+
+  it("does not mask a degenerate short value into nonsense", () => {
+    expect(maskIbanDisplay("DE89")).toBe("DE89");
+  });
+});
+
+describe("formatIban", () => {
+  it("groups into blocks of four", () => {
+    expect(formatIban("DE89370400440532013000")).toBe(
+      "DE89 3704 0044 0532 0130 00",
     );
   });
 });
