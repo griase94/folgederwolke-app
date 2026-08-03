@@ -88,8 +88,9 @@ test.describe("@phase-2 auslage form (extern-only + batch)", () => {
     await expect(page.getByText("Wer bekommt's zurück?").first()).toBeVisible();
     await expect(page.getByText("Wofür war's?").first()).toBeVisible();
     await expect(page.getByPlaceholder(/^DE00/)).toBeVisible(); // extern IBAN, no radio
+    // F3: canonical BelegUpload dropzone copy.
     await expect(
-      page.getByText(/Datei hierher ziehen oder auswählen/),
+      page.getByText(/Beleg hier ablegen oder auswählen/).first(),
     ).toBeVisible();
     await expect(page.getByTestId("login-nudge")).toBeVisible();
     await expect(page.getByRole("checkbox")).toBeVisible();
