@@ -405,10 +405,14 @@
 			></textarea>
 		</div>
 
+		<!-- Public extern arm: Beleg stays mandatory — the Verzicht escape hatch
+		     is members-only (portal), and the server enforces that. -->
 		<BelegUpload
 			bind:file={block.file}
-			errors={itemError(block.clientKey, 'beleg') ? { beleg: [itemError(block.clientKey, 'beleg')!] } : {}}
-			aria-invalid={Boolean(itemError(block.clientKey, 'beleg'))}
+			idPrefix="beleg-{block.clientKey}"
+			allowVerzicht={false}
+			hint="PDF, Foto vom Bon oder Screenshot. Datum und Betrag müssen lesbar sein. Pro Auslage ein Beleg — mehrere Käufe bitte einzeln einreichen."
+			error={itemError(block.clientKey, 'beleg')}
 			onchange={triggerSave}
 			onfile={(f) => {
 				block.file = f;
