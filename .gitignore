@@ -47,3 +47,7 @@ vite.config.ts.timestamp-*
 # Visual brainstorming companion artifacts
 .superpowers/
 .build/
+
+# QA capture artifacts (screenshots + admin session cookie — never commit)
+.qa-live/
+.qa-shots/
