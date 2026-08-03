@@ -64,37 +64,19 @@
 			<!-- eslint-disable svelte/no-navigation-without-resolve -- static in-app portal routes -->
 			<a
 				href="/portal"
-				class="flex min-h-11 items-center gap-2 rounded-[10px] pr-2 text-ink-900 transition-colors hover:text-primary-text focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+				class="flex min-h-11 min-w-0 items-center gap-2 rounded-[10px] pr-2 text-ink-900 transition-colors hover:text-primary-text focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 				aria-label="Zur Portal-Startseite"
 			>
 				<img src="/logo-lineart.svg" alt="" class="h-7 w-7 shrink-0" aria-hidden="true" />
-				<span class="flex flex-col leading-tight">
-					<span class="text-sm font-semibold tracking-tight" data-env="VEREIN_NAME"
+				<span class="flex min-w-0 flex-col leading-tight">
+					<span class="truncate text-sm font-semibold tracking-tight" data-env="VEREIN_NAME"
 						>{vereinName}</span
 					>
 					<span class="text-[11px] font-medium text-ink-500">Mitglieder-Portal</span>
 				</span>
 			</a>
 
-			<nav class="ml-2 hidden items-center gap-1 sm:flex" aria-label="Portal-Navigation">
-				{#each NAV as item (item.href)}
-					{@const Icon = item.icon}
-					<a
-						href={item.href}
-						aria-current={isCurrent(item.href) ? 'page' : undefined}
-						data-testid="member-nav-{item.testId}"
-						class="inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none
-							{isCurrent(item.href)
-							? 'bg-secondary text-ink-700'
-							: 'text-ink-500 hover:bg-secondary/60 hover:text-ink-700'}"
-					>
-						<Icon class="size-4" aria-hidden="true" />
-						{item.label}
-					</a>
-				{/each}
-			</nav>
-
-			<div class="ml-auto flex items-center gap-2.5">
+			<div class="ml-auto flex shrink-0 items-center gap-2.5">
 				<div class="flex items-center gap-2 text-right">
 					<span
 						class="grid size-8 shrink-0 place-items-center rounded-full text-[11px] font-semibold text-white [background-image:var(--gradient-brand)]"
@@ -118,6 +100,32 @@
 					</button>
 				</form>
 			</div>
+		</div>
+
+		<!-- Nav on its own baseline: four pills, never wrapping, horizontally
+		     scrollable on a phone (where the old `hidden sm:flex` made Profil
+		     unreachable entirely). -->
+		<div class="mx-auto w-full max-w-3xl px-4 pb-2">
+			<nav
+				class="flex items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+				aria-label="Portal-Navigation"
+			>
+				{#each NAV as item (item.href)}
+					{@const Icon = item.icon}
+					<a
+						href={item.href}
+						aria-current={isCurrent(item.href) ? 'page' : undefined}
+						data-testid="member-nav-{item.testId}"
+						class="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none
+							{isCurrent(item.href)
+							? 'bg-secondary text-ink-700'
+							: 'text-ink-500 hover:bg-secondary/60 hover:text-ink-700'}"
+					>
+						<Icon class="size-4" aria-hidden="true" />
+						{item.label}
+					</a>
+				{/each}
+			</nav>
 		</div>
 	</header>
 

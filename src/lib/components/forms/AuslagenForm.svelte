@@ -681,7 +681,9 @@
 	<div class="fixed inset-x-0 bottom-0 z-40 border-t border-hairline bg-card/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur lg:static lg:z-auto lg:bg-transparent lg:px-0 lg:pb-0 lg:backdrop-blur-none">
 		<div class="mx-auto flex max-w-xl flex-col gap-2">
 			{#if !formValid && missingHint}
-				<p class="flex items-center justify-center gap-1.5 text-center text-xs font-semibold text-severity-critical-text [&_svg]:size-4" data-testid="einreichen-gate">
+				<!-- Amber, not red: something is still MISSING (handlungsbedürftig),
+				     nothing is wrong (DESIGN-GUIDELINES §2.2). -->
+				<p class="flex items-center justify-center gap-1.5 text-center text-xs font-semibold text-severity-warn-text [&_svg]:size-4" data-testid="einreichen-gate">
 					<CircleAlert aria-hidden="true" />{missingHint}
 				</p>
 			{/if}

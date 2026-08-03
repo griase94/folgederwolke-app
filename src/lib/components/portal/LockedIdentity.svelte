@@ -55,8 +55,8 @@
 	<p class="mb-3 flex items-start gap-2 text-[12.5px] leading-relaxed text-ink-500">
 		<ShieldCheck class="mt-0.5 size-4 shrink-0 text-type-einnahme" aria-hidden="true" />
 		<span>
-			Du reichst als <b class="font-bold text-ink-900">{fullName}</b> ein{#if email}
-				— deine Bestätigung geht an {email}{/if}.
+			Du reichst als <b class="font-bold text-ink-900">{fullName}</b> ein{#if email}&nbsp;— deine
+				Bestätigung geht an {email}{/if}.
 		</span>
 	</p>
 {/if}
