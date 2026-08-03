@@ -21,25 +21,66 @@
 		wirtschaftlich:
 			'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200', // #fef3c7 / #92400e
 	};
+
+	/**
+	 * The same §13 identity as a solid swatch, for dense surfaces that show a
+	 * dot + label instead of a pill (Buchungsliste, Sphären-Matrix,
+	 * LockedSphereField): at 10px the badge tint is invisible, so the dot takes
+	 * the saturated member of the SAME hue family.
+	 *
+	 * Sphere dots MUST come from here. The `--sphere-*` CSS variables are the
+	 * dataviz series palette; they do not carry the §13 hues (ideeller renders
+	 * green there, i.e. identical to `--type-einnahme`), so using them for a
+	 * sphere chip silently states a different identity than the badge next to it.
+	 */
+	export const SPHERE_DOT_CLASSES: Record<Sphere, string> = {
+		ideeller: 'bg-pink-600 dark:bg-pink-400',
+		vermoegen: 'bg-blue-600 dark:bg-blue-400',
+		zweckbetrieb: 'bg-violet-600 dark:bg-violet-400',
+		wirtschaftlich: 'bg-amber-500 dark:bg-amber-400',
+	};
 </script>
 
 <script lang="ts">
 	// `Sphere` is imported in the module <script> above and is in scope here.
 	import { SPHERE_LABELS as LABELS } from '$lib/domain/sphere.js';
 
-	let { sphere }: { sphere: Sphere } = $props();
+	let {
+		sphere,
+		variant = 'badge',
+		class: className,
+	}: { sphere: Sphere; variant?: 'badge' | 'dot'; class?: string } = $props();
 
 	const label = $derived(LABELS[sphere]);
 	const tone = $derived(SPHERE_BADGE_CLASSES[sphere]);
 </script>
 
-<span
-	data-slot="sphere-badge"
-	data-sphere={sphere}
-	class={[
-		'inline-flex w-fit shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium',
-		tone,
-	].join(' ')}
->
-	{label}
-</span>
+{#if variant === 'dot'}
+	<span
+		data-slot="sphere-dot"
+		data-sphere={sphere}
+		class={['inline-flex min-w-0 items-center gap-2 text-xs text-ink-700', className]
+			.filter(Boolean)
+			.join(' ')}
+	>
+		<span
+			class={['size-2.5 shrink-0 rounded-sm', SPHERE_DOT_CLASSES[sphere]].join(' ')}
+			aria-hidden="true"
+		></span>
+		<span class="truncate">{label}</span>
+	</span>
+{:else}
+	<span
+		data-slot="sphere-badge"
+		data-sphere={sphere}
+		class={[
+			'inline-flex w-fit shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-medium',
+			tone,
+			className,
+		]
+			.filter(Boolean)
+			.join(' ')}
+	>
+		{label}
+	</span>
+{/if}

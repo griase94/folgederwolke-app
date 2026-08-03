@@ -17,6 +17,7 @@
 	import type { EurWorkspaceData } from '$lib/server/eur/load.js';
 	import { formatCentsAsEuro } from '$lib/domain/money.js';
 	import { SPHERES, SPHERE_LABELS } from '$lib/domain/sphere.js';
+	import { SPHERE_DOT_CLASSES } from '$lib/components/admin/transactions/fields/SphereBadge.svelte';
 	import { FreigrenzeGauge } from '$lib/components/charts/index.js';
 	import MonthlyTrendStrip from './MonthlyTrendStrip.svelte';
 	import ReadinessCard from './ReadinessCard.svelte';
@@ -178,7 +179,7 @@
 							{@const empty = row.einnahmenCents === 0 && row.ausgabenCents === 0}
 							<tr data-testid={`matrix-row-${s}`} class:is-zero={empty}>
 								<td class="lbl">
-									<span class="sb" style={`background:var(--sphere-${s})`}></span>
+									<span class="sb {SPHERE_DOT_CLASSES[s]}"></span>
 									{SPHERE_LABELS[s]}
 								</td>
 								<td class="num">{eur(row.einnahmenCents)}</td>
@@ -229,7 +230,7 @@
 					<h2 id="rechner-head" class="panel-title">§ 64-Rechner</h2>
 				</div>
 				<p class="rule">
-					§ 64 Abs. 3 AO misst die <span class="hl">Einnahmen</span> des wirtschaftlichen
+					§ 64 Abs. 3 AO misst die <span class="hl text-amber-800 dark:text-amber-300">Einnahmen</span> des wirtschaftlichen
 					Geschäftsbetriebs, nicht den Gewinn.
 				</p>
 				<div class="r-row">
@@ -537,8 +538,9 @@
 		line-height: 1.55;
 		margin: 0 0 12px;
 	}
+	/* Colour comes from the §13 wirtschaftlich hue in the markup (Tailwind, so it
+	   inverts in dark mode) — the same identity the matrix dot carries. */
 	.rechner .rule .hl {
-		color: var(--sphere-wirtschaftlich);
 		font-weight: 700;
 	}
 	.r-row {

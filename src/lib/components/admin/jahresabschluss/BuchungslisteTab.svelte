@@ -46,13 +46,6 @@
 	    fires when the year fills it. */
 	const FEED_CAP = 2000;
 
-	const SPHERE_LABELS: Record<string, string> = {
-		ideeller: 'Ideeller Bereich',
-		vermoegen: 'Vermögensverwaltung',
-		zweckbetrieb: 'Zweckbetrieb',
-		wirtschaftlich: 'Wirtschaftlicher Geschäftsbetrieb'
-	};
-
 	const KIND_TAB: Record<'income' | 'expense' | 'donation', string> = {
 		income: 'einnahmen',
 		expense: 'ausgaben',
@@ -62,6 +55,8 @@
 
 <script lang="ts">
 	import { formatCentsAsEuro } from '$lib/domain/money.js';
+	import { SPHERES, SPHERE_LABELS, type Sphere } from '$lib/domain/sphere.js';
+	import SphereBadge from '$lib/components/admin/transactions/fields/SphereBadge.svelte';
 	import SortHeader, { type SortColumn, type SortDir } from './SortHeader.svelte';
 	import { EmptyState } from '$lib/components/ui/empty-state/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -222,7 +217,7 @@
 					data-testid="filter-sphere-select"
 				>
 					<option value="">Alle Sphären</option>
-					{#each ['ideeller', 'vermoegen', 'zweckbetrieb', 'wirtschaftlich'] as s (s)}
+					{#each SPHERES as s (s)}
 						<option value={s}>{SPHERE_LABELS[s]}</option>
 					{/each}
 				</select>
@@ -355,8 +350,7 @@
 						<span class="cell bnr"><span class="id-chip">{r.businessId}</span></span>
 						<span class="cell datum tabular">{formatDate(r.gebuchtAm)}</span>
 						<span class="cell sphaere">
-							<span class="sb" style={`background:var(--sphere-${r.sphereSnapshot})`}></span>
-							<span class="sph-txt">{SPHERE_LABELS[r.sphereSnapshot] ?? r.sphereSnapshot}</span>
+							<SphereBadge sphere={r.sphereSnapshot as Sphere} variant="dot" />
 						</span>
 						<span class="cell beleg">
 							{#if r.hasBeleg}
@@ -604,8 +598,11 @@
 		color: var(--type-ausgabe);
 	}
 	.g-spe {
-		background: var(--sphere-ideeller-tint);
-		color: var(--sphere-ideeller);
+		/* type-spende, NOT sphere-ideeller: the latter resolves to the same green
+		   as --type-einnahme, which made the Spenden- and Einnahmen-glyph
+		   indistinguishable in the ledger. */
+		background: var(--type-spende-tint);
+		color: var(--type-spende);
 	}
 	.b-txt {
 		min-width: 0;
@@ -657,21 +654,7 @@
 	.sphaere {
 		display: inline-flex;
 		align-items: center;
-		gap: 7px;
 		min-width: 0;
-	}
-	.sb {
-		width: 9px;
-		height: 9px;
-		flex: none;
-		border-radius: 3px;
-	}
-	.sph-txt {
-		font-size: 12px;
-		color: var(--ink-700);
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
 	}
 	.beleg {
 		display: flex;
