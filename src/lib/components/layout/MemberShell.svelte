@@ -4,13 +4,21 @@
 	top bar (brand · nav · who) over a scrollable, safe-area-aware main. NO admin
 	sidebar / tab bar — a member sees only their own small world.
 
-	The bottom nav items (Auslage einreichen, Meine Auslagen) arrive in S2b with
-	those surfaces; S2a ships "Übersicht" only so no link is a dead end.
+	Nav grows with the surfaces: S2a shipped "Übersicht" alone so no link was a
+	dead end; S2b adds Einreichen, Meine Auslagen and Profil now that they exist.
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { LogOut, LayoutDashboard } from '@lucide/svelte';
+	import { page } from '$app/state';
+	import { LogOut, LayoutDashboard, Plus, Receipt, User } from '@lucide/svelte';
 	import OfflineBanner from '$lib/components/pwa/OfflineBanner.svelte';
+
+	const NAV = [
+		{ href: '/portal', label: 'Übersicht', icon: LayoutDashboard, testId: 'uebersicht' },
+		{ href: '/portal/auslagen', label: 'Meine Auslagen', icon: Receipt, testId: 'auslagen' },
+		{ href: '/portal/auslagen/neu', label: 'Einreichen', icon: Plus, testId: 'einreichen' },
+		{ href: '/portal/profil', label: 'Profil', icon: User, testId: 'profil' }
+	];
 
 	interface Props {
 		/** Display identity from the linked Mitglied row (never the client). */
@@ -20,6 +28,16 @@
 	}
 
 	let { member, vereinName, children }: Props = $props();
+
+	/** Exact match for the hub, prefix match for its sub-surfaces. */
+	function isCurrent(href: string): boolean {
+		const path = page.url.pathname;
+		if (href === '/portal') return path === '/portal';
+		if (href === '/portal/auslagen') {
+			return path === '/portal/auslagen' || /^\/portal\/auslagen\/(?!neu$)/.test(path);
+		}
+		return path === href;
+	}
 
 	const fullName = $derived(`${member.vorname} ${member.nachname}`.trim());
 	const initials = $derived(
@@ -59,14 +77,21 @@
 			</a>
 
 			<nav class="ml-2 hidden items-center gap-1 sm:flex" aria-label="Portal-Navigation">
-				<a
-					href="/portal"
-					aria-current="page"
-					class="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-secondary px-3 text-sm font-medium text-ink-700 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-				>
-					<LayoutDashboard class="size-4" aria-hidden="true" />
-					Übersicht
-				</a>
+				{#each NAV as item (item.href)}
+					{@const Icon = item.icon}
+					<a
+						href={item.href}
+						aria-current={isCurrent(item.href) ? 'page' : undefined}
+						data-testid="member-nav-{item.testId}"
+						class="inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none
+							{isCurrent(item.href)
+							? 'bg-secondary text-ink-700'
+							: 'text-ink-500 hover:bg-secondary/60 hover:text-ink-700'}"
+					>
+						<Icon class="size-4" aria-hidden="true" />
+						{item.label}
+					</a>
+				{/each}
 			</nav>
 
 			<div class="ml-auto flex items-center gap-2.5">
