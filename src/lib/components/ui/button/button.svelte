@@ -1,5 +1,6 @@
 <script lang="ts" module>
 	import { cn, type WithElementRef } from "$lib/utils.js";
+	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import type { HTMLAnchorAttributes, HTMLButtonAttributes } from "svelte/elements";
 	import { type VariantProps, tv } from "tailwind-variants";
 
@@ -19,6 +20,10 @@
 				xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
 				sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
 				lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+				// The ONE CTA geometry (DESIGN-GUIDELINES §2.1): page + takeover
+				// forms and public screens. Replaces the hand-rolled
+				// h-11/min-h-[52px]/text-[15px] chains.
+				cta: "h-11 md:h-10 gap-2 rounded-[10px] px-4 text-sm font-semibold",
 				icon: "size-8",
 				"icon-xs": "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
 				"icon-sm": "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",
@@ -38,6 +43,11 @@
 		WithElementRef<HTMLAnchorAttributes> & {
 			variant?: ButtonVariant;
 			size?: ButtonSize;
+			/**
+			 * Submit in flight: spinner + disabled + aria-busy, from one place
+			 * (DESIGN-GUIDELINES §2.1 — never copy the animate-spin SVG).
+			 */
+			loading?: boolean;
 		};
 </script>
 
@@ -50,22 +60,32 @@
 		href = undefined,
 		type = "button",
 		disabled,
+		loading = false,
 		children,
 		...restProps
 	}: ButtonProps = $props();
+
+	// A loading button is never clickable twice.
+	const isDisabled = $derived(disabled || loading);
 </script>
+
+{#snippet spinner()}
+	<LoaderCircle class="animate-spin" aria-hidden="true" />
+{/snippet}
 
 {#if href}
 	<a
 		bind:this={ref}
 		data-slot="button"
 		class={cn(buttonVariants({ variant, size }), className)}
-		href={disabled ? undefined : href}
-		aria-disabled={disabled}
-		role={disabled ? "link" : undefined}
-		tabindex={disabled ? -1 : undefined}
+		href={isDisabled ? undefined : href}
+		aria-disabled={isDisabled}
+		aria-busy={loading ? "true" : undefined}
+		role={isDisabled ? "link" : undefined}
+		tabindex={isDisabled ? -1 : undefined}
 		{...restProps}
 	>
+		{#if loading}{@render spinner()}{/if}
 		{@render children?.()}
 	</a>
 {:else}
@@ -74,9 +94,11 @@
 		data-slot="button"
 		class={cn(buttonVariants({ variant, size }), className)}
 		{type}
-		{disabled}
+		disabled={isDisabled}
+		aria-busy={loading ? "true" : undefined}
 		{...restProps}
 	>
+		{#if loading}{@render spinner()}{/if}
 		{@render children?.()}
 	</button>
 {/if}
