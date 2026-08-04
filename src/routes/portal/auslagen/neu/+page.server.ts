@@ -82,6 +82,7 @@ interface Handoff {
       bezeichnung: string;
       betragCents: number;
       belegOk: boolean;
+      belegMode: "file" | "verzicht";
     }[];
     gesamtCents: number;
     statusHref: string;
@@ -153,6 +154,9 @@ export const actions: Actions = {
             bezeichnung: r.bezeichnung,
             betragCents: Number(r.betragCents),
             belegOk: r.belegFileId != null,
+            belegMode: (r.belegFileId != null ? "file" : "verzicht") as
+              | "file"
+              | "verzicht",
           })),
         );
       }
@@ -351,6 +355,7 @@ async function readGroupRows(businessIds: string[]) {
       bezeichnung: auslagenSubmissions.bezeichnung,
       betragCents: auslagenSubmissions.betragCents,
       belegFileId: auslagenSubmissions.belegFileId,
+      belegVerzichtGrund: auslagenSubmissions.belegVerzichtGrund,
     })
     .from(auslagenSubmissions)
     .where(inArray(auslagenSubmissions.businessId, businessIds));
@@ -359,6 +364,9 @@ async function readGroupRows(businessIds: string[]) {
     bezeichnung: r.bezeichnung,
     betragCents: Number(r.betragCents),
     belegOk: r.belegFileId != null,
+    belegMode: (r.belegFileId != null ? "file" : "verzicht") as
+      | "file"
+      | "verzicht",
   }));
 }
 
@@ -368,6 +376,7 @@ function handoffFrom(
     bezeichnung: string;
     betragCents: number;
     belegOk: boolean;
+    belegMode: "file" | "verzicht";
   }[],
 ): Handoff {
   const sorted = [...rows].sort((a, b) =>
@@ -380,6 +389,7 @@ function handoffFrom(
         bezeichnung: r.bezeichnung,
         betragCents: r.betragCents,
         belegOk: r.belegOk,
+        belegMode: r.belegMode,
       })),
       gesamtCents: sorted.reduce((sum, r) => sum + r.betragCents, 0),
       statusHref: `/portal/auslagen/${encodeURIComponent(sorted[0]?.businessId ?? "")}`,
