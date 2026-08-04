@@ -1,17 +1,19 @@
 <script lang="ts">
 	/**
-	 * EinnahmenKpi — Phase 5 / Task 2 (Tier C2, spec §8.1), plate transaktionen-v4
-	 * §4. A quiet anchor ("<Jahr|Alle> · <Summe> · <N>") over the Sphären-Split as
-	 * Kit tiles: the four steuerliche Sphären (Ideeller / Vermögen / Zweckbetrieb /
-	 * Wirtschaftlich), each with its total. ALL FOUR are ALWAYS shown — an empty
-	 * sphere renders 0,00 € rather than being hidden, so the gemeinnützigkeit
-	 * reading is always complete. Sphere hue rides the tile swatch (never the
-	 * number — ANDY-LENS §4).
+	 * EinnahmenKpi — the Einnahmen list KPI strip (spec §8 M3, §8.1).
+	 *
+	 * A quiet anchor ("<Jahr|Alle> · <Summe> · <N>") over the Sphären-Split as
+	 * StatCards: the four steuerliche Sphären (Ideeller / Vermögen / Zweckbetrieb
+	 * / Wirtschaftlich), each with its total. ALL FOUR are ALWAYS shown — an empty
+	 * sphere renders a dimmed 0,00 € rather than being hidden, so the
+	 * Gemeinnützigkeit reading is always complete. Sphere hue rides the dot, never
+	 * the number (ANDY-LENS §4) — and it comes from SPHERE_DOT_CLASSES, the §13
+	 * identity, NOT from the dataviz `--sphere-*` series palette (which paints
+	 * ideeller green and would contradict every SphereBadge in the app).
 	 */
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
-	import { SPHERE_VAR } from '$lib/components/charts/_shared/tokens.js';
-	import KpiStrip from '../KpiStrip.svelte';
-	import KpiTile from '../KpiTile.svelte';
+	import { SPHERE_DOT_CLASSES } from '$lib/components/admin/transactions/fields/SphereBadge.svelte';
+	import { StatCard, StatCardStrip } from '$lib/components/ui/stat-card/index.js';
 	import { SPHERES, type Sphere } from '$lib/domain/sphere.js';
 	import { yearScopeLabel, type YearScope } from '$lib/domain/year.js';
 	import { buchungenLabel as fmtBuchungen } from '$lib/domain/transaction-kpi.js';
@@ -39,6 +41,12 @@
 
 	let { totalCents, count, bySphere, year }: Props = $props();
 
+	// Each sphere card drills into the matching filtered list — the "→ gefilterte
+	// Liste" jump of spec §8. The year scope rides along so the drill-down shows
+	// exactly the rows the tile counted.
+	const sphereHref = (sphere: Sphere) =>
+		`/app/einnahmen?year=${encodeURIComponent(String(year))}&sphaere=${sphere}`;
+
 	const yearLabel = $derived(yearScopeLabel(year));
 	const totalLabel = $derived(formatMoney(totalCents));
 	const buchungenLabel = $derived(fmtBuchungen(count));
@@ -54,16 +62,19 @@
 		<span class="tabular-nums">{buchungenLabel}</span>
 	</p>
 
-	<!-- ── Sphären-Split as Kit tiles (§8.1) — all four ALWAYS shown ────────── -->
-	<KpiStrip data-slot="sphere-split" aria-label="Einnahmen nach Sphäre">
+	<!-- ── Sphären-Split as StatCards (§8.1) — all four ALWAYS shown ───────── -->
+	<StatCardStrip orientation="rail" label="Einnahmen nach Sphäre" data-sphere-split="">
 		{#each SPHERES as sphere (sphere)}
-			<KpiTile
+			<StatCard
 				label={SPHERE_TILE_LABEL[sphere]}
+				format="money"
 				value={formatMoney(bySphere[sphere])}
-				accent={SPHERE_VAR[sphere]}
+				accentClass={SPHERE_DOT_CLASSES[sphere]}
+				empty={bySphere[sphere] === 0}
+				href={sphereHref(sphere)}
 				data-sphere-chip=""
 				data-sphere={sphere}
 			/>
 		{/each}
-	</KpiStrip>
+	</StatCardStrip>
 </div>

@@ -33,7 +33,6 @@ const ALLOWLIST = new Set<string>([
   "einstellungen/beitraege/+page.svelte",
   "einstellungen/verein/+page.svelte",
   "files/+page.svelte",
-  "files/papierkorb/+page.svelte",
   "mitglieder/+page.svelte",
   "mitglieder/[id]/+page.svelte",
   "mitglieder/bericht/[year]/+page.svelte",

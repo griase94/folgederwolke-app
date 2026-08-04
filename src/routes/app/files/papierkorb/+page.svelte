@@ -1,24 +1,19 @@
 <script lang="ts">
   import { enhance } from "$app/forms";
+  import PageShell from "$lib/components/layout/PageShell.svelte";
+  import PageHeader from "$lib/components/layout/PageHeader.svelte";
 
   let { data, form } = $props();
 </script>
 
 <svelte:head><title>Papierkorb · Dateien</title></svelte:head>
 
-<div class="container mx-auto max-w-4xl px-4 py-8 sm:px-6">
-  <div class="mb-8">
-    <!-- eslint-disable svelte/no-navigation-without-resolve -->
-    <a
-      href="/app/files"
-      class="text-sm font-medium text-primary-text hover:underline">← Dateien</a
-    >
-    <!-- eslint-enable svelte/no-navigation-without-resolve -->
-    <h1 class="mt-2 text-2xl font-bold tracking-tight text-foreground">Papierkorb</h1>
-    <p class="mt-0.5 text-sm text-muted-foreground">
-      Gelöschte Dateien wiederherstellen
-    </p>
-  </div>
+<PageShell width="list">
+  <PageHeader title="Papierkorb" backHref="/app/files" backLabel="Dateien">
+    {#snippet meta()}
+      <p>Gelöschte Dateien wiederherstellen</p>
+    {/snippet}
+  </PageHeader>
 
   {#if form?.error}
     <p
@@ -58,4 +53,4 @@
       {/each}
     </ul>
   {/if}
-</div>
+</PageShell>

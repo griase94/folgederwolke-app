@@ -7,11 +7,25 @@
   truth for desktop IA). Active state: gradient-soft pill + primary-text
   label (spec §5 — the sanctioned soft-gradient treatment, §2 budget).
   "Mehr" collapsible group persists its expanded state in localStorage.
-  Tablet (768–1023px) renders the 64px icon-only collapse (collapsed prop).
+
+  Transaktionen carries its three type lists as indented children, always
+  open (spec §1) — no disclosure in front of the most-used destinations. A
+  child's pill never doubles as the parent's: navItemIsActive matches the
+  parent's own route only.
+
+  Tablet (768–1023px) renders the 64px icon-only collapse, where the tree
+  FLATTENS to its top level: three unlabelled child icons under a fourth
+  would be a riddle, and the parent icon already leads to all of them.
 -->
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { mainNavItems, moreNavItems } from './nav-registry.js';
+	import {
+		mainNavItems,
+		moreNavItems,
+		hrefIsActive,
+		navItemIsActive,
+		navItemRepresents
+	} from './nav-registry.js';
 	import UserMenu from './UserMenu.svelte';
 	import type { SessionUser } from '$lib/server/auth/index.js';
 
@@ -37,6 +51,13 @@
 
 	let moreOpen = $state(initialMehrOpen());
 
+	// A collapsed group must never swallow the active entry: landing on Dateien
+	// or DSGVO with "Mehr" closed left the sidebar with no pill at all, so the
+	// app looked like it had lost track of where you were. Being inside the
+	// group forces it open; the persisted preference governs every other case.
+	const moreHasActive = $derived(moreNavItems.some((i) => navItemIsActive(i, path)));
+	const moreExpanded = $derived(moreOpen || moreHasActive);
+
 	function toggleMore(): void {
 		moreOpen = !moreOpen;
 		try {
@@ -46,17 +67,16 @@
 		}
 	}
 
-	function isActive(href: string): boolean {
-		const current = $page.url.pathname;
-		if (href === '/app') return current === '/app';
-		return current === href || current.startsWith(href + '/');
-	}
+	const path = $derived($page.url.pathname);
 
 	// Icon SVG paths by icon name (lucide outlines, stroke-based).
 	const ICONS: Record<string, string> = {
 		LayoutDashboard:
 			'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
 		Inbox: 'M22 12h-6l-2 3H10l-2-3H2M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z',
+		ArrowLeftRight: 'M8 3L4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4',
+		Files:
+			'M15 2H8.5A1.5 1.5 0 0 0 7 3.5v13A1.5 1.5 0 0 0 8.5 18h10a1.5 1.5 0 0 0 1.5-1.5V7zM15 2v5h5M3 7.5v13A1.5 1.5 0 0 0 4.5 22h10',
 		MinusCircle: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM8 12h8',
 		PlusCircle: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM8 12h8M12 8v8',
 		Gift: 'M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z',
@@ -106,7 +126,11 @@
 	<nav class="flex-1 overflow-y-auto px-2 py-3" aria-label="Hauptmenü">
 		<ul role="list" class="space-y-0.5" data-nav-group="main">
 			{#each mainNavItems as item (item.href)}
-				{@const active = isActive(item.href)}
+				<!-- Collapsed rail: the children are not rendered, so the parent icon
+				     stands in for them and must light up for their routes too. -->
+				{@const active = collapsed
+					? navItemRepresents(item, path)
+					: navItemIsActive(item, path)}
 				<li>
 					<!-- eslint-disable svelte/no-navigation-without-resolve -->
 					<a
@@ -140,6 +164,34 @@
 							<span>{item.label}</span>
 						{/if}
 					</a>
+
+					{#if item.children && !collapsed}
+						<ul role="list" class="mt-0.5 space-y-0.5" data-nav-children={item.href}>
+							{#each item.children as child (child.href)}
+								{@const childActive = hrefIsActive(child.href, path)}
+								<li>
+									<!-- eslint-disable svelte/no-navigation-without-resolve -->
+									<a
+										href={child.href}
+										class="group flex items-center gap-3 rounded-full px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+										class:bg-gradient-brand-soft={childActive}
+										class:font-medium={childActive}
+										class:text-primary-text={childActive}
+										class:text-ink-500={!childActive}
+										class:hover:bg-secondary={!childActive}
+										class:hover:text-ink-700={!childActive}
+										aria-current={childActive ? 'page' : undefined}
+									>
+										<!-- eslint-enable svelte/no-navigation-without-resolve -->
+										<!-- Empty box the width of the parent's icon: the child labels
+										     line up under the parent label without a magic indent. -->
+										<span class="w-[18px] shrink-0" aria-hidden="true"></span>
+										<span>{child.label}</span>
+									</a>
+								</li>
+							{/each}
+						</ul>
+					{/if}
 				</li>
 			{/each}
 		</ul>
@@ -151,7 +203,7 @@
 					type="button"
 					onclick={toggleMore}
 					class="flex w-full items-center justify-between rounded-full px-3 py-2 text-xs font-semibold uppercase tracking-wider text-ink-500 transition-colors hover:bg-secondary hover:text-ink-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-					aria-expanded={moreOpen}
+					aria-expanded={moreExpanded}
 				>
 					<span>Mehr</span>
 					<svg
@@ -166,15 +218,15 @@
 						stroke-linejoin="round"
 						aria-hidden="true"
 					>
-						<path d={moreOpen ? ICONS['ChevronUp'] : ICONS['ChevronDown']} />
+						<path d={moreExpanded ? ICONS['ChevronUp'] : ICONS['ChevronDown']} />
 					</svg>
 				</button>
 			{/if}
 
-			{#if moreOpen || collapsed}
+			{#if moreExpanded || collapsed}
 				<ul role="list" class="mt-1 space-y-0.5" data-nav-group="more">
 					{#each moreNavItems as item (item.href)}
-						{@const active = isActive(item.href)}
+						{@const active = navItemIsActive(item, path)}
 						<li>
 							<!-- eslint-disable svelte/no-navigation-without-resolve -->
 							<a

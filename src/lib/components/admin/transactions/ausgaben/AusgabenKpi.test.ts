@@ -23,6 +23,7 @@ describe("AusgabenKpi", () => {
         erstattetCount: 5,
         offenCount: 0,
         oldestOpenAgeDays: null,
+        year: 2026,
       },
     });
     expect(screen.queryByText(/offen/i)).toBeNull();
@@ -36,6 +37,7 @@ describe("AusgabenKpi", () => {
         erstattetCount: 5,
         offenCount: 3,
         oldestOpenAgeDays: 18,
+        year: 2026,
       },
     });
     expect(screen.getByText(/3 offen/)).toBeTruthy();
@@ -50,6 +52,7 @@ describe("AusgabenKpi", () => {
         erstattetCount: 2,
         offenCount: 0,
         oldestOpenAgeDays: null,
+        year: 2026,
       },
     });
     // The strip renders below the PageHeader, which owns the page <h1>; the KPI

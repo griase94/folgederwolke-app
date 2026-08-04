@@ -35,11 +35,15 @@ describe("FilterBar", () => {
         kategorieOptions: [],
         memberOptions: [],
         resultCount: 7,
+        totalCount: 42,
       },
     });
     expect(await screen.findByText(/Status/)).toBeTruthy();
-    expect(screen.getByText(/7/)).toBeTruthy(); // live count
-    expect(screen.getByRole("button", { name: /Zurücksetzen/i })).toBeTruthy();
+    expect(screen.getByText(/7 von 42/)).toBeTruthy(); // live result anchor
+    // Reset is a text link at the END of the chip row, not a permanently
+    // disabled button in the resting toolbar (spec §3).
+    const reset = screen.getByRole("button", { name: /Zurücksetzen/i });
+    expect(reset.closest('[data-slot="toolbar-chips"]')).toBeTruthy();
   });
   it("shows a filter-count badge on the +Filter trigger when filters are active", () => {
     render(FilterBar, {
@@ -122,40 +126,69 @@ describe("FilterBar", () => {
   });
 });
 
-// ── FIX C (review): result-count aria-live + pluralization ───────────────
-describe("FIX C — result-count span: aria-live + pluralization", () => {
-  function renderBar(resultCount: number) {
+// ── Result anchor (spec §3 + §5 format canon) ────────────────────────────
+describe("result anchor", () => {
+  function renderBar(props: Record<string, unknown>) {
     const { container } = render(FilterBar, {
       props: {
         tab: "ausgaben" as const,
         state: { enums: {}, members: {}, amount: {}, booleans: {} },
         kategorieOptions: [],
         memberOptions: [],
-        resultCount,
+        ...props,
       },
     });
-    return container.querySelector<HTMLElement>('[data-slot="result-count"]');
+    return container.querySelector<HTMLElement>('[data-slot="result-meta"]');
   }
 
-  it("result-count span has aria-live='polite' and aria-atomic='true'", () => {
-    const span = renderBar(5);
-    expect(span).not.toBeNull();
+  it("is silent while nothing is filtered — it would only repeat the header", () => {
+    expect(
+      renderBar({ resultCount: 47, totalCount: 47 })?.textContent?.trim(),
+    ).toBe("");
+  });
+
+  it("reads 'N von M' once a filter narrows the list", () => {
+    const span = renderBar({
+      state: {
+        enums: { status: ["offen"] },
+        members: {},
+        amount: {},
+        booleans: {},
+      },
+      resultCount: 7,
+      totalCount: 47,
+    });
+    expect(span?.textContent?.replace(/\s+/g, " ").trim()).toBe("7 von 47");
+  });
+
+  it("counts a search as a filter", () => {
+    const span = renderBar({
+      state: {
+        search: "miete",
+        enums: {},
+        members: {},
+        amount: {},
+        booleans: {},
+      },
+      resultCount: 2,
+      totalCount: 47,
+    });
+    expect(span?.textContent?.replace(/\s+/g, " ").trim()).toBe("2 von 47");
+  });
+
+  it("announces changes politely", () => {
+    const span = renderBar({
+      state: {
+        enums: { status: ["offen"] },
+        members: {},
+        amount: {},
+        booleans: {},
+      },
+      resultCount: 0,
+      totalCount: 47,
+    });
     expect(span?.getAttribute("aria-live")).toBe("polite");
     expect(span?.getAttribute("aria-atomic")).toBe("true");
-  });
-
-  it("renders '1 Ergebnis' (singular) when resultCount === 1", () => {
-    const span = renderBar(1);
-    expect(span?.textContent?.trim()).toBe("1 Ergebnis");
-  });
-
-  it("renders '0 Ergebnisse' (plural) when resultCount === 0", () => {
-    const span = renderBar(0);
-    expect(span?.textContent?.trim()).toBe("0 Ergebnisse");
-  });
-
-  it("renders '2 Ergebnisse' (plural) when resultCount === 2", () => {
-    const span = renderBar(2);
-    expect(span?.textContent?.trim()).toBe("2 Ergebnisse");
+    expect(span?.textContent?.replace(/\s+/g, " ").trim()).toBe("0 von 47");
   });
 });

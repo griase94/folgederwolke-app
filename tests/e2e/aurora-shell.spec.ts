@@ -77,7 +77,7 @@ test.describe("@phase-aurora-slice2 Aurora shell — mobile", () => {
     await page.waitForURL("**/app/ausgaben/neu");
   });
 
-  test("Mehr sheet: profile row, six tiles, footer; back button closes the SHEET", async ({
+  test("Mehr sheet: profile row, seven tiles, footer; back button closes the SHEET", async ({
     page,
   }) => {
     await loginAs(page, "admin");
@@ -85,7 +85,9 @@ test.describe("@phase-aurora-slice2 Aurora shell — mobile", () => {
     await page.getByRole("button", { name: "Mehr Bereiche" }).click();
     const sheet = page.getByTestId("mehr-sheet");
     await expect(sheet).toBeVisible();
-    await expect(sheet.getByTestId("mehr-tile")).toHaveCount(6);
+    // Seven since spec §1: "Dateien" joined the grid — /app/files had no
+    // mobile entry point at all before.
+    await expect(sheet.getByTestId("mehr-tile")).toHaveCount(7);
     await expect(sheet.getByTestId("mehr-abmelden")).toBeVisible();
     // History-entry contract (spec §5): back closes the sheet, not the page.
     await page.goBack();

@@ -77,6 +77,16 @@ export function buildAusgabenWhere(s: FilterState, year: YearScope): SQL[] {
   // P2-04: s.enums.kategorie holds kategorieNameSnapshot strings (not ids), per Task 1 contract.
   if (s.enums.kategorie?.length)
     c.push(inArray(expenses.kategorieNameSnapshot, s.enums.kategorie));
+  // Sphäre matches the EFFECTIVE sphere (override ?? snapshot) — the value the
+  // row actually displays. Filtering the raw snapshot would hide a row whose
+  // sphere was deliberately corrected (ADR-0008).
+  if (s.enums.sphaere?.length)
+    c.push(
+      sql`COALESCE(${expenses.sphereOverride}, ${expenses.sphereSnapshot})::text IN (${sql.join(
+        s.enums.sphaere.map((v) => sql`${v}`),
+        sql`, `,
+      )})`,
+    );
   if (s.enums.monat?.length)
     c.push(
       sql`EXTRACT(MONTH FROM ${expenses.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int IN (${sql.join(
@@ -174,6 +184,14 @@ export function buildSpendenWhere(s: FilterState, year: YearScope): SQL[] {
   )
     c.push(isNull(donations.bescheinigungNr));
   if (s.members.spender) c.push(eq(donations.memberId, s.members.spender));
+  if (s.enums.sphaere?.length)
+    c.push(
+      inArray(
+        donations.sphereSnapshot,
+        s.enums
+          .sphaere as (typeof donations.sphereSnapshot.enumValues)[number][],
+      ),
+    );
   if (s.enums.monat?.length)
     c.push(
       sql`EXTRACT(MONTH FROM ${donations.gebuchtAm} AT TIME ZONE 'Europe/Berlin')::int IN (${sql.join(

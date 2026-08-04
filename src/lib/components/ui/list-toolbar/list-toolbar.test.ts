@@ -1,0 +1,105 @@
+/**
+ * ListToolbar — the composed toolbar anatomy (Andys Regel 7, spec §3).
+ *
+ * The structural guarantee behind the "Δy of the actions = 0" acceptance
+ * criterion: the actions live INSIDE row 1, and the chip row is row 1's
+ * following sibling. As long as that holds, growing a chip row cannot move the
+ * action group — the old layout put the filter bar and the actions side by side
+ * in a vertically centred row, so a second chip line re-centred both.
+ */
+import { render, cleanup } from "@testing-library/svelte";
+import { describe, it, expect, afterEach } from "vitest";
+import Harness from "./ListToolbar.test.svelte";
+import { TOOLBAR_CONTROL, TOOLBAR_BUTTON } from "./index.js";
+import { buttonVariants } from "../button/index.js";
+
+afterEach(() => cleanup());
+
+describe("ListToolbar — anatomy", () => {
+  it("keeps the actions inside row 1 and the chips in a following sibling row", () => {
+    const { container } = render(Harness, { props: { hasChips: true } });
+    const toolbar = container.querySelector<HTMLElement>(
+      '[data-slot="list-toolbar"]',
+    )!;
+    const row = toolbar.querySelector<HTMLElement>(
+      '[data-slot="toolbar-row"]',
+    )!;
+    const chipRow = toolbar.querySelector<HTMLElement>(
+      '[data-slot="toolbar-chips"]',
+    )!;
+
+    // The primary CTA is a descendant of row 1 …
+    const primary = container.querySelector('[data-slot="new-cta"]')!;
+    expect(row.contains(primary)).toBe(true);
+    // … and the chip row is a SIBLING that follows it, never a wrapper.
+    expect(chipRow.previousElementSibling).toBe(row);
+    expect(chipRow.contains(primary)).toBe(false);
+  });
+
+  it("does not spend a row on chips when there are none", () => {
+    const { container } = render(Harness, { props: { hasChips: false } });
+    expect(container.querySelector('[data-slot="toolbar-chips"]')).toBeNull();
+    expect(container.querySelector('[data-slot="toolbar-row"]')).toBeTruthy();
+  });
+
+  it("is full-width so the right edge can align with the list card below", () => {
+    const { container } = render(Harness, { props: {} });
+    const toolbar = container.querySelector<HTMLElement>(
+      '[data-slot="list-toolbar"]',
+    )!;
+    expect(toolbar.className).toContain("w-full");
+    expect(
+      toolbar.querySelector<HTMLElement>('[data-slot="toolbar-row"]')!
+        .className,
+    ).toContain("w-full");
+  });
+
+  it("pushes meta + actions to the right edge of the same row", () => {
+    const { container } = render(Harness, { props: { withMeta: true } });
+    const group = container.querySelector<HTMLElement>(
+      '[data-slot="toolbar-row"] > div',
+    )!;
+    expect(group.className).toContain("ml-auto");
+    expect(group.querySelector('[data-slot="new-cta"]')).toBeTruthy();
+  });
+});
+
+describe("ListToolbar — one control scale (spec §3)", () => {
+  it("every exported geometry is 44px on mobile and 40px from md", () => {
+    // …including the Kit CTA the row's primary action wears (guidelines §2.1):
+    // the toolbar scale and the CTA geometry have to agree or the row breaks.
+    for (const cls of [
+      TOOLBAR_CONTROL,
+      TOOLBAR_BUTTON,
+      buttonVariants({ size: "cta" }),
+    ]) {
+      expect(cls).toContain("h-11");
+      expect(cls).toContain("md:h-10");
+      expect(cls).toContain("rounded-[10px]");
+    }
+  });
+
+  it("pins the EFFECTIVE height at md — a min-height without an md variant wins", () => {
+    // The bug this pins: `min-h-11` (44px) has no md counterpart, so it
+    // outranked `md:h-10` (40px) and every CTA rendered 44px at desktop, 4px
+    // taller than the controls beside it. A height class alone is not enough —
+    // whatever sets a min-height at the mobile size must release it at md.
+    for (const cls of [
+      TOOLBAR_CONTROL,
+      TOOLBAR_BUTTON,
+      buttonVariants({ size: "cta" }),
+    ]) {
+      if (/\bmin-h-11\b/.test(cls)) {
+        expect(cls, `"${cls}" raises min-height at md`).toMatch(
+          /\bmd:min-h-10\b/,
+        );
+      }
+    }
+  });
+
+  it("uses the md breakpoint, never lg (guidelines §1.5)", () => {
+    for (const cls of [TOOLBAR_CONTROL, TOOLBAR_BUTTON]) {
+      expect(cls).not.toMatch(/\blg:h-/);
+    }
+  });
+});

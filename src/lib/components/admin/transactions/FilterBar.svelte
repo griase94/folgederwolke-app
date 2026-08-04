@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * FilterBar — shared chip filter-bar for all three transaction tabs.
+   * FilterBar — the list toolbar for the three transaction tabs.
    *
    * Presentational + URL-driven: it reflects the current `FilterState` and emits
    * changes by serializing a new state with `serializeFilterState` and calling
@@ -8,22 +8,29 @@
    * page re-parses it via `parseFilterState` on the next `load` and feeds a fresh
    * `state` back in. This component never holds filter state of its own.
    *
-   * Composition (consumes the A3 primitives — does NOT rebuild them):
-   *  - desktop: a `Popover` per registry field; inside, the field picker
-   *    (enum-multi → checkboxes, member-picker → `Combobox`, amount-range → two
-   *    number inputs, boolean → toggle). Active selections render as removable
-   *    `MultiselectChip`s inline.
-   *  - mobile (<sm): the "+ Filter" trigger + chips collapse into a `Sheet`
-   *    holding the same field pickers; the search input + "Ansichten ▾" stay
-   *    inline. The "+ Filter" trigger carries a `filter-count-badge` showing the
-   *    number of active fields.
-   *  - saved views (Task 7): "Ansichten ▾" lists built-in presets + custom views
-   *    from `$lib/client/saved-views`; selecting one navigates to its query,
-   *    "Speichern" persists the current query as a new custom view.
+   * Anatomy (spec §3, Andys Regel 7) — it owns the WHOLE toolbar, including the
+   * page's export + primary action, because a filter bar that only owns its left
+   * half cannot keep the right half from moving when a chip row appears:
+   *
+   *   row 1  [search · + Filter · Ansichten] —— [N von M · CSV · <actions>]
+   *   row 2  [chips …  Zurücksetzen]
+   *
+   * Filter surface (spec §4, Andys Regel 8) — never a meterlong checkbox wall:
+   *  - short enums (Sphäre, Status, Bezahlt von, …) are wrap TogglePills;
+   *  - Monat is a 4×3 grid of the same pill;
+   *  - Kategorie (up to ~35 options) gets as-you-type search + an internally
+   *    scrolling list with the active selection pinned to the top;
+   *  - Betrag is min/max side by side, booleans are single toggle rows;
+   *  - the popover itself is capped at min(70vh, 640px) and scrolls internally,
+   *    so it can never grow past the viewport.
+   *
+   * Mobile (<md) uses the SAME sections in a bottom sheet, plus the CSV export
+   * (which has no room in the toolbar there) and a [Zurücksetzen][Fertig] footer.
    *
    * §13: this component only EMITS filter-state. Row-level Sphäre (left
    * color-rule) / Status (filled badge) rendering is owned by the tab pages.
    */
+  import { untrack, type Snippet } from "svelte";
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import {
@@ -43,6 +50,12 @@
   import * as Sheet from "$lib/components/ui/sheet/index.js";
   import { Combobox } from "$lib/components/ui/combobox/index.js";
   import { MultiselectChip } from "$lib/components/ui/multiselect-chip/index.js";
+  import {
+    ListToolbar,
+    TOOLBAR_CONTROL as CONTROL,
+    TOOLBAR_BUTTON as CONTROL_BUTTON,
+  } from "$lib/components/ui/list-toolbar/index.js";
+  import { TogglePill } from "$lib/components/ui/toggle-pill/index.js";
   import { parseEuroToCents, formatCentsAsEuro } from "$lib/domain/money.js";
 
   type Option = { value: string; label: string };
@@ -56,8 +69,31 @@
     kategorieOptions?: Option[];
     /** Runtime-loaded member options for member-picker fields; `id` = member uuid. */
     memberOptions?: MemberOption[];
-    /** Live count of matching rows, shown as the result anchor. */
+    /** Rows matching the current filters. */
     resultCount?: number;
+    /** Rows in scope before filtering — the M of "N von M". */
+    totalCount?: number;
+    /** CSV export of the filtered + sorted list (all pages). */
+    exportHref?: string;
+    /** The page's own actions — the ONE primary CTA, plus any extra link. */
+    pageActions?: Snippet;
+    /**
+     * Registry keys this page renders ELSEWHERE, so the popover must not repeat
+     * them. The feed passes ["typ"]: the type chips are its identity and live in
+     * their own row (spec §5).
+     */
+    excludeFields?: string[];
+    /**
+     * A sentence explaining a consequence of the current filters, shown at the
+     * top of the filter surface. The feed uses it for the honesty rule (a field
+     * that cannot describe an arm removes that arm — say so instead of showing
+     * a silent zero).
+     */
+    notice?: string | null;
+    /** Test id for the search input, where a route already has an established one. */
+    searchTestId?: string;
+    /** Placeholder for the search input. */
+    searchPlaceholder?: string;
   }
 
   // External prop is `state` (Phase-3 contract); alias locally to `filterState`
@@ -68,23 +104,35 @@
     kategorieOptions = [],
     memberOptions = [],
     resultCount,
+    totalCount,
+    exportHref,
+    pageActions,
+    excludeFields = [],
+    notice = null,
+    searchTestId,
+    searchPlaceholder = "Suchen…",
   }: Props = $props();
 
   // German display labels for the tab key (the raw key is lowercase + reads off
   // in UI copy).
-  const TAB_LABEL: Record<import("$lib/domain/transaction-filters.js").TabKey, string> = {
+  const TAB_LABEL: Record<TabKey, string> = {
     ausgaben: "Ausgaben",
     einnahmen: "Einnahmen",
     spenden: "Spenden",
     transaktionen: "Transaktionen",
   };
 
+  /** Above this many options a list gets search + internal scroll (spec §4). */
+  const SEARCHABLE_FROM = 8;
+
   // Registry fields for the active tab, with runtime options injected for the
   // kategorie field (the registry leaves its `options` undefined — P2-04).
   const fields = $derived(
-    FILTER_REGISTRY[tab].map((f) =>
-      f.key === "kategorie" ? { ...f, options: kategorieOptions } : f,
-    ),
+    FILTER_REGISTRY[tab]
+      .filter((f) => !excludeFields.includes(f.key))
+      .map((f) =>
+        f.key === "kategorie" ? { ...f, options: kategorieOptions } : f,
+      ),
   );
 
   // ── State helpers ───────────────────────────────────────────────────────────
@@ -126,18 +174,23 @@
   }
 
   // ── Debounced enum toggles ──────────────────────────────────────────────────
-  // Toggling a checkbox used to navigate (goto) on EVERY click. Rapid successive
+  // Toggling a pill used to navigate (goto) on EVERY click. Rapid successive
   // toggles each fired a navigation AND each read a stale `filterState` (the
   // previous nav's load may not have re-parsed yet), so two quick toggles could
   // drop one. We keep a `pendingEnums` overlay that accumulates toggles locally
   // and debounce the navigate, so a burst of toggles batches into ONE navigation
   // with the correct combined selection. The popover/sheet stays open across the
   // single keepFocus navigation (URL is still the source of truth).
+  //
+  // 500ms (raised from 250 in spec §4): a multi-select pill row invites picking
+  // three or four values in a row, and 250ms fired mid-burst — the list flickered
+  // through intermediate result sets while the user was still choosing.
+  const ENUM_DEBOUNCE_MS = 500;
   let pendingEnums = $state<Record<string, string[]> | null>(null);
   let enumNavTimer: ReturnType<typeof setTimeout> | null = null;
 
   // The effective enum selection for a key: the pending overlay (mid-burst) wins,
-  // else the URL-derived `filterState`. Drives the checkbox `checked` state so a
+  // else the URL-derived `filterState`. Drives the pill `pressed` state so a
   // toggle reflects instantly even before the debounced navigation lands.
   function effectiveEnum(key: string): string[] {
     return pendingEnums?.[key] ?? filterState.enums[key] ?? [];
@@ -190,7 +243,15 @@
     overlay[key] = values;
     pendingEnums = overlay;
     if (enumNavTimer) clearTimeout(enumNavTimer);
-    enumNavTimer = setTimeout(flushEnums, 250);
+    enumNavTimer = setTimeout(flushEnums, ENUM_DEBOUNCE_MS);
+  }
+
+  function toggleEnum(key: string, value: string) {
+    const cur = effectiveEnum(key);
+    setEnum(
+      key,
+      cur.includes(value) ? cur.filter((v) => v !== value) : [...cur, value],
+    );
   }
 
   function removeEnumValue(key: string, value: string) {
@@ -259,16 +320,71 @@
     navigate(next);
   }
 
+  // ── Search (as-you-type, debounced) ────────────────────────────────────────
+  // The input is a DRAFT, not a mirror of the URL: navigation lands while the
+  // user is still typing, and re-reading `filterState.search` on every keystroke
+  // would fight the caret. The draft only re-syncs when the URL changes for a
+  // reason other than our own last navigation (a reset, a saved view, the back
+  // button).
+  const SEARCH_DEBOUNCE_MS = 300;
+  // untrack: seeding the draft from the prop is deliberately a ONE-TIME read —
+  // the $effect below owns every later sync.
+  let searchDraft = $state(untrack(() => filterState.search ?? ""));
+  let lastSentSearch = $state(untrack(() => filterState.search ?? ""));
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+
+  $effect(() => {
+    const incoming = filterState.search ?? "";
+    if (incoming !== lastSentSearch) {
+      lastSentSearch = incoming;
+      searchDraft = incoming;
+    }
+  });
+
   function setSearch(raw: string) {
     const next = cloneWithPendingEnums();
     const trimmed = raw.trim();
     if (trimmed) next.search = trimmed.slice(0, 200);
     else delete next.search;
+    lastSentSearch = trimmed.slice(0, 200);
     navigate(next);
   }
 
+  function onSearchInput(e: Event) {
+    searchDraft = (e.currentTarget as HTMLInputElement).value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => setSearch(searchDraft), SEARCH_DEBOUNCE_MS);
+  }
+
   function resetAll() {
+    optionQuery = {};
+    clearTimeout(searchTimer);
+    searchDraft = "";
+    lastSentSearch = "";
     navigate({ enums: {}, members: {}, amount: {}, booleans: {} });
+  }
+
+  // ── Long-list search (Kategorie) ────────────────────────────────────────────
+  // Per-field as-you-type query, local to the popover — it narrows the option
+  // list only, never the result set.
+  let optionQuery = $state<Record<string, string>>({});
+
+  /**
+   * Options for a searchable field: matches first, and within them the active
+   * selection pinned to the top so what you picked never scrolls out of sight.
+   */
+  function visibleOptions(field: FilterFieldDef): Option[] {
+    const all = field.options ?? [];
+    const q = (optionQuery[field.key] ?? "").trim().toLowerCase();
+    const matches = q
+      ? all.filter((o) => o.label.toLowerCase().includes(q))
+      : all;
+    const active = effectiveEnum(field.key);
+    if (active.length === 0) return matches;
+    return [
+      ...matches.filter((o) => active.includes(o.value)),
+      ...matches.filter((o) => !active.includes(o.value)),
+    ];
   }
 
   // ── Active-state derivations (chips + count badge) ────────────────────────────
@@ -289,7 +405,7 @@
     onRemove: () => void;
   }
 
-  const chips = $derived.by<Chip[]>(() => {
+  const activeChips = $derived.by<Chip[]>(() => {
     const out: Chip[] = [];
     for (const f of fields) {
       if (f.type === "enum-multi") {
@@ -358,12 +474,22 @@
     return n;
   });
 
-  const hasActiveFilters = $derived(chips.length > 0 || !!filterState.search);
+  const hasActiveFilters = $derived(
+    activeChips.length > 0 || !!filterState.search,
+  );
+
+  // The result anchor is a comparison, so it only means something once something
+  // is filtered away (spec §5 format canon: filtered "N von M", unfiltered
+  // nothing — an unfiltered "47 Ergebnisse" merely repeats the header).
+  const showResultMeta = $derived(
+    hasActiveFilters && resultCount != null && totalCount != null,
+  );
 
   // ── Saved views (Task 7) ──────────────────────────────────────────────────────
 
   let views = $state<SavedView[]>([]);
   let viewsOpen = $state(false);
+  let newViewName = $state("");
 
   $effect(() => {
     // Re-read on open so a just-saved view shows up.
@@ -380,12 +506,16 @@
     });
   }
 
+  /**
+   * Save the current query under a typed name. The name is entered inline in the
+   * popover — `window.prompt` is not an option here (guidelines §2.3: the browser
+   * dialog is unstyled, unthemeable and blocks the PWA).
+   */
   function saveCurrentView() {
-    const name = (
-      typeof prompt === "function" ? prompt("Name der Ansicht?") : null
-    )?.trim();
+    const name = newViewName.trim();
     if (!name) return;
     saveView(tab, { name, query: serializeFilterState(tab, filterState) });
+    newViewName = "";
     views = listViews(tab);
   }
 
@@ -399,281 +529,353 @@
 </script>
 
 <!--
-  Layout: a single filter row.
-  - search input + "Ansichten ▾" + "Zurücksetzen" + result count are always inline.
-  - desktop (sm+): a Popover per field + the active chips render inline.
-  - mobile (<sm): the field Popovers + chips are hidden; a "+ Filter" trigger
-    opens a bottom Sheet holding the same field pickers. The count badge lives on
-    the trigger.
+  Section list — rendered identically in the desktop popover and the mobile
+  sheet, so the two never drift apart.
 -->
-<div data-slot="filter-bar" class="flex flex-col gap-2">
-  <div class="flex flex-wrap items-center gap-2">
-    <!-- Persistent search (inline on every breakpoint) -->
+{#snippet sections()}
+  {#if notice}
+    <p
+      data-testid="filter-notice"
+      class="rounded-[10px] bg-secondary px-3 py-2 text-xs leading-snug text-ink-700"
+      role="status"
+    >
+      {notice}
+    </p>
+  {/if}
+  {#each fields as field (field.key)}
+    {#if field.type === "boolean"}
+      <!-- A boolean needs no heading: the toggle already carries the label. -->
+      <TogglePill
+        label={field.label}
+        pressed={!!filterState.booleans[field.key]}
+        onToggle={() => setBoolean(field.key, !filterState.booleans[field.key])}
+        class="w-full"
+        data-filter-boolean={field.key}
+      />
+    {:else}
+      <section class="flex flex-col gap-2" data-filter-section={field.key}>
+        <h3
+          class="text-[11px] font-semibold uppercase tracking-wider text-ink-500"
+        >
+          {field.label}
+        </h3>
+
+        {#if field.type === "enum-multi" && field.key === "monat"}
+          <!-- Monat is a picker, not twelve checkboxes (Andys Regel 8). -->
+          <div class="grid grid-cols-4 gap-1.5" role="group" aria-label={field.label}>
+            {#each field.options ?? [] as opt (opt.value)}
+              <TogglePill
+                label={opt.label}
+                pressed={effectiveEnum(field.key).includes(opt.value)}
+                onToggle={() => toggleEnum(field.key, opt.value)}
+              />
+            {/each}
+          </div>
+        {:else if field.type === "enum-multi" && (field.options?.length ?? 0) > SEARCHABLE_FROM}
+          <!-- Long list: search + internal scroll, active selection pinned. -->
+          <input
+            type="search"
+            value={optionQuery[field.key] ?? ""}
+            oninput={(e) => {
+              optionQuery = {
+                ...optionQuery,
+                [field.key]: (e.currentTarget as HTMLInputElement).value,
+              };
+            }}
+            placeholder="{field.label} suchen…"
+            aria-label="{field.label} suchen"
+            class="w-full {CONTROL}"
+          />
+          <div
+            class="max-h-[242px] overflow-y-auto rounded-[10px] border border-hairline"
+            role="group"
+            aria-label={field.label}
+          >
+            {#each visibleOptions(field) as opt (opt.value)}
+              {@const on = effectiveEnum(field.key).includes(opt.value)}
+              <label
+                class="flex min-h-11 cursor-pointer items-center gap-2.5 px-3 text-sm text-ink-700 transition-colors hover:bg-secondary md:min-h-10"
+              >
+                <input
+                  type="checkbox"
+                  class="size-4 shrink-0 rounded border-hairline accent-primary"
+                  checked={on}
+                  onchange={() => toggleEnum(field.key, opt.value)}
+                />
+                <span class="truncate">{opt.label}</span>
+              </label>
+            {:else}
+              <p class="px-3 py-3 text-sm text-ink-500">Keine Treffer</p>
+            {/each}
+          </div>
+        {:else if field.type === "enum-multi"}
+          <!-- Short enum: wrap pills, multi-select. -->
+          <div class="flex flex-wrap gap-1.5" role="group" aria-label={field.label}>
+            {#each field.options ?? [] as opt (opt.value)}
+              <TogglePill
+                label={opt.label}
+                pressed={effectiveEnum(field.key).includes(opt.value)}
+                onToggle={() => toggleEnum(field.key, opt.value)}
+              />
+            {:else}
+              <span class="text-sm text-ink-500">Keine Optionen</span>
+            {/each}
+          </div>
+        {:else if field.type === "member-picker"}
+          <Combobox
+            options={memberOptions.map((m) => ({ value: m.id, label: m.label }))}
+            value={[filterState.members[field.key]].filter(
+              (v): v is string => v !== undefined,
+            )}
+            multiple={false}
+            ariaLabel={field.label}
+            placeholder="{field.label} wählen…"
+            onValueChange={(v) => setMember(field.key, v[0])}
+          />
+        {:else if field.type === "amount-range"}
+          <div class="flex items-end gap-2">
+            <label class="flex flex-1 flex-col gap-1 text-xs">
+              <span class="text-ink-500">Min (€)</span>
+              <input
+                type="text"
+                inputmode="decimal"
+                aria-label="{field.label} minimum"
+                placeholder="0,00"
+                value={centsToEurosInput(filterState.amount.betragMin)}
+                class="w-full tabular-nums {CONTROL}"
+                onchange={(e) =>
+                  setAmount(
+                    "betragMin",
+                    (e.currentTarget as HTMLInputElement).value,
+                  )}
+              />
+            </label>
+            <label class="flex flex-1 flex-col gap-1 text-xs">
+              <span class="text-ink-500">Max (€)</span>
+              <input
+                type="text"
+                inputmode="decimal"
+                aria-label="{field.label} maximum"
+                placeholder="0,00"
+                value={centsToEurosInput(filterState.amount.betragMax)}
+                class="w-full tabular-nums {CONTROL}"
+                onchange={(e) =>
+                  setAmount(
+                    "betragMax",
+                    (e.currentTarget as HTMLInputElement).value,
+                  )}
+              />
+            </label>
+          </div>
+        {/if}
+      </section>
+    {/if}
+  {/each}
+{/snippet}
+
+{#snippet filterCountBadge()}
+  {#if activeFieldCount > 0}
+    <span
+      aria-hidden="true"
+      class="inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-primary-strong px-1.5 text-xs font-medium text-primary-foreground"
+    >
+      {activeFieldCount}
+    </span>
+  {/if}
+{/snippet}
+
+{#snippet csvLink(extraClass: string, label: string)}
+  {#if exportHref}
+    <!-- eslint-disable svelte/no-navigation-without-resolve -->
+    <a
+      href={exportHref}
+      data-testid="export-cta"
+      title="Gefilterte und sortierte Liste vollständig herunterladen (alle Seiten)"
+      class="{CONTROL_BUTTON} {extraClass}"
+    >
+      <svg
+        class="size-4"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M12 15V3" /><path
+          d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
+        /><path d="m7 10 5 5 5-5" />
+      </svg>{label}
+    </a>
+    <!-- eslint-enable svelte/no-navigation-without-resolve -->
+  {/if}
+{/snippet}
+
+<ListToolbar hasChips={activeChips.length > 0}>
+  {#snippet leading()}
     <input
       type="search"
-      value={filterState.search ?? ""}
-      placeholder="Suchen…"
+      data-testid={searchTestId}
+      value={searchDraft}
+      placeholder={searchPlaceholder}
       aria-label="Suchen"
-      class="border-input bg-background focus-visible:ring-ring h-11 min-h-11 w-full rounded-md border px-3 text-sm outline-none focus-visible:ring-1 sm:w-56"
-      onchange={(e) => setSearch((e.currentTarget as HTMLInputElement).value)}
+      autocomplete="off"
+      class="w-full {CONTROL} md:w-56"
+      oninput={onSearchInput}
     />
 
-    <!--
-		  Desktop (sm+): a single "+ Filter" Popover holding every registry field
-		  picker. The count badge lives on the trigger. Active selections surface as
-		  removable chips below (not on the trigger), so the field labels live only
-		  inside the closed popover — no duplicate label text leaks into the bar.
-		-->
-    <div class="hidden sm:block">
+    <!-- Desktop: the sections live in a capped popover. -->
+    <div class="hidden md:block">
       <Popover.Root>
-        <Popover.Trigger
-          data-slot="filter-trigger"
-          class="border-input bg-background hover:bg-accent hover:text-accent-foreground inline-flex h-11 min-h-11 items-center gap-2 rounded-md border px-3 text-sm whitespace-nowrap transition-colors"
-        >
+        <Popover.Trigger data-slot="filter-trigger" class={CONTROL_BUTTON}>
           + Filter
-          {#if activeFieldCount > 0}
-            <span
-              aria-hidden="true"
-              class="bg-primary-strong text-primary-foreground inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-medium"
-            >
-              {activeFieldCount}
-            </span>
-          {/if}
+          {@render filterCountBadge()}
         </Popover.Trigger>
-        <Popover.Content class="flex w-80 flex-col gap-4 p-3">
-          {#each fields as field (field.key)}
-            <fieldset class="flex flex-col gap-1">
-              <legend class="text-sm font-medium">{field.label}</legend>
-              {@render fieldPicker(field)}
-            </fieldset>
-          {/each}
+        <Popover.Content
+          class="flex max-h-[min(70vh,640px)] w-[380px] flex-col p-0"
+        >
+          <div
+            class="flex shrink-0 items-center justify-between gap-2 border-b border-hairline px-3 py-2"
+          >
+            <span class="text-sm font-semibold text-ink-900">Filter</span>
+            <button
+              type="button"
+              class="rounded px-1 text-sm text-ink-500 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40"
+              disabled={!hasActiveFilters}
+              onclick={resetAll}>Zurücksetzen</button
+            >
+          </div>
+          <div class="flex flex-col gap-4 overflow-y-auto p-3">
+            {@render sections()}
+          </div>
         </Popover.Content>
       </Popover.Root>
     </div>
 
-    <!-- Mobile (<sm): the same field pickers collapse into a bottom Sheet. -->
-    <div class="sm:hidden">
+    <!-- Mobile (<md): the same sections in a bottom sheet. -->
+    <div class="md:hidden">
       <Sheet.Root bind:open={sheetOpen}>
-        <Sheet.Trigger
-          data-slot="filter-trigger"
-          class="border-input bg-background hover:bg-accent inline-flex h-11 min-h-11 items-center gap-2 rounded-md border px-3 text-sm whitespace-nowrap transition-colors"
-        >
+        <Sheet.Trigger data-slot="filter-trigger" class={CONTROL_BUTTON}>
           + Filter
-          {#if activeFieldCount > 0}
-            <span
-              aria-hidden="true"
-              class="bg-primary-strong text-primary-foreground inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-medium"
-            >
-              {activeFieldCount}
-            </span>
-          {/if}
+          {@render filterCountBadge()}
         </Sheet.Trigger>
-        <Sheet.Content side="bottom" class="max-h-[85vh] overflow-y-auto p-4">
-          <Sheet.Header>
+        <Sheet.Content side="bottom" class="max-h-[85vh] gap-0 p-0">
+          <Sheet.Header class="shrink-0 border-b border-hairline">
             <Sheet.Title>Filter</Sheet.Title>
-            <Sheet.Description
-              >Filter für {TAB_LABEL[tab]} auswählen.</Sheet.Description
-            >
+            <Sheet.Description>
+              Filter für {TAB_LABEL[tab]} auswählen.
+            </Sheet.Description>
           </Sheet.Header>
-          <div class="flex flex-col gap-4 py-2">
-            {#each fields as field (field.key)}
-              <fieldset class="flex flex-col gap-1">
-                <legend class="text-sm font-medium">{field.label}</legend>
-                {@render fieldPicker(field)}
-              </fieldset>
-            {/each}
+          <div class="flex flex-col gap-4 overflow-y-auto p-4">
+            {@render sections()}
           </div>
-          <Sheet.Footer>
-            <button
-              type="button"
-              class="hover:bg-accent h-11 min-h-11 rounded-md border px-3 text-sm"
-              onclick={resetAll}>Zurücksetzen</button
-            >
+          <Sheet.Footer class="shrink-0 gap-2 border-t border-hairline">
+            <!-- CSV has no room in the mobile toolbar, so it lives here. -->
+            {@render csvLink("w-full justify-center", "Gefilterte Liste als CSV")}
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="{CONTROL_BUTTON} flex-1 justify-center disabled:opacity-40"
+                disabled={!hasActiveFilters}
+                onclick={resetAll}>Zurücksetzen</button
+              >
+              <button
+                type="button"
+                class="inline-flex h-11 min-h-11 flex-1 items-center justify-center rounded-[10px] bg-primary-strong px-4 text-sm font-semibold text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                onclick={() => (sheetOpen = false)}>Fertig</button
+              >
+            </div>
           </Sheet.Footer>
         </Sheet.Content>
       </Sheet.Root>
     </div>
 
-    <!--
-		  Canonical active-filter count: ALWAYS MOUNTED so screen readers observe
-		  the text change when filters are added or cleared (an aria-live region
-		  must be in the DOM before the text update fires — the {#if} pattern
-		  mounts+unmounts which AT cannot observe reliably). The visual count pills
-		  on the two breakpoint triggers above are aria-hidden duplicates.
-		  T5 fix: remove the {#if} wrapper so the region is always present.
-		-->
     <span data-testid="filter-count-badge" class="sr-only" aria-live="polite">
       {#if activeFieldCount > 0}
         {activeFieldCount} aktive Filter
       {/if}
     </span>
 
-    <!-- Saved views (Task 7): "Ansichten ▾" -->
+    <!-- Saved views -->
     <Popover.Root bind:open={viewsOpen}>
-      <Popover.Trigger
-        class="border-input bg-background hover:bg-accent inline-flex h-11 min-h-11 items-center gap-1 rounded-md border px-3 text-sm whitespace-nowrap transition-colors"
-      >
+      <Popover.Trigger class={CONTROL_BUTTON}>
         Ansichten
         <span aria-hidden="true">▾</span>
       </Popover.Trigger>
-      <Popover.Content class="w-64 p-1">
+      <Popover.Content class="w-72 p-1">
         <ul class="flex flex-col">
           {#each views as view (view.id)}
-            <li class="flex items-center justify-between gap-1">
+            <li class="flex items-center gap-1">
               <button
                 type="button"
-                class="hover:bg-accent min-h-11 flex-1 rounded-md px-2 py-1.5 text-left text-sm"
+                class="min-h-11 flex-1 rounded-[10px] px-2 text-left text-sm hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-10"
                 onclick={() => applyView(view)}>{view.name}</button
               >
               {#if !view.readonly}
                 <button
                   type="button"
                   aria-label="{view.name} löschen"
-                  class="text-muted-foreground hover:text-destructive flex min-h-11 min-w-11 items-center justify-center rounded-md text-sm"
+                  class="flex min-h-11 min-w-11 items-center justify-center rounded-[10px] text-sm text-ink-500 hover:text-severity-critical focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-10 md:min-w-10"
                   onclick={() => removeView(view)}>×</button
                 >
               {/if}
             </li>
           {:else}
-            <li class="text-muted-foreground px-2 py-1.5 text-sm">
-              Keine Ansichten
-            </li>
+            <li class="px-2 py-1.5 text-sm text-ink-500">Keine Ansichten</li>
           {/each}
-          <li class="mt-1 border-t pt-1">
+          <li class="mt-1 flex items-center gap-1 border-t border-hairline pt-2">
+            <input
+              type="text"
+              bind:value={newViewName}
+              placeholder="Aktuelle Filter speichern als…"
+              aria-label="Name der Ansicht"
+              class="min-w-0 flex-1 {CONTROL}"
+              onkeydown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  saveCurrentView();
+                }
+              }}
+            />
             <button
               type="button"
-              class="hover:bg-accent min-h-11 w-full rounded-md px-2 py-1.5 text-left text-sm"
-              onclick={saveCurrentView}>Aktuelle Filter speichern…</button
+              class="{CONTROL_BUTTON} disabled:opacity-40"
+              disabled={newViewName.trim() === ""}
+              onclick={saveCurrentView}>Speichern</button
             >
           </li>
         </ul>
       </Popover.Content>
     </Popover.Root>
+  {/snippet}
 
-    <!-- Reset -->
+  {#snippet meta()}
+    {#if showResultMeta}
+      {resultCount} von {totalCount}
+    {/if}
+  {/snippet}
+
+  {#snippet actions()}
+    {@render csvLink("max-md:hidden", "CSV")}
+    {#if pageActions}{@render pageActions()}{/if}
+  {/snippet}
+
+  {#snippet chips()}
+    {#each activeChips as chip (chip.key)}
+      <MultiselectChip
+        label={chip.fieldLabel}
+        value={chip.valueLabel}
+        onRemove={chip.onRemove}
+      />
+    {/each}
+    <!-- "Zurücksetzen" belongs to the chips, not to the resting toolbar: with no
+         filter active there is nothing to reset, so a permanently disabled
+         button would just be noise (spec §3). -->
     <button
       type="button"
-      class="text-muted-foreground hover:text-foreground hover:bg-accent ml-auto h-11 min-h-11 rounded-md px-3 text-sm disabled:opacity-50"
-      disabled={!hasActiveFilters}
+      class="rounded px-1 text-sm font-medium text-primary-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       onclick={resetAll}>Zurücksetzen</button
     >
-
-    <!-- FIX C (review): aria-live so screen-reader users hear count changes;
-		     aria-atomic so the whole span is announced as one unit, not word-by-word.
-		     Pluralization: "1 Ergebnis" vs. "{n} Ergebnisse". -->
-    {#if resultCount != null}
-      <span
-        data-slot="result-count"
-        aria-live="polite"
-        aria-atomic="true"
-        class="text-muted-foreground text-sm whitespace-nowrap"
-      >
-        {resultCount === 1 ? "1 Ergebnis" : `${resultCount} Ergebnisse`}
-      </span>
-    {/if}
-  </div>
-
-  <!-- Active chips (desktop inline; hidden on mobile where the Sheet owns filters) -->
-  {#if chips.length}
-    <div class="hidden flex-wrap items-center gap-2 sm:flex">
-      {#each chips as chip (chip.key)}
-        <MultiselectChip
-          label={chip.fieldLabel}
-          value={chip.valueLabel}
-          onRemove={chip.onRemove}
-        />
-      {/each}
-    </div>
-  {/if}
-</div>
-
-<!--
-  Field picker snippet — shared by the desktop Popover and the mobile Sheet.
-  enum-multi → checkbox list; member-picker → Combobox over memberOptions;
-  amount-range → two number inputs; boolean → toggle checkbox.
--->
-{#snippet fieldPicker(field: FilterFieldDef)}
-  {#if field.type === "enum-multi"}
-    <div role="group" aria-label={field.label} class="flex flex-col gap-1">
-      {#each field.options ?? [] as opt (opt.value)}
-        <label
-          class="hover:bg-accent flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-2 text-sm"
-        >
-          <input
-            type="checkbox"
-            class="size-4"
-            checked={effectiveEnum(field.key).includes(opt.value)}
-            onchange={(e) => {
-              const cur = effectiveEnum(field.key);
-              const next = (e.currentTarget as HTMLInputElement).checked
-                ? [...cur, opt.value]
-                : cur.filter((v) => v !== opt.value);
-              setEnum(field.key, next);
-            }}
-          />
-          <span>{opt.label}</span>
-        </label>
-      {:else}
-        <span class="text-muted-foreground px-2 py-1.5 text-sm"
-          >Keine Optionen</span
-        >
-      {/each}
-    </div>
-  {:else if field.type === "member-picker"}
-    <Combobox
-      options={memberOptions.map((m) => ({ value: m.id, label: m.label }))}
-      value={[filterState.members[field.key]].filter(
-        (v): v is string => v !== undefined,
-      )}
-      multiple={false}
-      ariaLabel={field.label}
-      placeholder="{field.label} wählen…"
-      onValueChange={(v) => setMember(field.key, v[0])}
-    />
-  {:else if field.type === "amount-range"}
-    <div class="flex items-center gap-2">
-      <label class="flex flex-1 flex-col gap-0.5 text-xs">
-        <span class="text-muted-foreground">Min (€)</span>
-        <!-- type=text + inputmode=decimal so the de-DE comma decimal is typable
-             (a type=number input rejects "12,50"); value shows euros, state holds
-             cents. -->
-        <input
-          type="text"
-          inputmode="decimal"
-          aria-label="{field.label} minimum"
-          placeholder="0,00"
-          value={centsToEurosInput(filterState.amount.betragMin)}
-          class="border-input bg-background h-11 min-h-11 w-full rounded-md border px-2 text-sm outline-none"
-          onchange={(e) =>
-            setAmount("betragMin", (e.currentTarget as HTMLInputElement).value)}
-        />
-      </label>
-      <label class="flex flex-1 flex-col gap-0.5 text-xs">
-        <span class="text-muted-foreground">Max (€)</span>
-        <input
-          type="text"
-          inputmode="decimal"
-          aria-label="{field.label} maximum"
-          placeholder="0,00"
-          value={centsToEurosInput(filterState.amount.betragMax)}
-          class="border-input bg-background h-11 min-h-11 w-full rounded-md border px-2 text-sm outline-none"
-          onchange={(e) =>
-            setAmount("betragMax", (e.currentTarget as HTMLInputElement).value)}
-        />
-      </label>
-    </div>
-  {:else if field.type === "boolean"}
-    <label
-      class="hover:bg-accent flex min-h-11 cursor-pointer items-center gap-2 rounded-md px-2 text-sm"
-    >
-      <input
-        type="checkbox"
-        class="size-4"
-        checked={!!filterState.booleans[field.key]}
-        onchange={(e) =>
-          setBoolean(field.key, (e.currentTarget as HTMLInputElement).checked)}
-      />
-      <span>{field.label}</span>
-    </label>
-  {/if}
-{/snippet}
+  {/snippet}
+</ListToolbar>

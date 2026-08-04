@@ -58,7 +58,7 @@
 	<title>Übersicht – {page.data.vereinName}</title>
 </svelte:head>
 
-<PageShell width="full">
+<PageShell width="wide">
 	<div
 		aria-busy={isYearSwitch() ? 'true' : undefined}
 		style={isYearSwitch() ? 'opacity: 0.6; transition: opacity 150ms ease-in-out;' : undefined}

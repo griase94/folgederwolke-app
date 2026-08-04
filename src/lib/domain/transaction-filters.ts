@@ -128,11 +128,17 @@ export const FILTER_REGISTRY: Record<TabKey, FilterFieldDef[]> = {
     },
     { key: "betrag", label: "Betrag", type: "amount-range" },
   ],
-  // Aurora slice 5 — the unified /app/transaktionen feed. ONE filter field:
-  // the type chips (Alle/Ausgaben/Einnahmen/Spenden) write ?typ=. Search (?q=)
-  // is handled generically by parseFilterState. The per-type WHERE builders
-  // ignore the "typ" key — listTransaktionenFeedPage reads it to decide which
-  // UNION-ALL arms to include.
+  // The unified /app/transaktionen feed. `typ` stays the feed's identity — it is
+  // rendered as the chip row, not inside the filter popover, and it is the key
+  // listTransaktionenFeedPage reads to decide which UNION-ALL arms to include.
+  //
+  // Spec §5 brings the feed up to the type lists: everything that means the same
+  // thing on all three arms (Monat, Betrag, Sphäre) plus the two fields that do
+  // NOT — Kategorie (the option list is the Einnahmen ∪ Ausgaben snapshot names;
+  // a donation's Kategorie is derived and can never appear in it) and Beleg fehlt
+  // (an expense-only concept). Rather than silently returning nothing for the
+  // arms those fields cannot describe, `feedKindsSupported` drops the arm and the
+  // UI says so — see the honesty rule there.
   transaktionen: [
     {
       key: "typ",
@@ -144,8 +150,91 @@ export const FILTER_REGISTRY: Record<TabKey, FilterFieldDef[]> = {
         { value: "spenden", label: "Spenden" },
       ],
     },
+    { key: "kategorie", label: "Kategorie", type: "enum-multi" },
+    {
+      key: "sphaere",
+      label: "Sphäre",
+      type: "enum-multi",
+      options: SPHAERE_OPTIONS,
+    },
+    {
+      key: "monat",
+      label: "Monat",
+      type: "enum-multi",
+      options: monthOptions(),
+    },
+    { key: "betrag", label: "Betrag", type: "amount-range" },
+    { key: "belegFehlt", label: "Beleg fehlt", type: "boolean" },
   ],
 };
+
+// ---------------------------------------------------------------------------
+// Feed arm selection (spec §5 honesty rule)
+// ---------------------------------------------------------------------------
+
+/** The three UNION-ALL arms of the unified feed. */
+export type FeedKind = "expense" | "income" | "donation";
+
+export const FEED_KINDS: readonly FeedKind[] = [
+  "expense",
+  "income",
+  "donation",
+];
+
+/** `?typ=` chip value → feed arm. */
+const TYP_TO_KIND: Record<string, FeedKind> = {
+  ausgaben: "expense",
+  einnahmen: "income",
+  spenden: "donation",
+};
+
+/**
+ * Arms a filter state can *describe*, ignoring the `typ` chips.
+ *
+ * THE HONESTY RULE: a field that does not exist on an arm must remove that arm
+ * outright, not quietly filter it to nothing. Kategorie is offered as the union
+ * of the Einnahmen and Ausgaben name snapshots, so no donation can ever match
+ * it; "Beleg fehlt" is an expense-only flag. Leaving those arms in would show a
+ * Spenden chip counting 0 with no explanation — the user would read it as "there
+ * are no donations", which is false.
+ *
+ * The chip counts use exactly this set, so an excluded arm's chip reads 0, and
+ * the filter UI explains why next to the field that caused it.
+ */
+export function feedKindsSupported(state: FilterState): Set<FeedKind> {
+  const kinds = new Set<FeedKind>(FEED_KINDS);
+  if (state.enums["kategorie"]?.length) kinds.delete("donation");
+  if (state.booleans["belegFehlt"]) {
+    kinds.delete("income");
+    kinds.delete("donation");
+  }
+  return kinds;
+}
+
+/** Arms actually queried: the `typ` chips narrowed by {@link feedKindsSupported}. */
+export function feedKindsSelected(state: FilterState): Set<FeedKind> {
+  const supported = feedKindsSupported(state);
+  const typVals = state.enums["typ"] ?? [];
+  if (typVals.length === 0) return supported;
+  const picked = new Set<FeedKind>();
+  for (const t of typVals) {
+    const kind = TYP_TO_KIND[t];
+    if (kind && supported.has(kind)) picked.add(kind);
+  }
+  return picked;
+}
+
+/**
+ * Human-readable reason an arm is excluded, for the filter UI. `null` when the
+ * arm is in scope.
+ */
+export function feedExclusionHint(state: FilterState): string | null {
+  if (state.booleans["belegFehlt"])
+    return "„Beleg fehlt“ gibt es nur bei Ausgaben — Einnahmen und Spenden sind hier ausgeblendet.";
+  if (state.enums["kategorie"]?.length)
+    return "Kategorien gelten für Einnahmen & Ausgaben — Spenden sind hier ausgeblendet.";
+  return null;
+}
 
 export interface FilterState {
   search?: string;
