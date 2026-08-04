@@ -52,17 +52,9 @@ vite.config.ts.timestamp-*
 .qa-live/
 .qa-shots/
 
-# local render harness (agent tooling, never shipped)
-shoot.local.mjs
-measure.local.mjs
-navcheck.local.mjs
-chartcheck.local.mjs
-probe.local.mjs
-remeasure.local.mjs
-dbg.local.mjs
-
-# local verification drivers (agent tooling, never shipped)
-slot-feld-*.local.mjs
-
-# local verification drivers (agent tooling, never shipped)
-slot-feld-*.local.mjs
+# Local verification drivers / render harnesses (agent tooling, never shipped).
+# One pattern instead of a growing name list — and BOTH extensions: a driver
+# that imports the repo's TS helpers has to be .mts, and the old .mjs-only
+# list let exactly that variant slip into a commit.
+*.local.mjs
+*.local.mts
