@@ -39,6 +39,7 @@
 	import FileCheckIcon from '@lucide/svelte/icons/file-check';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
+	import CameraIcon from '@lucide/svelte/icons/camera';
 	import LoaderCircleIcon from '@lucide/svelte/icons/loader-circle';
 
 	interface Props {
@@ -356,7 +357,7 @@
 					data-testid="beleg-camera"
 					class="inline-flex min-h-11 items-center gap-1.5 rounded-[10px] border border-hairline bg-card px-3 text-sm font-medium text-ink-700 shadow-sm hover:bg-muted/50 active:scale-95"
 				>
-					<span aria-hidden="true">📷</span>
+					<CameraIcon class="size-4" aria-hidden="true" />
 					Foto aufnehmen
 				</button>
 				<!-- Datei wählen -->
