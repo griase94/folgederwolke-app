@@ -7,6 +7,7 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Select } from '$lib/components/ui/select/index.js';
+	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 	import { toast } from 'svelte-sonner';
 	import type { ProjectView } from '$lib/server/domain/projects.js';
 
@@ -187,11 +188,11 @@
 				<div class="grid grid-cols-2 gap-3">
 					<div class="space-y-1">
 						<Label for="edit-proj-start">Startdatum</Label>
-						<Input id="edit-proj-start" name="start_date" type="date" lang="de" value={project.startDate ?? ''} />
+						<DateField id="edit-proj-start" name="start_date" value={project.startDate ?? ''} />
 					</div>
 					<div class="space-y-1">
 						<Label for="edit-proj-end">Enddatum</Label>
-						<Input id="edit-proj-end" name="end_date" type="date" lang="de" value={project.endDate ?? ''} />
+						<DateField id="edit-proj-end" name="end_date" value={project.endDate ?? ''} />
 					</div>
 				</div>
 

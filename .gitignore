@@ -63,3 +63,6 @@ dbg.local.mjs
 
 # local verification drivers (agent tooling, never shipped)
 slot-feld-*.local.mjs
+
+# local verification drivers (agent tooling, never shipped)
+slot-feld-*.local.mjs

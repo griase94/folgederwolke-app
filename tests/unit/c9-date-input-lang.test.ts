@@ -16,8 +16,11 @@ import { describe, expect, it } from "vitest";
 // (transactions/{neu}'s donation + income branches, project dialogs, and a
 // handful of admin-only utilities that aren't on the consumer-migration list).
 const FILES = [
-  "src/lib/components/admin/projects/AddProjectDialog.svelte",
-  "src/lib/components/admin/projects/EditProjectDialog.svelte",
+  // SLOT-FELD moved both project dialogs to DateField — see MIGRATED_FILES.
+  // TransactionEditForm is the last holdout and is itself slated for deletion
+  // (0 real importers); once it goes, this list is empty and the lang="de"
+  // branch becomes vacuous — at that point delete the branch, do not let it
+  // pass on an empty list.
   "src/lib/components/admin/transactions/TransactionEditForm.svelte",
   // C2/S3c: AddMemberDialog removed — the consolidated MemberDialog uses the
   // DateField primitive for both dates (see MIGRATED_FILES), so no member dialog
@@ -43,6 +46,10 @@ const MIGRATED_FILES = [
   "src/lib/components/forms/AuslagenForm.svelte",
   "src/lib/components/admin/invoices/InvoiceForm.svelte",
   "src/lib/components/admin/members/MemberDialog.svelte",
+  // SLOT-FELD: the project dialogs shipped mm/dd/yyyy in a German UI right
+  // next to a DateField-based sibling dialog.
+  "src/lib/components/admin/projects/AddProjectDialog.svelte",
+  "src/lib/components/admin/projects/EditProjectDialog.svelte",
 ];
 
 describe('C9 UX-030 — every type="date" input has lang="de"', () => {

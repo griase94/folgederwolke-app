@@ -56,6 +56,7 @@
     TOOLBAR_BUTTON as CONTROL_BUTTON,
   } from "$lib/components/ui/list-toolbar/index.js";
   import { TogglePill } from "$lib/components/ui/toggle-pill/index.js";
+  import { CHECKBOX_CLASS } from "$lib/components/ui/field-class/index.js";
   import { parseEuroToCents, formatCentsAsEuro } from "$lib/domain/money.js";
 
   type Option = { value: string; label: string };
@@ -598,7 +599,7 @@
               >
                 <input
                   type="checkbox"
-                  class="size-4 shrink-0 rounded border-hairline accent-primary"
+                  class={CHECKBOX_CLASS}
                   checked={on}
                   onchange={() => toggleEnum(field.key, opt.value)}
                 />

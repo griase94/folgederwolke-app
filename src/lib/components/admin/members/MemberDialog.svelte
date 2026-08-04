@@ -17,6 +17,7 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Select } from '$lib/components/ui/select/index.js';
+	import { CHECKBOX_CLASS } from '$lib/components/ui/field-class/index.js';
 	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 	import { toast } from 'svelte-sonner';
 	import { berlinYmd } from '$lib/domain/year.js';
@@ -238,16 +239,6 @@
 				{/if}
 			</div>
 
-			<div class="space-y-1">
-				<Label for="m-telefon">Telefon</Label>
-				<Input
-					id="m-telefon"
-					name="telefon"
-					type="tel"
-					autocomplete="tel"
-					value={isEdit ? (member?.telefon ?? '') : ''}
-				/>
-			</div>
 
 			<div class="space-y-1">
 				<Label for="m-adresse">Adresse</Label>
@@ -285,17 +276,40 @@
 				</div>
 			</div>
 
-			<div class="space-y-1">
-				<Label for="m-role">Rolle</Label>
-				<Select
-					id="m-role"
-					name="role"
-					data-testid="{mode}-role-select"
-				>
-					{#each roleOptions as r (r.value)}
-						<option value={r.value} selected={isEdit && member?.role === r.value}>{r.label}</option>
-					{/each}
-				</Select>
+			<!-- Telefon + Rolle teilen sich eine Zeile: beide sind KOMPAKTE Werte
+			     (Rufnummer, kurze Rollen-Labels), also kostet die halbe Breite hier
+			     nichts. E-Mail und Adresse bleiben bewusst voll — Freitext bekommt
+			     die dominante Breite (Andys Regel 2), und eine halbierte E-Mail
+			     würde bei realen Adressen abschneiden (Regel 4). Die Zeile spart
+			     die 45px, an denen der Dialog auf 800px-hohen Viewports scrollte.
+
+			     Gestapelt unter sm (Andys Regel 4: nebeneinander NUR, wenn nichts
+			     bei irgendeiner Zielbreite abschneidet). Gemessen: bei 375px hat
+			     der halbe Select 102px Innenbreite, „Fördermitglied" braucht 109 —
+			     ein Text-Input würde dort nur schmal, ein Select schneidet ab. -->
+			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+				<div class="space-y-1">
+					<Label for="m-telefon">Telefon</Label>
+					<Input
+						id="m-telefon"
+						name="telefon"
+						type="tel"
+						autocomplete="tel"
+						value={isEdit ? (member?.telefon ?? '') : ''}
+					/>
+				</div>
+				<div class="space-y-1">
+					<Label for="m-role">Rolle</Label>
+					<Select
+						id="m-role"
+						name="role"
+						data-testid="{mode}-role-select"
+					>
+						{#each roleOptions as r (r.value)}
+							<option value={r.value} selected={isEdit && member?.role === r.value}>{r.label}</option>
+						{/each}
+					</Select>
+				</div>
 			</div>
 
 			<!-- Beitragspflicht aussetzen (indigo, never pink, never on the Betrag) -->
@@ -310,7 +324,7 @@
 						type="checkbox"
 						name="beitrag_exempt"
 						data-testid="{mode}-beitrag-exempt"
-						class="mt-0.5 h-4 w-4 rounded border-input accent-indigo-600"
+						class={["mt-0.5", CHECKBOX_CLASS]}
 						bind:checked={beitragExempt}
 					/>
 					<span>
