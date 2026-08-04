@@ -142,12 +142,19 @@ describe("result anchor", () => {
   }
 
   it("is silent while nothing is filtered — it would only repeat the header", () => {
-    expect(renderBar({ resultCount: 47, totalCount: 47 })?.textContent?.trim()).toBe("");
+    expect(
+      renderBar({ resultCount: 47, totalCount: 47 })?.textContent?.trim(),
+    ).toBe("");
   });
 
   it("reads 'N von M' once a filter narrows the list", () => {
     const span = renderBar({
-      state: { enums: { status: ["offen"] }, members: {}, amount: {}, booleans: {} },
+      state: {
+        enums: { status: ["offen"] },
+        members: {},
+        amount: {},
+        booleans: {},
+      },
       resultCount: 7,
       totalCount: 47,
     });
@@ -156,7 +163,13 @@ describe("result anchor", () => {
 
   it("counts a search as a filter", () => {
     const span = renderBar({
-      state: { search: "miete", enums: {}, members: {}, amount: {}, booleans: {} },
+      state: {
+        search: "miete",
+        enums: {},
+        members: {},
+        amount: {},
+        booleans: {},
+      },
       resultCount: 2,
       totalCount: 47,
     });
@@ -165,7 +178,12 @@ describe("result anchor", () => {
 
   it("announces changes politely", () => {
     const span = renderBar({
-      state: { enums: { status: ["offen"] }, members: {}, amount: {}, booleans: {} },
+      state: {
+        enums: { status: ["offen"] },
+        members: {},
+        amount: {},
+        booleans: {},
+      },
       resultCount: 0,
       totalCount: 47,
     });

@@ -44,6 +44,7 @@
 	<title>Neue Rechnung - {page.data.vereinName}</title>
 </svelte:head>
 
+<!-- eslint-disable svelte/no-navigation-without-resolve -->
 <PageShell width="list">
 	<PageHeader title="Neue Rechnung" backHref="/app/rechnungen" backLabel="Rechnungen">
 		{#snippet meta()}
@@ -115,3 +116,4 @@
 		cancelHref="/app/rechnungen"
 	/>
 </PageShell>
+<!-- eslint-enable svelte/no-navigation-without-resolve -->

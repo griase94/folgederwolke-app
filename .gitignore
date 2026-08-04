@@ -56,3 +56,5 @@ vite.config.ts.timestamp-*
 shoot.local.mjs
 measure.local.mjs
 navcheck.local.mjs
+chartcheck.local.mjs
+probe.local.mjs

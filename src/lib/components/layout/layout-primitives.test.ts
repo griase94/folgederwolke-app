@@ -5,8 +5,9 @@
  * PageShell: form → 640px · list → 1100px · wide → 1680px; one horizontal
  * padding scale (16/24/32, 4px grid); mobile bottom padding clears the
  * fixed tab bar + home indicator.
- * PageHeader: title row → meta line → ONE toolbar row; back slot renders
- * only when backHref is set and only on mobile (md:hidden).
+ * PageHeader: title row → meta line → ONE toolbar row; the back slot renders
+ * whenever backHref is set, on every viewport (debt R7 — it is THE back
+ * affordance, there are no breadcrumbs and no hand-rolled ←-links).
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { render, cleanup, screen } from "@testing-library/svelte";
@@ -89,7 +90,7 @@ describe("PageHeader", () => {
     ).toBeNull();
   });
 
-  it("renders the mobile-only back link when backHref is set", () => {
+  it("renders THE back link on every viewport when backHref is set (debt R7)", () => {
     render(PageHeaderHarness, {
       props: { backHref: "/app/ausgaben?year=2026", backLabel: "Ausgaben" },
     });
@@ -101,8 +102,10 @@ describe("PageHeader", () => {
     // passes the full href; PageHeader must not strip it.
     expect(back!.getAttribute("href")).toBe("/app/ausgaben?year=2026");
     expect(back!.textContent).toContain("Ausgaben");
-    // Mobile detail routes only — hidden from md upwards.
-    expect(back!.className).toContain("md:hidden");
+    // R7: it used to be md:hidden, which is why desktop screens grew their own
+    // ←-links and breadcrumbs. One affordance, all widths.
+    expect(back!.className).not.toContain("md:hidden");
+    expect(back!.className).toContain("min-h-11");
   });
 
   it("back link falls back to 'Zurück' without backLabel", () => {

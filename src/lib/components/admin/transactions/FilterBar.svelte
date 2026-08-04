@@ -30,7 +30,7 @@
    * §13: this component only EMITS filter-state. Row-level Sphäre (left
    * color-rule) / Status (filled badge) rendering is owned by the tab pages.
    */
-  import type { Snippet } from "svelte";
+  import { untrack, type Snippet } from "svelte";
   import { goto } from "$app/navigation";
   import { page } from "$app/stores";
   import {
@@ -320,16 +320,47 @@
     navigate(next);
   }
 
+  // ── Search (as-you-type, debounced) ────────────────────────────────────────
+  // The input is a DRAFT, not a mirror of the URL: navigation lands while the
+  // user is still typing, and re-reading `filterState.search` on every keystroke
+  // would fight the caret. The draft only re-syncs when the URL changes for a
+  // reason other than our own last navigation (a reset, a saved view, the back
+  // button).
+  const SEARCH_DEBOUNCE_MS = 300;
+  // untrack: seeding the draft from the prop is deliberately a ONE-TIME read —
+  // the $effect below owns every later sync.
+  let searchDraft = $state(untrack(() => filterState.search ?? ""));
+  let lastSentSearch = $state(untrack(() => filterState.search ?? ""));
+  let searchTimer: ReturnType<typeof setTimeout> | undefined;
+
+  $effect(() => {
+    const incoming = filterState.search ?? "";
+    if (incoming !== lastSentSearch) {
+      lastSentSearch = incoming;
+      searchDraft = incoming;
+    }
+  });
+
   function setSearch(raw: string) {
     const next = cloneWithPendingEnums();
     const trimmed = raw.trim();
     if (trimmed) next.search = trimmed.slice(0, 200);
     else delete next.search;
+    lastSentSearch = trimmed.slice(0, 200);
     navigate(next);
+  }
+
+  function onSearchInput(e: Event) {
+    searchDraft = (e.currentTarget as HTMLInputElement).value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => setSearch(searchDraft), SEARCH_DEBOUNCE_MS);
   }
 
   function resetAll() {
     optionQuery = {};
+    clearTimeout(searchTimer);
+    searchDraft = "";
+    lastSentSearch = "";
     navigate({ enums: {}, members: {}, amount: {}, booleans: {} });
   }
 
@@ -655,7 +686,7 @@
 
 {#snippet csvLink(extraClass: string)}
   {#if exportHref}
-    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+    <!-- eslint-disable svelte/no-navigation-without-resolve -->
     <a
       href={exportHref}
       data-testid="export-cta"
@@ -677,6 +708,7 @@
         /><path d="m7 10 5 5 5-5" />
       </svg>CSV
     </a>
+    <!-- eslint-enable svelte/no-navigation-without-resolve -->
   {/if}
 {/snippet}
 
@@ -685,11 +717,12 @@
     <input
       type="search"
       data-testid={searchTestId}
-      value={filterState.search ?? ""}
+      value={searchDraft}
       placeholder={searchPlaceholder}
       aria-label="Suchen"
+      autocomplete="off"
       class="w-full {CONTROL} md:w-56"
-      onchange={(e) => setSearch((e.currentTarget as HTMLInputElement).value)}
+      oninput={onSearchInput}
     />
 
     <!-- Desktop: the sections live in a capped popover. -->
