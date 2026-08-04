@@ -2,10 +2,14 @@
   PageHeader — Aurora header anatomy (master §2.3 FROZEN contract, spec §4):
   title row → meta line → ONE toolbar row (search + filter chips together).
 
-  On mobile DETAIL routes the header gains a leading back slot (chevron +
-  parent label) — iOS standalone PWA has no browser chrome. The back slot
-  renders ONLY when backHref is set, and only below md. Callers must pass
-  the full parent href INCLUDING the originating list's query params.
+  DETAIL routes gain a leading back slot (chevron + parent label) whenever
+  backHref is set — on EVERY viewport (debt R7). It used to be mobile-only, so
+  desktop screens grew their own back affordances: a ←-text link here, a
+  muted chevron there, a breadcrumb somewhere else. This is the one. Callers
+  must pass the full parent href INCLUDING the originating list's query params.
+
+  There are no breadcrumbs: with a one-level IA the trail would always read
+  "<list> › <thing>", which the back link already says in fewer pixels.
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
@@ -31,7 +35,7 @@
 		<a
 			href={backHref}
 			data-testid="page-header-back"
-			class="-ml-1 flex min-h-11 w-fit items-center gap-1 text-sm font-medium text-primary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:hidden"
+			class="-ml-1 flex min-h-11 w-fit items-center gap-1 text-sm font-medium text-primary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:min-h-10"
 		>
 			<svg
 				xmlns="http://www.w3.org/2000/svg"

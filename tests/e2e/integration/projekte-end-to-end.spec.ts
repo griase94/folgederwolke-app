@@ -135,7 +135,7 @@ test.describe("@phase-9 C1-PRJ-A end-to-end (lifecycle)", () => {
     await page.goto(`/app/projekte/${projectId}`);
     await expect(page.getByTestId("project-detail-hero")).toBeVisible();
     const einnahmenTile = page.locator(
-      '[data-testid="project-kpi-tile"][data-kpi-label="Einnahmen"]',
+      '[data-slot="stat-card"][data-kpi-label="Einnahmen"]',
     );
     await expect(einnahmenTile).toContainText("0,00");
 
@@ -153,7 +153,7 @@ test.describe("@phase-9 C1-PRJ-A end-to-end (lifecycle)", () => {
     // Hero KPI tiles reflect the new income.
     await expect(einnahmenTile).toContainText(/12,50/);
     const saldoTile = page.locator(
-      '[data-testid="project-kpi-tile"][data-kpi-label="Saldo"]',
+      '[data-slot="stat-card"][data-kpi-label="Saldo"]',
     );
     await expect(saldoTile).toContainText(/12,50/);
 

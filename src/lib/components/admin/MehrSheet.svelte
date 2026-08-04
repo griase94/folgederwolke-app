@@ -3,7 +3,7 @@
 
   Anatomy: grabber → profile row (avatar · name · role · Verein · "Konto")
   → 3-column tile grid (Projekte, Mitglieder, Jahresabschluss, Rechnungen,
-  Kunden, Einstellungen — aurora-tinted icon chips, gradient-brand-soft)
+  Kunden, Dateien, Einstellungen — aurora-tinted icon chips, gradient-brand-soft)
   → footer (DSGVO & Datenschutz, Abmelden).
 
   History contract: open state IS a history entry (page.state.mehrSheet via
@@ -26,6 +26,7 @@
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
 	import Building2Icon from '@lucide/svelte/icons/building-2';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
+	import FilesIcon from '@lucide/svelte/icons/files';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import ShieldIcon from '@lucide/svelte/icons/shield';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
@@ -99,6 +100,8 @@
 		{ href: '/app/jahresabschluss', label: 'Jahresabschluss', icon: BookOpenIcon },
 		{ href: '/app/rechnungen', label: 'Rechnungen', icon: FileTextIcon },
 		{ href: '/app/kunden', label: 'Kunden', icon: Building2Icon },
+		// Spec §1: /app/files had no entry point at all on mobile.
+		{ href: '/app/files', label: 'Dateien', icon: FilesIcon },
 		{ href: '/app/einstellungen', label: 'Einstellungen', icon: SettingsIcon }
 	];
 

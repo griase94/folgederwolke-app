@@ -1,7 +1,7 @@
 <!--
   /app/inbox/[ausId] — Beleg-hero + decision-band review route (Aurora, spec §2.2/§2.3).
 
-  PageShell width="full" single white card, internal split
+  PageShell width="wide" single white card, internal split
   lg:grid-cols-[minmax(0,1.55fr)_minmax(360px,1fr)]:
     LEFT  = BelegHero (desktop inline hero / mobile compact-fold modal + kein-Beleg).
     RIGHT = ReviewFacts, then DecisionBand (open) or DecidedBanner (decided).
@@ -54,7 +54,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<PageShell width="full">
+<PageShell width="wide">
 	<PageHeader title={data.submission.bezeichnung} backHref="/app/inbox?status=Offen" backLabel="Prüfung" />
 
 	<div

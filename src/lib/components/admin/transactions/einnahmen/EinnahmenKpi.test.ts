@@ -74,14 +74,20 @@ describe("EinnahmenKpi — anchor + Sphären-Split chips", () => {
     expect(vermoegenChip!.textContent).toMatch(/(^|[^.\d])0,00\s*€/);
   });
 
-  it("renders all four chips inside a horizontal-scroll strip (mobile §8.1)", () => {
+  it("renders all four chips inside one StatCardStrip (§8.1)", () => {
     const { container } = render(EinnahmenKpi, {
       props: { ...kpi, year: 2026 },
     });
-    const strip = container.querySelector('[data-slot="sphere-split"]');
+    const strip = container.querySelector("[data-sphere-split]");
     expect(strip).toBeTruthy();
-    // overflow-x-auto strip carries one chip per sphere (all four present).
     const chips = container.querySelectorAll("[data-sphere-chip]");
     expect(chips.length).toBe(4);
+    // Each card drills into its own filtered list (spec §8 href).
+    for (const chip of chips) {
+      expect(chip.tagName).toBe("A");
+      expect(chip.getAttribute("href")).toMatch(
+        /^\/app\/einnahmen\?year=2026&sphaere=/,
+      );
+    }
   });
 });

@@ -24,22 +24,25 @@
 <!--
   Filter chip: shows "label · value" with a removable × button.
   – The × button carries an accessible aria-label for screen readers.
-  – min-w-11 min-h-11 ensures ≥44 px tap target on the remove button.
+  – The 44px tap target comes from an ::after overlay, NOT from the button box:
+    a min-h-11/min-w-11 button inside a py-0.5 pill inflated every chip to 44px
+    tall with a 44px blank tail, which is what made an active chip row look
+    broken beside the toolbar (spec §3).
   – Backspace / Delete when focused also fires onRemove (A3-01).
 -->
 <span
 	data-slot="filter-chip"
 	class={cn(
-		"inline-flex items-center gap-1 rounded-full border border-border bg-secondary px-2 py-0.5 text-sm",
+		"inline-flex items-center gap-1.5 rounded-full border border-hairline bg-secondary py-1 pl-3 pr-2 text-[13px]",
 		className
 	)}
 >
-	<span class="text-muted-foreground">{label}</span>
-	<span class="font-medium">{value}</span>
+	<span class="text-ink-500">{label}</span>
+	<span class="font-medium text-ink-900">{value}</span>
 	<button
 		type="button"
 		aria-label="{label}: {value} entfernen"
-		class="ml-1 flex min-h-11 min-w-11 items-center justify-center rounded-full text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+		class="relative flex size-5 items-center justify-center rounded-full text-ink-500 transition-colors after:absolute after:-inset-3 after:content-[''] hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 		onclick={onRemove}
 		onkeydown={onKeyDown}
 	>

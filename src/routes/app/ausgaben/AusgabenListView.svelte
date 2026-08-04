@@ -14,7 +14,10 @@
 	import PageShell from '$lib/components/layout/PageShell.svelte';
 	import PageHeader from '$lib/components/layout/PageHeader.svelte';
 	import StaleYearBanner from '$lib/components/admin/StaleYearBanner.svelte';
+	import ListRailLayout from '$lib/components/layout/ListRailLayout.svelte';
 	import FilterBar from '$lib/components/admin/transactions/FilterBar.svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { TOOLBAR_BUTTON } from '$lib/components/ui/list-toolbar/index.js';
 	import AusgabenKpi from '$lib/components/admin/transactions/ausgaben/AusgabenKpi.svelte';
 	import TransactionRow from '$lib/components/ui/TransactionRow.svelte';
 	import MonthGroup from '$lib/components/ui/MonthGroup.svelte';
@@ -108,7 +111,7 @@
 	{/each}
 {/snippet}
 
-<PageShell width="list">
+<PageShell width="list" rail>
 	<PageHeader title="Ausgaben">
 		{#snippet meta()}
 			<p class="tabular-nums">
@@ -116,24 +119,23 @@
 			</p>
 		{/snippet}
 		{#snippet toolbar()}
-			<!-- Mobile-first: FilterBar (with its full-width search) on its own row;
-			     action links grouped on a wrapping row below. On md+ one row
-			     (FilterBar flex-1, links right). Fixes the mobile collapse/overlap. -->
-			<div class="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
-				<div class="w-full min-w-0 md:flex-1">
-					<FilterBar
-						tab="ausgaben"
-						state={data.filterState}
-						kategorieOptions={data.kategorieOptions}
-						memberOptions={data.memberOptions}
-						resultCount={data.total}
-					/>
-				</div>
-				<!-- eslint-disable svelte/no-navigation-without-resolve -->
-				<div class="flex flex-wrap items-center gap-2">
+			<!-- ONE composed toolbar row (spec §3): the page hands its export + primary
+			     action INTO the FilterBar composition, so a chip row can never nudge
+			     them (Δy = 0) and the right edge stays flush with the list card. -->
+			<FilterBar
+				tab="ausgaben"
+				state={data.filterState}
+				kategorieOptions={data.kategorieOptions}
+				memberOptions={data.memberOptions}
+				resultCount={data.total}
+				totalCount={data.kpi.count}
+				{exportHref}
+			>
+				{#snippet pageActions()}
+					<!-- eslint-disable svelte/no-navigation-without-resolve -->
 					<a
 						href="/app/ausgaben/ueberweisungen"
-						class="inline-flex h-11 items-center gap-1.5 rounded-[10px] border border-(--hairline) bg-card px-3 text-sm font-medium text-ink-700 hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
+						class={TOOLBAR_BUTTON}
 					>
 						<svg
 							class="size-4"
@@ -150,50 +152,32 @@
 							/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" />
 						</svg>Überweisungsliste</a
 					>
-					<a
-						href={exportHref}
-						data-testid="export-cta"
-						title="Gefilterte und sortierte Liste vollständig herunterladen (alle Seiten)"
-						class="inline-flex h-11 items-center gap-1.5 rounded-[10px] border border-(--hairline) bg-card px-3 text-sm font-medium text-ink-700 hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
-					>
-						<svg
-							class="size-4"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							aria-hidden="true"
-						>
-							<path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path
-								d="m7 10 5 5 5-5"
-							/>
-						</svg>CSV</a
-					>
-					<a
+					<Button
 						href={`/app/ausgaben/neu${listQueryString('ausgaben', $page.url.searchParams)}`}
-						data-slot="new-cta"
-						class="ml-auto inline-flex h-11 items-center rounded-full bg-primary-strong px-4 text-sm font-semibold text-white shadow-(--glow-brand) transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:ml-0 md:h-10"
-						>Neue Ausgabe</a
+						size="cta"
+						class="max-md:w-full"
+						data-slot="new-cta">Neue Ausgabe</Button
 					>
-				</div>
-				<!-- eslint-enable svelte/no-navigation-without-resolve -->
-			</div>
+					<!-- eslint-enable svelte/no-navigation-without-resolve -->
+				{/snippet}
+			</FilterBar>
 		{/snippet}
 	</PageHeader>
 
 	<StaleYearBanner selectedYear={data.yearScope} currentYear={data.currentYear} />
 
-	<div class="mb-5">
-		<AusgabenKpi
-			totalCents={data.kpi.totalCents}
-			count={data.kpi.count}
-			erstattetCount={data.kpi.erstattetCount}
-			offenCount={data.kpi.offenCount}
-			oldestOpenAgeDays={data.kpi.oldestOpenAgeDays}
-		/>
-	</div>
+	<ListRailLayout>
+		{#snippet aside()}
+			<AusgabenKpi
+				totalCents={data.kpi.totalCents}
+				count={data.kpi.count}
+				erstattetCount={data.kpi.erstattetCount}
+				offenCount={data.kpi.offenCount}
+				oldestOpenAgeDays={data.kpi.oldestOpenAgeDays}
+				year={data.yearScope}
+			/>
+		{/snippet}
+
 
 	{#if data.rows.length === 0}
 		{#if hasActiveFilters}
@@ -254,4 +238,5 @@
 			class="justify-center"
 		/>
 	{/if}
+	</ListRailLayout>
 </PageShell>

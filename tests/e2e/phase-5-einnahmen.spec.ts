@@ -80,7 +80,7 @@ test.describe("@phase-5-einnahmen Einnahmen tab", () => {
 
     // The KPI strip + its Sphären-Split chip set.
     await expect(page.getByTestId("kpi-strip")).toBeVisible();
-    const split = page.locator('[data-slot="sphere-split"]');
+    const split = page.locator("[data-sphere-split]");
     await expect(split).toBeVisible();
 
     // All four sphere chips are present (an empty one renders 0,00 €, never hidden).

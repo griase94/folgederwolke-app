@@ -51,3 +51,12 @@ vite.config.ts.timestamp-*
 # QA capture artifacts (screenshots + admin session cookie — never commit)
 .qa-live/
 .qa-shots/
+
+# local render harness (agent tooling, never shipped)
+shoot.local.mjs
+measure.local.mjs
+navcheck.local.mjs
+chartcheck.local.mjs
+probe.local.mjs
+remeasure.local.mjs
+dbg.local.mjs

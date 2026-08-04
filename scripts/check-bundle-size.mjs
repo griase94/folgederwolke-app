@@ -80,8 +80,36 @@ const IMMUTABLE_DIR = join(
 // limit set to new actual + ~3 % headroom. (The dev-only Auslage kit gallery at
 // src/routes/app/dev/auslagen is DEV-gated + dead-code-eliminated from prod,
 // like the chart gallery, so it costs nothing here.)
-const LARGEST_CHUNK_LIMIT = 462_000; // 462 KB
-const TOTAL_JS_LIMIT = 2_286_000; // ~2 232.4 KiB (actual 2 168.3 KiB + ~3 %)
+// Re-anchored 2026-08-04 (Quer-PR NAV/UX-Politur #170): the A-S1 headroom is
+// spent — the gate stood at 2 232.4 KiB against an actual 2 228.3 KiB, i.e.
+// 4,1 KiB (0,18 %) left. That is a gate about to fail on whatever lands next
+// rather than a gate that means anything, so it is re-anchored deliberately,
+// with the evidence below, instead of going red by surprise on the next lane.
+//
+// Where the growth came from, measured on this branch:
+//   2 191,8 KiB  after this PR's kit families + the #167/#169 merge
+//   2 228,3 KiB  after merging the S2b Portal-Kit (e317a1f)
+//   →  +36,5 KiB attributable to the S2b merge alone, which corroborates the
+//      +34,2 KiB the A-lane measured for that package independently.
+// The step from the previous anchor's 2 168,3 KiB up to 2 191,8 KiB covers
+// BOTH main's intervening lanes (#164 Mitglieder, #165, #166, #167, #169) AND
+// this PR's new kit (StatCard family, ListToolbar, TogglePill, CreateMenu,
+// ListRailLayout, feed filters). That split was not isolated — claiming a
+// precise per-PR number here would be false precision.
+//
+// LEAK CHECK (the thing this gate actually exists for): the largest chunk is
+// 410,2 KiB — byte-identical to every re-anchor since 2026-07-21. pdfjs-dist
+// still sits in its own 322,4 KiB chunk, separate from the entry, so the lazy
+// split is intact and nothing large was pulled into the synchronous bundle.
+// The growth is spread across 215 small route/component chunks, which is the
+// signature of distributed feature work, not of a re-bundle.
+//
+// New anchor: actual 2 228,3 KiB + ~5 % headroom. The largest-chunk gate is
+// deliberately NOT raised: at 410,2 KiB against 451,2 KiB it still holds ~10 %,
+// and it is the half of this gate that guards the pdfjs split — moving it would
+// blunt the only tripwire that matters.
+const LARGEST_CHUNK_LIMIT = 462_000; // 462 KB (= 451.2 KiB; actual 410.2 KiB)
+const TOTAL_JS_LIMIT = 2_396_000; // ~2 339.8 KiB (actual 2 228.3 KiB + ~5 %)
 
 // ---------- helpers -------------------------------------------------------- //
 

@@ -9,10 +9,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
-	import MinusIcon from '@lucide/svelte/icons/minus';
-	import PlusIcon from '@lucide/svelte/icons/plus';
-	import HeartIcon from '@lucide/svelte/icons/heart';
-	import type { Component } from 'svelte';
+	import { CREATE_ENTRIES } from './create-entries.js';
 
 	const open = $derived(page.state.createSheet === true);
 
@@ -76,27 +73,6 @@
 			: undefined
 	);
 
-	type Tile = { href: string; label: string; icon: Component; chip: string };
-	const TILES: Tile[] = [
-		{
-			href: '/app/ausgaben/neu',
-			label: 'Ausgabe',
-			icon: MinusIcon,
-			chip: 'bg-type-ausgabe-tint text-type-ausgabe'
-		},
-		{
-			href: '/app/einnahmen/neu',
-			label: 'Einnahme',
-			icon: PlusIcon,
-			chip: 'bg-type-einnahme-tint text-type-einnahme'
-		},
-		{
-			href: '/app/spenden/neu',
-			label: 'Spende',
-			icon: HeartIcon,
-			chip: 'bg-type-spende-tint text-type-spende'
-		}
-	];
 </script>
 
 <Sheet.Root bind:open={() => open, (v) => { if (!v) dismiss(); }}>
@@ -126,7 +102,7 @@
 		</Sheet.Description>
 
 		<nav class="grid grid-cols-3 gap-2 px-4 pb-2 pt-3" aria-label="Neu erfassen">
-			{#each TILES as tile (tile.href)}
+			{#each CREATE_ENTRIES as tile (tile.href)}
 				<!-- eslint-disable svelte/no-navigation-without-resolve -->
 				<a
 					href={tile.href}

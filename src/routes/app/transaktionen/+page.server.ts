@@ -18,6 +18,7 @@ import {
   countTransaktionenFeedByKind,
 } from "$lib/server/domain/transactions.js";
 import { parseFilterState } from "$lib/domain/transaction-filters.js";
+import { listKategorieOptions } from "$lib/server/domain/transaction-pickers.js";
 
 const PAGE_SIZE = 50;
 
@@ -59,10 +60,20 @@ export const load: PageServerLoad = async ({ url, parent }) => {
   }
 
   // Per-kind counts for the filter-chip badges (all three arms, typ ignored).
-  const chipCounts = await countTransaktionenFeedByKind({
-    state,
-    year: yearScope,
-  });
+  // Kategorie options are the UNION of the Einnahmen and Ausgaben name
+  // snapshots — the feed spans both, and a name that exists on either side is a
+  // meaningful filter. Donations are deliberately absent (their Kategorie is
+  // derived, not picked), which is exactly what the honesty rule announces.
+  const [chipCounts, expenseKat, incomeKat] = await Promise.all([
+    countTransaktionenFeedByKind({ state, year: yearScope }),
+    listKategorieOptions("expense"),
+    listKategorieOptions("income"),
+  ]);
+  const kategorieOptions = [
+    ...new Set([...expenseKat, ...incomeKat].map((k) => k.name)),
+  ]
+    .sort((a, b) => a.localeCompare(b, "de"))
+    .map((name) => ({ value: name, label: name }));
 
   return {
     rows,
@@ -70,6 +81,7 @@ export const load: PageServerLoad = async ({ url, parent }) => {
     sumCents,
     monthCount,
     chipCounts,
+    kategorieOptions,
     sort,
     page,
     pageSize: PAGE_SIZE,
