@@ -238,12 +238,15 @@
 				{/if}
 
 				<!-- Secondary: Reminder — only when a real balance exists.
-				     Status-driven: paid / exempt / ausgetreten → no reminder. -->
+				     Status-driven: paid / exempt / ausgetreten → no reminder.
+				     NO `disabled` here: `canSendReminder` already requires an email
+				     address, so a `disabled={!email}` inside this branch could never
+				     be true — it only suggested a greyed-out state that does not
+				     exist (SLOT-FELD §4-Audit). -->
 				{#if canSendReminder}
 					<Button
 						variant="outline"
 						onclick={() => (reminderSheetOpen = true)}
-						disabled={!data.member.email}
 						data-testid="sticky-bar-reminder"
 						class="shrink-0"
 						aria-label="Erinnerungs-Mail vorbereiten für {fullName}"
