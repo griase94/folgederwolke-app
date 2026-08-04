@@ -14,6 +14,7 @@
 	import StaleYearBanner from '$lib/components/admin/StaleYearBanner.svelte';
 	import ListRailLayout from '$lib/components/layout/ListRailLayout.svelte';
 	import FilterBar from '$lib/components/admin/transactions/FilterBar.svelte';
+	import { TOOLBAR_PRIMARY } from '$lib/components/ui/list-toolbar/index.js';
 	import SpendenKpi from '$lib/components/admin/transactions/spenden/SpendenKpi.svelte';
 	import TransactionRow from '$lib/components/ui/TransactionRow.svelte';
 	import MonthGroup from '$lib/components/ui/MonthGroup.svelte';
@@ -109,35 +110,28 @@
 			</p>
 		{/snippet}
 		{#snippet toolbar()}
-			<!-- Mobile-first toolbar: FilterBar full-width own row; links grouped below. -->
-			<div class="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
-				<div class="w-full min-w-0 md:flex-1">
-					<FilterBar
-						tab="spenden"
-						state={data.filterState}
-						kategorieOptions={data.kategorieOptions}
-						memberOptions={data.memberOptions}
-						resultCount={data.total}
-					/>
-				</div>
-				<!-- eslint-disable svelte/no-navigation-without-resolve -->
-				<div class="flex flex-wrap items-center gap-2">
-					<a
-						href={exportHref}
-						data-testid="export-cta"
-						title="Gefilterte und sortierte Liste vollständig herunterladen (alle Seiten)"
-						class="inline-flex h-11 items-center rounded-[10px] border border-(--hairline) bg-card px-3 text-sm font-medium text-ink-700 hover:bg-card/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10"
-						>CSV</a
-					>
+			<!-- ONE composed toolbar row (spec §3): the page hands its export + primary
+			     action INTO the FilterBar composition, so a chip row can never nudge
+			     them (Δy = 0) and the right edge stays flush with the list card. -->
+			<FilterBar
+				tab="spenden"
+				state={data.filterState}
+				kategorieOptions={data.kategorieOptions}
+				memberOptions={data.memberOptions}
+				resultCount={data.total}
+				totalCount={data.kpi.count}
+				{exportHref}
+			>
+				{#snippet pageActions()}
+					<!-- eslint-disable svelte/no-navigation-without-resolve -->
 					<a
 						href={`/app/spenden/neu${listQueryString('spenden', $page.url.searchParams)}`}
 						data-slot="new-cta"
-						class="ml-auto inline-flex h-11 items-center rounded-full bg-primary-strong px-4 text-sm font-semibold text-white shadow-(--glow-brand) transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:ring-offset-2 md:ml-0 md:h-10"
-						>Neue Spende</a
+						class={TOOLBAR_PRIMARY}>Neue Spende</a
 					>
-				</div>
-				<!-- eslint-enable svelte/no-navigation-without-resolve -->
-			</div>
+					<!-- eslint-enable svelte/no-navigation-without-resolve -->
+				{/snippet}
+			</FilterBar>
 		{/snippet}
 	</PageHeader>
 

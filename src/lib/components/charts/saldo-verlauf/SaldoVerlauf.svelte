@@ -314,9 +314,19 @@
 		</dl>
 	</div>
 
-	<!-- Sparkline -->
+	<!-- Sparkline.
+	     Container rule (spec §2 R6.2): a catalogue chart renders at most 1.6× its
+	     own viewBox width. Past that the marks stop reading as a chart — measured
+	     at 3440px without a cap the trend stroke scaled to 11.2px and the plot
+	     became an empty plain. Surplus width belongs to the LAYOUT, never to the
+	     chart, so the capped chart centres in whatever slot it is given. The cap
+	     derives from vbW, so it holds for any future frame size. -->
 	<div class="order-2 flex min-w-0 flex-1 flex-col justify-center md:order-none">
-		<div bind:this={hostEl} class="relative">
+		<div
+			bind:this={hostEl}
+			class="relative mx-auto w-full"
+			style:max-width={`${vbW * 1.6}px`}
+		>
 			<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 			<svg
 				bind:this={svgEl}
