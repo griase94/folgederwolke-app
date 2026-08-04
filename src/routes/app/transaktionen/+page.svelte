@@ -40,6 +40,7 @@
 		{ value: 'einnahmen', label: 'Einnahmen', count: data.chipCounts.income },
 		{ value: 'ausgaben', label: 'Ausgaben', count: data.chipCounts.expense },
 		{ value: 'spenden', label: 'Spenden', count: data.chipCounts.donation },
+		{ value: 'beitraege', label: 'Beiträge', count: data.chipCounts.beitrag },
 	]);
 
 	const LENS_OPTIONS = $derived([
@@ -48,16 +49,31 @@
 	]);
 	const lens = $derived<'datum' | 'betrag'>(data.sort === 'betrag' ? 'betrag' : 'datum');
 
+	// A Beitrag rides the `einnahme` identity on purpose: it IS income, and the
+	// glyph/amount hue encodes the money DIRECTION. Giving it a fourth hue would
+	// read as a different kind of flow. What makes it recognisable is the
+	// „Beitrag“ chip plus the Mitglied in the title (Guidelines §2.2: hue =
+	// identity of the flow, chip = the finer distinction).
 	const KIND_TO_TYPE = {
 		expense: 'ausgabe',
 		income: 'einnahme',
 		donation: 'spende',
+		beitrag: 'einnahme',
 	} as const;
 	const KIND_TO_PATH = {
 		expense: 'ausgaben',
 		income: 'einnahmen',
 		donation: 'spenden',
 	} as const;
+
+	// Beiträge have no transaction detail route — they are owned by the
+	// Mitglieder-Matrix, which is where editing and Storno live. The row links
+	// there instead of to a page that would have to re-implement them.
+	function rowHref(r: FeedRow): string {
+		if (r.kind === 'beitrag')
+			return r.memberId ? `/app/mitglieder/${r.memberId}` : '/app/mitglieder';
+		return `/app/${KIND_TO_PATH[r.kind]}/${r.id}`;
+	}
 
 	function signedCents(r: FeedRow): number {
 		return r.kind === 'expense' ? -r.betragCents : r.betragCents;
@@ -72,6 +88,9 @@
 		const out: { label: string; kind?: 'warn' | 'neutral' }[] = [];
 		if (r.kind === 'expense' && r.status)
 			out.push({ label: statusPresentation(r.status).label, kind: 'neutral' });
+		// Origin marker, same neutral treatment as „aus Rechnung FDW-…“: it says
+		// where the row comes from, not that anything is wrong with it.
+		if (r.kind === 'beitrag') out.push({ label: 'Beitrag', kind: 'neutral' });
 		if (r.belegFehlt) out.push({ label: 'Beleg fehlt', kind: 'warn' });
 		return out;
 	}
@@ -297,7 +316,7 @@
 							amountCents={signedCents(r)}
 							signed={true}
 							rank={(data.page - 1) * data.pageSize + i + 1}
-							href={`/app/${KIND_TO_PATH[r.kind]}/${r.id}`}
+							href={rowHref(r)}
 						/>
 					{/each}
 				</div>
@@ -321,7 +340,7 @@
 								statusChips={chips(r)}
 								amountCents={signedCents(r)}
 								signed={true}
-								href={`/app/${KIND_TO_PATH[r.kind]}/${r.id}`}
+								href={rowHref(r)}
 							/>
 						{/each}
 					</MonthGroup>

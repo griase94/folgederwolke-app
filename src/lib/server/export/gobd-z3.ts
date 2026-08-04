@@ -70,6 +70,17 @@ export interface GobdExportInput {
   einnahmen: EurRow[];
   ausgaben: EurRow[];
   spenden: SpendenlisteRow[];
+  /**
+   * Paid Mitgliedsbeiträge, as synthesized by `loadEurAggregatesForPdf`
+   * (`beitragEurRows`) — the SAME rows the EÜR folds into its Einnahmen.
+   *
+   * Until S1 this arm did not exist, so the journal silently undercounted
+   * Einnahmen by the entire Beitragssumme while the EÜR PDF in the same
+   * bundle reported the full figure. For a Verein whose largest income block
+   * is Beiträge, that is the first number a Betriebsprüfer reconciles.
+   * `tests/integration/gobd-eur-identity.test.ts` pins the sum identity.
+   */
+  beitrags: EurRow[];
 }
 
 /**
@@ -85,6 +96,7 @@ export function generateGobdZ3Xml(input: GobdExportInput): string {
     einnahmen,
     ausgaben,
     spenden,
+    beitrags,
   } = input;
 
   const exportTs = exportedAt.toISOString().replace("T", " ").slice(0, 19);
@@ -139,6 +151,24 @@ export function generateGobdZ3Xml(input: GobdExportInput): string {
     </Record>`);
   }
 
+  // Mitgliedsbeiträge book by gezahlt_am (realized cashflow) and are always
+  // ideeller by gemeinnützigkeitsrechtlicher Definition (§§ 51-68 AO) — the
+  // synthesized rows already carry both, so this arm only formats them.
+  for (const row of beitrags) {
+    journalRows.push(`    <Record>
+      <Seq>${seq++}</Seq>
+      <BelegNr>${escXml(row.businessId)}</BelegNr>
+      <Datum>${relevanzDatum(row)}</Datum>
+      <Bezeichnung>${escXml(row.bezeichnung)}</Bezeichnung>
+      <Art>Mitgliedsbeitrag</Art>
+      <Sphare>${escXml(row.sphereSnapshot)}</Sphare>
+      <Kategorie>${escXml(row.kategorieNameSnapshot)}</Kategorie>
+      <BetragEUR>${eurAmount(row.betragCents)}</BetragEUR>
+      <EurZeile>${row.eurZeile ?? ""}</EurZeile>
+      <BelegDatei></BelegDatei>
+    </Record>`);
+  }
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!-- GoBD-Z3 IDEA-XML Export — Folge der Wolke e.V. -->
 <!-- Buchungsjahr: ${year} | Exportiert: ${exportTs} -->
@@ -171,8 +201,10 @@ export function generateGobdReadme(input: {
 ## Inhalt
 
 - \`gobd_z3_${input.year}.xml\` — IDEA-XML Schema Z3 (GoBD § 147 Abs. 6 AO)
-  Enthält alle Buchungen (Einnahmen, Ausgaben, Spenden) des Jahres ${input.year}
-  in maschinenlesbarem Format für Betriebsprüfung / IDEA-Import.
+  Enthält alle Buchungen (Einnahmen, Ausgaben, Spenden, Mitgliedsbeiträge)
+  des Jahres ${input.year} in maschinenlesbarem Format für Betriebsprüfung /
+  IDEA-Import. Die Summe aller Einnahme-Datensätze (Art = Einnahme, Spende,
+  Mitgliedsbeitrag) entspricht den Gesamteinnahmen der EÜR in \`01_EÜR-${input.year}.pdf\`.
 
 ## Format
 

@@ -5,7 +5,7 @@
  */
 
 import JSZip from "jszip";
-import type { EurYearResult } from "$lib/server/domain/eur.js";
+import type { EurRow, EurYearResult } from "$lib/server/domain/eur.js";
 import type { SpendenlisteRow } from "./spendenliste-csv.js";
 import type { BelegIndexRow } from "./beleg-index.js";
 import { generateAnlageGemCsv } from "./anlage-gem-csv.js";
@@ -75,8 +75,15 @@ export interface BundleInput {
   bescheinigungPdfs?: BescheinigungAttachment[];
   /** C1-M3 — Audit-log slice for the year. */
   auditLogSlice?: AuditLogSliceRow[];
-  /** C1-M3 — Paid member-beitrags for the year. */
+  /** C1-M3 — Paid member-beitrags for the year (08_Mitgliedsbeitraege CSV). */
   memberBeitrags?: MemberBeitragRow[];
+  /**
+   * S1 — the same paid Beiträge as EÜR rows, for the GoBD-Z3 journal arm.
+   * Separate from `memberBeitrags` because the CSV is a member-facing Soll/Ist
+   * list (needs memberName) while the journal needs the EÜR row shape and MUST
+   * come from the rows the EÜR itself counted.
+   */
+  beitragEurRows?: EurRow[];
   /**
    * Phase 9 Task 18 — Beleg files to embed under `09_Belege-{year}/` in a
    * sphere-aware folder layout. Each attachment carries the in-bundle path
@@ -151,6 +158,7 @@ export async function buildJahresabschlussBundle(
         ...eur.bySphere.wirtschaftlich.ausgaben,
       ],
       spenden,
+      beitrags: input.beitragEurRows ?? [],
     };
     const gobdXml = generateGobdZ3Xml(gobdInput);
     const gobdReadme = generateGobdReadme({ year, vereinName });

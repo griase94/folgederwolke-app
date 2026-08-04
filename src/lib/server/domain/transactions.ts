@@ -23,26 +23,29 @@ import { auditLog } from "$lib/server/db/schema/audit_log.js";
 import { deriveDonationKategorieName } from "$lib/domain/spenden-kategorie.js";
 import type { Sphere } from "$lib/domain/sphere.js";
 import { zahlungsarten } from "$lib/server/db/schema/zahlungsarten.js";
-import { members } from "$lib/server/db/schema/members.js";
+import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 import { bus } from "$lib/server/events/index.js";
 import type { YearScope } from "$lib/domain/year.js";
 import { isUuid } from "$lib/domain/uuid.js";
 import {
+  einnahmenIncludesBeitrag,
   feedKindsSelected,
   feedKindsSupported,
   type FilterState,
 } from "$lib/domain/transaction-filters.js";
 import {
   buildAusgabenWhere,
+  buildBeitragWhere,
   buildEinnahmenWhere,
   buildSpendenWhere,
 } from "$lib/server/domain/transaction-filter-sql.js";
+import { beitragBuchungsjahr } from "$lib/server/domain/beitrag-buchungsjahr.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type TransactionKind = "expense" | "income" | "donation";
+export type TransactionKind = "expense" | "income" | "donation" | "beitrag";
 
 export interface TransactionRow {
   id: string;
@@ -162,10 +165,28 @@ export interface TransactionDetail extends TransactionRow {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Normalize a timestamp column to ISO-8601.
+ *
+ * The string branch must PARSE, not pass through: the very same column arrives
+ * as a JS `Date` from the Drizzle query builder but as a raw Postgres string
+ * from `db.execute` — `"2026-03-31 23:30:00+00"`, with a space instead of the
+ * `T`. Passing that through gave one field two wire formats depending on which
+ * query built the row, and `berlinMonthKey` reads a `T`-less string as an
+ * already-local date and slices the month straight off the UTC text. A row
+ * booked at 23:30 UTC on the last of a month is 01:30 the NEXT day in Berlin,
+ * so it landed in the previous month's group and subtotal — an ADR-0001-class
+ * error. The 23:30 case is pinned in `tests/unit/month-group.test.ts`.
+ *
+ * `new Date(raw)` parses the Postgres form directly. Do NOT "helpfully" swap
+ * the space for a `T` first: `"…T23:30:00+00"` carries a two-digit offset and
+ * parses to NaN.
+ */
 function formatTs(d: Date | string | null | undefined): string | null {
   if (!d) return null;
-  if (typeof d === "string") return d;
-  return d.toISOString();
+  if (typeof d !== "string") return d.toISOString();
+  const parsed = new Date(d);
+  return Number.isNaN(parsed.getTime()) ? d : parsed.toISOString();
 }
 
 // ---------------------------------------------------------------------------
@@ -239,6 +260,11 @@ export interface PageOptions {
  * `gebuchtAm desc` so a tampered `?sort=` can never order by an unindexed /
  * non-existent column. `dir` defaults to `desc`.
  */
+/** `and(...)` of the built conditions, or a literal TRUE when there are none. */
+function whereOrTrue(conds: SQL[]): SQL {
+  return conds.length ? and(...conds)! : sql`TRUE`;
+}
+
 function resolveOrderBy(
   sort: string | undefined,
   dir: "asc" | "desc" | undefined,
@@ -403,89 +429,148 @@ export async function listAusgabenPage(
  */
 export interface EinnahmenRow extends BaseTxRow {
   rechnungBusinessId: string | null;
+  /**
+   * `beitrag` only — the Mitglied whose Beitrag this is, so the row can link to
+   * them instead of to an Einnahmen-detail route that does not exist for it.
+   * NULL for real income rows.
+   */
+  memberId: string | null;
 }
 
+/** Raw union row for {@link listEinnahmenPage}. */
+interface RawEinnahmenRow extends Record<string, unknown> {
+  id: string;
+  kind: TransactionKind;
+  business_id: string;
+  bezeichnung: string;
+  betrag_cents: string | number;
+  currency: string;
+  gebucht_am: Date | string;
+  relevanz_datum: string | null;
+  sphere_snapshot: string;
+  kategorie_name_snapshot: string;
+  year_of_buchung: number | null;
+  festgeschrieben_at: Date | string | null;
+  rechnung_business_id: string | null;
+  member_id: string | null;
+}
+
+/**
+ * The Einnahmen list.
+ *
+ * S4: a UNION of the `income` table and the paid Mitgliedsbeiträge, because the
+ * Dashboard-KPI counted the latter while this list did not — so the KPI and the
+ * list it links into disagreed, and a Kassenwart could not reconcile a bank
+ * statement here. Beitrags rows are read-only in this list: editing, Storno and
+ * Befreiung live on the Mitglieder-Matrix, which owns the Soll.
+ *
+ * Whether the Beitrags arm is in scope follows `einnahmenIncludesBeitrag` — the
+ * same honesty rule the feed uses (a Beitrag has no Kategorie and never comes
+ * from a Rechnung, so those two filters remove the arm outright rather than
+ * silently returning nothing).
+ */
 export async function listEinnahmenPage(
   opts: PageOptions,
 ): Promise<{ rows: EinnahmenRow[]; total: number }> {
   const db = getDb();
-  const conds = buildEinnahmenWhere(opts.state, opts.year);
-  const where = conds.length ? and(...conds) : undefined;
-  const orderBy = resolveOrderBy(
-    opts.sort,
-    opts.dir,
-    {
-      gebuchtAm: income.gebuchtAm,
-      businessId: income.businessId,
-      bezeichnung: income.bezeichnung,
-      betrag: income.betragCents,
-    },
-    income.gebuchtAm,
-  );
+  const incomeWhere = whereOrTrue(buildEinnahmenWhere(opts.state, opts.year));
 
   // P2-06: correlated LATERAL subquery — references the outer `income.id`, so
-  // it's LATERAL; `.orderBy(createdAt, id).limit(1)` picks one deterministically.
+  // it's LATERAL; ORDER BY (created_at, id) LIMIT 1 picks one deterministically.
   // The PK is the secondary key so two invoices sharing a `created_at` still
   // resolve to a stable "first" (Postgres gives no tiebreak otherwise).
-  const invLateral = db
-    .select({ rechnungBusinessId: invoices.businessId })
-    .from(invoices)
-    .where(eq(invoices.paidByIncomeId, income.id))
-    .orderBy(invoices.createdAt, invoices.id)
-    .limit(1)
-    .as("inv");
+  const arms: SQL[] = [
+    sql`
+      SELECT ${income.id} AS id,
+             'income'::text AS kind,
+             ${income.businessId} AS business_id,
+             ${income.bezeichnung} AS bezeichnung,
+             ${income.betragCents} AS betrag_cents,
+             ${income.currency} AS currency,
+             ${income.gebuchtAm} AS gebucht_am,
+             ${income.geldEingangDatum}::text AS relevanz_datum,
+             ${income.sphereSnapshot}::text AS sphere_snapshot,
+             ${income.kategorieNameSnapshot} AS kategorie_name_snapshot,
+             ${income.yearOfBuchung} AS year_of_buchung,
+             ${income.festgeschriebenAt} AS festgeschrieben_at,
+             inv.business_id AS rechnung_business_id,
+             NULL::uuid AS member_id
+        FROM ${income}
+        LEFT JOIN LATERAL (
+          SELECT ${invoices.businessId} AS business_id
+            FROM ${invoices}
+           WHERE ${invoices.paidByIncomeId} = ${income.id}
+           ORDER BY ${invoices.createdAt}, ${invoices.id}
+           LIMIT 1
+        ) inv ON TRUE
+       WHERE ${incomeWhere}`,
+  ];
 
-  const baseEinnahmenQuery = db
-    .select({
-      id: income.id,
-      businessId: income.businessId,
-      bezeichnung: income.bezeichnung,
-      betragCents: income.betragCents,
-      currency: income.currency,
-      gebuchtAm: income.gebuchtAm,
-      relevanzDatum: income.geldEingangDatum,
-      sphereSnapshot: income.sphereSnapshot,
-      kategorieNameSnapshot: income.kategorieNameSnapshot,
-      yearOfBuchung: income.yearOfBuchung,
-      festgeschriebenAt: income.festgeschriebenAt,
-      rechnungBusinessId: invLateral.rechnungBusinessId,
-    })
-    .from(income)
-    .leftJoinLateral(invLateral, sql`true`)
-    .where(where)
-    .orderBy(orderBy)
-    .$dynamic();
+  if (einnahmenIncludesBeitrag(opts.state)) {
+    const beitragWhere = whereOrTrue(buildBeitragWhere(opts.state, opts.year));
+    arms.push(sql`
+      SELECT ${memberBeitrags.id} AS id,
+             'beitrag'::text AS kind,
+             'MB-' || ${memberBeitrags.year}::text || '-' || left(${memberBeitrags.id}::text, 8) AS business_id,
+             'Mitgliedsbeitrag ' || ${memberBeitrags.year}::text || ' · ' || concat_ws(' ', ${members.vorname}, ${members.nachname}) AS bezeichnung,
+             ${memberBeitrags.paidCents} AS betrag_cents,
+             'EUR'::char(3) AS currency,
+             ${memberBeitrags.gezahltAm}::timestamptz AS gebucht_am,
+             ${memberBeitrags.gezahltAm}::text AS relevanz_datum,
+             'ideeller'::text AS sphere_snapshot,
+             'Mitgliedsbeitrag'::text AS kategorie_name_snapshot,
+             ${beitragBuchungsjahr} AS year_of_buchung,
+             NULL::timestamptz AS festgeschrieben_at,
+             NULL::text AS rechnung_business_id,
+             ${memberBeitrags.memberId} AS member_id
+        FROM ${memberBeitrags}
+        JOIN ${members} ON ${members.id} = ${memberBeitrags.memberId}
+       WHERE ${beitragWhere}`);
+  }
 
-  const rowEinnahmenQuery =
+  const unionSql = sql.join(arms, sql` UNION ALL `);
+  // Sort keys address the UNION's output columns (not a single table's), with a
+  // deterministic id tiebreak so pagination can't drop or repeat a row.
+  const sortCol =
+    {
+      businessId: "business_id",
+      bezeichnung: "bezeichnung",
+      betrag: "betrag_cents",
+    }[opts.sort ?? ""] ?? "gebucht_am";
+  const dir = opts.sort && opts.dir === "asc" ? sql`ASC` : sql`DESC`;
+  const orderSql = sql`ORDER BY ${sql.raw(sortCol)} ${dir}, id DESC`;
+  const pageSql =
     opts.limit === "all"
-      ? baseEinnahmenQuery
-      : baseEinnahmenQuery.limit(opts.limit).offset(opts.offset);
+      ? sql``
+      : sql` LIMIT ${opts.limit} OFFSET ${opts.offset}`;
 
-  const [rows, countRows] = await Promise.all([
-    rowEinnahmenQuery,
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(income)
-      .where(where),
+  const [raw, countRows] = await Promise.all([
+    db.execute<RawEinnahmenRow>(
+      sql`SELECT * FROM (${unionSql}) AS einnahmen ${orderSql}${pageSql}`,
+    ),
+    db.execute<{ count: number }>(
+      sql`SELECT count(*)::int AS count FROM (${unionSql}) AS einnahmen`,
+    ),
   ]);
-  const total = countRows[0]?.count ?? 0;
+
   return {
-    rows: rows.map((r) => ({
+    rows: [...raw].map((r) => ({
       id: r.id,
-      kind: "income" as const,
-      businessId: r.businessId,
+      kind: r.kind,
+      businessId: r.business_id,
       bezeichnung: r.bezeichnung,
-      betragCents: Number(r.betragCents),
+      betragCents: Number(r.betrag_cents),
       currency: r.currency,
-      gebuchtAm: formatTs(r.gebuchtAm)!,
-      relevanzDatum: r.relevanzDatum ?? null,
-      sphereSnapshot: r.sphereSnapshot,
-      kategorieNameSnapshot: r.kategorieNameSnapshot,
-      yearOfBuchung: r.yearOfBuchung ?? null,
-      festgeschriebenAt: formatTs(r.festgeschriebenAt),
-      rechnungBusinessId: r.rechnungBusinessId ?? null,
+      gebuchtAm: formatTs(r.gebucht_am)!,
+      relevanzDatum: r.relevanz_datum ?? null,
+      sphereSnapshot: r.sphere_snapshot,
+      kategorieNameSnapshot: r.kategorie_name_snapshot,
+      yearOfBuchung: r.year_of_buchung ?? null,
+      festgeschriebenAt: formatTs(r.festgeschrieben_at),
+      rechnungBusinessId: r.rechnung_business_id ?? null,
+      memberId: r.member_id ?? null,
     })),
-    total,
+    total: countRows[0]?.count ?? 0,
   };
 }
 
@@ -640,6 +725,12 @@ export interface FeedRow {
   belegFehlt: boolean;
   festgeschriebenAt: string | null;
   yearOfBuchung: number | null;
+  /**
+   * `beitrag` only: the Mitglied the Beitrag belongs to, so the row can link to
+   * the member instead of a (non-existent) transaction detail route. NULL on
+   * every other arm.
+   */
+  memberId: string | null;
 }
 
 export interface FeedPageOptions {
@@ -692,6 +783,7 @@ interface RawFeedRow extends Record<string, unknown> {
   beleg_fehlt: boolean;
   festgeschrieben_at: Date | string | null;
   year_of_buchung: number | null;
+  member_id: string | null;
 }
 
 export async function listTransaktionenFeedPage(
@@ -727,7 +819,8 @@ export async function listTransaktionenFeedPage(
              ${expenses.status}::text AS status,
              (${expenses.belegFileId} IS NULL AND ${expenses.belegVerzichtGrund} IS NULL) AS beleg_fehlt,
              ${expenses.festgeschriebenAt} AS festgeschrieben_at,
-             ${expenses.yearOfBuchung} AS year_of_buchung
+             ${expenses.yearOfBuchung} AS year_of_buchung,
+             NULL::uuid AS member_id
       FROM ${expenses}
       WHERE ${where}`);
   }
@@ -753,7 +846,8 @@ export async function listTransaktionenFeedPage(
              NULL::text AS status,
              FALSE AS beleg_fehlt,
              ${income.festgeschriebenAt} AS festgeschrieben_at,
-             ${income.yearOfBuchung} AS year_of_buchung
+             ${income.yearOfBuchung} AS year_of_buchung,
+             NULL::uuid AS member_id
       FROM ${income}
       WHERE ${where}`);
   }
@@ -779,8 +873,43 @@ export async function listTransaktionenFeedPage(
              NULL::text AS status,
              FALSE AS beleg_fehlt,
              ${donations.festgeschriebenAt} AS festgeschrieben_at,
-             ${donations.yearOfBuchung} AS year_of_buchung
+             ${donations.yearOfBuchung} AS year_of_buchung,
+             NULL::uuid AS member_id
       FROM ${donations}
+      WHERE ${where}`);
+  }
+
+  if (wanted.has("beitrag")) {
+    const conds = buildBeitragWhere(opts.state, opts.year);
+    const where = conds.length ? and(...conds)! : sql`TRUE`;
+    // Synthesized like the EÜR does it: a Beitrag has no Kategorie, no Beleg,
+    // no Projekt and no own Festschreibungs-Stempel, and its sphere is fixed
+    // (§§ 51-68 AO). The BelegNr matches the GoBD journal's `MB-<jahr>-<8hex>`
+    // so a feed row and a journal record are recognisably the same booking.
+    // `member_id` is projected so the row can link to the Mitglied — the other
+    // arms carry NULL for it.
+    arms.push(sql`
+      SELECT ${memberBeitrags.id} AS id,
+             'beitrag'::text AS kind,
+             'MB-' || ${memberBeitrags.year}::text || '-' || left(${memberBeitrags.id}::text, 8) AS business_id,
+             'Mitgliedsbeitrag ' || ${memberBeitrags.year}::text || ' · ' || concat_ws(' ', ${members.vorname}, ${members.nachname}) AS bezeichnung,
+             ${memberBeitrags.paidCents} AS betrag_cents,
+             'EUR'::char(3) AS currency,
+             ${memberBeitrags.gezahltAm}::timestamptz AS gebucht_am,
+             ${memberBeitrags.gezahltAm}::text AS relevanz_datum,
+             'ideeller'::text AS sphere_snapshot,
+             'ideeller'::text AS sphere_effective,
+             'Mitgliedsbeitrag'::text AS kategorie_name_snapshot,
+             NULL::uuid AS kategorie_id,
+             NULL::uuid AS project_id,
+             FALSE AS has_beleg,
+             NULL::text AS status,
+             FALSE AS beleg_fehlt,
+             NULL::timestamptz AS festgeschrieben_at,
+             ${beitragBuchungsjahr} AS year_of_buchung,
+             ${memberBeitrags.memberId} AS member_id
+      FROM ${memberBeitrags}
+      JOIN ${members} ON ${members.id} = ${memberBeitrags.memberId}
       WHERE ${where}`);
   }
 
@@ -845,6 +974,7 @@ export async function listTransaktionenFeedPage(
       belegFehlt: r.beleg_fehlt === true,
       festgeschriebenAt: formatTs(r.festgeschrieben_at),
       yearOfBuchung: r.year_of_buchung ?? null,
+      memberId: r.member_id ?? null,
     })),
     total,
     sumCents,
@@ -856,6 +986,7 @@ export interface FeedKindCounts {
   expense: number;
   income: number;
   donation: number;
+  beitrag: number;
   total: number;
 }
 
@@ -889,8 +1020,12 @@ export async function countTransaktionenFeedByKind(opts: {
     arms.push(
       sql`SELECT 'donation'::text AS kind FROM ${donations} WHERE ${whereOf(buildSpendenWhere(opts.state, opts.year))}`,
     );
+  if (supported.has("beitrag"))
+    arms.push(
+      sql`SELECT 'beitrag'::text AS kind FROM ${memberBeitrags} JOIN ${members} ON ${members.id} = ${memberBeitrags.memberId} WHERE ${whereOf(buildBeitragWhere(opts.state, opts.year))}`,
+    );
   if (arms.length === 0)
-    return { expense: 0, income: 0, donation: 0, total: 0 };
+    return { expense: 0, income: 0, donation: 0, beitrag: 0, total: 0 };
   const rows = await db.execute<{ kind: string; n: number }>(
     sql`SELECT kind, count(*)::int AS n FROM (${sql.join(arms, sql` UNION ALL `)}) AS feed GROUP BY kind`,
   );
@@ -898,6 +1033,7 @@ export async function countTransaktionenFeedByKind(opts: {
     expense: 0,
     income: 0,
     donation: 0,
+    beitrag: 0,
     total: 0,
   };
   for (const r of rows) {
@@ -905,6 +1041,7 @@ export async function countTransaktionenFeedByKind(opts: {
     if (r.kind === "expense") counts.expense = n;
     else if (r.kind === "income") counts.income = n;
     else if (r.kind === "donation") counts.donation = n;
+    else if (r.kind === "beitrag") counts.beitrag = n;
     counts.total += n;
   }
   return counts;

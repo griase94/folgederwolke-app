@@ -24,7 +24,7 @@
 	 */
 	import { type Sphere } from '$lib/domain/sphere.js';
 	import SphereBadge from './SphereBadge.svelte';
-	import { FIELD_CLASS } from './field-class.js';
+	import { FIELD_CLASS } from '$lib/components/ui/field-class/index.js';
 
 	/** A kategorie option; `eurZeile` is forward-compatible + NULL pre-launch (P44-04). */
 	export interface KategorieOption {

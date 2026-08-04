@@ -44,6 +44,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
   const mapped: BuchungslisteRow[] = rows.map((r) => ({
     id: r.id,
     kind: r.kind,
+    memberId: r.memberId,
     businessId: r.businessId,
     bezeichnung: r.bezeichnung,
     betragCents: r.betragCents,
@@ -71,6 +72,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
     income: mapped.filter((r) => r.kind === "income").length,
     expense: mapped.filter((r) => r.kind === "expense").length,
     donation: mapped.filter((r) => r.kind === "donation").length,
+    beitrag: mapped.filter((r) => r.kind === "beitrag").length,
   };
 
   // Lookup tables for filter chips

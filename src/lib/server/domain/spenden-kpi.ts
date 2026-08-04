@@ -14,7 +14,7 @@
  * C3-owned (Phase 6): aggregation lives here, NOT in the shared transactions.ts.
  */
 
-import { count, eq, sql, sum } from "drizzle-orm";
+import { and, count, eq, isNull, sql, sum } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { donations } from "$lib/server/db/schema/donations.js";
 import { ALL_YEARS, type YearScope } from "$lib/domain/year.js";
@@ -49,6 +49,16 @@ export async function listSpendenKpi(year: YearScope): Promise<SpendenKpi> {
   const yearPredicate =
     year === ALL_YEARS ? undefined : eq(donations.yearOfBuchung, year);
 
+  // Exclude superseded (Storno-chained) rows — the app-wide "live row"
+  // predicate, mirroring einnahmen-kpi.ts. Without it this header contradicted
+  // the list directly below it on the SAME page: `buildSpendenWhere` filters
+  // supersedes, so a stornierte Spende disappeared from the rows while still
+  // counting in the Summe and the pills above them.
+  const livePredicate = isNull(donations.supersedesId);
+  const where = yearPredicate
+    ? and(yearPredicate, livePredicate)
+    : livePredicate;
+
   const [agg] = await db
     .select({
       sumCents: sum(donations.betragCents),
@@ -57,7 +67,7 @@ export async function listSpendenKpi(year: YearScope): Promise<SpendenKpi> {
       versandtCount: sql<number>`count(*) FILTER (WHERE ${donations.bescheinigungNr} IS NOT NULL)::int`,
     })
     .from(donations)
-    .where(yearPredicate);
+    .where(where);
 
   return {
     totalCents: Number(agg?.sumCents ?? 0),

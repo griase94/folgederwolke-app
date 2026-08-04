@@ -60,3 +60,6 @@ chartcheck.local.mjs
 probe.local.mjs
 remeasure.local.mjs
 dbg.local.mjs
+
+# local verification drivers (agent tooling, never shipped)
+slot-feld-*.local.mjs

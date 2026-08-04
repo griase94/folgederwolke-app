@@ -27,7 +27,7 @@
     DateField as HeroDateField,
   } from "$lib/components/ui/hero-field/index.js";
   import LockedSphereField from "$lib/components/admin/transactions/fields/LockedSphereField.svelte";
-  import { FIELD_CLASS } from "$lib/components/admin/transactions/fields/field-class.js";
+  import { FIELD_CLASS } from "$lib/components/ui/field-class/index.js";
   import type { Sphere } from "$lib/domain/sphere.js";
   import type { TransactionDetail } from "$lib/server/domain/transactions.js";
 
