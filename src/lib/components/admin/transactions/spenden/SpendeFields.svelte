@@ -18,7 +18,7 @@
 	import LockedSphereField from '$lib/components/admin/transactions/fields/LockedSphereField.svelte';
 	import DerivedKategorieBadge from './DerivedKategorieBadge.svelte';
 	import FileCheckIcon from '@lucide/svelte/icons/file-check';
-	import { FIELD_CLASS } from '$lib/components/admin/transactions/fields/field-class.js';
+	import { FIELD_CLASS } from '$lib/components/ui/field-class/index.js';
 	import {
 		deriveDonationKategorieName,
 		type SpendeKind,

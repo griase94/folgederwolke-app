@@ -49,7 +49,7 @@
 <script lang="ts">
 	import { CalendarDate, parseDate } from "@internationalized/date";
 	import { cn } from "$lib/utils.js";
-	import { FIELD_CLASS } from '$lib/components/admin/transactions/fields/field-class.js';
+	import { FIELD_CLASS } from '$lib/components/ui/field-class/index.js';
 
 	// Aurora FIELD_CLASS + extras: tabular-nums for date digits, aria-invalid
 	// ring, disabled state. Replaces the old h-8/rounded-lg/border-input tokens.
