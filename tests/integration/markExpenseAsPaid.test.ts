@@ -1,6 +1,7 @@
 /**
  * C3-DISC integration tests — markExpenseAsPaid (single source of truth for
- * the Bezahlt-markieren shortcut and the TransactionEditForm Erstattung block).
+ * the Bezahlt-markieren shortcut; its second caller, TransactionEditForm, was
+ * deleted in SLOT-FELD S5 — a component with zero importers).
  *
  * Asserts:
  *   - happy path sets erstattet_am to the supplied date and flips status to
