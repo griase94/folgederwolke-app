@@ -8,8 +8,11 @@
  * bulk-mark-erstattet semantics (one markExpenseErstattet per row, each fires
  * the SEPA-payout confirmation mail — ADR-0005 dedupes re-sends).
  *
- * The /api/sepa/generate endpoint stays (removal decision is a backlog issue,
- * spec §11) but is no longer reachable from the UI.
+ * The /api/sepa/generate endpoint is GONE (board #172): it was unreachable from
+ * the UI, it derived the payout account itself instead of using the ratified M4
+ * precedence, and once F4 kept festgeschriebene claims in the pool it would
+ * have exported claims that must not be paid at all. Deleted rather than
+ * repaired — a pre-launch no-compat call, with the history keeping the code.
  *
  * Bulk Erstattung moved here from /app/ausgaben (Aurora slice 4 — Überweisungsliste
  * absorbs the SepaCopyModal flow).
@@ -46,6 +49,7 @@ export const load: PageServerLoad = async () => {
     // display string with its "Mitglied: " prefix, which is right on a list row
     // and useless in a transfer form (board #172 MAJOR 3).
     empfaenger: r.empfaengerName,
+    bezahltVonKind: r.bezahltVonKind,
     payoutIban: r.payoutIban,
     verwendungszweck: erstattungsVerwendungszweck(
       r.ausNr ?? r.businessId,

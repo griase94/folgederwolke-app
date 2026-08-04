@@ -198,6 +198,31 @@ test.describe("@phase-2 Überweisungs-Werkstatt — commits through the real UI"
     ).toBeVisible();
   });
 
+  test("the lens switcher actually switches — not just the URL", async ({
+    page,
+  }) => {
+    // Board #172 BLOCKER: clicking rewrote ?lens=liste while the body kept
+    // rendering the prep list, because the lens was derived from a URL that
+    // replaceState changes WITHOUT a navigation. Only a deep link ever worked,
+    // and every spec here entered by deep link — which is why it survived.
+    await seedClaim("lens", MEMBER_IBAN);
+    await gotoWerkstatt(page);
+
+    await expect(page.getByTestId("prep-list")).toBeVisible();
+    await expect(page.getByTestId("claim-list")).toHaveCount(0);
+
+    await page.getByRole("tab", { name: /Auf der Liste/ }).click();
+
+    await expect(page.getByTestId("claim-list")).toBeVisible();
+    await expect(page.getByTestId("prep-list")).toHaveCount(0);
+    await expect(page).toHaveURL(/lens=liste/);
+
+    // And back, so the switcher is not a one-way door.
+    await page.getByRole("tab", { name: /Vorzubereiten/ }).click();
+    await expect(page.getByTestId("prep-list")).toBeVisible();
+    await expect(page.getByTestId("claim-list")).toHaveCount(0);
+  });
+
   test("reject dialog carries the typed reason verbatim into the mail", async ({
     page,
   }) => {

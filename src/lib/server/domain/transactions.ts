@@ -1270,6 +1270,20 @@ export async function listApprovedPendingErstattet(): Promise<
   ApprovedExpense[]
 > {
   const db = getDb();
+  // The lock the DB trigger actually reads. `expenses.festgeschrieben_at` is a
+  // per-row marker and NOT the guard — mirroring it left the real case (a row
+  // whose YEAR is closed but which was never individually stamped) offering a
+  // button the action answers 409 to.
+  const [lockRow] = await db.execute<{ value: unknown }>(
+    sql`SELECT value FROM settings WHERE key = 'festgeschrieben_bis'`,
+  );
+  const rawLock = (lockRow as { value: unknown } | undefined)?.value;
+  const festgeschriebenBis =
+    typeof rawLock === "number"
+      ? rawLock
+      : typeof rawLock === "string"
+        ? Number(rawLock.replace(/^"|"$/g, ""))
+        : null;
 
   const rows = await db
     .select({
@@ -1289,6 +1303,13 @@ export async function listApprovedPendingErstattet(): Promise<
       payoutIban: payoutIbanSql,
       festgeschrieben: sql<boolean>`${expenses.festgeschriebenAt} IS NOT NULL`,
       abflussDatum: expenses.abflussDatum,
+      /**
+       * The Buchungsjahr the Festschreibungs-TRIGGER guards on — the
+       * cash-derived year (0034/0040), NOT `festgeschrieben_at`. Those are two
+       * different notions, and mirroring the wrong one made the UI disagree
+       * with the action for exactly the rows that matter.
+       */
+      buchungsjahr: sql<number>`COALESCE(EXTRACT(YEAR FROM ${expenses.abflussDatum})::int, year_for_booking(${expenses.gebuchtAm}))`,
     })
     .from(expenses)
     .leftJoin(members, eq(members.id, expenses.bezahltVonMemberId))
@@ -1319,9 +1340,24 @@ export async function listApprovedPendingErstattet(): Promise<
     ausNr: r.ausNr ?? null,
     payoutIban: r.payoutIban ?? null,
     empfaengerName: bankPayeeName(r),
-    festgeschrieben: Boolean(r.festgeschrieben),
+    // "Closed year" for the UI means what the trigger means: this row's
+    // Buchungsjahr is inside the locked range.
+    festgeschrieben:
+      Boolean(r.festgeschrieben) ||
+      (festgeschriebenBis !== null &&
+        Number.isFinite(festgeschriebenBis) &&
+        Number(r.buchungsjahr) <= festgeschriebenBis),
     abflussDatum: r.abflussDatum ?? null,
-    ...commitGate(r),
+    ...commitGate({
+      payoutIban: r.payoutIban ?? null,
+      bezahltVonKind: r.bezahltVonKind as string,
+      abflussDatum: r.abflussDatum ?? null,
+      festgeschrieben:
+        Boolean(r.festgeschrieben) ||
+        (festgeschriebenBis !== null &&
+          Number.isFinite(festgeschriebenBis) &&
+          Number(r.buchungsjahr) <= festgeschriebenBis),
+    }),
   }));
 }
 

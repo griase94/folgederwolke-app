@@ -42,6 +42,11 @@
 		/** Same string the reimbursement mail quotes (Abnahme #14). */
 		verwendungszweck: string;
 		festgeschrieben: boolean;
+		/**
+		 * `verein` means the Verein paid directly — there is no payee and no
+		 * IBAN by design, so the card must not show an "IBAN fehlt" dead end.
+		 */
+		bezahltVonKind?: string;
 		/** False ⇒ the server would refuse this claim today; see blockReason. */
 		committable?: boolean;
 		blockReason?: 'iban-fehlt' | 'festgeschrieben-ohne-abfluss' | null;
@@ -79,6 +84,22 @@
 	 */
 	const committable = $derived(claim.committable ?? payable);
 	const yearBlocked = $derived(claim.blockReason === 'festgeschrieben-ohne-abfluss');
+	/**
+	 * A Verein-direct expense has no recipient at all — "erstattet" only books
+	 * the cash-out. Flagging its missing IBAN would demand something that will
+	 * never exist, and §7 exempts it on the server for exactly that reason.
+	 */
+	const vereinDirekt = $derived(claim.bezahltVonKind === 'verein');
+	/**
+	 * Say where the link actually goes. "bei der Ausgabe ergänzen" while the
+	 * href points at the Mitglied sends people to the wrong screen — for a
+	 * member the IBAN lives in the profile, for an extern payer on the expense.
+	 */
+	const ibanFixLabel = $derived(
+		(claim.ibanFixHref ?? '').includes('/mitglieder/')
+			? 'IBAN fehlt — beim Mitglied ergänzen'
+			: 'IBAN fehlt — bei der Ausgabe ergänzen'
+	);
 	const ibanDisplay = $derived(
 		claim.payoutIban ? groupIban(claim.payoutIban) : 'IBAN fehlt'
 	);
@@ -116,7 +137,9 @@
 	{/if}
 
 	<p class="mt-3 text-[11px] font-medium text-ink-500">
-		In Bank-Formular-Reihenfolge — zum Kopieren
+		{vereinDirekt
+			? 'Zur Ablage — kein Bank-Formular nötig'
+			: 'In Bank-Formular-Reihenfolge — zum Kopieren'}
 	</p>
 	<div class="mt-1.5 flex flex-wrap gap-2">
 		<CopyField
@@ -126,14 +149,20 @@
 			{onCopied}
 			onError={onCopyError}
 		/>
-		<CopyField
-			field="iban"
-			label={ibanDisplay}
-			value={claim.payoutIban ?? ''}
-			disabled={!payable}
-			{onCopied}
-			onError={onCopyError}
-		/>
+		<!-- The copy VALUE is always the machine form (no spaces): bank forms
+		     reject grouped IBANs about as often as they accept them, and the
+		     grouped form exists only so a human can read it back. Label = human,
+		     value = machine — that split holds for every field on this card. -->
+		{#if !vereinDirekt}
+			<CopyField
+				field="iban"
+				label={ibanDisplay}
+				value={claim.payoutIban ?? ''}
+				disabled={!payable}
+				{onCopied}
+				onError={onCopyError}
+			/>
+		{/if}
 		<CopyField
 			field="betrag"
 			label={betragForBank}
@@ -153,6 +182,11 @@
 	<div class="mt-4 flex flex-wrap items-center gap-3">
 		{#if committable}
 			{@render commit?.()}
+			{#if vereinDirekt}
+				<p class="text-xs text-ink-500" data-testid="claim-verein-direkt">
+					Verein-Direktzahlung — kein Empfänger, die Buchung hält nur den Abfluss fest.
+				</p>
+			{/if}
 		{:else if yearBlocked}
 			<ProblemFlag href={claim.ausgabeHref ?? null} data-testid="claim-jahr-gesperrt">
 				Abfluss-Datum fehlt — bei der Ausgabe nachtragen
@@ -163,7 +197,7 @@
 			</p>
 		{:else}
 			<ProblemFlag href={claim.ibanFixHref ?? null} data-testid="claim-iban-fehlt">
-				IBAN fehlt — bei der Ausgabe ergänzen
+				{ibanFixLabel}
 			</ProblemFlag>
 			<p class="text-xs text-ink-500">
 				Erstattung erst möglich, sobald die IBAN ergänzt ist.

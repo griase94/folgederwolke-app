@@ -46,15 +46,26 @@
     }
   });
 
-  // The lens lives in the URL so a reload or a shared link keeps the view.
-  const lens = $derived(
+  /**
+   * The lens is LOCAL state, seeded from the URL — not derived from it.
+   *
+   * Deriving it looked equivalent and was not: `replaceState` rewrites the
+   * address bar WITHOUT producing a navigation, so `page.url` never changed.
+   * The switcher moved, the body did not, and only a deep link ever showed the
+   * second lens. A deep link still works (the seed reads the query) and the
+   * address bar still follows every switch — the URL is just no longer the
+   * source of truth for what is on screen.
+   */
+  let lens = $state(
     page.url.searchParams.get('lens') === 'liste' ? 'liste' : 'vorbereiten'
   );
   function setLens(next: string) {
+    lens = next;
     const url = new URL(page.url);
     url.searchParams.set('lens', next);
-    // Same route, only a query param — replaceState keeps the Back button
-    // meaning "leave the Werkstatt" instead of "undo my last lens toggle".
+    // Mirror into the address bar so reload and sharing keep the view.
+    // replaceState (not goto) keeps Back meaning "leave the Werkstatt"
+    // instead of "undo my last lens toggle".
     // eslint-disable-next-line svelte/no-navigation-without-resolve -- same-route query update
     replaceState(url, {});
   }
@@ -63,6 +74,9 @@
   // row without an Abfluss-Datum is refused with 409, so offering it in the
   // bulk run would produce a batch that reports failures for rows we knew about.
   const payable = $derived(data.claims.filter((c) => c.committable));
+  // The ones the bulk run deliberately leaves behind. They never reach the
+  // server, so only the client can report them.
+  const clientSkipped = $derived(data.claims.filter((c) => !c.committable));
 
   let announcer = $state<{ announce: (l: string) => void } | null>(null);
   function onCopied(label: string) {
@@ -77,7 +91,23 @@
   let emptyEl = $state<HTMLParagraphElement | null>(null);
 
   let posting = $state(false);
-  async function markErstattet(ids: string[]) {
+  /**
+   * Where focus goes after a commit: the next claim's button, so a keyboard run
+   * down the list keeps its place instead of being dropped on <body>. Falls
+   * back to the empty-state paragraph when the last claim is gone.
+   */
+  function restoreFocus() {
+    const next = document.querySelector<HTMLElement>('[data-testid="mark-erstattet"]');
+    if (next) next.focus();
+    else emptyEl?.focus();
+  }
+
+  /**
+   * `bulk` decides whether the client-side skips belong in the report: the
+   * "alle" run deliberately left them out and must say so, a single-row commit
+   * never attempted them and would otherwise report strangers as skipped.
+   */
+  async function markErstattet(ids: string[], bulk = false) {
     if (ids.length === 0) return;
     if (!zahlungsartId) {
       toast.error('Bitte Zahlungsart wählen');
@@ -93,15 +123,38 @@
       const result = deserialize(await res.text()) as ActionResult;
       if (result.type === 'success' && result.data) {
         const summary = result.data.summary as Parameters<typeof buildBulkResult>[0];
-        const r = buildBulkResult(summary);
+        // Claims the CLIENT skipped never reached the server, so the server's
+        // summary cannot know about them — and "2 von 2 erstattet" after
+        // silently dropping two blocked claims is a lie the admin acts on.
+        // Fold them in before the tally is built.
+        const merged = bulk
+          ? {
+              ...summary,
+              ibanFehlt: [
+                ...summary.ibanFehlt,
+                ...clientSkipped
+                  .filter((c) => c.blockReason === 'iban-fehlt')
+                  .map((c) => c.id)
+              ],
+              festgeschrieben: [
+                ...summary.festgeschrieben,
+                ...clientSkipped
+                  .filter((c) => c.blockReason === 'festgeschrieben-ohne-abfluss')
+                  .map((c) => c.id)
+              ]
+            }
+          : summary;
+        const r = buildBulkResult(merged);
         // Always the itemised tally: a batch where two claims were skipped is
         // not a success, and the admin has to see WHICH ones.
-        const body = r.tally.join(' · ');
+        // One claim, one sentence: "1 von 1 erstattet" with a tally that says
+        // "1 erstattet" underneath is the same fact twice.
+        const body = r.tally.length > 1 ? r.tally.join(' · ') : undefined;
         if (r.tone === 'ok') toast.success(r.headline, { description: body });
         else toast.warning(r.headline, { description: body });
         await invalidateAll();
         await tick();
-        emptyEl?.focus();
+        restoreFocus();
       } else if (result.type === 'failure') {
         toast.error((result.data?.error as string) ?? 'Aktion fehlgeschlagen');
       }
@@ -141,6 +194,11 @@
   <title>Überweisungs-Werkstatt – {page.data.vereinName}</title>
 </svelte:head>
 
+<!-- Neutral outline, not the Einnahme green: "erstattet" is money LEAVING the
+     Verein, and borrowing the income colour for it says the opposite. The
+     positive meaning is carried by the label. (A dedicated safe-action token
+     would be the fuller answer — that belongs to the design system, not to a
+     fix batch.) -->
 {#snippet commitButton(id: string)}
   <Button
     size="cta"
@@ -148,7 +206,6 @@
     data-testid="mark-erstattet"
     disabled={posting}
     onclick={() => markErstattet([id])}
-    class="border-type-einnahme/40 text-type-einnahme hover:bg-type-einnahme-tint"
   >
     Als erstattet markieren
   </Button>
@@ -243,6 +300,12 @@
                     >
                       wartet
                     </span>
+                  {:else if claim.bezahltVonKind === 'verein'}
+                    <span
+                      class="inline-flex items-center rounded-full bg-secondary px-2.5 py-1 text-[12px] font-medium text-ink-700"
+                    >
+                      Direktzahlung
+                    </span>
                   {:else if claim.blockReason === 'festgeschrieben-ohne-abfluss'}
                     <ProblemFlag href="/app/ausgaben/{claim.id}" data-testid="prep-jahr-gesperrt">
                       Abfluss fehlt
@@ -317,7 +380,7 @@
               class="w-full"
               data-testid="mark-erstattet-alle"
               disabled={posting || payable.length === 0}
-              onclick={() => markErstattet(payable.map((c) => c.id))}
+              onclick={() => markErstattet(payable.map((c) => c.id), true)}
             >
               Alle als erstattet markieren
             </Button>

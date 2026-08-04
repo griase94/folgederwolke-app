@@ -12,13 +12,16 @@
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { members } from "$lib/server/db/schema/members.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { kategorien } from "$lib/server/db/schema/kategorien.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { listApprovedPendingErstattet } from "$lib/server/domain/transactions.js";
+import { markExpenseErstattet } from "$lib/server/domain/audit-inbox-actions.js";
+import { zahlungsarten } from "$lib/server/db/schema/zahlungsarten.js";
+import { registerHandlers } from "$lib/server/events/index.js";
 import {
   erstattungsVerwendungszweck,
   sepaSafe,
@@ -31,9 +34,16 @@ let katId = "";
 let katName = "";
 let katSphere: "ideeller" | "vermoegen" | "zweckbetrieb" | "wirtschaftlich" =
   "ideeller";
+let zahlungsartId = "";
 
 beforeAll(async () => {
+  registerHandlers();
   const db = getDb();
+  const [z] = await db
+    .select({ id: zahlungsarten.id })
+    .from(zahlungsarten)
+    .limit(1);
+  zahlungsartId = z!.id;
   const [k] = await db
     .select({
       id: kategorien.id,
@@ -54,6 +64,8 @@ async function seedClaim(opts: {
   snapshotIban?: string | null;
   festgeschrieben?: boolean;
   abflussDatum?: string | null;
+  /** Book the row into a year the settings lock — what the TRIGGER guards. */
+  gebuchtAm?: string;
 }) {
   const db = getDb();
   const n = 95000 + seq++;
@@ -87,6 +99,7 @@ async function seedClaim(opts: {
       status: "geprueft",
       abflussDatum: opts.abflussDatum ?? null,
       festgeschriebenAt: opts.festgeschrieben ? new Date() : null,
+      ...(opts.gebuchtAm ? { gebuchtAm: new Date(opts.gebuchtAm) } : {}),
     })
     .returning();
   if (opts.snapshotIban) {
@@ -153,6 +166,59 @@ describe("@phase-2 MAJOR 1 — the pool never offers what the action refuses", (
     expect(row?.festgeschrieben).toBe(true);
     expect(row?.committable).toBe(true);
     expect(row?.blockReason).toBeNull();
+  });
+
+  it("and the ACTION agrees: it answers 409 for exactly that row", async () => {
+    // The pool's gate is a MIRROR of the action's guards. If they ever drift,
+    // the Werkstatt is lying again — so the pin runs the real action on the
+    // same row and demands the same verdict, with the year genuinely closed
+    // (the rest of the suite only ever exercised open years, which is how the
+    // original hole survived).
+    // How this state arises in reality: the claim is booked while its year is
+    // still open, and a later Jahresabschluss closes that year around it. A
+    // Festschreibung can never be lifted (GoBD), so the test builds it the same
+    // way instead of unlocking anything — seed into the next open year, then
+    // move the lock forward over it.
+    const db = getDb();
+    const [lockRow] = await db.execute<{ value: unknown }>(
+      sql`SELECT value FROM settings WHERE key = 'festgeschrieben_bis'`,
+    );
+    const lockedUntil = Number(
+      String((lockRow as { value: unknown } | undefined)?.value ?? "0").replace(
+        /"/g,
+        "",
+      ),
+    );
+    const openYear = lockedUntil + 1;
+
+    const { expenseId } = await seedClaim({
+      memberIban: SNAPSHOT_IBAN,
+      abflussDatum: null,
+      gebuchtAm: `${openYear}-06-01T10:00:00Z`,
+    });
+    await db.execute(
+      sql`UPDATE settings SET value = ${String(openYear)}::jsonb WHERE key = 'festgeschrieben_bis'`,
+    );
+
+    const row = await poolRow(expenseId);
+    // The pool must mirror the trigger WITHOUT relying on festgeschrieben_at:
+    // this row was never individually stamped, only its year is closed.
+    expect(row?.festgeschrieben).toBe(true);
+    expect(row?.committable).toBe(false);
+    expect(row?.blockReason).toBe("festgeschrieben-ohne-abfluss");
+
+    const res = await markExpenseErstattet({
+      expenseId,
+      chosenDate: "2026-08-01",
+      zahlungsartId,
+      actorUserId: null as unknown as string,
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.status).toBe(409);
+
+    // The lock stays where it is: moving a Festschreibung backwards is exactly
+    // what GoBD forbids, and the DB enforces it. The remaining tests in this
+    // file book into the current year, well above the moved line.
   });
 
   it("blocks a claim without any payout target (§7)", async () => {
