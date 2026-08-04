@@ -32,8 +32,12 @@ function sha256(value: string): string {
 }
 
 // Origin must match playwright.config.ts webServer.env.ORIGIN; without it
-// adapter-node's CSRF guard 403s form POSTs.
-const ORIGIN = "http://127.0.0.1:4173";
+// adapter-node's CSRF guard 403s form POSTs. DERIVE it the same way the config
+// does — a hard-coded 4173 makes this spec unrunnable in a parallel worktree
+// that sets PORT/ORIGIN in .env.test.local, which is exactly the isolation
+// mechanism the config documents.
+const ORIGIN =
+  process.env["ORIGIN"] ?? `http://127.0.0.1:${process.env["PORT"] ?? "4173"}`;
 const CSRF_HEADERS = { Origin: ORIGIN } as const;
 
 // ---------------------------------------------------------------------------

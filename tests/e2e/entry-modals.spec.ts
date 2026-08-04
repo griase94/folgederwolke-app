@@ -62,17 +62,23 @@ test.describe("@phase-entry-modals Beleg enforcement + modal isolation", () => {
     );
     const gate = page.locator('[data-slot="entry-gate-line"]');
 
-    // (a) Fresh form: required fields missing → CTA disabled, gate amber (M4).
+    // (a) Fresh form: nothing typed yet → CTA disabled because there is
+    // NOTHING TO SAVE (!dirty), not because fields are missing. Gate amber (M4).
     await expect(gate).toHaveAttribute("data-ok", "false");
     await expect(gate).toContainText(/Fehlt noch/i);
     await expect(submitBtn).toBeDisabled();
 
-    // (a2) A 0,00 Betrag is NOT submittable — it still counts as missing so the
-    // gate never reads „Alles da." next to a red 0,00 field (Wrinkle a).
+    // (a2) A 0,00 Betrag still counts as MISSING, so the gate never reads
+    // „Alles da." next to a red 0,00 field (Wrinkle a). SLOT-FELD S4: the form
+    // is dirty now, so the CTA opens — but a click must not book, and the gate
+    // must keep naming Betrag.
     await page.locator("#betrag-display").fill("0,00");
     await expect(gate).toHaveAttribute("data-ok", "false");
     await expect(gate).toContainText(/Betrag/);
-    await expect(submitBtn).toBeDisabled();
+    await expect(submitBtn).toBeEnabled();
+    await submitBtn.click();
+    await expect(page).toHaveURL(/\/app\/ausgaben\/neu/);
+    await expect(gate).toHaveAttribute("data-ok", "false");
 
     // (b) Everything client-valid, but a malformed Extern-IBAN — a SERVER-only rule
     // the client never pre-checks — proves the 422 UI echo (German + de-DE Betrag).

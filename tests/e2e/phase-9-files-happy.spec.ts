@@ -30,8 +30,11 @@ function sha256(value: string): string {
 // Origin matches playwright.config.ts webServer.env.ORIGIN. adapter-node's
 // CSRF guard rejects form POSTs whose Origin doesn't equal url.origin —
 // page.request.* does NOT auto-attach the right Origin, so every form
-// action POST must set it explicitly.
-const ORIGIN = "http://127.0.0.1:4173";
+// action POST must set it explicitly. DERIVED, not hard-coded: a parallel
+// worktree overrides PORT/ORIGIN in .env.test.local, and a literal 4173 turns
+// that documented isolation into six confusing CSRF failures.
+const ORIGIN =
+  process.env["ORIGIN"] ?? `http://127.0.0.1:${process.env["PORT"] ?? "4173"}`;
 const CSRF_HEADERS = { Origin: ORIGIN } as const;
 
 // Smallest valid PDF (~150 bytes) — passes the magic-byte sniff and the
@@ -129,7 +132,7 @@ async function submitAuslageWithPdf(
   // be wired up to the form's reactive flow without invoking all the
   // client-side branches we want to bypass).
   //
-  // Origin header MUST match the server's ORIGIN env (http://127.0.0.1:4173,
+  // Origin header MUST match the server's ORIGIN env (see the derived ORIGIN above,
   // set by playwright.config.ts) or adapter-node's CSRF guard 403s the POST.
   const res = await page.request.post("/auslage-einreichen", {
     headers: CSRF_HEADERS,
