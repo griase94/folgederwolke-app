@@ -22,6 +22,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
+import { resolvePayoutIban } from "./erstattung-payout.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { members } from "$lib/server/db/schema/members.js";
@@ -831,9 +832,35 @@ export async function markExpenseErstattet(
     };
   }
 
-  // Idempotency short-circuit.
+  // Idempotency short-circuit — an already-reimbursed row is done, and is not
+  // re-litigated against the IBAN rule below.
   if (expense.erstattetAm) {
     return { ok: true, alreadyErstattet: true };
+  }
+
+  // §7 "Keine Erstattung ohne IBAN — nie" — enforced by the SERVER, because
+  // the Werkstatt's disabled button is UX only: a hand-crafted POST otherwise
+  // reached the UPDATE and fired the ErstattungsMail for an account nobody can
+  // pay into.
+  //
+  // SCOPE: only where money is reimbursed TO SOMEONE. A `verein` row is the
+  // Verein having paid a vendor directly — no payee, no IBAN to demand;
+  // "erstattet" there merely records the cash-out. Applying §7 to it would
+  // make every Verein-direct expense unpayable.
+  const needsIban =
+    "Keine IBAN hinterlegt — Erstattung erst möglich, sobald die IBAN ergänzt ist.";
+  if (expense.bezahltVonKind === "extern") {
+    // The extern arm carries its IBAN on the row we already loaded.
+    if (!expense.externIban) {
+      return { ok: false, status: 422, error: needsIban };
+    }
+  } else if (expense.bezahltVonKind === "member") {
+    // The member arm needs the ratified M4 precedence (submission snapshot →
+    // live profile), so it is judged by the IBAN it will ACTUALLY be paid to.
+    const payout = await resolvePayoutIban(expenseId, db);
+    if (!payout.iban) {
+      return { ok: false, status: 422, error: needsIban };
+    }
   }
 
   // NO festschreibung pre-gate (ADR-0006 Nachtrag / migration 0040) — mirrors

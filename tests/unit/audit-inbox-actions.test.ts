@@ -792,6 +792,9 @@ describe("markExpenseErstattet — idempotency", () => {
       bezahltVonKind: "extern",
       externEmail: "lea@example.com",
       externName: "Lea Mustermann",
+      // §7: a reimbursement needs a payout account. This test is about
+      // idempotency, so the fixture simply has to be payable.
+      externIban: "DE89370400440532013000",
     });
 
     const result = await markExpenseErstattet({
