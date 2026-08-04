@@ -29,6 +29,7 @@ import {
 import { bus } from "$lib/server/events/index.js";
 import { berlinYmd, currentBuchungsjahr } from "$lib/domain/year.js";
 import { requireAdmin } from "$lib/server/domain/require-role.js";
+import { buchungsjahrOfGezahltAm } from "$lib/server/domain/beitrag-buchungsjahr.js";
 import { findBeitragssatz } from "$lib/server/domain/beitragssatz.js";
 import { resolveBeitragState } from "$lib/domain/beitrag-state.js";
 import {
@@ -50,6 +51,14 @@ import {
  */
 export const FUTURE_YEAR_ERROR =
   "Beiträge für zukünftige Jahre können noch nicht erfasst werden.";
+
+/**
+ * S2 — the cash-side twin of {@link FUTURE_YEAR_ERROR}. Since Beiträge book by
+ * Zufluss (§ 11 EStG), a payment DATE in a future year books income into a
+ * fiscal year that hasn't begun, no matter which Beitragsjahr it settles.
+ */
+export const FUTURE_PAYMENT_DATE_ERROR =
+  "Das Zahldatum liegt in der Zukunft — Geld kann erst gebucht werden, wenn es da ist.";
 
 export type ActionFailure = {
   ok: false;
@@ -406,23 +415,30 @@ export async function markBeitragPaid(args: {
     return { ok: false, status: 400, error: "Ungültige Parameter" };
   }
 
-  // F8: reject future Buchungsjahre. Recording cash into a year that hasn't
-  // begun books income into a future fiscal year (and the matrix used to let
-  // 2027 be marked paid in 2026). Upper bound is the Berlin Buchungsjahr
-  // (ADR-0001).
+  // S2 — the Buchungsjahr of this payment (§ 11 EStG Zufluss). This, not
+  // `year`, is what the EÜR, the GoBD journal and the Festschreibung key on;
+  // `year` stays the Beitragsjahr (Soll-Zuordnung for matrix + Mahnwesen).
+  const buchungsjahr = buchungsjahrOfGezahltAm(gezahltAm);
+  if (buchungsjahr === null) {
+    return { ok: false, status: 400, error: "Ungültiges Zahldatum" };
+  }
+
+  // F8: reject a future Beitragsjahr — the matrix used to expose a 2027 column
+  // in 2026 and let it be marked paid. Soll-row hygiene; the cash side has its
+  // own guard right below. Upper bound is the Berlin Buchungsjahr (ADR-0001).
   if (year > currentBuchungsjahr()) {
     return { ok: false, status: 422, error: FUTURE_YEAR_ERROR };
   }
 
-  // ADR-0006: reject if the target year is festgeschrieben.
-  const festgeschriebenBis = await fetchFestgeschriebenBis();
-  if (festgeschriebenBis !== null && year <= festgeschriebenBis) {
-    return { ok: false, status: 409, error: "Jahr ist festgeschrieben" };
+  if (buchungsjahr > currentBuchungsjahr()) {
+    return { ok: false, status: 422, error: FUTURE_PAYMENT_DATE_ERROR };
   }
 
   const db = getDb();
 
-  // Fetch existing row — betragCents from an existing row MUST be preserved.
+  // Fetch existing row FIRST: it decides the Festschreibungs-Gate below (which
+  // year the money is currently booked into), and its betragCents MUST be
+  // preserved further down.
   const [existingRow] = await db
     .select()
     .from(memberBeitrags)
@@ -430,6 +446,33 @@ export async function markBeitragPaid(args: {
       and(eq(memberBeitrags.memberId, memberId), eq(memberBeitrags.year, year)),
     )
     .limit(1);
+
+  // ADR-0006 — the Festschreibung follows the MONEY, not the Beitragsjahr, and
+  // it has to hold on BOTH SIDES of the write.
+  //
+  //   - `buchungsjahr` (target): where this payment will land. Blocking a
+  //     closed target is what stops backdating cash into sealed books. It is
+  //     also what makes the B2b case work: a 2025 Beitrag paid in an open 2026
+  //     books into 2026, so a festgeschriebenes 2025 no longer rejects real,
+  //     arrived money.
+  //   - `prevBuchungsjahr` (source): where the money currently sits. Without
+  //     this second check, re-marking a payment that was booked into a CLOSED
+  //     year with a date in an open one silently moved the amount out of the
+  //     sealed year — no Storno, no 409, no audit trace, and member_beitrags
+  //     has no trigger backstop to catch it. That is a regression the S2 gate
+  //     introduced: the old `year <= festgeschriebenBis` test blocked every
+  //     write to a closed Beitragsjahr and therefore covered this by accident.
+  //
+  // A row with no payment date has no source year (null) and is correctly
+  // unaffected — that is the ordinary late-payment path.
+  const prevBuchungsjahr = buchungsjahrOfGezahltAm(existingRow?.gezahltAm);
+  const festgeschriebenBis = await fetchFestgeschriebenBis();
+  if (festgeschriebenBis !== null) {
+    if (buchungsjahr <= festgeschriebenBis)
+      return { ok: false, status: 409, error: "Jahr ist festgeschrieben" };
+    if (prevBuchungsjahr !== null && prevBuchungsjahr <= festgeschriebenBis)
+      return { ok: false, status: 409, error: "Jahr ist festgeschrieben" };
+  }
 
   // Resolve the obligation amount:
   //   - Existing row → use its betragCents (no clobber).
@@ -584,15 +627,11 @@ export async function markBeitragUnpaid(args: {
   const denial = requireAdmin(actorRole);
   if (denial) return denial;
 
-  // ADR-0006
-  const festgeschriebenBis = await fetchFestgeschriebenBis();
-  if (festgeschriebenBis !== null && year <= festgeschriebenBis) {
-    return { ok: false, status: 409, error: "Jahr ist festgeschrieben" };
-  }
-
   const db = getDb();
 
-  // Fetch prev state for audit payload
+  // Fetch prev state first: the Festschreibungs-Gate below needs to know which
+  // Buchungsjahr the payment actually landed in, and the audit payload needs
+  // the pre-image anyway.
   const [prev] = await db
     .select()
     .from(memberBeitrags)
@@ -603,6 +642,18 @@ export async function markBeitragUnpaid(args: {
 
   if (!prev) {
     return { ok: false, status: 404, error: "Beitrag nicht gefunden." };
+  }
+
+  // ADR-0006 — mirror of the mark-paid gate (S2): a storno reverses a booking,
+  // so it is blocked exactly when THAT booking's year is closed. Reversing a
+  // 2025 Beitrag that was paid (and therefore booked) in an open 2026 must
+  // stay possible even once 2025 is festgeschrieben; the fallback to the
+  // Beitragsjahr covers a row with no payment date, where there is no booking
+  // to reverse and the conservative answer is the old behaviour.
+  const buchungsjahr = buchungsjahrOfGezahltAm(prev.gezahltAm) ?? year;
+  const festgeschriebenBis = await fetchFestgeschriebenBis();
+  if (festgeschriebenBis !== null && buchungsjahr <= festgeschriebenBis) {
+    return { ok: false, status: 409, error: "Jahr ist festgeschrieben" };
   }
 
   await db

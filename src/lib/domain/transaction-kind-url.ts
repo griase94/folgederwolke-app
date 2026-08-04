@@ -12,11 +12,21 @@
  * accept both German and English spellings from URL params.
  *
  * Internally the domain uses the English enum
- * TransactionKind = "expense" | "income" | "donation".
+ * TransactionKind = "expense" | "income" | "donation" | "beitrag".
+ *
+ * This module covers only the kinds a user can CREATE from an entry point.
+ * `beitrag` is deliberately outside that set: a Mitgliedsbeitrag is never
+ * entered as a free-standing booking — it is marked paid on the
+ * Mitglieder-Matrix, which owns its Soll, its Storno and its Befreiung. Hence
+ * the narrower `CreatableTransactionKind` rather than a `/app/beitraege/neu`
+ * route that does not (and should not) exist.
  *
  * Co-owned by the C3 (dashboard quick-actions) and C7 (mobile FAB) clusters.
  */
 import type { TransactionKind } from "$lib/server/domain/transactions.js";
+
+/** The kinds reachable from a „Neu"-entry point (see module note). */
+export type CreatableTransactionKind = Exclude<TransactionKind, "beitrag">;
 
 /** German URL slug → domain TransactionKind. `null` means "no preset". */
 export const KIND_DE_TO_EN: Record<string, TransactionKind | null> = {
@@ -32,7 +42,7 @@ export const KIND_DE_TO_EN: Record<string, TransactionKind | null> = {
 };
 
 /** Domain TransactionKind → German URL slug (canonical outgoing form). */
-export const KIND_EN_TO_DE: Record<TransactionKind, string> = {
+export const KIND_EN_TO_DE: Record<CreatableTransactionKind, string> = {
   expense: "ausgabe",
   income: "einnahme",
   donation: "spende",
@@ -58,7 +68,7 @@ export function parseKindFromUrl(
 }
 
 /** Domain TransactionKind → per-tab base path (Phase 8 T6). */
-const KIND_EN_TO_TAB: Record<TransactionKind, string> = {
+const KIND_EN_TO_TAB: Record<CreatableTransactionKind, string> = {
   expense: "ausgaben",
   income: "einnahmen",
   donation: "spenden",
@@ -70,6 +80,6 @@ const KIND_EN_TO_TAB: Record<TransactionKind, string> = {
  * Phase 8 T6: /app/transactions/neu retired. Entry points now link
  * directly to the per-kind neu route (kind is implicit in the path).
  */
-export function buildNeuUrlForKind(kind: TransactionKind): string {
+export function buildNeuUrlForKind(kind: CreatableTransactionKind): string {
   return `/app/${KIND_EN_TO_TAB[kind]}/neu`;
 }

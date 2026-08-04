@@ -12,7 +12,12 @@
 
 import type { Sphere } from "$lib/server/domain/eur.js";
 
-export type TransactionKindFilter = "income" | "expense" | "donation" | "all";
+export type TransactionKindFilter =
+  | "income"
+  | "expense"
+  | "donation"
+  | "beitrag"
+  | "all";
 export type SphereFilter = Sphere | "all";
 export type BuchungslisteSort =
   | "date-desc"
@@ -33,7 +38,9 @@ export interface BuchungslisteFilters {
 
 export interface BuchungslisteRow {
   id: string;
-  kind: "income" | "expense" | "donation";
+  kind: "income" | "expense" | "donation" | "beitrag";
+  /** `beitrag` only — the Mitglied whose Beitrag this is, for the row link. */
+  memberId?: string | null;
   businessId: string;
   bezeichnung: string;
   betragCents: number;
@@ -66,6 +73,7 @@ const VALID_KINDS: ReadonlySet<string> = new Set([
   "income",
   "expense",
   "donation",
+  "beitrag",
 ]);
 
 export function parseBuchungslisteFilters(

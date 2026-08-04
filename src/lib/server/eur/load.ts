@@ -27,6 +27,7 @@ import {
   type SphereYoYRow,
   type WgbStatus,
 } from "./index.js";
+import { beitragBuchungsjahr } from "$lib/server/domain/beitrag-buchungsjahr.js";
 import { isYearClosed } from "$lib/server/domain/jahresabschluss.js";
 import { getDb } from "$lib/server/db/index.js";
 import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
@@ -285,6 +286,17 @@ export interface EurPdfAggregates {
    */
   einnahmenRowsWithKategorien: EurRow[];
   ausgabenRowsWithKategorien: EurRow[];
+  /**
+   * The synthesized donation + paid-Mitgliedsbeitrag rows folded into `eur` —
+   * the EXACT rows, not a re-derivation.
+   *
+   * Exposed so the GoBD-Z3 journal emits the same Einnahmen the EÜR counts.
+   * Without this, the tax-audit XML and the EÜR PDF *inside one bundle*
+   * disagree by the Beitragssumme — the contradiction a Betriebsprüfer opens
+   * the bundle to find. Pinned by `tests/integration/gobd-eur-identity.test.ts`.
+   */
+  donationEurRows: EurRow[];
+  beitragEurRows: EurRow[];
 }
 
 /**
@@ -399,12 +411,17 @@ export async function loadEurAggregatesForPdf(
     belegOriginalName: null,
   }));
 
+  // BelegNr: `MB-<jahr>-<8 hex des PK>` — stable (derived from the immutable
+  // primary key), unique, and readable next to `E-2026-0001` in the GoBD
+  // journal. The raw UUID was fine while these rows only fed aggregates, but
+  // since S1 they surface as <BelegNr> in the Betriebsprüfer-XML.
   const beitragRows = (await db.execute(sql`
-    SELECT id::text AS business_id, gezahlt_am,
+    SELECT 'MB-' || year::text || '-' || left(id::text, 8) AS business_id,
+           gezahlt_am,
            paid_cents AS betrag_cents,
            'Mitgliedsbeitrag ' || year::text AS bezeichnung
       FROM member_beitrags
-     WHERE year = ${year}
+     WHERE ${beitragBuchungsjahr} = ${year}
        AND gezahlt_am IS NOT NULL
        AND paid_cents > 0
   `)) as unknown as Array<{
@@ -444,6 +461,8 @@ export async function loadEurAggregatesForPdf(
     vereinName,
     einnahmenRowsWithKategorien,
     ausgabenRowsWithKategorien,
+    donationEurRows,
+    beitragEurRows,
   };
 }
 
@@ -540,7 +559,8 @@ export async function loadEurWorkspaceData(
   // - Donations: betrag_cents on the donations table, sphere_snapshot is
   //   present (typically 'ideeller'). gebucht_am drives Buchungsjahr just
   //   like income/expense (year_of_buchung is a GENERATED column).
-  // - MemberBeitrags: paid_cents is realized cashflow (gezahlt_am IS NOT NULL).
+  // - MemberBeitrags: paid_cents is realized cashflow (gezahlt_am IS NOT NULL),
+  //   bucketed by the Zufluss year like every other cash source.
   //   No sphereSnapshot column — Mitgliedsbeiträge are always 'ideeller' by
   //   gemeinnützigkeitsrechtlicher Definition (§§ 51-68 AO). The
   //   v_offene_beitraege view + Verein-Buchhaltung convention codifies this.
@@ -590,21 +610,29 @@ export async function loadEurWorkspaceData(
     .filter((r) => r.year_of_buchung === priorYear)
     .map(mkDonationRow);
 
-  // member_beitrags: synthesize an ideeller EurRow per paid beitrag.
-  // year column is the explicit fiscal year (not a GENERATED column —
-  // beitrags are billed per fiscal year independent of when paid).
+  // member_beitrags: synthesize an ideeller EurRow per paid beitrag, bucketed
+  // by the Zufluss year (§ 11 EStG) — NOT by `year`, which is the Beitragsjahr
+  // the Beitrag is owed for. A 2025 Beitrag paid in March 2026 is 2026 income.
+  // See $lib/server/domain/beitrag-buchungsjahr.ts for why the two differ.
+  // Same synthetic BelegNr as loadEurAggregatesForPdf — the two loaders must
+  // describe a Beitrag identically.
   const beitragRows = (await db.execute(sql`
-    SELECT id::text AS business_id, gezahlt_am, year,
+    SELECT 'MB-' || year::text || '-' || left(id::text, 8) AS business_id,
+           gezahlt_am, year,
+           ${beitragBuchungsjahr} AS buchungsjahr,
            paid_cents AS betrag_cents,
            'Mitgliedsbeitrag ' || year::text AS bezeichnung
       FROM member_beitrags
-     WHERE year IN (${year}, ${priorYear})
+     WHERE ${beitragBuchungsjahr} IN (${year}, ${priorYear})
        AND gezahlt_am IS NOT NULL
        AND paid_cents > 0
   `)) as unknown as Array<{
     business_id: string;
     gezahlt_am: string;
+    /** Beitragsjahr — kept for the `Mitgliedsbeitrag <jahr>` label only. */
     year: number;
+    /** Zufluss year — what the EÜR buckets by. */
+    buchungsjahr: number;
     betrag_cents: bigint;
     bezeichnung: string;
   }>;
@@ -625,10 +653,10 @@ export async function loadEurWorkspaceData(
   });
 
   const currentBeitrags = beitragRows
-    .filter((r) => r.year === year)
+    .filter((r) => r.buchungsjahr === year)
     .map(mkBeitragRow);
   const priorBeitrags = beitragRows
-    .filter((r) => r.year === priorYear)
+    .filter((r) => r.buchungsjahr === priorYear)
     .map(mkBeitragRow);
 
   // 2. Monthly aggregation for sparkline (current year only). Same direct
@@ -658,10 +686,11 @@ export async function loadEurWorkspaceData(
      GROUP BY month
     UNION ALL
     SELECT 'income' AS art,
-           EXTRACT(MONTH FROM gezahlt_am AT TIME ZONE 'Europe/Berlin')::int AS month,
+           EXTRACT(MONTH FROM gezahlt_am)::int AS month,
            SUM(paid_cents)::bigint AS sum_cents
       FROM member_beitrags
-     WHERE year = ${year} AND gezahlt_am IS NOT NULL AND paid_cents > 0
+     WHERE ${beitragBuchungsjahr} = ${year}
+       AND gezahlt_am IS NOT NULL AND paid_cents > 0
      GROUP BY month
     UNION ALL
     SELECT 'expense' AS art,

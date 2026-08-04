@@ -23,6 +23,7 @@
 		income: number;
 		expense: number;
 		donation: number;
+		beitrag: number;
 	}
 
 	export interface BuchungslisteTabProps {
@@ -31,12 +32,9 @@
 		rows: BuchungslisteRow[];
 		allRowsCount: number;
 		kindCounts: KindCounts;
-		/** EÜR-Überschuss (cents) — the unfiltered feed-foot matches it only in a
-		 *  beitrag-free year (Kreuzprobe ✓). */
+		/** EÜR-Überschuss (cents). Since S3 the feed carries Mitgliedsbeiträge too,
+		 *  so the unfiltered foot equals this outright — Kreuzprobe ✓. */
 		ueberschussCents: number;
-		/** Paid Mitgliedsbeiträge folded into the EÜR (single source from the EÜR
-		 *  composer). The feed excludes them; foot + this == EÜR-Überschuss. */
-		beitragEinnahmenCents: number;
 		kategorien: { id: string; name: string }[];
 		projects: { id: string; name: string }[];
 		closed?: boolean;
@@ -75,7 +73,6 @@
 		allRowsCount,
 		kindCounts,
 		ueberschussCents,
-		beitragEinnahmenCents,
 		kategorien,
 		projects,
 		closed = false
@@ -130,31 +127,25 @@
 	}
 
 	// ── Foot sum (client-side over the filtered view) ─────────────────────────
-	// The Buchungsliste is the TRANSACTION feed (income ∪ expense ∪ donation) —
-	// it does NOT carry Mitgliedsbeiträge. The EÜR-Überschuss additionally
-	// includes paid Mitgliedsbeiträge, so the feed-saldo equals the EÜR ONLY in a
-	// year without paid Beiträge. We show the ✓-Kreuzprobe when they truly match,
-	// and otherwise state the honest Mitgliedsbeitrags-delta (never a false ✓).
+	// The Buchungsliste is the TRANSACTION feed, and since S3 that feed has four
+	// arms: income ∪ expense ∪ donation ∪ paid Mitgliedsbeiträge. It therefore
+	// covers the same money as the EÜR-Überschuss, and the foot-saldo equals it
+	// outright on an unfiltered, uncapped year — no correction term, no
+	// reconciliation note.
 	const footSum = $derived(
 		rows.reduce((a, r) => a + (r.kind === 'expense' ? -r.betragCents : r.betragCents), 0)
 	);
 	// When the feed hits the 2000-row cap the foot-sum is PARTIAL, so it can
 	// neither claim „= EÜR ✓" nor drive the Beitrags-Reconciliation.
 	const capReached = $derived(allRowsCount >= FEED_CAP);
-	// ✓ only when the feed-saldo TRULY equals the EÜR (beitrag-free, uncapped).
-	const kreuzOk = $derived(
-		!filtersActive &&
-			!capReached &&
-			beitragEinnahmenCents === 0 &&
-			footSum === ueberschussCents
-	);
-	// The Mitgliedsbeitrag component is the SINGLE-SOURCE value from the EÜR
-	// composer (not `EÜR − feed`, which couldn't catch a feed/EÜR mismatch). The
-	// identity `footSum + beitragEinnahmenCents === ueberschussCents` is asserted
-	// by the @aurora-impl-d-abschluss e2e. Suppressed when capped (partial sum).
-	const showBeitragNote = $derived(
-		!filtersActive && !capReached && beitragEinnahmenCents > 0
-	);
+	// ✓ when the feed-saldo equals the EÜR. Since S3 the feed carries the fourth
+	// arm (Mitgliedsbeiträge), so this is now the whole truth: `footSum ===
+	// ueberschussCents` on an unfiltered, uncapped year — asserted by
+	// aurora-feed-query.test.ts. Before S3 the check additionally demanded
+	// `beitragEinnahmenCents === 0`, which meant the ✓ could never appear in a
+	// year where anyone had paid their Beitrag, i.e. essentially never; the
+	// missing amount was carried by a separate reconciliation note instead.
+	const kreuzOk = $derived(!filtersActive && !capReached && footSum === ueberschussCents);
 
 	function formatDate(iso: string): string {
 		const d = new Date(iso);
@@ -162,6 +153,9 @@
 		return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 	}
 	function detailHref(r: BuchungslisteRow): string {
+		// A Beitrag has no booking-detail route; the Mitglieder-Matrix owns it.
+		if (r.kind === 'beitrag')
+			return r.memberId ? `/app/mitglieder/${r.memberId}` : '/app/mitglieder';
 		return `/app/${KIND_TAB[r.kind] ?? 'ausgaben'}/${r.id}`;
 	}
 
@@ -169,7 +163,8 @@
 		{ kind: 'all', label: 'Alle', count: kindCounts.all },
 		{ kind: 'income', label: 'Einnahmen', count: kindCounts.income },
 		{ kind: 'expense', label: 'Ausgaben', count: kindCounts.expense },
-		{ kind: 'donation', label: 'Spenden', count: kindCounts.donation }
+		{ kind: 'donation', label: 'Spenden', count: kindCounts.donation },
+		{ kind: 'beitrag', label: 'Beiträge', count: kindCounts.beitrag }
 	]);
 
 	// Current select values (for the GET form). "" = Alle.
@@ -322,7 +317,10 @@
 			/>
 			<div class="rows">
 				{#each rows as r (r.id)}
-					{@const isEin = r.kind === 'income'}
+					<!-- A Beitrag is cash IN, so it takes the Einnahme glyph — without
+					     this it would fall into the else branch and render with the
+					     Ausgaben-Minus. -->
+					{@const isEin = r.kind === 'income' || r.kind === 'beitrag'}
 					{@const isSpe = r.kind === 'donation'}
 					<a
 						class="lrow"
@@ -396,13 +394,6 @@
 						{#if kreuzOk}<span class="lf-check" data-testid="foot-kreuzprobe">= EÜR ✓</span>{/if}
 					</span>
 				</div>
-				{#if showBeitragNote}
-					<!-- Honest reconciliation: the feed excludes Mitgliedsbeiträge, which the EÜR adds. -->
-					<p class="lf-note" data-testid="foot-beitrag-note">
-						+ {eur(beitragEinnahmenCents)} Mitgliedsbeiträge (nicht im Transaktions-Feed) =
-						EÜR-Überschuss <b>{eur(ueberschussCents)}</b>
-					</p>
-				{/if}
 			</div>
 		</div>
 	{/if}
@@ -717,17 +708,6 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 14px;
-	}
-	.lf-note {
-		margin: 8px 0 0;
-		font-size: 11.5px;
-		line-height: 1.45;
-		color: var(--ink-500);
-	}
-	.lf-note b {
-		color: var(--type-einnahme);
-		font-weight: 700;
-		font-variant-numeric: tabular-nums;
 	}
 	.lf-lbl {
 		font-size: 12.5px;

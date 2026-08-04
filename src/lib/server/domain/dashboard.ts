@@ -30,6 +30,7 @@ import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
 import { invoices } from "$lib/server/db/schema/invoices.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
+import { beitragBuchungsjahr } from "./beitrag-buchungsjahr.js";
 import { berlinYear } from "$lib/domain/year.js";
 
 // ---------------------------------------------------------------------------
@@ -351,21 +352,23 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
     //   excluded). For unpaid beitrags we have no realized cashflow, so the
     //   dashboard's einnahmen YTD correctly excludes them — they show up in
     //   the "offene Beiträge" KPI instead.
+    //   S2: the year filter is the Zufluss year, so year and month now agree.
+    //   Before, a 2025 Beitrag paid in March 2026 was selected into the 2025
+    //   series but bucketed into month 3 *of the 2026 payment* — a phantom
+    //   March spike in the wrong year's trend line.
     db
       .select({
-        month: sql<number>`EXTRACT(MONTH FROM ${memberBeitrags.gezahltAm} AT TIME ZONE 'Europe/Berlin')`,
+        month: sql<number>`EXTRACT(MONTH FROM ${memberBeitrags.gezahltAm})::int`,
         sumCents: sum(memberBeitrags.paidCents),
       })
       .from(memberBeitrags)
       .where(
         and(
-          eq(memberBeitrags.year, currentYear),
+          sql`${beitragBuchungsjahr} = ${currentYear}`,
           isNotNull(memberBeitrags.gezahltAm),
         ),
       )
-      .groupBy(
-        sql`EXTRACT(MONTH FROM ${memberBeitrags.gezahltAm} AT TIME ZONE 'Europe/Berlin')`,
-      ),
+      .groupBy(sql`EXTRACT(MONTH FROM ${memberBeitrags.gezahltAm})::int`),
 
     // 10. C3 — Ausgaben monthly for selected year. Bucket by the cash-relevant
     //     month (COALESCE(abfluss_datum, gebucht_am)) so the month matches the
@@ -412,15 +415,16 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
         ),
       ),
 
-    // 13. C3-1 — Mitgliedsbeiträge LY same-period YTD (by gezahlt_am month)
+    // 13. C3-1 — Mitgliedsbeiträge LY same-period YTD (by gezahlt_am month,
+    //     within the prior Zufluss year — S2).
     db
       .select({ sumCents: sum(memberBeitrags.paidCents) })
       .from(memberBeitrags)
       .where(
         and(
-          eq(memberBeitrags.year, currentYear - 1),
+          sql`${beitragBuchungsjahr} = ${currentYear - 1}`,
           isNotNull(memberBeitrags.gezahltAm),
-          sql`EXTRACT(MONTH FROM ${memberBeitrags.gezahltAm} AT TIME ZONE 'Europe/Berlin') <= ${ytdMonth}`,
+          sql`EXTRACT(MONTH FROM ${memberBeitrags.gezahltAm})::int <= ${ytdMonth}`,
         ),
       ),
 
@@ -491,13 +495,13 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
       )
       .groupBy(expenses.sphereSnapshot),
 
-    // 19. C3-3 — Member-beitrags YTD (always ideeller sphere)
+    // 19. C3-3 — Member-beitrags YTD (always ideeller sphere), by Zufluss year.
     db
       .select({ sumCents: sum(memberBeitrags.paidCents) })
       .from(memberBeitrags)
       .where(
         and(
-          eq(memberBeitrags.year, currentYear),
+          sql`${beitragBuchungsjahr} = ${currentYear}`,
           isNotNull(memberBeitrags.gezahltAm),
         ),
       ),
@@ -566,13 +570,13 @@ export async function loadDashboardKpis(year?: number): Promise<DashboardKpis> {
       ),
 
     // 24. Aurora — paid Mitgliedsbeitrags rows (cash realized) for the year —
-    //     same predicates as the monthly sum query 9.
+    //     same predicates as the monthly sum query 9 (Zufluss year, S2).
     db
       .select({ value: count() })
       .from(memberBeitrags)
       .where(
         and(
-          eq(memberBeitrags.year, currentYear),
+          sql`${beitragBuchungsjahr} = ${currentYear}`,
           isNotNull(memberBeitrags.gezahltAm),
         ),
       ),

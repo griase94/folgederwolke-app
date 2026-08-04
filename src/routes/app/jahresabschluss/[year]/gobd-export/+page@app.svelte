@@ -90,6 +90,11 @@
 					<span class="c spe"
 						>{data.counts.spenden} {data.counts.spenden === 1 ? 'Spende' : 'Spenden'}</span
 					>
+					<span class="sep">·</span>
+					<span class="c bei"
+						>{data.counts.beitraege}
+						{data.counts.beitraege === 1 ? 'Mitgliedsbeitrag' : 'Mitgliedsbeiträge'}</span
+					>
 				</p>
 				<ul class="manifest">
 					{#each data.manifest as entry (entry.no)}
@@ -255,6 +260,12 @@
 	}
 	.counts .c.spe {
 		color: var(--type-spende);
+	}
+	/* Beiträge share the Einnahme hue: they ARE income, and the hue encodes the
+	   money direction (S3). Kept as its own class so swapping in a dedicated
+	   token later needs no markup change. */
+	.counts .c.bei {
+		color: var(--type-einnahme);
 	}
 	.counts .sep {
 		color: var(--ink-300);
