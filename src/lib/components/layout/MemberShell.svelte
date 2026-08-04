@@ -5,19 +5,24 @@
 	sidebar / tab bar — a member sees only their own small world.
 
 	Nav grows with the surfaces: S2a shipped "Übersicht" alone so no link was a
-	dead end; S2b adds Einreichen, Meine Auslagen and Profil now that they exist.
+	dead end; S2b added the Auslagen surfaces.
+
+	Three pills, not four: at 390px four pills overflowed, so "Einreichen" was
+	cut mid-word and "Profil" sat off-screen with nothing hinting it was there.
+	Profil now lives on the avatar — the conventional home for "me" — which
+	leaves the row fitting on a phone with room to spare. "Meine Auslagen" is
+	just "Auslagen" here; inside a member portal everything is theirs.
 -->
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { page } from '$app/state';
-	import { LogOut, LayoutDashboard, Plus, Receipt, User } from '@lucide/svelte';
+	import { LogOut, LayoutDashboard, Plus, Receipt } from '@lucide/svelte';
 	import OfflineBanner from '$lib/components/pwa/OfflineBanner.svelte';
 
 	const NAV = [
 		{ href: '/portal', label: 'Übersicht', icon: LayoutDashboard, testId: 'uebersicht' },
-		{ href: '/portal/auslagen', label: 'Meine Auslagen', icon: Receipt, testId: 'auslagen' },
-		{ href: '/portal/auslagen/neu', label: 'Einreichen', icon: Plus, testId: 'einreichen' },
-		{ href: '/portal/profil', label: 'Profil', icon: User, testId: 'profil' }
+		{ href: '/portal/auslagen', label: 'Auslagen', icon: Receipt, testId: 'auslagen' },
+		{ href: '/portal/auslagen/neu', label: 'Einreichen', icon: Plus, testId: 'einreichen' }
 	];
 
 	interface Props {
@@ -43,6 +48,25 @@
 	const initials = $derived(
 		`${member.vorname.at(0) ?? ''}${member.nachname.at(0) ?? ''}`.toUpperCase()
 	);
+	const onProfil = $derived(page.url.pathname === '/portal/profil');
+
+	/**
+	 * Three pills fit at 390px — but a longer label, a bigger font size or a
+	 * future fourth surface would silently start cutting again. When the row
+	 * really does overflow, fade its right edge so the cut looks like "there is
+	 * more, scroll" instead of like a rendering bug.
+	 */
+	let navEl = $state<HTMLElement | null>(null);
+	let scrollable = $state(false);
+	$effect(() => {
+		const el = navEl;
+		if (!el || typeof ResizeObserver === 'undefined') return;
+		const check = () => (scrollable = el.scrollWidth > el.clientWidth + 1);
+		check();
+		const ro = new ResizeObserver(check);
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
 </script>
 
 <a
@@ -77,18 +101,30 @@
 			</a>
 
 			<div class="ml-auto flex shrink-0 items-center gap-2.5">
-				<div class="flex items-center gap-2 text-right">
+				<!-- The avatar IS the profile link — the one place a member expects
+				     "my data" to live, and the reason the nav row below can stay at
+				     three pills. Active state included: it is a nav destination like
+				     any other, it just does not sit in the pill row. -->
+				<a
+					href="/portal/profil"
+					aria-current={onProfil ? 'page' : undefined}
+					data-testid="member-nav-profil"
+					class="flex min-h-11 items-center gap-2 rounded-full py-1 pr-1 pl-1 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:pr-3 {onProfil
+						? 'bg-secondary'
+						: 'hover:bg-secondary/60'}"
+				>
 					<span
 						class="grid size-8 shrink-0 place-items-center rounded-full text-[11px] font-semibold text-white [background-image:var(--gradient-brand)]"
 						aria-hidden="true">{initials}</span
 					>
-					<span class="hidden flex-col leading-tight sm:flex">
+					<span class="hidden flex-col text-left leading-tight sm:flex">
 						<span class="text-sm font-semibold text-ink-900" data-testid="member-shell-name"
 							>{fullName}</span
 						>
-						<span class="text-[11px] text-ink-500">Mitglied</span>
+						<span class="text-[11px] text-ink-500">Mein Profil</span>
 					</span>
-				</div>
+					<span class="sr-only sm:hidden">Mein Profil — {fullName}</span>
+				</a>
 				<form method="POST" action="/sign-out?/signout">
 					<button
 						type="submit"
@@ -102,12 +138,16 @@
 			</div>
 		</div>
 
-		<!-- Nav on its own baseline: four pills, never wrapping, horizontally
-		     scrollable on a phone (where the old `hidden sm:flex` made Profil
-		     unreachable entirely). -->
+		<!-- Nav on its own baseline: three pills, never wrapping, still
+		     horizontally scrollable as a safety net (with a fade when it actually
+		     has something to scroll to). -->
 		<div class="mx-auto w-full max-w-3xl px-4 pb-2">
 			<nav
+				bind:this={navEl}
 				class="flex items-center gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+				style={scrollable
+					? 'mask-image:linear-gradient(to right,#000 calc(100% - 32px),transparent);-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 32px),transparent)'
+					: undefined}
 				aria-label="Portal-Navigation"
 			>
 				{#each NAV as item (item.href)}
@@ -116,7 +156,7 @@
 						href={item.href}
 						aria-current={isCurrent(item.href) ? 'page' : undefined}
 						data-testid="member-nav-{item.testId}"
-						class="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none
+						class="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-sm font-medium whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:px-3
 							{isCurrent(item.href)
 							? 'bg-secondary text-ink-700'
 							: 'text-ink-500 hover:bg-secondary/60 hover:text-ink-700'}"
