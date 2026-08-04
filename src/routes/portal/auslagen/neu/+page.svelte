@@ -37,6 +37,15 @@
 			: 'Fehlt noch: IBAN fürs Zurücküberweisen.'
 	);
 
+	/**
+	 * What the form has to TRANSPORT to the server. Fall A (stored IBAN, toggle
+	 * closed) sends nothing — the server snapshots the stored one, and the full
+	 * IBAN never leaves the server anyway. Fall B and C send the typed one.
+	 */
+	const erstattung = $derived(
+		maskedIban && !override ? null : { iban, saveToProfile }
+	);
+
 	const handoff = $derived(form && 'handoff' in form ? form.handoff : null);
 	const serverError = $derived(
 		form && 'error' in form ? ((form.error as string) ?? null) : null
@@ -89,6 +98,7 @@
 		{itemErrors}
 		{payoutValid}
 		{payoutHint}
+		{erstattung}
 	>
 		{#snippet identity()}
 			<LockedIdentity

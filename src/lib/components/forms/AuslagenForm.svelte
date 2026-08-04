@@ -66,6 +66,13 @@
 		payoutValid?: boolean;
 		/** Member mode: what is missing in the payout block, if anything. */
 		payoutHint?: string | null;
+		/**
+		 * Member mode: the payout the form must TRANSPORT (Fall B/C). null in
+		 * Fall A, where the server snapshots the stored IBAN and the client
+		 * sends nothing. The page owns this state because it owns PayoutBlock;
+		 * the form only reads it when building the payload.
+		 */
+		erstattung?: { iban: string; saveToProfile: boolean } | null;
 	}
 
 	let {
@@ -82,7 +89,8 @@
 		identity,
 		payout,
 		payoutValid = true,
-		payoutHint = null
+		payoutHint = null,
+		erstattung = null
 	}: Props = $props();
 
 	const isMember = $derived(mode === 'member');
@@ -332,8 +340,18 @@
 	function buildData(): string {
 		if (isMember) {
 			// No identity (the session owns it) and no consent version (the
-			// membership carries it) — the server stamps both.
+			// membership carries it) — the server stamps both. The payout DOES
+			// have to travel: `enhance` below rebuilds the whole multipart body,
+			// so anything not in here never reaches the server.
 			return JSON.stringify({
+				...(erstattung
+					? {
+							erstattung: {
+								iban: erstattung.iban,
+								save_to_profile: erstattung.saveToProfile
+							}
+						}
+					: {}),
 				auslagen: blocks.map((b) => ({
 					client_key: b.clientKey,
 					submission_nonce: b.nonce,
