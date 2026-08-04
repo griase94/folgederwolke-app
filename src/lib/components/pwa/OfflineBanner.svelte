@@ -10,6 +10,10 @@
 	 *
 	 * Mount once in the root layout (AdminShell + auslage-einreichen page) —
 	 * fixed positioning keeps it above all content.
+	 *
+	 * Colour: severity-warn tokens, never the brand pink — "offline" is a warning,
+	 * and brand hue on a warning is contractually banned (DESIGN-GUIDELINES §2.2,
+	 * the same rule InlineAlert follows).
 	 */
 
 	let online = $state(true);
@@ -38,7 +42,7 @@
 	<div
 		role="status"
 		aria-live="polite"
-		class="fixed inset-x-0 top-0 z-50 bg-primary/10 px-4 py-2 text-center text-xs font-medium text-primary shadow-sm backdrop-blur"
+		class="fixed inset-x-0 top-0 z-50 border-b border-severity-warn/40 bg-severity-warn-tint px-4 py-2 text-center text-xs font-medium text-severity-warn-text shadow-sm backdrop-blur"
 		style="padding-top: calc(env(safe-area-inset-top, 0px) + 0.5rem);"
 	>
 		Offline — Deine Eingaben bleiben als Entwurf gespeichert. Bitte sende das Formular erneut ab, sobald du wieder Empfang hast.

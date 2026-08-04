@@ -20,7 +20,8 @@
   import { IdChip } from "$lib/components/ui/id-chip/index.js";
   import SpendeDetailFields from "$lib/components/admin/transactions/spenden/SpendeDetailFields.svelte";
   import DeleteConfirm from "$lib/components/admin/transactions/detail/DeleteConfirm.svelte";
-  import { SPHERE_LABELS, type Sphere } from "$lib/domain/sphere.js";
+  import { type Sphere } from "$lib/domain/sphere.js";
+  import SphereBadge from "$lib/components/admin/transactions/fields/SphereBadge.svelte";
   import type { DetailStatusChip } from "$lib/components/admin/transactions/detail/DetailHead.svelte";
   import type { ActionData, PageData } from "./$types.js";
 
@@ -96,16 +97,7 @@
     {/if}
     <KeyValue label="Kategorie" value={detail.kategorieNameSnapshot} />
     <KeyValue label="Sphäre" sub="aus Spendenart abgeleitet">
-      <span
-        class="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-0.5 text-[13px] font-medium text-ink-700"
-      >
-        <span
-          class="size-2.5 rounded-[3px]"
-          style="background: var(--sphere-{sphereEffective});"
-          aria-hidden="true"
-        ></span>
-        {SPHERE_LABELS[sphereEffective]}
-      </span>
+      <SphereBadge sphere={sphereEffective} />
     </KeyValue>
     <KeyValue
       label="Spender:in"
