@@ -24,7 +24,7 @@
 	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 	import { handleIbanInput, normalizeIban } from '$lib/client/iban.js';
 	import { DateField } from '$lib/components/ui/date-field/index.js';
-	import BelegUpload from '$lib/components/admin/transactions/fields/BelegUpload.svelte';
+	import BelegUpload from '$lib/components/forms/BelegUpload.svelte';
 
 	interface Member {
 		id: string;

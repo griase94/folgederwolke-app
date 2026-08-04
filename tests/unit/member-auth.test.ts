@@ -338,6 +338,58 @@ describe("@phase-2 resolveSession role-aware", () => {
     expect(remaining.length).toBe(0);
   });
 
+  it("nukes EVERY session of a deactivated member, not just the one resolving", async () => {
+    const email = uniqEmail();
+    const canonical = canonicalizeEmail(email);
+    const member = await seedMember({ email });
+
+    // Two live logins for the SAME member — e.g. phone and laptop.
+    const phone = makeCookies();
+    const laptop = makeCookies();
+    await consumeMagicLink(
+      await insertMagicLink(canonical),
+      { ip: uniqIp(), ua: "vitest-phone" },
+      phone,
+    );
+    await consumeMagicLink(
+      await insertMagicLink(canonical),
+      { ip: uniqIp(), ua: "vitest-laptop" },
+      laptop,
+    );
+
+    const onPhone = await resolveSession(phone);
+    expect(onPhone?.user.memberId).toBe(member.id);
+    expect((await resolveSession(laptop))?.user.memberId).toBe(member.id);
+
+    const userId = onPhone!.user.id;
+    expect(
+      (
+        await getDb()
+          .select({ id: sessions.id })
+          .from(sessions)
+          .where(eq(sessions.userId, userId))
+      ).length,
+    ).toBe(2);
+
+    await getDb()
+      .update(members)
+      .set({ austrittsDatum: "2020-01-02" })
+      .where(eq(members.id, member.id));
+
+    // Resolving on ONE device revokes the member's sessions per USER, not per
+    // row — the other device must not stay signed in.
+    expect(await resolveSession(phone)).toBeNull();
+    expect(await resolveSession(laptop)).toBeNull();
+    expect(
+      (
+        await getDb()
+          .select({ id: sessions.id })
+          .from(sessions)
+          .where(eq(sessions.userId, userId))
+      ).length,
+    ).toBe(0);
+  });
+
   it("resolves an admin session (regression: admin path unchanged)", async () => {
     const cookies = makeCookies();
     const token = await insertMagicLink(ADMIN_EMAIL);

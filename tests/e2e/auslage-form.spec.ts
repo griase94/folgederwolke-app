@@ -88,19 +88,36 @@ test.describe("@phase-2 auslage form (extern-only + batch)", () => {
     await expect(page.getByText("Wer bekommt's zurück?").first()).toBeVisible();
     await expect(page.getByText("Wofür war's?").first()).toBeVisible();
     await expect(page.getByPlaceholder(/^DE00/)).toBeVisible(); // extern IBAN, no radio
+    // F3: canonical BelegUpload dropzone copy.
     await expect(
-      page.getByText(/Datei hierher ziehen oder auswählen/),
+      page.getByText(/Beleg hier ablegen oder auswählen/).first(),
     ).toBeVisible();
     await expect(page.getByTestId("login-nudge")).toBeVisible();
     await expect(page.getByRole("checkbox")).toBeVisible();
   });
 
-  test("submit is gated (disabled) while required fields are missing (F1/C2-TAX)", async ({
+  test("submit EXPLAINS the gap instead of sitting disabled (F1/C2-TAX)", async ({
     page,
   }) => {
     await goToForm(page);
-    await expect(page.getByTestId("auslage-submit")).toBeDisabled();
+    const submit = page.getByTestId("auslage-submit");
+    // The primary is never disabled for a missing field — a disabled button
+    // cannot explain itself (DESIGN-GUIDELINES §4).
+    await expect(submit).toBeEnabled();
     await expect(page.getByTestId("einreichen-gate")).toBeVisible();
+
+    // Clicking with an empty form jumps to the first gap and names it.
+    await submit.click();
+    await expect(page.locator("#ext-name")).toBeFocused();
+    await expect(page.getByTestId("einreichen-gate")).toContainText("Name");
+
+    // Once identity is filled, the gate moves on to the block's real gaps —
+    // and names only what is actually still empty.
+    await fillIdentity(page);
+    await submit.click();
+    const gate = page.getByTestId("einreichen-gate");
+    await expect(gate).toContainText("Bezeichnung");
+    await expect(gate).toContainText("Betrag");
   });
 
   test("project select is populated from the seeded projects (AT-002 guard)", async ({

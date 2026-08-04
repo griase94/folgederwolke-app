@@ -4,8 +4,15 @@
  * Strategy mirrors auth.spec.ts: bypass issueMagicLink by inserting a
  * magic_link row directly, then drive the verify → session flow and assert the
  * ROLE-AWARE routing (the HTTP-level counterpart to the DB-backed member-auth
- * integration tests). Uses seeded fixture members (anna.mueller@example.de) and
- * the .env.test admin (admin@example.com, NOT a member).
+ * integration tests). Uses the .env.test admin (admin@example.com, NOT a
+ * member) and members this spec SEEDS ITSELF.
+ *
+ * Spec-local fixtures on purpose (S1 lesson): this spec used to sign in as the
+ * shared seed member anna.mueller@example.de, which a dozen other specs edit,
+ * austragen and pseudonymise. In a full sequential run whichever spec touched
+ * her first made the member lookup here return undefined, and the failure
+ * surfaced far away as `UNDEFINED_VALUE` or a verify-timeout. Own members, own
+ * cleanup, no shared state.
  *
  * @phase-2
  */
@@ -15,6 +22,35 @@ import { randomBytes, createHash } from "node:crypto";
 
 function sha256(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+/** Prefix for everything this spec creates — the cleanup key. */
+const PREFIX = "portal-auth-e2e";
+
+/**
+ * Create a member this spec owns. `vorname` shows up in the portal greeting.
+ * Active (no Austritt) and e-mail-canonical-safe, so the magic-link allowlist
+ * resolves it exactly like a real member.
+ */
+async function seedMember(vorname: string, nachname: string): Promise<string> {
+  const { default: postgres } = await import("postgres");
+  const client = postgres(process.env["DATABASE_URL"] ?? "", {
+    prepare: false,
+    max: 1,
+  });
+  const email = `${PREFIX}-${vorname.toLowerCase()}@portal.test`;
+  // Idempotent: re-inserting would give the allowlist TWO matches for one
+  // e-mail, and it deliberately refuses to resolve an ambiguous address —
+  // the login would break on the second run.
+  const existing = await client`SELECT id FROM members WHERE email = ${email}`;
+  if (existing.length === 0) {
+    await client`
+      INSERT INTO members (vorname, nachname, email, eintritts_datum, is_fixture)
+      VALUES (${vorname}, ${nachname}, ${email}, '2020-01-01', true)
+    `;
+  }
+  await client.end();
+  return email;
 }
 
 /** Insert a magic_link row directly; returns the raw token for the verify URL. */
@@ -58,7 +94,12 @@ async function seedSubmissionFor(
   });
   const rows =
     await client`SELECT id FROM members WHERE email = ${email} LIMIT 1`;
-  const memberId = rows[0]?.["id"] as string;
+  const memberId = rows[0]?.["id"] as string | undefined;
+  if (!memberId) {
+    await client.end();
+    // Fail HERE with the cause, not later inside postgres.js as UNDEFINED_VALUE.
+    throw new Error(`seedSubmissionFor: no member with email ${email}`);
+  }
   await client`
     INSERT INTO auslagen_submissions
       (business_id, bezeichnung, betrag_cents, rechnungsdatum, bezahlt_von_kind,
@@ -79,11 +120,30 @@ async function cleanupSeededSubmissions() {
     max: 1,
   });
   await client`DELETE FROM auslagen_submissions WHERE business_id LIKE 'AUS-2099-9%'`;
+  // Only the transient rows. users/members stay: audit_log references the user
+  // and is append-only (ADR-0004), so deleting it is neither allowed nor
+  // desirable. The rows are prefixed and spec-local, so leaving them collides
+  // with nothing — and `seedMember` is idempotent for the next run.
+  await client`DELETE FROM sessions WHERE user_id IN (
+    SELECT id FROM users WHERE email LIKE ${PREFIX + "%"}
+  )`;
+  await client`DELETE FROM magic_links WHERE email_canonical LIKE ${PREFIX + "%"}`;
   await client.end();
 }
 
 test.describe("@phase-2 Portal — member auth + route gating", () => {
-  // Spec-isolation (S1 lesson): remove the submissions this spec seeds so the
+  let annaEmail = "";
+  let felixEmail = "";
+
+  test.beforeAll(async () => {
+    if (!process.env["DATABASE_URL"]) return;
+    // Clean first: a previous crashed run must not collide with this one.
+    await cleanupSeededSubmissions();
+    annaEmail = await seedMember("Anna", "Portalson");
+    felixEmail = await seedMember("Felix", "Portalson");
+  });
+
+  // Spec-isolation (S1 lesson): remove everything this spec seeded so the
   // admin inbox / other specs never see stray rows.
   test.afterAll(async () => {
     if (process.env["DATABASE_URL"]) await cleanupSeededSubmissions();
@@ -101,7 +161,7 @@ test.describe("@phase-2 Portal — member auth + route gating", () => {
       test.skip();
       return;
     }
-    const rawToken = await insertMagicLink("anna.mueller@example.de");
+    const rawToken = await insertMagicLink(annaEmail);
 
     await Promise.all([page.waitForURL(/\/portal/), verify(page, rawToken)]);
     await expect(page).toHaveURL(/\/portal/);
@@ -141,14 +201,14 @@ test.describe("@phase-2 Portal — member auth + route gating", () => {
     }
     const ANNA_AUS = "AUS-2099-95001";
     const FELIX_AUS = "AUS-2099-95002";
-    await seedSubmissionFor("anna.mueller@example.de", ANNA_AUS, "Annas Beleg");
+    await seedSubmissionFor(annaEmail, ANNA_AUS, "Annas Beleg");
     const felixId = await seedSubmissionFor(
-      "felix.bauer@example.de",
+      felixEmail,
       FELIX_AUS,
       "Felix Beleg",
     );
 
-    const rawToken = await insertMagicLink("anna.mueller@example.de");
+    const rawToken = await insertMagicLink(annaEmail);
     await Promise.all([page.waitForURL(/\/portal/), verify(page, rawToken)]);
 
     // Anna sees her OWN submission; Felix's is never in her list.

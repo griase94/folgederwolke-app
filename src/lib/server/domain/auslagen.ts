@@ -328,3 +328,144 @@ export function validateAuslageBatchInput(
 
   return { ok: false, formErrors, identityErrors, itemErrors };
 }
+
+// ---------------------------------------------------------------------------
+// Member portal batch (Aurora A-flow S2b)
+// ---------------------------------------------------------------------------
+
+/**
+ * The ratified invalid-IBAN wording — one sentence for every surface that can
+ * reject an IBAN (portal-onboarding-iban §1a).
+ */
+export const IBAN_ERROR_MESSAGE =
+  "Das ist keine gültige IBAN — prüf Ländercode und Länge.";
+
+/**
+ * A member item is a public item PLUS the Beleg-oder-Verzicht discriminant.
+ * Only authenticated members may submit without a Beleg: the Verzicht is a
+ * documented exception the Vorstand reviews, and the public form has no one to
+ * hold accountable for it.
+ */
+const memberAuslageBatchItemSchema = auslageBatchItemSchema
+  .extend({
+    beleg_mode: z.enum(["file", "verzicht"], {
+      error: "Beleg oder begründeter Verzicht ist erforderlich",
+    }),
+    beleg_verzicht_grund: z
+      .string()
+      .max(1000, "Begründung zu lang")
+      .optional()
+      .nullable(),
+  })
+  .strict()
+  .superRefine((item, ctx) => {
+    // Mirrors the DB CHECK `auslagen_submissions_beleg_or_grund_ck`.
+    if (item.beleg_mode !== "verzicht") return;
+    if ((item.beleg_verzicht_grund ?? "").trim().length < 5) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["beleg_verzicht_grund"],
+        message: "Bitte kurz begründen (mindestens 5 Zeichen)",
+      });
+    }
+  });
+
+/**
+ * The payout block (§1a A/B/C). `iban` is ABSENT in Fall A — the server then
+ * snapshots the member's stored IBAN, which the client never sees in full.
+ * When present it is normalized + checksum-validated HERE, before it can reach
+ * `submitAuslagenBatch` (whose JSDoc delegates that duty to the caller).
+ */
+const erstattungSchema = z
+  .object({
+    iban: z.preprocess(
+      (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+      z
+        .string()
+        .max(42, "Die IBAN sieht etwas lang aus")
+        .transform((v) => normalizeIban(v))
+        .refine(validateIban, IBAN_ERROR_MESSAGE)
+        .optional(),
+    ),
+    /** Fall B checkbox (default on) / Fall C radio 2 (default off). */
+    save_to_profile: z.boolean().optional(),
+  })
+  .strict();
+
+/**
+ * The member submit payload. Note what is NOT here: identity (it comes from
+ * the session — a payload may not name its own submitter, §7-2) and the
+ * consent version (membership carries it; the server stamps the current one).
+ */
+export const memberAuslageBatchInputSchema = z
+  .object({
+    erstattung: erstattungSchema.optional(),
+    auslagen: z
+      .array(memberAuslageBatchItemSchema)
+      .min(1, "Mindestens eine Auslage")
+      .max(
+        MAX_BATCH_ITEMS,
+        `Maximal ${MAX_BATCH_ITEMS} Auslagen pro Einreichung`,
+      ),
+  })
+  .strict();
+
+export type MemberAuslageBatchInput = z.infer<
+  typeof memberAuslageBatchInputSchema
+>;
+
+export type MemberBatchValidationSuccess = {
+  ok: true;
+  data: MemberAuslageBatchInput;
+};
+export type MemberBatchValidationFailure = {
+  ok: false;
+  formErrors: string[];
+  /** erstattung.<field> → messages (the payout block). */
+  erstattungErrors: Record<string, string[]>;
+  /** client_key → { field → messages }. */
+  itemErrors: Record<string, Record<string, string[]>>;
+};
+
+/**
+ * Validate a member batch payload, mapping each Zod issue back to the UI shape.
+ * Item errors are keyed by client_key, not array index — removing a block
+ * mid-batch must not misalign an error onto its neighbour.
+ */
+export function validateMemberAuslageBatchInput(
+  data: unknown,
+): MemberBatchValidationSuccess | MemberBatchValidationFailure {
+  const result = memberAuslageBatchInputSchema.safeParse(data);
+  if (result.success) return { ok: true, data: result.data };
+
+  const rawItems =
+    typeof data === "object" &&
+    data !== null &&
+    Array.isArray((data as { auslagen?: unknown }).auslagen)
+      ? ((data as { auslagen: unknown[] }).auslagen as Array<{
+          client_key?: unknown;
+        }>)
+      : [];
+
+  const formErrors: string[] = [];
+  const erstattungErrors: Record<string, string[]> = {};
+  const itemErrors: Record<string, Record<string, string[]>> = {};
+
+  for (const issue of result.error.issues) {
+    const [head, second, third] = issue.path;
+    if (head === "erstattung" && typeof second === "string") {
+      (erstattungErrors[second] ??= []).push(issue.message);
+    } else if (head === "auslagen" && typeof second === "number") {
+      const key =
+        typeof rawItems[second]?.client_key === "string"
+          ? (rawItems[second]!.client_key as string)
+          : String(second);
+      const field = typeof third === "string" ? third : "_root";
+      ((itemErrors[key] ??= {})[field] ??= []).push(issue.message);
+    } else {
+      formErrors.push(issue.message);
+    }
+  }
+
+  return { ok: false, formErrors, erstattungErrors, itemErrors };
+}

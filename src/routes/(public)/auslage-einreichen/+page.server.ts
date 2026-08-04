@@ -34,17 +34,9 @@ import {
   type AuslageBatchItem,
 } from "$lib/server/domain/auslage-submit.js";
 import { getFileStorage, type FileStorage } from "$lib/server/files/storage.js";
-import { runUploadPipeline } from "$lib/server/files/upload-pipeline.js";
-import { StorageError } from "$lib/server/files/errors.js";
-import { germanFileError } from "$lib/components/files/file-error-messages.js";
+import { intakeBeleg } from "$lib/server/domain/auslage-beleg-upload.js";
 import { checkAndRecord, RateLimitError } from "$lib/server/auth/rate-limit.js";
-import {
-  MAX_BELEG_BYTES,
-  MAX_REQUEST_BYTES,
-  SNIFF_PREFIX_BYTES,
-  validateBelegPrefix,
-  sanitizeFilename,
-} from "$lib/server/domain/file-validation.js";
+import { MAX_REQUEST_BYTES } from "$lib/server/domain/file-validation.js";
 import { DATENSCHUTZ_VERSION } from "$lib/server/domain/datenschutz.js";
 
 // ---------------------------------------------------------------------------
@@ -358,83 +350,22 @@ export const actions: Actions = {
           },
         });
       }
-      if (file.size > MAX_BELEG_BYTES) {
-        return fail(413, {
-          error: `Beleg-Datei zu groß (max ${MAX_BELEG_BYTES / 1024 / 1024} MiB).`,
+      // Size cap, magic-byte sniff and upload are shared with the member
+      // portal — see domain/auslage-beleg-upload.ts. Only the error SHAPE is
+      // route-specific.
+      const intake = await intakeBeleg({
+        file,
+        submitterEmail: input.identity.email,
+        actorUserId: null,
+        storage,
+      });
+      if (!intake.ok) {
+        return fail(intake.status, {
+          error: intake.message,
           formErrors: [],
           identityErrors: {},
-          itemErrors: {
-            [item.client_key]: {
-              beleg: [
-                `Beleg zu groß (max ${MAX_BELEG_BYTES / 1024 / 1024} MiB).`,
-              ],
-            },
-          },
+          itemErrors: { [item.client_key]: { beleg: [intake.message] } },
         });
-      }
-
-      // Phase 1: prefix sniff (cheap hostile-file reject).
-      const declared = file.type || "application/octet-stream";
-      let prefix: Uint8Array;
-      try {
-        prefix = new Uint8Array(
-          await file.slice(0, SNIFF_PREFIX_BYTES).arrayBuffer(),
-        );
-      } catch {
-        return fail(400, { error: "Beleg konnte nicht gelesen werden." });
-      }
-      const prefixCheck = validateBelegPrefix(prefix, declared);
-      if (!prefixCheck.valid) {
-        return fail(415, {
-          error: prefixCheck.reason,
-          formErrors: [],
-          identityErrors: {},
-          itemErrors: { [item.client_key]: { beleg: [prefixCheck.reason] } },
-        });
-      }
-
-      // Phase 2: buffer + upload.
-      let bytes: Buffer;
-      try {
-        bytes = Buffer.from(await file.arrayBuffer());
-      } catch {
-        return fail(400, { error: "Beleg konnte nicht gelesen werden." });
-      }
-      const originalName = sanitizeFilename(file.name || "beleg");
-
-      let belegFileId: string;
-      try {
-        const uploadResult = await runUploadPipeline({
-          bytes: new Uint8Array(bytes),
-          claimedMime: prefixCheck.sniffedMime,
-          originalFilename: originalName,
-          submitterEmail: input.identity.email,
-          actorUserId: null,
-          sourceKind: "form",
-          storage,
-        });
-        belegFileId = uploadResult.fileId;
-      } catch (uploadErr) {
-        if (uploadErr instanceof StorageError) {
-          const status =
-            uploadErr.code === "STORAGE_INVALID" ||
-            uploadErr.code === "STORAGE_DUPLICATE"
-              ? 422
-              : 502;
-          return fail(status, {
-            error: germanFileError(uploadErr.code),
-            formErrors: [],
-            identityErrors: {},
-            itemErrors: {
-              [item.client_key]: { beleg: [germanFileError(uploadErr.code)] },
-            },
-          });
-        }
-        console.error(
-          `[auslage-einreichen] unexpected upload error:`,
-          uploadErr,
-        );
-        return fail(500, { error: germanFileError("UNKNOWN") });
       }
 
       items.push({
@@ -444,8 +375,8 @@ export const actions: Actions = {
         rechnungsdatum: item.rechnungsdatum,
         betragCents: item.betrag_cents,
         wofuer: item.wofuer ?? null,
-        belegFileId,
-        belegOriginalName: file.name,
+        belegFileId: intake.belegFileId,
+        belegOriginalName: intake.originalName,
       });
     }
 
