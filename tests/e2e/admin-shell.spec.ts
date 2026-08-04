@@ -9,6 +9,7 @@
 
 import { expect, test } from "@playwright/test";
 import { randomBytes, createHash } from "node:crypto";
+import { pressShortcutUntil } from "./helpers/keyboard.js";
 
 function sha256(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
@@ -119,11 +120,15 @@ test.describe("@phase-3 Admin shell — topbar search", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await signIn(page);
 
-    // Press Cmd+K
-    await page.keyboard.press("Meta+k");
-
     const searchInput = page.getByRole("combobox", { name: "Admin-Suche" });
-    await expect(searchInput).toBeFocused();
+
+    // The ⌘K handler lives on <svelte:window>, so it exists only once the page
+    // has hydrated — a single press right after sign-in can land earlier and is
+    // then dropped for good. pressShortcutUntil retries the gesture instead of
+    // polling a focus state that a lost keypress can never reach.
+    await pressShortcutUntil(page, "Meta+k", () =>
+      expect(searchInput).toBeFocused({ timeout: 1000 }),
+    );
   });
 });
 
