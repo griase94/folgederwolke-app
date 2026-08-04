@@ -79,7 +79,7 @@ test.describe("@aurora-impl-b1 Transaktionen Listen-Kette", () => {
     await expect(page.getByTestId("kpi-strip")).toBeVisible();
 
     await page.goto("/app/einnahmen");
-    const split = page.locator('[data-slot="sphere-split"]');
+    const split = page.locator("[data-sphere-split]");
     await expect(split).toBeVisible();
     // All four steuerliche Sphären are always shown (empty ones as 0,00 €).
     for (const sphere of [

@@ -12,6 +12,7 @@
 	import PageShell from '$lib/components/layout/PageShell.svelte';
 	import PageHeader from '$lib/components/layout/PageHeader.svelte';
 	import StaleYearBanner from '$lib/components/admin/StaleYearBanner.svelte';
+	import ListRailLayout from '$lib/components/layout/ListRailLayout.svelte';
 	import FilterBar from '$lib/components/admin/transactions/FilterBar.svelte';
 	import SpendenKpi from '$lib/components/admin/transactions/spenden/SpendenKpi.svelte';
 	import TransactionRow from '$lib/components/ui/TransactionRow.svelte';
@@ -100,7 +101,7 @@
 	{/each}
 {/snippet}
 
-<PageShell width="list">
+<PageShell width="list" rail>
 	<PageHeader title="Spenden">
 		{#snippet meta()}
 			<p class="tabular-nums">
@@ -142,15 +143,17 @@
 
 	<StaleYearBanner selectedYear={data.yearScope} currentYear={data.currentYear} />
 
-	<div class="mb-5">
-		<SpendenKpi
-			totalCents={data.kpi.totalCents}
-			count={data.kpi.count}
-			ohneBescheinigungCount={data.kpi.ohneBescheinigungCount}
-			versandtCount={data.kpi.versandtCount}
-			year={data.yearScope}
-		/>
-	</div>
+	<ListRailLayout>
+		{#snippet aside()}
+			<SpendenKpi
+				totalCents={data.kpi.totalCents}
+				count={data.kpi.count}
+				ohneBescheinigungCount={data.kpi.ohneBescheinigungCount}
+				versandtCount={data.kpi.versandtCount}
+				year={data.yearScope}
+			/>
+		{/snippet}
+
 
 	{#if data.rows.length === 0}
 		{#if hasActiveFilters}
@@ -253,4 +256,5 @@
 			class="justify-center"
 		/>
 	{/if}
+	</ListRailLayout>
 </PageShell>

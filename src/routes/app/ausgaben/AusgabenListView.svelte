@@ -14,6 +14,7 @@
 	import PageShell from '$lib/components/layout/PageShell.svelte';
 	import PageHeader from '$lib/components/layout/PageHeader.svelte';
 	import StaleYearBanner from '$lib/components/admin/StaleYearBanner.svelte';
+	import ListRailLayout from '$lib/components/layout/ListRailLayout.svelte';
 	import FilterBar from '$lib/components/admin/transactions/FilterBar.svelte';
 	import AusgabenKpi from '$lib/components/admin/transactions/ausgaben/AusgabenKpi.svelte';
 	import TransactionRow from '$lib/components/ui/TransactionRow.svelte';
@@ -108,7 +109,7 @@
 	{/each}
 {/snippet}
 
-<PageShell width="list">
+<PageShell width="list" rail>
 	<PageHeader title="Ausgaben">
 		{#snippet meta()}
 			<p class="tabular-nums">
@@ -185,15 +186,18 @@
 
 	<StaleYearBanner selectedYear={data.yearScope} currentYear={data.currentYear} />
 
-	<div class="mb-5">
-		<AusgabenKpi
-			totalCents={data.kpi.totalCents}
-			count={data.kpi.count}
-			erstattetCount={data.kpi.erstattetCount}
-			offenCount={data.kpi.offenCount}
-			oldestOpenAgeDays={data.kpi.oldestOpenAgeDays}
-		/>
-	</div>
+	<ListRailLayout>
+		{#snippet aside()}
+			<AusgabenKpi
+				totalCents={data.kpi.totalCents}
+				count={data.kpi.count}
+				erstattetCount={data.kpi.erstattetCount}
+				offenCount={data.kpi.offenCount}
+				oldestOpenAgeDays={data.kpi.oldestOpenAgeDays}
+				year={data.yearScope}
+			/>
+		{/snippet}
+
 
 	{#if data.rows.length === 0}
 		{#if hasActiveFilters}
@@ -254,4 +258,5 @@
 			class="justify-center"
 		/>
 	{/if}
+	</ListRailLayout>
 </PageShell>

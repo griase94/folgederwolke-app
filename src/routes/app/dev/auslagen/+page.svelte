@@ -21,7 +21,7 @@
 
 <svelte:head><title>Auslagen-Kit-Galerie · dev</title></svelte:head>
 
-<PageShell width="full">
+<PageShell width="wide">
 	<div>
 		{#if Gallery}<Gallery />{/if}
 	</div>

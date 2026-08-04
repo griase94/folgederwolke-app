@@ -2,7 +2,7 @@
  * Aurora slice 2 — PageShell/PageHeader layout primitives (master §2.3
  * FROZEN contract; spec §4 dimension table).
  *
- * PageShell: form → 640px · list → 1100px · full → no max; one horizontal
+ * PageShell: form → 640px · list → 1100px · wide → 1680px; one horizontal
  * padding scale (16/24/32, 4px grid); mobile bottom padding clears the
  * fixed tab bar + home indicator.
  * PageHeader: title row → meta line → ONE toolbar row; back slot renders
@@ -37,10 +37,20 @@ describe("PageShell", () => {
     expect(shell!.className).toContain("max-w-[1100px]");
   });
 
-  it("width=full has no max-width cap", () => {
-    render(PageShellHarness, { props: { width: "full" } });
+  it("width=wide caps at the ratified 1680px — no /app screen is unbounded", () => {
+    render(PageShellHarness, { props: { width: "wide" } });
     const shell = document.querySelector<HTMLElement>("[data-page-shell]");
-    expect(shell!.className).toContain("max-w-none");
+    expect(shell!.dataset["width"]).toBe("wide");
+    expect(shell!.className).toContain("max-w-[1680px]");
+    expect(shell!.className).not.toContain("max-w-none");
+  });
+
+  it("rail lists relax to the wide cap only from the rail breakpoint up (R6.3)", () => {
+    render(PageShellHarness, { props: { width: "list", rail: true } });
+    const shell = document.querySelector<HTMLElement>("[data-page-shell]");
+    expect(shell!.dataset["rail"]).toBe("");
+    expect(shell!.className).toContain("max-w-[1100px]");
+    expect(shell!.className).toContain("rail:max-w-[1680px]");
   });
 
   it("carries the one horizontal padding scale and vertical padding (clearance owned by AdminShell)", () => {

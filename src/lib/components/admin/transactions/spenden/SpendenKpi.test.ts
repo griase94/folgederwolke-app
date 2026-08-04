@@ -37,7 +37,10 @@ describe("SpendenKpi", () => {
       },
     });
     expect(screen.getByText(/3 ohne Bescheinigung/)).toBeTruthy();
-    expect(screen.getByText(/9 .*versandt/i)).toBeTruthy();
+    // "Versandt" is a RATIO now — the label lives in the eyebrow, never in the
+    // value ("9 versandt" was the original label-in-value finding).
+    expect(screen.getByText("9 von 12")).toBeTruthy();
+    expect(screen.getByText("Versandt")).toBeTruthy();
   });
 
   it("renders the year anchor + Spenden count", () => {
@@ -50,7 +53,8 @@ describe("SpendenKpi", () => {
         year: 2026,
       },
     });
-    expect(screen.getByText(/2026/)).toBeTruthy();
+    // Every card anchors its own year, so 2026 appears once per sub-line.
+    expect(screen.getAllByText(/2026/).length).toBe(3);
     expect(screen.getByText(/12 Spenden/)).toBeTruthy();
   });
 

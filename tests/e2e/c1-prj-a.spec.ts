@@ -148,7 +148,7 @@ test.describe("@phase-9 C1-PRJ-A Projekte first-class Phase 1", () => {
     await expect(negPill).toHaveClass(/rose/);
   });
 
-  test("Project detail hero renders 5 KpiTiles + CtaRail (3 CTAs + Edit) + 2 tabs", async ({
+  test("Project detail hero renders 5 StatCards + CtaRail (3 CTAs + Edit) + 2 tabs", async ({
     page,
   }) => {
     const projectId = await seedProjectWithSaldo(10000, 4000, "HERO");
@@ -158,7 +158,7 @@ test.describe("@phase-9 C1-PRJ-A Projekte first-class Phase 1", () => {
 
     const hero = page.getByTestId("project-detail-hero");
     await expect(hero).toBeVisible();
-    await expect(page.getByTestId("project-kpi-tile")).toHaveCount(5);
+    await expect(hero.locator('[data-slot="stat-card"]')).toHaveCount(5);
     await expect(page.getByTestId("project-cta-rail")).toBeVisible();
     await expect(page.getByTestId("project-cta")).toHaveCount(3);
     await expect(page.getByTestId("project-cta-edit")).toBeVisible();
