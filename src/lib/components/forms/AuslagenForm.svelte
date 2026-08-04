@@ -6,6 +6,8 @@
 	// Beleg. F1 (betrag>0), F2 (hide "+ weitere" at maxBatchItems), F3 (IBAN) are
 	// enforced form-level here and re-checked server-side.
 	import type { Snippet } from 'svelte';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Select } from '$lib/components/ui/select/index.js';
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
 	import { browser } from '$app/environment';
@@ -547,9 +549,8 @@
 		{#if projects.length > 0}
 			<div class="flex flex-col gap-1.5">
 				<Label for="proj-{block.clientKey}">Projekt / Event <span class="font-normal text-ink-300">optional</span></Label>
-				<select
+				<Select
 					id="proj-{block.clientKey}"
-					class="h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none md:text-sm"
 					bind:value={block.wofuer}
 					onchange={triggerSave}
 				>
@@ -557,21 +558,20 @@
 					{#each projects as p (p.id)}
 						<option value={p.name}>{p.name}</option>
 					{/each}
-				</select>
+				</Select>
 			</div>
 		{/if}
 
 		<div class="flex flex-col gap-1.5">
 			<Label for="kom-{block.clientKey}">Kommentar <span class="font-normal text-ink-300">optional</span></Label>
-			<textarea
+			<Textarea
 				id="kom-{block.clientKey}"
 				rows={2}
 				maxlength={1000}
 				placeholder="Noch was, das Julia wissen sollte?"
-				class="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none md:text-sm"
 				bind:value={block.kommentar}
 				oninput={triggerSave}
-			></textarea>
+			></Textarea>
 		</div>
 
 		<!-- The Verzicht arm is members-only: the public form has nobody to hold

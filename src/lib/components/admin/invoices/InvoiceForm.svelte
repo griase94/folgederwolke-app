@@ -21,6 +21,8 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Select } from '$lib/components/ui/select/index.js';
 	import { enhance } from '$app/forms';
 	import { beforeNavigate } from '$app/navigation';
 	import { cn } from '$lib/utils.js';
@@ -323,19 +325,18 @@
 					<label for="customerId" class="mb-1 block text-[13px] font-semibold text-ink-700"
 						>Kund:in <span class="text-primary-text">*</span></label
 					>
-					<select
+					<Select
 						id="customerId"
 						name="customerId"
 						bind:value={customerId}
 						required
 						aria-invalid={fieldError('customerId') ? 'true' : undefined}
-						class={FIELD}
 					>
 						<option value="">— Kund:in wählen —</option>
 						{#each customers as c (c.id)}
 							<option value={c.id}>{c.name}</option>
 						{/each}
-					</select>
+					</Select>
 					{#if fieldError('customerId')}
 						<p class="mt-1 text-xs font-medium text-severity-critical-text">{fieldError('customerId')}</p>
 					{/if}
@@ -426,8 +427,8 @@
 						name="leistungszeitraum"
 						bind:value={leistungszeitraum}
 							oninput={() => (leistungszeitraumDirty = true)}
-						minlength="3"
-						maxlength="200"
+						minlength={3}
+						maxlength={200}
 						required
 						placeholder="z. B. „Februar 2026"
 						aria-invalid={fieldError('leistungszeitraum') ? 'true' : undefined}
@@ -461,8 +462,8 @@
 						name="bezeichnung"
 						bind:value={bezeichnung}
 						required
-						minlength="5"
-						maxlength="200"
+						minlength={5}
+						maxlength={200}
 						placeholder="z. B. Auftritt 12.05.2026"
 						aria-invalid={fieldError('bezeichnung') ? 'true' : undefined}
 						class={FIELD}
@@ -525,14 +526,14 @@
 				<label for="leistungsBeschreibung" class="mb-1 block text-[13px] font-semibold text-ink-700"
 					>Leistungsbeschreibung (optional)</label
 				>
-				<textarea
+				<Textarea
 					id="leistungsBeschreibung"
 					name="leistungsBeschreibung"
 					bind:value={leistungsBeschreibung}
-					maxlength="2000"
-					rows="3"
+					maxlength={2000}
+					rows={3}
 					class={cn(FIELD, 'h-auto min-h-24 resize-y py-2.5')}
-				></textarea>
+				></Textarea>
 			</div>
 		</div>
 
@@ -547,19 +548,18 @@
 					<label for="kategorieId" class="mb-1 block text-[13px] font-semibold text-ink-700"
 						>Kategorie <span class="text-primary-text">*</span></label
 					>
-					<select
+					<Select
 						id="kategorieId"
 						name="kategorieId"
 						bind:value={kategorieId}
 						required
 						aria-invalid={fieldError('kategorieId') ? 'true' : undefined}
-						class={FIELD}
 					>
 						<option value="" disabled>Kategorie wählen…</option>
 						{#each kategorien as k (k.id)}
 							<option value={k.id}>{k.name}</option>
 						{/each}
-					</select>
+					</Select>
 					{#if fieldError('kategorieId')}
 						<p class="mt-1 text-xs font-medium text-severity-critical-text">{fieldError('kategorieId')}</p>
 					{/if}
@@ -568,12 +568,12 @@
 					<label for="projectId" class="mb-1 block text-[13px] font-semibold text-ink-700"
 						>Projekt (optional)</label
 					>
-					<select id="projectId" name="projectId" bind:value={projectId} class={FIELD}>
+					<Select id="projectId" name="projectId" bind:value={projectId}>
 						<option value="">—</option>
 						{#each projects as p (p.id)}
 							<option value={p.id}>{p.name}</option>
 						{/each}
-					</select>
+					</Select>
 				</div>
 			</div>
 		</div>

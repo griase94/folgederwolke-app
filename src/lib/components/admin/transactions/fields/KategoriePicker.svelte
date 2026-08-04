@@ -18,13 +18,13 @@
 	 * Steuerberater later supplies Zeilen, the tab's option loader passes `eurZeile`
 	 * and the real number appears — no contract change needed.
 	 *
-	 * Native <select> (role=combobox) — kept dependency-free + AT-reachable; the
+	 * Native <Select> (role=combobox) — kept dependency-free + AT-reachable; the
 	 * A3 ui/combobox is reserved for the large filter pickers, this is a single
 	 * required field inside a dense form.
 	 */
 	import { type Sphere } from '$lib/domain/sphere.js';
+	import { Select } from '$lib/components/ui/select/index.js';
 	import SphereBadge from './SphereBadge.svelte';
-	import { FIELD_CLASS } from '$lib/components/ui/field-class/index.js';
 
 	/** A kategorie option; `eurZeile` is forward-compatible + NULL pre-launch (P44-04). */
 	export interface KategorieOption {
@@ -110,22 +110,20 @@
 	>
 		Kategorie{#if required}<span class="text-destructive" aria-hidden="true">&nbsp;*</span>{/if}
 	</label>
-	<!-- Aurora FIELD_CLASS on the select — unified h-11/rounded-[10px]/border-hairline.
-	     The inbox DecisionBand variant (hideLabel=true) previously used a different style
-	     but now shares the same FIELD_CLASS baseline. -->
-	<select
+	<!-- Kit-Select (SLOT-FELD): trägt die Feld-Baseline selbst, inklusive der
+	     Inbox-DecisionBand-Variante (hideLabel=true). -->
+	<Select
 		{id}
 		{name}
 		{required}
 		{value}
 		onchange={onSelect}
-		class={FIELD_CLASS}
 	>
 		<option value="">Kategorie wählen…</option>
 		{#each options as opt (opt.id)}
 			<option value={opt.id}>{opt.name}</option>
 		{/each}
-	</select>
+	</Select>
 
 	{#if derivedSphere && !hideSphere}
 		<!-- Derived Sphäre (§13 palette) — "Sphäre:" caption prefix (B4); the EÜR-Zeile hint only when a Zeile exists. -->

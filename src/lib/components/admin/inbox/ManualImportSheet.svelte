@@ -16,6 +16,8 @@
 	 * - Footer pinned with type-ausgabe accent strip.
 	 */
 	import { enhance } from '$app/forms';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Select } from '$lib/components/ui/select/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -232,17 +234,16 @@
 				{#if bezahltVonKind === 'member'}
 					<div class="space-y-1.5">
 						<Label for="mi-member-select">Vereinsmitglied</Label>
-						<select
+						<Select
 							id="mi-member-select"
 							name="member_id"
-							class="border-input bg-background focus-visible:ring-ring h-10 w-full rounded-md border px-3 py-2 text-base focus-visible:ring-2 focus-visible:outline-none md:text-sm"
 							onchange={onMemberSelect}
 						>
 							<option value="">— Mitglied wählen —</option>
 							{#each members as m (m.id)}
 								<option value={m.id} selected={m.id === memberId}>{m.display_name}</option>
 							{/each}
-						</select>
+						</Select>
 						{#if fieldErrors['member']}
 							<p class="text-destructive text-xs">{fieldErrors['member']}</p>
 						{/if}
@@ -369,15 +370,14 @@
 					<Label for="mi-kommentar"
 						>Kommentar <span class="text-muted-foreground font-normal">(optional)</span></Label
 					>
-					<textarea
+					<Textarea
 						id="mi-kommentar"
 						name="kommentar"
 						rows={3}
 						maxlength={1000}
 						placeholder="z.B. Papierkasse Sommerfest"
-						class="border-input bg-background focus-visible:ring-ring flex w-full rounded-md border px-3 py-2 text-base focus-visible:ring-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
 						bind:value={kommentar}
-					></textarea>
+					></Textarea>
 				</div>
 			</div>
 

@@ -13,6 +13,7 @@
 -->
 <script lang="ts">
 	import { Input } from '$lib/components/ui/input/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import type { CustomerView } from '$lib/server/domain/customers.js';
 	import { buildCustomerBriefblock } from '$lib/domain/customers.js';
 
@@ -78,8 +79,6 @@
 		}
 	});
 
-	const textareaClass =
-		'border-input bg-background focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-base leading-relaxed focus-visible:outline-none focus-visible:ring-2 sm:text-sm aria-invalid:border-destructive aria-invalid:ring-destructive/20';
 </script>
 
 <!-- required-field legend -->
@@ -261,14 +260,13 @@
 <!-- Notizen -->
 <div class="space-y-1.5">
 	<label for="{idPrefix}-notes" class="block text-sm font-medium text-ink-700">Notizen</label>
-	<textarea
+	<Textarea
 		id="{idPrefix}-notes"
 		name="notes"
-		rows="2"
-		class={textareaClass}
+		rows={2}
 		placeholder="Interne Notiz — erscheint nicht auf der Rechnung"
-		>{values?.notes ?? ''}</textarea
-	>
+		value={values?.notes ?? ''}
+	/>
 </div>
 
 <!-- sm+: dieselbe Preview STICKY am unteren Rand des Modal-Scroll-Containers
