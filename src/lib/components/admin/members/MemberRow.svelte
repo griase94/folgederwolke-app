@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { enhance, deserialize } from '$app/forms';
+	import { enhance } from '$app/forms';
 	import { toast } from 'svelte-sonner';
 	import { invalidateAll } from '$app/navigation';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import BeitragCell from './BeitragCell.svelte';
+	import MemberAvatar from './MemberAvatar.svelte';
 	import MarkPaidControl from './MarkPaidControl.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
 	import { currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
@@ -19,7 +20,8 @@
 		selectable = false,
 		selected = false,
 		bulkYear = null,
-		onToggleSelect
+		onToggleSelect,
+		onRemind
 	}: {
 		member: MemberView;
 		years: number[];
@@ -42,37 +44,13 @@
 		 */
 		bulkYear?: number | null;
 		onToggleSelect?: (id: string, checked: boolean) => void;
+		/**
+		 * C2/S3b: the kebab "Erinnerung senden" asks the screen to open the
+		 * consolidated Bulk-Reminder sheet pre-filtered to this member (single =
+		 * n=1) instead of POSTing — one reminder surface.
+		 */
+		onRemind?: (memberId: string) => void;
 	} = $props();
-
-	// Deterministic avatar color from name hash
-	function nameHash(s: string): number {
-		let h = 0;
-		for (let i = 0; i < s.length; i++) {
-			h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-		}
-		return Math.abs(h);
-	}
-
-	const avatarColors = [
-		'bg-rose-100 text-rose-900',
-		'bg-pink-100 text-pink-900',
-		'bg-fuchsia-100 text-fuchsia-900',
-		'bg-purple-100 text-purple-900',
-		'bg-violet-100 text-violet-900',
-		'bg-indigo-100 text-indigo-900',
-		'bg-sky-100 text-sky-900',
-		'bg-teal-100 text-teal-900',
-		'bg-emerald-100 text-emerald-900',
-		'bg-amber-100 text-amber-900'
-	];
-
-	function avatarColor(name: string): string {
-		return avatarColors[nameHash(name) % avatarColors.length] ?? avatarColors[0]!;
-	}
-
-	function initials(vorname: string, nachname: string): string {
-		return (vorname.charAt(0) ?? '') + (nachname.charAt(0) ?? '');
-	}
 
 	let dropdownOpen = $state(false);
 
@@ -139,40 +117,33 @@
 			currentYearDisplayState !== 'not_applicable_post_austritt',
 	);
 
-	async function sendReminder() {
+	function requestReminder() {
 		dropdownOpen = false;
-		if (!canRemind || currentYear === null) return;
-		const fd = new FormData();
-		fd.set('memberId', member.id);
-		fd.set('year', String(currentYear));
-		try {
-			const res = await fetch('?/send-reminder', { method: 'POST', body: fd });
-			const result = deserialize(await res.text());
-			if (result.type === 'success') {
-				toast.success(`Erinnerung an ${member.vorname} ${member.nachname} gesendet`);
-			} else if (result.type === 'failure') {
-				toast.error(
-					(result.data?.['error'] as string | undefined) ?? 'Erinnerung konnte nicht gesendet werden.',
-				);
-			} else {
-				toast.error('Erinnerung konnte nicht gesendet werden.');
-			}
-		} catch {
-			toast.error('Erinnerung konnte nicht gesendet werden.');
-		}
+		if (!canRemind) return;
+		// Hand off to the screen's consolidated Bulk-Reminder sheet (pre-filtered
+		// to this member) — no inline POST (C2/S3b).
+		onRemind?.(member.id);
 	}
 
 	// C3-DISC: the soft-delete form lives OUTSIDE the DropdownMenu.Content so
 	// it survives the menu's unmount-on-close.
 	let deleteFormEl = $state<HTMLFormElement | null>(null);
-	function confirmDelete() {
+	// C2/S3c: two-step "austragen" replaces the jarring native window.confirm.
+	// First kebab click arms (label → "Wirklich austragen?"), the second commits —
+	// a deliberate second gesture, no nested dialog. Disarms when the menu closes.
+	let austragenArmed = $state(false);
+	function handleAustragen() {
+		if (!austragenArmed) {
+			austragenArmed = true;
+			return;
+		}
+		austragenArmed = false;
 		dropdownOpen = false;
-		const ok = window.confirm(
-			`Mitglied "${member.vorname} ${member.nachname}" wirklich archivieren?`,
-		);
-		if (!ok) return;
 		queueMicrotask(() => deleteFormEl?.requestSubmit());
 	}
+	$effect(() => {
+		if (!dropdownOpen) austragenArmed = false;
+	});
 
 	// Bulk-select gate: enabled only when the bulk-year cell projects to "open".
 	function isSelectDisabledForBulk(): boolean {
@@ -208,12 +179,7 @@
 	{/if}
 
 	<!-- Avatar -->
-	<div
-		class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold {avatarColor(member.vorname + member.nachname)}"
-		aria-hidden="true"
-	>
-		{initials(member.vorname, member.nachname).toUpperCase()}
-	</div>
+	<MemberAvatar vorname={member.vorname} nachname={member.nachname} size="sm" />
 
 	<!-- Name + email -->
 	<div class="min-w-0 flex-1">
@@ -312,13 +278,14 @@
 					Bearbeiten
 				</DropdownMenu.Item>
 
-				<!-- Send reminder — only when a real open balance exists. -->
+				<!-- Send reminder — only when a real open balance exists. Opens the
+				     consolidated Bulk-Reminder sheet pre-filtered to this member. -->
 				<DropdownMenu.Item
 					data-testid="member-row-erinnerung"
 					disabled={!canRemind}
 					onSelect={(e) => {
 						e.preventDefault();
-						sendReminder();
+						requestReminder();
 					}}
 				>
 					<svg
@@ -340,17 +307,22 @@
 
 				<DropdownMenu.Separator />
 
-				<!-- Delete -->
+				<!-- Austragen: Kit destructive variant + two-step armed (no window.confirm,
+				     no hard delete). "Austragen" is the member soft-delete verb (Guidelines
+				     §5 Format-Kanon); the armed row-kebab is the sanctioned confirm for a
+				     soft-delete WITH an Undo-Snack (Guidelines §2.3-Ausnahme). -->
 				<DropdownMenu.Item
+					variant="destructive"
 					data-testid="member-row-loeschen"
-					class="text-destructive focus:text-destructive"
+					data-armed={austragenArmed ? 'true' : undefined}
+					class={austragenArmed ? 'font-semibold' : ''}
 					onSelect={(e) => {
 						e.preventDefault();
-						confirmDelete();
+						handleAustragen();
 					}}
 				>
 					<svg
-						class="h-4 w-4 text-destructive"
+						class="h-4 w-4"
 						fill="none"
 						viewBox="0 0 24 24"
 						stroke="currentColor"
@@ -363,7 +335,7 @@
 							d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
 						/>
 					</svg>
-					Löschen
+					{austragenArmed ? 'Wirklich austragen?' : 'Austragen'}
 				</DropdownMenu.Item>
 			</DropdownMenu.Content>
 		</DropdownMenu.Root>
@@ -379,7 +351,9 @@
 			const memberId = member.id;
 			return async ({ result }) => {
 				if (result.type === 'success') {
-					const toastId = toast.success('Mitglied archiviert', {
+					const toastId = toast.success(
+						`${member.vorname} ${member.nachname} ausgetragen`,
+						{
 						action: {
 							label: 'Rückgängig',
 							onClick: async () => {
@@ -396,7 +370,7 @@
 					await invalidateAll();
 				} else if (result.type === 'failure') {
 					toast.error(
-						(result.data?.['error'] as string | undefined) ?? 'Löschen fehlgeschlagen',
+						(result.data?.['error'] as string | undefined) ?? 'Austragen fehlgeschlagen',
 					);
 				}
 			};

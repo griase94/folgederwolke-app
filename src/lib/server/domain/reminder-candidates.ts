@@ -12,6 +12,18 @@
  *
  * The per-member `checkReminderAllowed` guard remains the authoritative gate at
  * send time (members-actions.ts); this loader is the LIST view of the same set.
+ *
+ * S4 #6 — no-satz-skip SYMMETRY with `matrix-loader`: both this loader and the
+ * Beitragsmatrix derive per-(member, year) state from the SAME canonical
+ * `resolveBeitragState`, so the missing-Beitragssatz handling is identical by
+ * construction — there is no separate skip rule to keep in sync. A no-row +
+ * no-satz member resolves to `betragCents=0` + `satzMissing=true` (pinned by
+ * beitrag-state.test); the matrix surfaces that as the "Satz fehlt" hint and
+ * this loader would list an openCents=0 candidate. In practice the Satz is
+ * seeded for every reachable year (migration 0026: 2020–2027), so the zero-basis
+ * edge never occurs; a resolver-level change to suppress it is deliberately
+ * out-of-scope (high blast radius across matrix/list/bericht/detail). Pinned by
+ * `beitrag-nosatz-symmetry.test`.
  */
 
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -108,6 +120,7 @@ export async function loadReminderCandidates(
     member: (typeof memberRows)[number];
     state: "open" | "partial" | "overdue";
     openCents: number;
+    betragCents: number;
   }[] = [];
   for (const m of memberRows) {
     const eintrittsJahr = m.eintrittsDatum
@@ -145,6 +158,7 @@ export async function loadReminderCandidates(
         member: m,
         state: resolved.state,
         openCents: Math.max(resolved.betragCents - resolved.paidCents, 0),
+        betragCents: resolved.betragCents,
       });
     }
   }
@@ -174,7 +188,7 @@ export async function loadReminderCandidates(
 
   const cutoffMs = Date.now() - REMINDER_DEDUP_DAYS * 24 * 60 * 60 * 1000;
   const candidates: ReminderCandidate[] = owing.map(
-    ({ member, state, openCents }) => {
+    ({ member, state, openCents, betragCents }) => {
       const lastReminderAt = lastByMember.get(member.id) ?? null;
       const recentlyReminded =
         lastReminderAt !== null &&
@@ -188,6 +202,7 @@ export async function loadReminderCandidates(
         email: member.email ?? null,
         state,
         openCents,
+        betragCents,
         lastReminderAt,
         selectable: blockedReason === null,
         blockedReason,

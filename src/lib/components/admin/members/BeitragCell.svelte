@@ -20,6 +20,8 @@
 	 *   lock is a decoration over the honest underlying state, never a dead state.
 	 */
 	import {
+		beitragCellTone,
+		beitragCellLabel,
 		popoverKindForState,
 		type CellState,
 		type PopoverKind,
@@ -77,49 +79,11 @@
 	const eur = (cents: number) =>
 		(cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
 
-	/** Short one-word label per state (the primary signal). */
-	const label = $derived.by(() => {
-		switch (state) {
-			case 'paid':
-				return 'Bezahlt';
-			case 'partial':
-				return 'Teilzahlung';
-			case 'open':
-			case 'overdue':
-				return 'Offen';
-			case 'exempt':
-			case 'permanently_exempt':
-				return 'Befreit';
-			default:
-				return '—';
-		}
-	});
-
-	/**
-	 * Tone classes per state — Aurora tokens + Tailwind palettes, NO hardcoded hex.
-	 * Amber (severity-warn) is reserved for overdue; open/partial carry the calm
-	 * --neutral-open family so a merely-open Beitrag never reads as a warning. Paid
-	 * uses the app-wide emerald paid-badge convention WITH a dark path (M1) so the
-	 * chip is not a static light-green stranded on the dark surface.
-	 */
-	const toneClass = $derived.by(() => {
-		switch (state) {
-			case 'paid':
-				return 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-500/15 dark:text-emerald-300';
-			case 'overdue':
-				return 'border-severity-warn/30 bg-severity-warn/10 text-severity-warn-text';
-			case 'open':
-			case 'partial':
-				return 'border-neutral-open/40 bg-neutral-open/12 text-open-ink';
-			case 'exempt':
-			case 'permanently_exempt':
-			case 'locked_year':
-				return 'border-hairline bg-ink-300/10 text-ink-500';
-			default:
-				// not_applicable_* → muted dash, no chrome
-				return 'text-ink-300';
-		}
-	});
+	// Short one-word label + tone come from the canonical state→X maps in
+	// `domain/beitrag-cell` — the single source of truth so the Matrix cell and
+	// the list/detail/card pill can never drift into two colour systems (S15).
+	const label = $derived(beitragCellLabel(state));
+	const toneClass = $derived(beitragCellTone(state));
 
 	const hasChrome = $derived(
 		state !== 'not_applicable_pre_join' && state !== 'not_applicable_post_austritt'

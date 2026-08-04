@@ -16,7 +16,12 @@ import {
   rateLimitAttempts,
 } from "$lib/server/db/schema/users.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
-import { sendMail } from "$lib/server/mail/index.js";
+import { bus } from "$lib/server/events/index.js";
+import {
+  reminderSendAttempt,
+  remindedMemberIdsForYear,
+  resolveReminderFrist,
+} from "$lib/server/domain/beitrag-reminder.js";
 import { verifyAuditChain } from "$lib/server/audit-log/verifier.js";
 import { berlinYear } from "$lib/domain/year.js";
 
@@ -140,10 +145,12 @@ export interface BeitragsreminderResult {
 }
 
 /**
- * Find members with open Beiträge for the current calendar year and send a
- * BeitragsReminder mail to each. Dedup is handled by the sent_mails UNIQUE
- * constraint — members who already received a reminder this year (same
- * entity_id + send_attempt=1) are silently skipped.
+ * Find members with open Beiträge for the current calendar year and dispatch a
+ * BeitragsReminder to each via the event bus (`beitrag.reminder_requested`) —
+ * the SAME send path as the manual single + Bulk actions (C2). Dedup is handled
+ * by the sent_mails UNIQUE constraint on the jahresbasierte send_attempt
+ * (`reminderSendAttempt`), so a member already reminded this year — whether by an
+ * earlier cron run OR a manual/Bulk send — is skipped (no double-send).
  *
  * "Open" means paid_cents < betrag_cents and the member has an email address.
  */
@@ -201,6 +208,21 @@ export async function dispatchBeitragsreminder(opts: {
       ),
     );
 
+  // C2: the reminder mail now goes through the SAME event-bus path as the manual
+  // single + Bulk actions (`beitrag.reminder_requested`), never inline sendMail
+  // (§4.1.1 #2). send_attempt is the shared jahresbasierte key (reminderSend
+  // Attempt), so cron + manual + Bulk dedup on ONE (member, year) sent_mails row
+  // — a member already reminded manually this year is skipped here, and vice
+  // versa (no double-send). {Frist} is resolved once from the year's Fälligkeit
+  // (§6.3), matching the manual/Bulk payload.
+  const fristAt = await resolveReminderFrist(currentYear);
+  const sendAttempt = reminderSendAttempt(currentYear);
+  const withEmail = openRows.filter((r) => r.email);
+  const alreadyReminded = await remindedMemberIdsForYear(
+    withEmail.map((r) => r.memberId),
+    currentYear,
+  );
+
   let sent = 0;
   let skipped = 0;
   let errors = 0;
@@ -210,33 +232,31 @@ export async function dispatchBeitragsreminder(opts: {
       skipped++;
       continue;
     }
+    // Already reminded for this (member, year) — by an earlier cron run OR by a
+    // manual/Bulk send. The sent_mails UNIQUE would dedup anyway; skipping here
+    // keeps the count honest and never re-fires.
+    if (alreadyReminded.has(row.memberId)) {
+      skipped++;
+      continue;
+    }
     try {
-      // B7 fix (ADR-0005): use year-based send_attempt so 2026 reminder is not
-      // deduped against the 2025 reminder. Formula: year - 2020 is monotonic
-      // (2025→5, 2026→6, …) and unique per year for the same (template, entity).
-      const sendAttempt = currentYear - 2020;
-      const result = await sendMail({
-        template: "beitrag_reminder",
-        entity_kind: "member",
-        entity_id: row.memberId,
+      await bus.emit("beitrag.reminder_requested", {
+        memberId: row.memberId,
+        year: currentYear,
         to: row.email,
-        send_attempt: sendAttempt,
-        props: {
-          vorname: row.vorname,
-          nachname: row.nachname,
-          jahr: currentYear,
-          betragCents: Number(row.betragCents),
-          iban: opts.iban,
-          bic: opts.bic,
-          bank: opts.bank,
-          empfaenger: opts.empfaenger,
-        },
+        vorname: row.vorname,
+        nachname: row.nachname,
+        betragCents: Number(row.betragCents),
+        iban: opts.iban,
+        bic: opts.bic,
+        bank: opts.bank,
+        empfaenger: opts.empfaenger,
+        fristAt,
+        customIntro: null,
+        sendAttempt,
+        actorUserId: null,
       });
-      if (result.deduped) {
-        skipped++;
-      } else {
-        sent++;
-      }
+      sent++;
     } catch (err) {
       console.error(
         `[cron/beitragsreminder] Failed to send reminder to member ${row.memberId}:`,

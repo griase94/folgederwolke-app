@@ -27,8 +27,21 @@ vi.mock("$lib/server/db/index.js", () => ({
   }),
 }));
 
-vi.mock("$lib/server/mail/index.js", () => ({
-  sendMail: vi.fn(),
+// C2: the cron emits `beitrag.reminder_requested` (no inline sendMail).
+const mockEmit = vi.fn().mockResolvedValue(undefined);
+vi.mock("$lib/server/events/index.js", () => ({
+  bus: { emit: mockEmit },
+  registerHandlers: () => undefined,
+}));
+
+// Isolate the DB-backed reminder helpers so this unit exercises only the cron's
+// selection + counting (the real send_attempt formula + the dedup are pinned by
+// beitrag-reminder-send-attempt.test + the integration test).
+const mockReminded = vi.fn().mockResolvedValue(new Set<string>());
+vi.mock("$lib/server/domain/beitrag-reminder.js", () => ({
+  reminderSendAttempt: (y: number) => y - 2020,
+  remindedMemberIdsForYear: mockReminded,
+  resolveReminderFrist: vi.fn().mockResolvedValue(null),
 }));
 
 // Phase 11: retryFailedDriveUploads removed — invoice PDFs now persist
@@ -93,8 +106,6 @@ const {
   dispatchBeitragsreminder,
 } = await import("$lib/server/domain/cron-tasks.js");
 
-const { sendMail } = await import("$lib/server/mail/index.js");
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -113,6 +124,9 @@ function makeDeleteChain(rowCount = 3) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Re-assert helper defaults after clear (no member pre-reminded by default).
+  mockReminded.mockResolvedValue(new Set<string>());
+  mockEmit.mockResolvedValue(undefined);
 });
 
 // ---------------------------------------------------------------------------
@@ -191,21 +205,17 @@ describe("dispatchBeitragsreminder", () => {
     };
     mockSelect.mockReturnValue(selectChain);
 
-    vi.mocked(sendMail).mockResolvedValue({
-      messageId: "msg-1",
-      deduped: false,
-    });
-
     const result = await dispatchBeitragsreminder(opts);
 
     expect(result.checked).toBe(1);
     expect(result.sent).toBe(1);
     expect(result.skipped).toBe(0);
     expect(result.errors).toBe(0);
-    expect(sendMail).toHaveBeenCalledOnce();
+    expect(mockEmit).toHaveBeenCalledOnce();
+    expect(mockEmit.mock.calls[0]?.[0]).toBe("beitrag.reminder_requested");
   });
 
-  it("counts deduped mails as skipped", async () => {
+  it("counts already-reminded members as skipped (no re-emit)", async () => {
     const openRows = [
       {
         memberId: "m-2",
@@ -224,14 +234,16 @@ describe("dispatchBeitragsreminder", () => {
     };
     mockSelect.mockReturnValue(selectChain);
 
-    vi.mocked(sendMail).mockResolvedValue({ messageId: null, deduped: true });
+    // m-2 already has a reminder for this (member, year) → pre-checked out.
+    mockReminded.mockResolvedValueOnce(new Set(["m-2"]));
 
     const result = await dispatchBeitragsreminder(opts);
     expect(result.sent).toBe(0);
     expect(result.skipped).toBe(1);
+    expect(mockEmit).not.toHaveBeenCalled();
   });
 
-  it("counts sendMail errors without throwing", async () => {
+  it("counts send errors without throwing (handler re-throws)", async () => {
     const openRows = [
       {
         memberId: "m-3",
@@ -250,7 +262,7 @@ describe("dispatchBeitragsreminder", () => {
     };
     mockSelect.mockReturnValue(selectChain);
 
-    vi.mocked(sendMail).mockRejectedValue(new Error("SMTP unavailable"));
+    mockEmit.mockRejectedValueOnce(new Error("SMTP unavailable"));
 
     const result = await dispatchBeitragsreminder(opts);
     expect(result.errors).toBe(1);
@@ -305,23 +317,19 @@ describe("dispatchBeitragsreminder", () => {
     };
     mockSelect.mockReturnValue(selectChain);
 
-    vi.mocked(sendMail).mockResolvedValue({
-      messageId: "msg-lena",
-      deduped: false,
-    });
-
     const result = await dispatchBeitragsreminder(opts);
 
-    // Only m1 is in the list → exactly one mail sent.
+    // Only m1 is in the list → exactly one mail emitted.
     expect(result.checked).toBe(1);
     expect(result.sent).toBe(1);
     expect(result.skipped).toBe(0);
     expect(result.errors).toBe(0);
 
-    // sendMail was called once and only for m1.
-    expect(sendMail).toHaveBeenCalledOnce();
-    expect(sendMail).toHaveBeenCalledWith(
-      expect.objectContaining({ entity_id: "m1-active" }),
+    // The reminder event was emitted once and only for m1.
+    expect(mockEmit).toHaveBeenCalledOnce();
+    expect(mockEmit).toHaveBeenCalledWith(
+      "beitrag.reminder_requested",
+      expect.objectContaining({ memberId: "m1-active" }),
     );
   });
 });

@@ -19,7 +19,9 @@ const FILES = [
   "src/lib/components/admin/projects/AddProjectDialog.svelte",
   "src/lib/components/admin/projects/EditProjectDialog.svelte",
   "src/lib/components/admin/transactions/TransactionEditForm.svelte",
-  "src/lib/components/admin/members/AddMemberDialog.svelte",
+  // C2/S3c: AddMemberDialog removed — the consolidated MemberDialog uses the
+  // DateField primitive for both dates (see MIGRATED_FILES), so no member dialog
+  // ships a native <input type="date"> any more.
   // Phase 8 T6: src/routes/app/transactions/neu/+page.svelte deleted.
   // The per-tab routes (ausgaben/neu, einnahmen/neu, spenden/neu) have their
   // own date inputs and should be audited separately if they use native date inputs.
@@ -40,7 +42,7 @@ const MIGRATED_FILES = [
   "src/routes/app/ausgaben/ueberweisungen/+page.svelte",
   "src/lib/components/forms/AuslagenForm.svelte",
   "src/lib/components/admin/invoices/InvoiceForm.svelte",
-  "src/lib/components/admin/members/EditMemberDialog.svelte",
+  "src/lib/components/admin/members/MemberDialog.svelte",
 ];
 
 describe('C9 UX-030 — every type="date" input has lang="de"', () => {

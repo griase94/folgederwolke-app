@@ -17,8 +17,15 @@ export type ReminderCandidate = {
   email: string | null;
   /** Only owing states reach the list. */
   state: "open" | "partial" | "overdue";
-  /** Soll − bezahlt (clamped ≥ 0). */
+  /** Soll − bezahlt (clamped ≥ 0). The row + summary show this ("offen"). */
   openCents: number;
+  /**
+   * The full year Beitrag (Soll). The reminder MAIL dunning shows this as
+   * {Betrag} (checkReminderAllowed → resolved.betragCents), so the sheet preview
+   * uses it too — keeping preview {Betrag} == the sent mail's {Betrag} even for
+   * partial payers (openCents < betragCents).
+   */
+  betragCents: number;
   /** ISO timestamp of the last beitrag_reminder, or null. */
   lastReminderAt: string | null;
   /** True when the member can be reminded (has e-mail, not recently reminded). */

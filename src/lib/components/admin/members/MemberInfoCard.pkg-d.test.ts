@@ -67,7 +67,6 @@ describe("MemberInfoCard — Package D", () => {
           betragCents: 6000,
           paidCents: 0,
           isLocked: false,
-          satzMissing: false,
         },
       },
     });
@@ -85,7 +84,6 @@ describe("MemberInfoCard — Package D", () => {
           betragCents: 6000,
           paidCents: 6000,
           isLocked: false,
-          satzMissing: false,
         },
       },
     });

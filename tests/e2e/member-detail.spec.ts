@@ -234,16 +234,15 @@ test.describe("@phase-3 Member detail — send reminder", () => {
 
     await btn.click();
 
-    // Sheet should be visible
-    await expect(page.locator("text=Erinnerungs-Mail vorbereiten")).toBeVisible(
-      { timeout: 3000 },
-    );
-
-    // Year selector should be present
-    await expect(page.locator("select#reminder-year")).toBeVisible();
-
-    // Mail senden button should exist
-    await expect(page.locator("button:has-text('Mail senden')")).toBeVisible();
+    // The consolidated Bulk-Reminder sheet opens (C2/S3b; the detail is the n=1
+    // case). The recipient (this member) is listed and the send CTA is present.
+    await expect(page.getByTestId("bulk-reminder-sheet")).toBeVisible({
+      timeout: 3000,
+    });
+    await expect(
+      page.getByTestId("reminder-recipient-row").first(),
+    ).toBeVisible();
+    await expect(page.getByTestId("bulk-reminder-send")).toBeVisible();
   });
 
   test("reminder sheet can be closed with Abbrechen", async ({ page }) => {
@@ -264,14 +263,14 @@ test.describe("@phase-3 Member detail — send reminder", () => {
     }
 
     await btn.click();
-    await expect(page.locator("text=Erinnerungs-Mail vorbereiten")).toBeVisible(
-      { timeout: 3000 },
-    );
+    await expect(page.getByTestId("bulk-reminder-sheet")).toBeVisible({
+      timeout: 3000,
+    });
 
     await page.click("button:has-text('Abbrechen')");
-    await expect(
-      page.locator("text=Erinnerungs-Mail vorbereiten"),
-    ).not.toBeVisible({ timeout: 3000 });
+    await expect(page.getByTestId("bulk-reminder-sheet")).not.toBeVisible({
+      timeout: 3000,
+    });
   });
 });
 
@@ -522,5 +521,124 @@ test.describe("@phase-member-zahlung detail F-d — ausgetreten muted", () => {
     const reminderBtn = page.locator("button:has-text('Erinnerung senden')");
     const reminderCount = await reminderBtn.count();
     expect(reminderCount).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Package F-e — S4 #1: server-resolved cells on the detail (real festBis +
+// Zoe-clamped overdue). Guards the fix where the detail recomputed state
+// client-side with festBis:null, so the pill never locked and the overdue days
+// were not the server's Zoe-clamped value.
+//
+// Isolated: snapshots + restores the GLOBAL festgeschrieben_bis setting and the
+// current-year Fälligkeit so nothing leaks to later specs.
+// ---------------------------------------------------------------------------
+const S4ONE_ID = "f0000000-0000-0000-0000-00000000ff05";
+const CUR_YEAR = new Date().getFullYear();
+
+async function s4db() {
+  const { default: postgres } = await import("postgres");
+  const url =
+    process.env["DIRECT_DATABASE_URL"] ?? process.env["DATABASE_URL"] ?? "";
+  return postgres(url, { prepare: false, max: 1 });
+}
+
+test.describe("@phase-member-zahlung detail F-e — S4 #1 festBis lock + overdue", () => {
+  let origFest: number | null = null;
+  let origFaell: string | null = null;
+
+  test.beforeAll(async () => {
+    if (!process.env["DATABASE_URL"]) return;
+    const sql = await s4db();
+    try {
+      const f =
+        await sql`SELECT value FROM settings WHERE key = 'festgeschrieben_bis'`;
+      const v = f[0]?.["value"];
+      origFest = typeof v === "number" ? v : v == null ? null : Number(v);
+      const s =
+        await sql`SELECT faelligkeit_at FROM beitragssatz_by_year WHERE year = ${CUR_YEAR}`;
+      const fa = s[0]?.["faelligkeit_at"];
+      origFaell = fa ? new Date(fa as string).toISOString().slice(0, 10) : null;
+    } finally {
+      await sql.end();
+    }
+  });
+
+  test.beforeEach(async () => {
+    if (!process.env["DATABASE_URL"]) test.skip();
+    const sql = await s4db();
+    try {
+      // Current-year Beitragssatz with a PAST Fälligkeit → an unpaid cell is overdue.
+      await sql`
+        INSERT INTO beitragssatz_by_year (year, cents, faelligkeit_at)
+        VALUES (${CUR_YEAR}, 6969, ${`${CUR_YEAR}-03-31`})
+        ON CONFLICT (year) DO UPDATE SET faelligkeit_at = ${`${CUR_YEAR}-03-31`}
+      `;
+      // Not festgeschrieben by default (the lock test overrides it per-test).
+      await sql`UPDATE settings SET value = to_jsonb(${CUR_YEAR - 2}::int) WHERE key = 'festgeschrieben_bis'`;
+      // Dedicated member: joined long ago (clamp = Fälligkeit), unpaid current year.
+      await sql`DELETE FROM member_beitrags WHERE member_id = ${S4ONE_ID}`;
+      await sql`DELETE FROM members WHERE id = ${S4ONE_ID}`;
+      await sql`
+        INSERT INTO members (id, vorname, nachname, email, role, eintritts_datum, is_fixture)
+        VALUES (${S4ONE_ID}, 'PkgF', 'S4One', 'pkgf.s4one@example.test', 'mitglied', '2020-01-01', true)
+      `;
+      await sql`
+        INSERT INTO member_beitrags (member_id, year, betrag_cents, paid_cents)
+        VALUES (${S4ONE_ID}, ${CUR_YEAR}, 6969, 0)
+      `;
+    } finally {
+      await sql.end();
+    }
+  });
+
+  test.afterAll(async () => {
+    if (!process.env["DATABASE_URL"]) return;
+    const sql = await s4db();
+    try {
+      await sql`DELETE FROM member_beitrags WHERE member_id = ${S4ONE_ID}`;
+      await sql`DELETE FROM members WHERE id = ${S4ONE_ID}`;
+      if (origFest === null) {
+        await sql`UPDATE settings SET value = 'null'::jsonb WHERE key = 'festgeschrieben_bis'`;
+      } else {
+        await sql`UPDATE settings SET value = to_jsonb(${origFest}::int) WHERE key = 'festgeschrieben_bis'`;
+      }
+      if (origFaell === null) {
+        await sql`UPDATE beitragssatz_by_year SET faelligkeit_at = NULL WHERE year = ${CUR_YEAR}`;
+      } else {
+        await sql`UPDATE beitragssatz_by_year SET faelligkeit_at = ${origFaell} WHERE year = ${CUR_YEAR}`;
+      }
+    } finally {
+      await sql.end();
+    }
+  });
+
+  test("overdue detail hero shows 'seit N Tagen überfällig' from the server cell", async ({
+    page,
+  }) => {
+    await signInF(page);
+    await page.goto(`/app/mitglieder/${S4ONE_ID}`);
+    const overdue = page.getByTestId("beitrags-hero-overdue");
+    await expect(overdue).toBeVisible();
+    await expect(overdue).toHaveText(/seit \d+ (Tag|Tagen) überfällig/);
+  });
+
+  test("festgeschriebenes current year renders the detail pill locked (real festBis)", async ({
+    page,
+  }) => {
+    // Festschreibe the current year → the server-resolved cell is isLocked, so the
+    // hero pill must carry data-locked. Before S4 #1 the client used festBis:null
+    // and the pill never locked.
+    const sql = await s4db();
+    try {
+      await sql`UPDATE settings SET value = to_jsonb(${CUR_YEAR}::int) WHERE key = 'festgeschrieben_bis'`;
+    } finally {
+      await sql.end();
+    }
+    await signInF(page);
+    await page.goto(`/app/mitglieder/${S4ONE_ID}`);
+    const pill = page.getByTestId("beitrag-status-pill").first();
+    await expect(pill).toBeVisible();
+    await expect(pill).toHaveAttribute("data-locked", "true");
   });
 });

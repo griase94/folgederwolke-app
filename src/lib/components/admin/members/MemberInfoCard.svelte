@@ -1,10 +1,10 @@
 <script lang="ts">
 	import * as Card from '$lib/components/ui/card/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import EditMemberDialog from './EditMemberDialog.svelte';
+	import MemberDialog from './MemberDialog.svelte';
+	import MemberAvatar from './MemberAvatar.svelte';
 	import BeitragCell from './BeitragCell.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
-	import type { ResolveBeitragStateResult } from '$lib/domain/beitrag-state.js';
 	import type { CellState } from '$lib/domain/beitrag-cell.js';
 	import { projectForList } from '$lib/domain/beitrag-state.js';
 
@@ -43,7 +43,17 @@
 			createdAt: string;
 		};
 		currentYear?: number | null;
-		currentYearState?: ResolveBeitragStateResult | null;
+		/**
+		 * S4 #1: the current-year cell state (server-resolved with the REAL festBis
+		 * — `isLocked` reflects Festschreibung). Narrowed to the fields the pill
+		 * uses so the caller can pass a plain cell-derived object.
+		 */
+		currentYearState?: {
+			state: CellState;
+			betragCents: number;
+			paidCents: number;
+			isLocked: boolean;
+		} | null;
 	} = $props();
 
 	let editOpen = $state(false);
@@ -66,36 +76,6 @@
 		};
 		return map[role] ?? role;
 	}
-
-	// Deterministic avatar color from name hash
-	function nameHash(s: string): number {
-		let h = 0;
-		for (let i = 0; i < s.length; i++) {
-			h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-		}
-		return Math.abs(h);
-	}
-
-	const avatarColors = [
-		'bg-rose-100 text-rose-900',
-		'bg-pink-100 text-pink-900',
-		'bg-fuchsia-100 text-fuchsia-900',
-		'bg-purple-100 text-purple-900',
-		'bg-violet-100 text-violet-900',
-		'bg-indigo-100 text-indigo-900',
-		'bg-sky-100 text-sky-900',
-		'bg-teal-100 text-teal-900',
-		'bg-emerald-100 text-emerald-900',
-		'bg-amber-100 text-amber-900',
-	];
-
-	const avatarColor = $derived(
-		avatarColors[nameHash(member.vorname + member.nachname) % avatarColors.length] ??
-			avatarColors[0]!,
-	);
-	const initials = $derived(
-		(member.vorname.charAt(0) ?? '') + (member.nachname.charAt(0) ?? ''),
-	);
 
 	function formatDate(d: string | null): string {
 		if (!d) return '—';
@@ -121,12 +101,7 @@
 	<Card.Content class="p-6">
 		<!-- Avatar + name row -->
 		<div class="mb-6 flex items-start gap-4">
-			<div
-				class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-xl font-bold shadow-sm {avatarColor}"
-				aria-hidden="true"
-			>
-				{initials.toUpperCase()}
-			</div>
+			<MemberAvatar vorname={member.vorname} nachname={member.nachname} size="lg" />
 			<div class="min-w-0 flex-1">
 				<h2 class="truncate text-xl font-bold text-foreground">
 					{member.vorname}
@@ -149,10 +124,11 @@
 					<!-- Package D: Fixture badge REMOVED (pre-launch data is disposable;
 					     fixture indicator adds noise to real admins). -->
 					{#if member.beitragExempt}
+						<!-- S12: no title= tooltip (unreachable on touch) — the exemption
+						     reason is rendered visibly in the paragraph below. -->
 						<span
 							data-testid="member-exempt-badge"
 							class="inline-flex items-center rounded-full border border-amber-200 bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900"
-							title={member.beitragExemptReason ?? ''}
 						>
 							Beitragsbefreit
 						</span>
@@ -175,6 +151,7 @@
 							year={currentYear}
 							paidCents={currentYearState.paidCents}
 							betragCents={currentYearState.betragCents}
+							isLocked={currentYearState.isLocked}
 							compact
 							exemptReason={member.beitragExemptReason}
 						/>
@@ -430,4 +407,4 @@
 	</Card.Content>
 </Card.Root>
 
-<EditMemberDialog bind:open={editOpen} member={memberView} />
+<MemberDialog bind:open={editOpen} mode="edit" member={memberView} />

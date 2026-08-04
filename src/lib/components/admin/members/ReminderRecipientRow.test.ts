@@ -15,6 +15,7 @@ function candidate(over: Partial<ReminderCandidate> = {}): ReminderCandidate {
     email: "jonas@example.de",
     state: "overdue",
     openCents: 6969,
+    betragCents: 6969,
     lastReminderAt: null,
     selectable: true,
     blockedReason: null,

@@ -299,6 +299,44 @@ export type Events = {
   "member.beitrag_paid": MemberEventPayload;
 
   /**
+   * A Beitrags-Erinnerung was requested for a Mitglied+year (manual single,
+   * Bulk sheet, or — once unified — the annual cron). The single registered
+   * handler resolves nothing itself: the CALLER pre-resolves everything (member
+   * facts, bank identity, Frist, custom intro, send_attempt) so the handler is a
+   * pure `sendMail` wrapper. The handler is CRITICAL (re-throws on failure, like
+   * `invoice.versendet`) so `bus.emit` surfaces the error to the action, which
+   * tallies a `failed` bucket for the honest send digest.
+   *
+   * Idempotency (ADR-0005): entity_id = memberId, `sendAttempt` is
+   * jahresbasiert (`reminderSendAttempt(year)` — see beitrag-reminder.ts) so
+   * cron + manual + Bulk share ONE `sent_mails` dedup key per (member, year).
+   * A double-POST of the same (member, year) collides on the UNIQUE index and
+   * is a no-op — but the emitting action ALSO pre-checks existence so the digest
+   * can report `skippedDeduped` rather than a false `sent`.
+   */
+  "beitrag.reminder_requested": {
+    memberId: string;
+    year: number;
+    /** Recipient email (the action guarantees non-null before emitting). */
+    to: string;
+    vorname: string;
+    nachname: string;
+    betragCents: number;
+    // ── Verein bank identity (env.VEREIN_*; the action refuses to emit when unset) ──
+    iban: string;
+    bic: string;
+    bank: string;
+    empfaenger: string;
+    /** Fälligkeit → the {Frist} clause (ISO YYYY-MM-DD, or null to omit it). */
+    fristAt: string | null;
+    /** Bulk-edited intro override (C2a); null → the standard sunny intro. */
+    customIntro: string | null;
+    /** ADR-0005 UNIQUE(template, entity_kind, entity_id, send_attempt). */
+    sendAttempt: number;
+    actorUserId: string | null;
+  };
+
+  /**
    * A previously-paid Beitrag year was reversed (storno). Emitted by
    * markBeitragUnpaid. Audit handler writes action='update' + kind='beitrag_unpaid'.
    *
