@@ -48,9 +48,9 @@
 		/**
 		 * Advisory Beleg-/Pflichtfeld readout in the footer (entry-modal-v4
 		 * `.gate-line`): amber „Fehlt noch: …" while required fields are missing,
-		 * green „Alles da." once complete. Purely informational — the server stays
-		 * the enforcer, so the CTA is NOT gated on this (only on `dirty`). Omit to
-		 * hide the readout.
+		 * green „Alles da." once complete. Der Server bleibt der Enforcer, die CTA
+		 * ist NICHT darauf gegated (nur auf `dirty`) — ein Klick bei offener Lücke
+		 * sendet nicht, sondern springt auf die erste Lücke. Omit to hide the readout.
 		 */
 		gateStatus?: { ok: boolean; text: string };
 	}
@@ -140,7 +140,32 @@
 	// missing. Fall back to `dirty` only when no gate is wired. The server is still
 	// the enforcer (a client-valid-but-server-invalid value, e.g. Betrag 0,00, can
 	// pass this gate and get a 422 back).
-	const ctaDisabled = $derived(submitting || (gateStatus ? !gateStatus.ok : !dirty));
+	// FormFooter-Doktrin (§4): der Primary ist NIE wegen fehlender Pflichtfelder
+	// gesperrt — „disabled buttons can't explain themselves". Gesperrt wird nur,
+	// wenn es NICHTS zu speichern gibt (!dirty) oder gerade gespeichert wird.
+	// Bis SLOT-FELD gate-te diese Zeile zusätzlich auf gateStatus.ok und
+	// widersprach damit dem eigenen Prop-Doc oben („die CTA ist NICHT darauf
+	// gegated"): die Gate-Zeile nannte die Lücke, der Button verweigerte trotzdem.
+	const ctaDisabled = $derived(submitting || !dirty);
+
+	/**
+	 * Klick bei offener Lücke: nicht absenden, sondern die erste Lücke FOKUSSIEREN.
+	 * Bevorzugt ein explizit markiertes `[data-missing="true"]` (die Konvention aus
+	 * ui/FormFooter); sonst das erste ungültige Control, damit auch Flächen ohne
+	 * Marker eine sinnvolle Sprungmarke haben statt eines stummen Nichts.
+	 */
+	function onSubmitClick(e: MouseEvent): void {
+		if (!gateStatus || gateStatus.ok) return;
+		e.preventDefault();
+		const form = (e.currentTarget as HTMLElement).closest('form');
+		const gap =
+			form?.querySelector<HTMLElement>('[data-missing="true"]') ??
+			form?.querySelector<HTMLElement>(
+				'input:invalid, select:invalid, textarea:invalid, [aria-invalid="true"]'
+			);
+		gap?.focus();
+		gap?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+	}
 
 	// M3: open with focus on the Betrag hero (not the × close). focusTrap moves
 	// focus to the first focusable (the × button) in a microtask on mount; a rAF
@@ -319,11 +344,14 @@
 					</button>
 					<button
 						type="submit"
+						onclick={onSubmitClick}
 						disabled={ctaDisabled}
 						aria-busy={submitting}
 						class="inline-flex h-11 min-h-11 flex-1 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 {ctaDisabled
 							? 'cursor-not-allowed bg-secondary text-ink-500'
-							: `${ctaColorClass} text-primary-foreground shadow-sm hover:brightness-105 active:brightness-95 dark:text-background`}"
+							: gateStatus && !gateStatus.ok
+								? `${ctaColorClass} text-primary-foreground opacity-70 shadow-sm`
+								: `${ctaColorClass} text-primary-foreground shadow-sm hover:brightness-105 active:brightness-95 dark:text-background`}"
 					>
 						<CheckIcon class="size-4" aria-hidden="true" />
 						{submitLabel}
