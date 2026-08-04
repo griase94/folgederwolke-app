@@ -225,6 +225,32 @@ export function feedKindsSupported(state: FilterState): Set<FeedKind> {
   return kinds;
 }
 
+/**
+ * S4 — whether the Einnahmen list can show Mitgliedsbeiträge under the current
+ * filters. The same honesty rule as the feed, applied to the two Einnahmen-tab
+ * fields a Beitrag cannot answer to: it has no Kategorie, and it can never have
+ * come from a Rechnung. Sphäre, Monat, Betrag and the search all work on it.
+ *
+ * When this returns false the Beiträge simply aren't in scope, and the list
+ * header says so rather than leaving the reader to wonder where they went.
+ */
+export function einnahmenIncludesBeitrag(state: FilterState): boolean {
+  if (state.enums["kategorie"]?.length) return false;
+  if (state.booleans["mitRechnung"]) return false;
+  return true;
+}
+
+/** Companion hint for {@link einnahmenIncludesBeitrag}; null when in scope. */
+export function einnahmenBeitragExclusionHint(
+  state: FilterState,
+): string | null {
+  if (state.booleans["mitRechnung"])
+    return "Mitgliedsbeiträge entstehen nie aus einer Rechnung — sie sind hier ausgeblendet.";
+  if (state.enums["kategorie"]?.length)
+    return "Mitgliedsbeiträge haben keine Kategorie — sie sind hier ausgeblendet.";
+  return null;
+}
+
 /** Arms actually queried: the `typ` chips narrowed by {@link feedKindsSupported}. */
 export function feedKindsSelected(state: FilterState): Set<FeedKind> {
   const supported = feedKindsSupported(state);

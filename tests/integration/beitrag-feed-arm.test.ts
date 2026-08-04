@@ -164,11 +164,12 @@ describe("S3 — Beiträge in the unified transactions feed", () => {
 
   it("excludes unpaid Beiträge — a debt is not a transaction", async () => {
     const db = getDb();
-    const [{ n }] = (await db.execute(sql`
+    const openRows = (await db.execute(sql`
       SELECT count(*)::int AS n FROM member_beitrags
        WHERE year = ${YEAR} AND (gezahlt_am IS NULL OR paid_cents = 0)
     `)) as unknown as Array<{ n: number }>;
-    expect(n).toBeGreaterThan(0); // the fixture really does have open Beiträge
+    // the fixture really does have open Beiträge
+    expect(openRows[0]!.n).toBeGreaterThan(0);
 
     const { rows } = await feed({ typ: "beitraege" });
     const paidRows = (await db.execute(sql`

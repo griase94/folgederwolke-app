@@ -26,6 +26,10 @@ export const KIND_LABEL: Record<string, string> = {
   income: "Einnahme",
   expense: "Ausgabe",
   donation: "Spende",
+  // S4 — paid Mitgliedsbeiträge ride along in the Einnahmen export. The own
+  // label is what lets a Kassenwart tell them apart in the CSV; without it they
+  // would read as ordinary Einnahmen that mysteriously have no Kategorie.
+  beitrag: "Mitgliedsbeitrag",
 };
 
 export const SPHERE_LABEL: Record<string, string> = {

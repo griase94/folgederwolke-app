@@ -15,9 +15,11 @@
  * Phase 4's `ausgaben-kpi.ts` discipline.
  */
 
-import { and, count, eq, isNull, sum } from "drizzle-orm";
+import { and, count, eq, isNotNull, isNull, sql, sum } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { income } from "$lib/server/db/schema/income.js";
+import { memberBeitrags } from "$lib/server/db/schema/members.js";
+import { beitragBuchungsjahr } from "./beitrag-buchungsjahr.js";
 import { SPHERES, type Sphere } from "$lib/domain/sphere.js";
 import { ALL_YEARS, type YearScope } from "$lib/domain/year.js";
 
@@ -82,8 +84,19 @@ export function foldSphereBuckets(rows: SphereGroupRow[]): EinnahmenKpi {
  *              `yearOfBuchung` (ADR-0001 Buchhaltungsjahr).
  *
  * One grouped query over `income` (sphere_snapshot → sum + count), excluding
- * superseded rows. The four-key `bySphere` fold guarantees every sphere is
- * present (0 when empty), `totalCents` = Σ buckets, `count` = Σ group counts.
+ * superseded rows, PLUS the paid Mitgliedsbeiträge of the same year (S4).
+ * The four-key `bySphere` fold guarantees every sphere is present (0 when
+ * empty), `totalCents` = Σ buckets, `count` = Σ group counts.
+ *
+ * The Beitrags arm is what makes this header agree with the Dashboard: both now
+ * read the same money. Before S4 the Dashboard's ideeller total counted paid
+ * Beiträge and this one did not, so clicking from the KPI into the list showed
+ * a visibly smaller number with no explanation. Beiträge are always ideeller
+ * (§§ 51-68 AO) and book by Zufluss, hence the same predicates the EÜR uses.
+ *
+ * Deliberately independent of the active list filters — like the feed's chip
+ * counts, this is the year anchor ("Jahr · Summe · N"), not a readout of the
+ * current filter.
  */
 export async function listEinnahmenKpi(year: YearScope): Promise<EinnahmenKpi> {
   const db = getDb();
@@ -99,15 +112,40 @@ export async function listEinnahmenKpi(year: YearScope): Promise<EinnahmenKpi> {
     ? and(yearPredicate, livePredicate)
     : livePredicate;
 
-  const rows = await db
-    .select({
-      sphere: income.sphereSnapshot,
-      sumCents: sum(income.betragCents),
-      n: count(),
-    })
-    .from(income)
-    .where(where)
-    .groupBy(income.sphereSnapshot);
+  const [rows, beitragRows] = await Promise.all([
+    db
+      .select({
+        sphere: income.sphereSnapshot,
+        sumCents: sum(income.betragCents),
+        n: count(),
+      })
+      .from(income)
+      .where(where)
+      .groupBy(income.sphereSnapshot),
+    db
+      .select({
+        sphere: sql<string>`'ideeller'`,
+        sumCents: sum(memberBeitrags.paidCents),
+        n: count(),
+      })
+      .from(memberBeitrags)
+      .where(
+        year === ALL_YEARS
+          ? and(
+              isNotNull(memberBeitrags.gezahltAm),
+              sql`${memberBeitrags.paidCents} > 0`,
+            )
+          : and(
+              sql`${beitragBuchungsjahr} = ${year}`,
+              isNotNull(memberBeitrags.gezahltAm),
+              sql`${memberBeitrags.paidCents} > 0`,
+            ),
+      ),
+  ]);
 
-  return foldSphereBuckets(rows);
+  // An empty Beitrags result still returns one row (a bare aggregate), with
+  // sumCents NULL and n = 0 — folding it is harmless, but dropping it keeps
+  // `count` honest for a year without any paid Beitrag.
+  const beitragGroups = beitragRows.filter((r) => Number(r.n) > 0);
+  return foldSphereBuckets([...rows, ...beitragGroups]);
 }

@@ -313,6 +313,8 @@ const baseEinnahmenRow: EinnahmenRow = {
   yearOfBuchung: 2024,
   festgeschriebenAt: null,
   rechnungBusinessId: null,
+  // A real income row; only synthesized Beitrags rows carry a Mitglied (S4).
+  memberId: null,
 };
 
 describe("buildTransactionsCsv — Einnahmen row", () => {
