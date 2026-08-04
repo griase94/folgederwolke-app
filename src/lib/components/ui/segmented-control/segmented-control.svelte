@@ -25,6 +25,15 @@
 		/** Accessible label for the radiogroup. */
 		ariaLabel?: string;
 		size?: "sm" | "default";
+		/**
+		 * `default` — the compact radiogroup used for filters and switches.
+		 * `lens`    — the Werkstatt's recessed-track view switcher (Abnahme #5):
+		 *             taller, touch-sized, and semantically TABS. Two lenses on
+		 *             the same data are views, not mutually exclusive values, so
+		 *             tablist/tab is the honest role — a radiogroup would tell a
+		 *             screen reader the user is picking a value.
+		 */
+		variant?: "default" | "lens";
 	};
 </script>
 
@@ -37,6 +46,7 @@
 		onChange,
 		ariaLabel,
 		size = "default",
+		variant = "default",
 		...restProps
 	}: SegmentedControlProps = $props();
 
@@ -98,14 +108,26 @@
 	bind:this={ref}
 	data-slot="segmented-control"
 	data-size={size}
-	role="radiogroup"
+	data-variant={variant}
+	role={variant === "lens" ? "tablist" : "radiogroup"}
 	aria-label={ariaLabel}
-	tabindex="0"
+	{...variant === "lens"
+		? // Tabs carry the roving tabindex themselves; a container tab-stop
+			// would make the switcher cost two Tab presses to walk past.
+			{}
+		: { tabindex: 0 }}
 	onkeydown={handleKeydown}
 	class={cn(
-		"bg-muted/60 border-border/60 ring-foreground/5 relative inline-flex items-center gap-0.5 rounded-lg border p-0.5 ring-1",
+		"relative inline-flex items-center gap-0.5 rounded-lg border p-0.5",
 		"focus-visible:ring-ring/50 focus-visible:outline-none focus-visible:ring-2",
-		size === "sm" ? "h-7 text-xs" : "h-8 text-sm",
+		variant === "lens"
+			? // Recessed track: the well sits BELOW the surface so the active
+				// segment reads as lifted out of it. No fixed height — the track
+				// grows around the buttons so their touch target is never eaten
+				// by the padding.
+				"rounded-[14px] border-hairline bg-secondary p-1 text-sm"
+			: "bg-muted/60 border-border/60 ring-foreground/5 ring-1",
+		variant === "default" && (size === "sm" ? "h-7 text-xs" : "h-8 text-sm"),
 		className
 	)}
 	{...restProps}
@@ -114,8 +136,9 @@
 		{@const selected = opt.value === value}
 		<button
 			type="button"
-			role="radio"
-			aria-checked={selected}
+			role={variant === "lens" ? "tab" : "radio"}
+			aria-checked={variant === "lens" ? undefined : selected}
+			aria-selected={variant === "lens" ? selected : undefined}
 			aria-label={opt.label}
 			disabled={opt.disabled}
 			data-value={opt.value}
@@ -123,9 +146,13 @@
 			tabindex={selected ? 0 : -1}
 			onclick={() => handleClick(opt)}
 			class={cn(
-				"relative inline-flex items-center justify-center gap-1 rounded-md font-medium transition-colors",
+				"relative inline-flex items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap transition-colors",
 				"focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
-				size === "sm" ? "h-6 px-2" : "h-7 px-3",
+				variant === "lens"
+					? "min-h-11 flex-1 rounded-[10px] px-4 md:min-h-10"
+					: size === "sm"
+						? "h-6 px-2"
+						: "h-7 px-3",
 				selected
 					? "bg-background text-foreground shadow-sm ring-1 ring-foreground/10"
 					: "text-muted-foreground hover:text-foreground"
