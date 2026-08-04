@@ -14,11 +14,14 @@
 	let {
 		candidate,
 		checked = $bindable(false),
+		onCheckedChange,
 		'data-testid': testId = 'reminder-recipient-row'
 	}: {
 		candidate: ReminderCandidate;
 		/** Bindable — meaningful only when the candidate is selectable. */
 		checked?: boolean;
+		/** Emitted on toggle — lets a parent drive selection from a Set (Bulk sheet). */
+		onCheckedChange?: (checked: boolean) => void;
 		'data-testid'?: string;
 	} = $props();
 
@@ -53,6 +56,7 @@
 	<input
 		type="checkbox"
 		bind:checked
+		onchange={() => onCheckedChange?.(checked)}
 		disabled={!candidate.selectable}
 		data-testid="{testId}-check"
 		class="h-4 w-4 shrink-0 accent-primary disabled:opacity-40"

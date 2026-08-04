@@ -97,6 +97,62 @@ export type PopoverKind =
   | "mini"
   | null;
 
+/**
+ * The ONE Beitrags-Chip state→tone mapping (S15 / DESIGN-DEBT-REGISTER).
+ *
+ * Single source of truth so the Matrix cell and the Liste/Detail/Karten pill can
+ * never drift into two colour systems again — "überfällig" was amber in the
+ * Matrix but rosa in the Liste before the BeitragCell consolidation. Follows the
+ * `transaction-status.ts` label+tone pattern (domain module owns presentation
+ * tone tokens).
+ *
+ * Aurora amber-discipline (flow-mitglieder red thread / §2 AC3): amber
+ * (severity-warn) is reserved for `overdue`; a merely-open/partial Beitrag
+ * carries the calm --neutral-open family and NEVER reads as a warning. `paid`
+ * uses the app-wide emerald paid convention WITH a dark path so the chip is not
+ * a static light-green stranded on a dark surface. Tokens only, no hardcoded hex.
+ */
+export function beitragCellTone(state: CellState): string {
+  switch (state) {
+    case "paid":
+      return "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-500/15 dark:text-emerald-300";
+    case "overdue":
+      return "border-severity-warn/30 bg-severity-warn/10 text-severity-warn-text";
+    case "open":
+    case "partial":
+      return "border-neutral-open/40 bg-neutral-open/12 text-open-ink";
+    case "exempt":
+    case "permanently_exempt":
+    case "locked_year":
+      return "border-hairline bg-ink-300/10 text-ink-500";
+    default:
+      // not_applicable_* → muted dash, no chrome
+      return "text-ink-300";
+  }
+}
+
+/**
+ * Short one-word label per state — the primary signal (text over glyph, WCAG
+ * 1.4.1). `partial` renders a fraction at the callsite, so its label here is
+ * only used for the compact sr-only case.
+ */
+export function beitragCellLabel(state: CellState): string {
+  switch (state) {
+    case "paid":
+      return "Bezahlt";
+    case "partial":
+      return "Teilzahlung";
+    case "open":
+    case "overdue":
+      return "Offen";
+    case "exempt":
+    case "permanently_exempt":
+      return "Befreit";
+    default:
+      return "—";
+  }
+}
+
 /** Map a CellState to the popover it opens on click. */
 export function popoverKindForState(state: CellState): PopoverKind {
   switch (state) {

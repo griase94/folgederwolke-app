@@ -341,9 +341,9 @@ These are _your_ legal statements now.
 
 - The **identity fields** (name, address, Vorstand, Registergericht, contact email,
   Aufsichtsbehörde) fill in automatically from your env vars. Confirm they're correct.
-- The **list of data processors** in the Datenschutzerklärung (hosting = Vercel,
-  database = Neon, mail provider, Google) is written for FdW's exact setup. **Edit it to
-  match yours.** The text lives in
+- The **list of data processors** in the Datenschutzerklärung (hosting + Beleg storage =
+  Vercel, database = Neon, mail provider, Google — encrypted Drive backups + legacy
+  Sheets import) is written for FdW's exact setup. **Edit it to match yours.** The text lives in
   `docs/legal/datenschutzerklaerung-versionen/` (newest `vN.md` file). An inline comment
   marks the processor block.
 - Remember the [prerender rule](#the-one-exception-worth-tattooing-on-your-hand-): after

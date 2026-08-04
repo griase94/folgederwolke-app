@@ -8,9 +8,11 @@
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import MemberList from '$lib/components/admin/members/MemberList.svelte';
 	import MemberMatrix from '$lib/components/admin/members/MemberMatrix.svelte';
-	import AddMemberDialog from '$lib/components/admin/members/AddMemberDialog.svelte';
-	import EditMemberDialog from '$lib/components/admin/members/EditMemberDialog.svelte';
+	import MemberDialog from '$lib/components/admin/members/MemberDialog.svelte';
+	import SendReminderBulkSheet from '$lib/components/admin/members/SendReminderBulkSheet.svelte';
+	import BulkMarkBar from '$lib/components/admin/members/BulkMarkBar.svelte';
 	import type { MemberView } from '$lib/domain/members.js';
+	import type { ReminderCandidate } from '$lib/domain/reminder-candidate.js';
 	import { projectForList } from '$lib/domain/beitrag-state.js';
 	import { berlinYmd, currentBuchungsjahr, clampYearToAvailable } from '$lib/domain/year.js';
 	import type { PageData } from './$types.js';
@@ -70,7 +72,12 @@
 			: filteredMembers.filter((m) => {
 					if (m.beitragExempt || m.austrittsDatum) return false;
 					const cell = cellMap.get(`${m.id}:${bulkYear}`);
-					return cell ? projectForList(cell.state) === 'open' : false;
+					// Owing = open (incl. overdue, folded by projectForList) or partial;
+					// festgeschriebene cells are read-only. Same gate as the MemberRow
+					// checkbox and the Matrix isBulkEligible so all three agree.
+					if (!cell || cell.isLocked) return false;
+					const proj = projectForList(cell.state);
+					return proj === 'open' || proj === 'partial';
 				})
 	);
 	const allSelectableSelected = $derived(
@@ -134,6 +141,26 @@
 		editMember = m;
 		editOpen = true;
 	}
+
+	// ── Reminder sheet (toolbar bulk + row/matrix ghost n=1) ─────────────────────
+	// The consolidated surface (C2/S3b): the toolbar opens it with ALL candidates;
+	// a row-kebab / matrix-cell ghost opens the SAME sheet pre-filtered to that one
+	// member (single = n=1). `reminderSubset=null` means "all".
+	let reminderOpen = $state(false);
+	let reminderSubset = $state<ReminderCandidate[] | null>(null);
+	const reminderSelectableCount = $derived(
+		data.reminderCandidates.filter((c) => c.selectable).length
+	);
+
+	function openReminderAll() {
+		reminderSubset = null;
+		reminderOpen = true;
+	}
+	function openReminderFor(memberId: string) {
+		const c = data.reminderCandidates.find((x) => x.memberId === memberId);
+		reminderSubset = c ? [c] : null;
+		reminderOpen = true;
+	}
 </script>
 
 <svelte:head>
@@ -150,21 +177,42 @@
 				{data.members.length === 1 ? 'Mitglied' : 'Mitglieder'}
 			</p>
 		</div>
-		<Button
-			onclick={() => (addOpen = true)}
-			class="bg-primary-strong text-primary-foreground hover:bg-primary-strong/90"
-		>
-			<svg
-				class="mr-2 h-4 w-4"
-				fill="none"
-				viewBox="0 0 24 24"
-				stroke="currentColor"
-				stroke-width="2"
+		<div class="flex items-center gap-2">
+			{#if reminderSelectableCount > 0}
+				<Button
+					variant="outline"
+					onclick={openReminderAll}
+					data-testid="members-remind-toggle"
+				>
+					<svg
+						class="mr-2 h-4 w-4"
+						fill="none"
+						viewBox="0 0 24 24"
+						stroke="currentColor"
+						stroke-width="2"
+						aria-hidden="true"
+					>
+						<path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+					</svg>
+					Erinnern ({reminderSelectableCount})
+				</Button>
+			{/if}
+			<Button
+				onclick={() => (addOpen = true)}
+				class="bg-primary-strong text-primary-foreground hover:bg-primary-strong/90"
 			>
-				<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-			</svg>
-			Mitglied hinzufügen
-		</Button>
+				<svg
+					class="mr-2 h-4 w-4"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke="currentColor"
+					stroke-width="2"
+				>
+					<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+				</svg>
+				Mitglied hinzufügen
+			</Button>
+		</div>
 	</div>
 
 	<!-- Controls: search + view toggle -->
@@ -249,10 +297,16 @@
 		</div>
 	</div>
 
-	<!-- Bulk-select control bar (list view only). On a phone this lives in the
-	     desktop row list, so the toggle is hidden < md to match. -->
-	{#if data.view === 'list' && data.members.length > 0}
-		<div class="mb-3 hidden items-center justify-between gap-3 md:flex">
+	<!-- Bulk-select control bar. The Liste's mobile cards carry no checkboxes, so
+	     list-mode bulk stays desktop-only (md:flex); the Matrix card-stack has
+	     selectable cells, so matrix-mode bulk shows at all widths. Both modes feed
+	     the SAME selectedIds + BulkMarkBar (brief §3b.5 „EIN Modell in beiden Modi"). -->
+	{#if data.members.length > 0}
+		<div
+			class="mb-3 {data.view === 'list'
+				? 'hidden md:flex'
+				: 'flex'} items-center justify-between gap-3"
+		>
 			{#if !selectMode}
 				<button
 					type="button"
@@ -266,11 +320,10 @@
 					Auswählen
 				</button>
 			{:else}
-				<div
-					class="flex w-full flex-wrap items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2.5"
-					role="region"
-					aria-label="Sammel-Aktion"
-				>
+				<!-- S4 #4: the docked BulkMarkBar (Kit DateField + „Heute" + emerald
+				     commit + gate-line) replaces the inline raw <input type=date> bar.
+				     The „Alle offenen"-Select-all stays as the bulk-select helper. -->
+				<div class="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
 					<Checkbox
 						size="sm"
 						checked={allSelectableSelected}
@@ -280,30 +333,15 @@
 					>
 						Alle offenen{bulkYear !== null ? ` (${bulkYear})` : ''}
 					</Checkbox>
-					<span class="text-sm text-muted-foreground" aria-live="polite">
-						{selectedIds.size} ausgewählt
-					</span>
-					<div class="ml-auto flex flex-wrap items-center gap-2">
-						<label class="flex items-center gap-1.5 text-xs text-muted-foreground">
-							<span>Bezahlt am</span>
-							<input
-								type="date"
-								lang="de"
-								bind:value={bulkDate}
-								disabled={bulkSubmitting}
-								class="min-h-9 rounded-md border border-border bg-background px-2 py-1 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 dark:bg-input/30"
-							/>
-						</label>
-						<Button
-							onclick={submitBulkPaid}
-							disabled={bulkSubmitting || bulkYear === null || selectedIds.size === 0}
-							data-testid="members-bulk-pay"
-						>
-							Als bezahlt markieren
-						</Button>
-						<Button variant="ghost" onclick={exitSelectMode} disabled={bulkSubmitting}>
-							Abbrechen
-						</Button>
+					<div class="min-w-0 flex-1">
+						<BulkMarkBar
+							count={selectedIds.size}
+							bind:gezahltAm={bulkDate}
+							submitting={bulkSubmitting}
+							onCommit={() => submitBulkPaid()}
+							onCancel={exitSelectMode}
+							data-testid="members-bulk"
+						/>
 					</div>
 				</div>
 			{/if}
@@ -312,7 +350,15 @@
 
 	<!-- Main view -->
 	{#if data.view === 'matrix'}
-		<MemberMatrix matrix={data.matrix} filter={data.filter} />
+		<MemberMatrix
+			matrix={data.matrix}
+			filter={data.filter}
+			onRemind={openReminderFor}
+			selectable={selectMode}
+			{selectedIds}
+			{bulkYear}
+			onToggleSelect={toggleSelect}
+		/>
 	{:else}
 		<MemberList
 			members={filteredMembers}
@@ -324,11 +370,20 @@
 			{bulkYear}
 			onToggleSelect={toggleSelect}
 			onEdit={openEdit}
+			onRemind={openReminderFor}
 			onAdd={() => (addOpen = true)}
 			onClearSearch={() => (searchQuery = '')}
 		/>
 	{/if}
 </div>
 
-<AddMemberDialog bind:open={addOpen} />
-<EditMemberDialog bind:open={editOpen} member={editMember} />
+<MemberDialog bind:open={addOpen} mode="add" />
+<MemberDialog bind:open={editOpen} mode="edit" member={editMember} />
+<SendReminderBulkSheet
+	bind:open={reminderOpen}
+	candidates={reminderSubset ?? data.reminderCandidates}
+	year={data.reminderYear}
+	vereinName={page.data.vereinName}
+	iban={data.reminderIban}
+	onSuccess={() => invalidateAll()}
+/>

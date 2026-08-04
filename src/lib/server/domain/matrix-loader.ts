@@ -74,6 +74,112 @@ async function getGraceDays(): Promise<number> {
   return 60;
 }
 
+// Exported so the member detail page can resolve its cells from the SAME
+// festBis/graceDays settings the matrix uses (S4 #1 — single source, no more
+// client-side festBis:null derivation).
+export { fetchFestgeschriebenBis, getGraceDays };
+
+/** Member fields resolveMemberCells needs (a subset of the members row). */
+export type MemberCellInput = {
+  id: string;
+  eintrittsDatum: string | null;
+  austrittsDatum: string | null;
+  beitragExempt: boolean;
+  beitragExemptReason: string | null;
+};
+type BeitragCellRow = {
+  betragCents: number | bigint;
+  paidCents: number | bigint;
+  isExempt: boolean | null;
+  gezahltAm: string | null;
+  notes: string | null;
+  exemptReason: string | null;
+};
+type SatzCellRow = { cents: number | bigint; faelligkeitAt: string | null };
+
+/**
+ * Resolve every (member, year) cell for ONE member — the SINGLE source of
+ * per-cell state shared by the Beitragsmatrix (all members, `loadMatrix`) and
+ * the member detail page (one member, `loadMemberCells`). Uses the canonical
+ * `resolveBeitragState` + the Zoe daysOverdue clamp (`max(Fälligkeit, Eintritt)`)
+ * so a mid-year joiner never shows inflated overdue days. The caller passes the
+ * REAL `festBis` — never null — so the detail pill correctly reflects
+ * Festschreibung (fixes the pre-existing client-side festBis:null bug).
+ */
+export function resolveMemberCells(
+  member: MemberCellInput,
+  years: number[],
+  getBeitrag: (year: number) => BeitragCellRow | undefined,
+  getSatz: (year: number) => SatzCellRow | undefined,
+  festBis: number | null,
+  graceDays: number,
+  todayDate: Date,
+): MatrixCell[] {
+  const eintrittsJahr = member.eintrittsDatum
+    ? parseInt(member.eintrittsDatum.slice(0, 4), 10)
+    : 0;
+  const austrittsJahr = member.austrittsDatum
+    ? parseInt(member.austrittsDatum.slice(0, 4), 10)
+    : null;
+
+  const out: MatrixCell[] = [];
+  for (const y of years) {
+    const dbRow = getBeitrag(y);
+    const satz = getSatz(y);
+
+    const beitragRow = dbRow
+      ? {
+          betragCents: Number(dbRow.betragCents),
+          paidCents: Number(dbRow.paidCents),
+          isExempt: dbRow.isExempt ?? false,
+          gezahltAm: dbRow.gezahltAm ?? null,
+        }
+      : null;
+
+    const resolved = resolveBeitragState({
+      year: y,
+      eintrittsJahr,
+      austrittsJahr,
+      beitragExempt: member.beitragExempt,
+      row: beitragRow,
+      satzCents: satz ? Number(satz.cents) : null,
+      festBis,
+      faelligkeit: satz?.faelligkeitAt ?? undefined,
+      graceDays,
+    });
+
+    let daysOverdue: number | null = null;
+    if (resolved.state === "overdue") {
+      const faelligkeitStr = satz?.faelligkeitAt ?? `${y}-03-31`;
+      const faelligkeitDate = new Date(`${faelligkeitStr}T00:00:00Z`);
+      const eintrittDate = member.eintrittsDatum
+        ? new Date(`${member.eintrittsDatum}T00:00:00Z`)
+        : null;
+      const clockStart =
+        eintrittDate && eintrittDate.getTime() > faelligkeitDate.getTime()
+          ? eintrittDate
+          : faelligkeitDate;
+      daysOverdue = daysBetween(clockStart, todayDate);
+    }
+
+    out.push({
+      memberId: member.id,
+      year: y,
+      state: resolved.state,
+      isLocked: resolved.isLocked,
+      betragCents: resolved.betragCents,
+      paidCents: resolved.paidCents,
+      gezahltAm: dbRow?.gezahltAm ?? null,
+      notes: dbRow?.notes ?? null,
+      exemptReason: member.beitragExempt
+        ? (member.beitragExemptReason ?? null)
+        : (dbRow?.exemptReason ?? null),
+      daysOverdue,
+    });
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // loadMatrix
 // ---------------------------------------------------------------------------
@@ -140,72 +246,17 @@ export async function loadMatrix(opts: {
   const cells: MatrixCell[] = [];
 
   for (const m of memberRows) {
-    const eintrittsJahr = m.eintrittsDatum
-      ? parseInt(m.eintrittsDatum.slice(0, 4), 10)
-      : 0;
-    const austrittsJahr = m.austrittsDatum
-      ? parseInt(m.austrittsDatum.slice(0, 4), 10)
-      : null;
-
-    for (const y of opts.years) {
-      const dbRow = beitragByMemberYear.get(`${m.id}:${y}`);
-      const satz = satzByYear.get(y);
-
-      // Shape the DB row into the BeitragRow the resolver expects.
-      const beitragRow = dbRow
-        ? {
-            betragCents: Number(dbRow.betragCents),
-            paidCents: Number(dbRow.paidCents),
-            isExempt: dbRow.isExempt ?? false,
-            gezahltAm: dbRow.gezahltAm ?? null,
-          }
-        : null;
-
-      const resolved = resolveBeitragState({
-        year: y,
-        eintrittsJahr,
-        austrittsJahr,
-        beitragExempt: m.beitragExempt,
-        row: beitragRow,
-        satzCents: satz ? Number(satz.cents) : null,
+    cells.push(
+      ...resolveMemberCells(
+        m,
+        opts.years,
+        (y) => beitragByMemberYear.get(`${m.id}:${y}`),
+        (y) => satzByYear.get(y),
         festBis,
-        faelligkeit: satz?.faelligkeitAt ?? undefined,
         graceDays,
-      });
-
-      // Compute daysOverdue for the UI annotation (only when state=overdue).
-      let daysOverdue: number | null = null;
-      if (resolved.state === "overdue") {
-        const faelligkeitStr = satz?.faelligkeitAt ?? `${y}-03-31`;
-        const faelligkeitDate = new Date(`${faelligkeitStr}T00:00:00Z`);
-        // Clamp the overdue clock to the LATER of Fälligkeit and the member's
-        // Eintritt: someone who joined AFTER the due date isn't overdue "since
-        // Fälligkeit" (Zoe case — a mid-year joiner must not show inflated days).
-        const eintrittDate = m.eintrittsDatum
-          ? new Date(`${m.eintrittsDatum}T00:00:00Z`)
-          : null;
-        const clockStart =
-          eintrittDate && eintrittDate.getTime() > faelligkeitDate.getTime()
-            ? eintrittDate
-            : faelligkeitDate;
-        daysOverdue = daysBetween(clockStart, todayDate);
-      }
-
-      cells.push({
-        memberId: m.id,
-        year: y,
-        state: resolved.state,
-        isLocked: resolved.isLocked,
-        betragCents: resolved.betragCents,
-        paidCents: resolved.paidCents,
-        gezahltAm: dbRow?.gezahltAm ?? null,
-        notes: dbRow?.notes ?? null,
-        exemptReason: m.beitragExempt
-          ? (m.beitragExemptReason ?? null)
-          : (dbRow?.exemptReason ?? null),
-        daysOverdue,
-      });
-    }
+        todayDate,
+      ),
+    );
   }
 
   // ── Year-header totals ─────────────────────────────────────────────────────

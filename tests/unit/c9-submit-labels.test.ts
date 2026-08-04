@@ -11,7 +11,9 @@ import { describe, expect, it } from "vitest";
 
 const CASES: Array<{ path: string; expectedLabel: string }> = [
   {
-    path: "src/lib/components/admin/members/AddMemberDialog.svelte",
+    // C2/S3c: AddMemberDialog + EditMemberDialog consolidated into MemberDialog
+    // (mode add|edit). The add CTA keeps the honest "Mitglied anlegen" label.
+    path: "src/lib/components/admin/members/MemberDialog.svelte",
     expectedLabel: "Mitglied anlegen",
   },
   {
@@ -40,9 +42,9 @@ describe("C9 UX-020 — honest submit-button labels", () => {
     });
   }
 
-  it("AddMemberDialog does NOT still use the generic 'Hinzufügen' label on its submit", () => {
+  it("MemberDialog does NOT still use the generic 'Hinzufügen' label on its submit", () => {
     const src = readFileSync(
-      `${process.cwd()}/src/lib/components/admin/members/AddMemberDialog.svelte`,
+      `${process.cwd()}/src/lib/components/admin/members/MemberDialog.svelte`,
       "utf-8",
     );
     // The submit button line should not contain "Hinzufügen" — search after the

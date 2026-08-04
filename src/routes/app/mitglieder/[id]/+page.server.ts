@@ -4,32 +4,43 @@
  * load()   → fetch member by id (404 if not found), all beitrags, activity feed,
  *             dedup-check for reminder mail (sent in last 30 days).
  * actions:
- *   ?/edit              — edit master data (shared with the list route)
- *   ?/delete            — soft-delete (sets austritts_datum = today)
- *   ?/mark-beitrag-paid — mark a member's beitrag year as fully paid
- *   ?/send-reminder     — send a BeitragsReminder mail (respects 30-day dedup)
+ *   ?/edit                — edit master data (shared with the list route)
+ *   ?/delete              — soft-delete (sets austritts_datum = today)
+ *   ?/mark-beitrag-paid   — mark a member's beitrag year as fully paid
+ *   ?/send-reminder-bulk  — BeitragsReminder via the consolidated Bulk sheet (n=1)
  *
  * Edit/delete/mark-paid logic lives in `$lib/server/domain/members-actions.ts`
  * so the same write paths run regardless of which route the form posts to.
  */
 
 import { error, fail } from "@sveltejs/kit";
-import { and, eq, gt, count, desc, inArray } from "drizzle-orm";
+import { and, eq, desc, inArray, sql } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
 import { auditLog } from "$lib/server/db/schema/audit_log.js";
+import { users } from "$lib/server/db/schema/users.js";
 import { sentMails } from "$lib/server/db/schema/mails.js";
 import {
   editMember,
   softDeleteMember,
   markBeitragPaid,
-  checkReminderAllowed,
+  sendBeitragReminderBulk,
 } from "$lib/server/domain/members-actions.js";
-import { sendMail } from "$lib/server/mail/index.js";
+import { loadReminderCandidates } from "$lib/server/domain/reminder-candidates.js";
+import {
+  resolveMemberCells,
+  fetchFestgeschriebenBis,
+  getGraceDays,
+} from "$lib/server/domain/matrix-loader.js";
+import { vereinBankIdentity } from "$lib/server/domain/beitrag-reminder.js";
 import { env } from "$lib/server/env.js";
-import { berlinYear, berlinYmd } from "$lib/domain/year.js";
+import {
+  berlinYear,
+  berlinYmd,
+  currentBuchungsjahr,
+} from "$lib/domain/year.js";
 import { assertUuidOr404 } from "$lib/domain/uuid.js";
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -58,9 +69,21 @@ export const load: PageServerLoad = async ({ params }) => {
     .orderBy(desc(memberBeitrags.year));
 
   // ── Fetch activity: audit_log entries for this member ────────────────────
+  // S4 #7: LEFT JOIN users for the actor name — COALESCE(u.name, u.email,
+  // 'System'). users.name is nullable today (real-name fill is the G-Lane
+  // mini-profil screen, Wave 4); the COALESCE falls back to the login e-mail so
+  // a later name-fill "shines through" without any change here.
   const auditRows = await db
-    .select()
+    .select({
+      id: auditLog.id,
+      occurredAt: auditLog.occurredAt,
+      action: auditLog.action,
+      actorKind: auditLog.actorKind,
+      payload: auditLog.payload,
+      actorName: sql<string>`COALESCE(${users.name}, ${users.email}, 'System')`,
+    })
     .from(auditLog)
+    .leftJoin(users, eq(users.id, auditLog.actorUserId))
     .where(and(eq(auditLog.entityKind, "member"), eq(auditLog.entityId, id)))
     .orderBy(desc(auditLog.occurredAt))
     .limit(50);
@@ -73,39 +96,40 @@ export const load: PageServerLoad = async ({ params }) => {
     .orderBy(desc(sentMails.queuedAt))
     .limit(50);
 
-  // ── 30-day reminder dedup check ──────────────────────────────────────────
-  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const recentReminderRows = await db
-    .select({ cnt: count() })
-    .from(sentMails)
-    .where(
-      and(
-        eq(sentMails.template, "beitrag_reminder"),
-        eq(sentMails.entityKind, "member"),
-        eq(sentMails.entityId, id),
-        gt(sentMails.queuedAt, cutoff),
-      ),
-    );
-
-  const reminderSentRecently = (recentReminderRows[0]?.cnt ?? 0) > 0;
-
   // ── Compute current year for hero + reminder defaults (ADR-0001) ─────────
   const currentYear = berlinYear();
+
+  // ── Bulk-Reminder candidate for THIS member (n=1) ─────────────────────────
+  // Reuse the single source (loadReminderCandidates) so the detail sheet matches
+  // the list exactly — same state resolution, 30-day dedup, and false-debt gate.
+  // Empty when the member owes nothing for the current Buchungsjahr.
+  const reminderYear = currentBuchungsjahr();
+  const reminderData = await loadReminderCandidates(reminderYear);
+  const reminderCandidates = reminderData.candidates.filter(
+    (c) => c.memberId === id,
+  );
+  const reminderIban = vereinBankIdentity()?.iban ?? null;
 
   // ── Org constants for mail preview ───────────────────────────────────────
   const mailFrom = env.MAIL_FROM;
 
-  // ── Package B: satzByYear — load Satz for all years member has a row in
-  //    plus the current year (so UI can show betragCents for no-row years) ─
+  // ── Package B: satzByYear — load Satz + Fälligkeit for all years the member
+  //    has a row in plus the current year (UI shows betragCents for no-row years;
+  //    Fälligkeit feeds the S4 #1 cell resolution). ─
   const beitragYears = [
     ...new Set([...beitragRows.map((b) => b.year), currentYear]),
   ];
-  let satzRows: { year: number; cents: bigint }[] = [];
+  let satzRows: {
+    year: number;
+    cents: bigint;
+    faelligkeitAt: string | null;
+  }[] = [];
   if (beitragYears.length > 0) {
     satzRows = await db
       .select({
         year: beitragssatzByYear.year,
         cents: beitragssatzByYear.cents,
+        faelligkeitAt: beitragssatzByYear.faelligkeitAt,
       })
       .from(beitragssatzByYear)
       .where(inArray(beitragssatzByYear.year, beitragYears));
@@ -113,24 +137,27 @@ export const load: PageServerLoad = async ({ params }) => {
   const satzByYear: Record<number, number> = {};
   for (const s of satzRows) satzByYear[s.year] = Number(s.cents);
 
-  // ── Find open beitrags (paidCents < betragCents, not exempt) ─────────────
-  // Package B: openYears uses row data only — no VEREIN_BEITRAG_DEFAULT_CENTS
-  // fabrication. A no-row year is handled by the canonical state resolver.
-  const currentYearBeitrag = beitragRows.find((b) => b.year === currentYear);
-  const openYears = beitragRows
-    .filter((b) => !b.isExempt && Number(b.paidCents) < Number(b.betragCents))
-    .map((b) => ({
-      year: b.year,
-      betragCents: Number(b.betragCents),
-      paidCents: Number(b.paidCents),
-    }));
+  // ── S4 #1: resolve the member's Beitrag cells SERVER-SIDE with the REAL
+  //    festBis (never client-side festBis:null). Single source — same
+  //    resolveMemberCells the Beitragsmatrix uses — so the detail pill reflects
+  //    Festschreibung (isLocked) and heroDaysOverdue is Zoe-clamped.
+  const [detailFestBis, detailGraceDays] = await Promise.all([
+    fetchFestgeschriebenBis(),
+    getGraceDays(),
+  ]);
+  const beitragByYear = new Map(beitragRows.map((b) => [b.year, b]));
+  const satzRowByYear = new Map(satzRows.map((s) => [s.year, s]));
+  const cells = resolveMemberCells(
+    member,
+    beitragYears,
+    (y) => beitragByYear.get(y),
+    (y) => satzRowByYear.get(y),
+    detailFestBis,
+    detailGraceDays,
+    new Date(`${berlinYmd()}T00:00:00Z`),
+  );
 
-  const defaultReminderYear = openYears[0]?.year ?? currentYear;
-  // betragCents for the reminder: use the open row's recorded amount (no fallback
-  // to VEREIN_BEITRAG_DEFAULT_CENTS — that was the false-debt fabrication removed
-  // in Package B). If there is no open row, fall back to satz or 0.
-  const defaultReminderBetragCents =
-    openYears[0]?.betragCents ?? satzByYear[currentYear] ?? 0;
+  const currentYearBeitrag = beitragRows.find((b) => b.year === currentYear);
 
   return {
     member: {
@@ -169,6 +196,7 @@ export const load: PageServerLoad = async ({ params }) => {
         occurredAt: a.occurredAt.toISOString(),
         action: a.action,
         actorKind: a.actorKind,
+        actorName: a.actorName,
         payload: a.payload as Record<string, unknown> | null,
       })),
       sentMails: mailRows.map((m) => ({
@@ -180,13 +208,16 @@ export const load: PageServerLoad = async ({ params }) => {
         sentAt: m.sentAt?.toISOString() ?? null,
       })),
     },
-    reminderSentRecently,
-    defaultReminderYear,
-    defaultReminderBetragCents,
+    reminderYear,
+    reminderCandidates,
+    reminderIban,
     mailFrom,
     currentYear,
     satzByYear,
-    openYears,
+    // S4 #1: server-resolved cells (real festBis) — the single source for the
+    // detail hero/pill state, isLocked (Festschreibung), and Zoe-clamped overdue.
+    cells,
+    festBis: detailFestBis,
     currentYearBeitrag: currentYearBeitrag
       ? {
           id: currentYearBeitrag.id,
@@ -282,95 +313,47 @@ export const actions: Actions = {
     return { action: "mark-beitrag-paid", success: true };
   },
 
-  // ── Send BeitragsReminder ─────────────────────────────────────────────────
-  // Package B: uses checkReminderAllowed to refuse 422 when the member owes
-  // nothing for the year (CARDINAL RULE — no false debt). VEREIN_BEITRAG_DEFAULT_CENTS
-  // fabrication removed; betragCents comes from the canonical state resolver.
-  "send-reminder": async ({ request, params }) => {
-    // F14: validate before memberId reaches the ::uuid cast in
-    // checkReminderAllowed (actions skip load()).
-    const memberId = assertUuidOr404(params.id, "Mitglied nicht gefunden");
+  // ── Send BeitragsReminder (Bulk endpoint; the detail bar posts n=1) ────────
+  // Consolidated on the same path as the list (Ruling C6a): the SendReminder
+  // BulkSheet on the detail page posts one selected recipient here. The
+  // false-debt guard + (member, year) dedup + event-bus dispatch live in
+  // sendBeitragReminderBulk.
+  "send-reminder-bulk": async ({ request, locals }) => {
+    const userId = locals.session?.user.id ?? null;
+    const userRole = locals.session?.user.role ?? null;
     const formData = await request.formData();
+    const memberIds = formData
+      .getAll("memberId")
+      .map((v) => v.toString())
+      .filter(Boolean);
     const yearStr = formData.get("year")?.toString() ?? "";
     const year = parseInt(yearStr, 10);
+    const fristAt = formData.get("fristAt")?.toString() || null;
+    const customIntro = formData.get("customIntro")?.toString() || null;
 
-    if (!memberId || isNaN(year)) {
-      return fail(400, {
-        action: "send-reminder",
-        error: "Ungültige Parameter",
+    const result = await sendBeitragReminderBulk({
+      memberIds,
+      year,
+      fristAt,
+      customIntro,
+      actorUserId: userId,
+      actorRole: userRole,
+    });
+    if (!result.ok) {
+      return fail(result.status, {
+        action: "send-reminder-bulk",
+        error: result.error,
       });
     }
 
-    // False-debt guard: refuse when member owes nothing for the year.
-    const guard = await checkReminderAllowed({ memberId, year });
-    if (!guard.allowed) {
-      return fail(guard.status, {
-        action: "send-reminder",
-        error: guard.error,
-      });
-    }
-
-    const { member, betragCents } = guard;
-
-    if (!member.email) {
-      return fail(422, {
-        action: "send-reminder",
-        error: "Keine E-Mail-Adresse hinterlegt",
-      });
-    }
-
-    // Org bank details — env.VEREIN_* is the only source of truth.
-    const iban = env.VEREIN_IBAN;
-    const bic = env.VEREIN_BIC;
-    const bank = env.VEREIN_BANK;
-    const empfaenger = env.VEREIN_NAME;
-    if (!iban || !bic || !bank || !empfaenger) {
-      return fail(500, {
-        action: "send-reminder",
-        error:
-          "Vereins-Bankdaten (VEREIN_IBAN / VEREIN_BIC / VEREIN_BANK / VEREIN_NAME) sind nicht konfiguriert.",
-      });
-    }
-
-    try {
-      const result = await sendMail({
-        template: "beitrag_reminder",
-        entity_kind: "member",
-        entity_id: memberId,
-        to: member.email,
-        props: {
-          vorname: member.vorname,
-          nachname: member.nachname,
-          jahr: year,
-          betragCents,
-          iban,
-          bic,
-          bank,
-          empfaenger,
-        },
-      });
-
-      if (result.deduped) {
-        return {
-          action: "send-reminder",
-          success: true,
-          deduped: true,
-          vorname: member.vorname,
-        };
-      }
-
-      return {
-        action: "send-reminder",
-        success: true,
-        deduped: false,
-        vorname: member.vorname,
-      };
-    } catch (err) {
-      console.error("send-reminder failed:", err);
-      return fail(500, {
-        action: "send-reminder",
-        error: "Mail konnte nicht gesendet werden",
-      });
-    }
+    return {
+      action: "send-reminder-bulk",
+      success: true,
+      sent: result.sent,
+      skippedNoMail: result.skippedNoMail,
+      skippedDeduped: result.skippedDeduped,
+      skippedNoDebt: result.skippedNoDebt,
+      failed: result.failed,
+    };
   },
 };

@@ -20,6 +20,7 @@
 		bulkYear = null,
 		onToggleSelect,
 		onEdit,
+		onRemind,
 		onAdd,
 		onClearSearch
 	}: {
@@ -39,6 +40,8 @@
 		bulkYear?: number | null;
 		onToggleSelect?: (id: string, checked: boolean) => void;
 		onEdit: (m: MemberView) => void;
+		/** Row kebab "Erinnerung senden" → open the Bulk sheet pre-filtered (C2/S3b). */
+		onRemind?: (memberId: string) => void;
 		/** Optional CTA — when provided the empty state renders an "anlegen" button. */
 		onAdd?: () => void;
 		/** Clears the active search from the "Keine Treffer" state. */
@@ -134,6 +137,7 @@
 					{years}
 					{cells}
 					{onEdit}
+					{onRemind}
 					{selectable}
 					selected={selectedIds?.has(member.id) ?? false}
 					{bulkYear}

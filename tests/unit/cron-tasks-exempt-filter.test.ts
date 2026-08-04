@@ -28,8 +28,16 @@ vi.mock("$lib/server/db/index.js", () => ({
   }),
 }));
 
-vi.mock("$lib/server/mail/index.js", () => ({
-  sendMail: vi.fn(),
+// C2: the cron emits `beitrag.reminder_requested` (no inline sendMail).
+const mockEmit = vi.fn().mockResolvedValue(undefined);
+vi.mock("$lib/server/events/index.js", () => ({
+  bus: { emit: mockEmit },
+  registerHandlers: () => undefined,
+}));
+vi.mock("$lib/server/domain/beitrag-reminder.js", () => ({
+  reminderSendAttempt: (y: number) => y - 2020,
+  remindedMemberIdsForYear: vi.fn().mockResolvedValue(new Set<string>()),
+  resolveReminderFrist: vi.fn().mockResolvedValue(null),
 }));
 
 // Drizzle operator pass-through stubs — preserve args so we can inspect them.
@@ -84,7 +92,6 @@ vi.mock("$lib/server/db/schema/members.js", () => ({
 
 const { dispatchBeitragsreminder } =
   await import("$lib/server/domain/cron-tasks.js");
-const { sendMail } = await import("$lib/server/mail/index.js");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -153,11 +160,6 @@ describe("dispatchBeitragsreminder — exempt-member filter (Blocker A)", () => 
       },
     ]);
 
-    vi.mocked(sendMail).mockResolvedValue({
-      messageId: "msg-anna",
-      deduped: false,
-    });
-
     await dispatchBeitragsreminder(baseOpts);
 
     // Inspect the WHERE predicate that was passed to the Drizzle builder.
@@ -201,11 +203,6 @@ describe("dispatchBeitragsreminder — exempt-member filter (Blocker A)", () => 
       },
     ]);
 
-    vi.mocked(sendMail).mockResolvedValue({
-      messageId: "msg-anna",
-      deduped: false,
-    });
-
     const result = await dispatchBeitragsreminder(baseOpts);
 
     // Exactly one candidate checked, one mail sent.
@@ -214,10 +211,11 @@ describe("dispatchBeitragsreminder — exempt-member filter (Blocker A)", () => 
     expect(result.skipped).toBe(0);
     expect(result.errors).toBe(0);
 
-    // sendMail called once, only for m1.
-    expect(sendMail).toHaveBeenCalledOnce();
-    expect(sendMail).toHaveBeenCalledWith(
-      expect.objectContaining({ entity_id: "m1", to: "anna@example.com" }),
+    // The reminder event was emitted once, only for m1.
+    expect(mockEmit).toHaveBeenCalledOnce();
+    expect(mockEmit).toHaveBeenCalledWith(
+      "beitrag.reminder_requested",
+      expect.objectContaining({ memberId: "m1", to: "anna@example.com" }),
     );
   });
 
@@ -228,6 +226,6 @@ describe("dispatchBeitragsreminder — exempt-member filter (Blocker A)", () => 
     const result = await dispatchBeitragsreminder(baseOpts);
 
     expect(result).toEqual({ checked: 0, sent: 0, skipped: 0, errors: 0 });
-    expect(sendMail).not.toHaveBeenCalled();
+    expect(mockEmit).not.toHaveBeenCalled();
   });
 });

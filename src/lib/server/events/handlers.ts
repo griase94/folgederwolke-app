@@ -653,6 +653,39 @@ export function registerHandlers(): void {
     },
   );
 
+  // ── beitrag.reminder_requested ──────────────────────────────────────────
+  // CRITICAL handler (re-throws, unlike the best-effort auslage mails): a send
+  // failure must surface to the emitting action so a Bulk digest can report the
+  // recipient as `failed` instead of a false `sent`. The caller pre-resolves
+  // every prop (member facts, bank identity, Frist, custom intro, send_attempt),
+  // so this handler is a pure sendMail wrapper — no DB lookup, no re-resolution.
+  // Idempotency is carried entirely by `send_attempt` (jahresbasiert, ADR-0005):
+  // a duplicate (member, year) key dedups at the sent_mails UNIQUE index.
+  bus.on<EventPayload<"beitrag.reminder_requested">>(
+    "beitrag.reminder_requested",
+    async (p) => {
+      await sendMail({
+        template: "beitrag_reminder",
+        entity_kind: "member",
+        entity_id: p.memberId,
+        send_attempt: p.sendAttempt,
+        to: p.to,
+        props: {
+          vorname: p.vorname,
+          nachname: p.nachname,
+          jahr: p.year,
+          betragCents: p.betragCents,
+          iban: p.iban,
+          bic: p.bic,
+          bank: p.bank,
+          empfaenger: p.empfaenger,
+          fristAt: p.fristAt,
+          customIntro: p.customIntro,
+        },
+      });
+    },
+  );
+
   // ── member.beitrag_unpaid ───────────────────────────────────────────────
   // Storno: a previously-paid Beitrag year was reversed. Re-throws on failure
   // (audit is critical — mirror the existing beitrag_paid handler pattern).

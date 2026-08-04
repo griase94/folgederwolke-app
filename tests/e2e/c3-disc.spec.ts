@@ -256,7 +256,7 @@ test.describe("@phase-9 C3-DISC kebab discoverability", () => {
     }
   });
 
-  test("MemberRow kebab → Löschen → member is soft-deleted (row stays, pay CTA hidden)", async ({
+  test("MemberRow kebab → Austragen (two-step) → member is soft-deleted (row stays, pay CTA hidden)", async ({
     page,
   }) => {
     await cleanupSeededMembers();
@@ -269,13 +269,14 @@ test.describe("@phase-9 C3-DISC kebab discoverability", () => {
     );
     await expect(row).toBeVisible({ timeout: 5_000 });
 
-    // Open the existing kebab (Aktionen für …) and click Löschen. Accept the
-    // native confirm dialog automatically.
-    page.once("dialog", (d) => {
-      void d.accept();
-    });
+    // Open the kebab (Aktionen für …) and austragen via the two-step armed item
+    // (C2/S3c replaced the native window.confirm): first click arms, the second
+    // commits the soft-delete.
     await row.locator('[aria-label*="Aktionen"]').first().click();
-    await page.getByTestId("member-row-loeschen").click();
+    const austragen = page.getByTestId("member-row-loeschen");
+    await austragen.click(); // arm
+    await expect(austragen).toHaveAttribute("data-armed", "true");
+    await austragen.click(); // confirm
 
     // After soft-delete the list reloads (invalidateAll). The member list does
     // NOT filter out ausgetreten members — the row stays visible. The redesign

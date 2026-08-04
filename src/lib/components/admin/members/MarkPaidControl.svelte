@@ -16,9 +16,10 @@
 	 *
 	 * The matrix does NOT use this — it owns an optimistic overlay and drives
 	 * CellPopover + BeitragCellDialog directly. The server actions
-	 * (?/mark-beitrag-paid, ?/set-beitrag-exempt, ?/send-reminder) are the single
-	 * source of truth and stay untouched; this is a client wrapper that posts to
-	 * them and reconciles via invalidateAll().
+	 * (?/mark-beitrag-paid, ?/set-beitrag-exempt) are the single source of truth
+	 * and stay untouched; this is a client wrapper that posts to them and
+	 * reconciles via invalidateAll(). The reminder ghost no longer POSTs — it
+	 * emits `onRemind` so the screen opens the consolidated Bulk sheet (C2/S3b).
 	 */
 	import type { Snippet } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
@@ -41,6 +42,7 @@
 		anchor = null,
 		actionBase = '',
 		onClose,
+		onRemind,
 		trigger
 	}: {
 		memberId: string;
@@ -72,12 +74,18 @@
 		anchor?: HTMLElement | null;
 		/**
 		 * Route prefix for the form-action POSTs. The member DETAIL route only
-		 * implements `mark-beitrag-paid` + `send-reminder`, so the timeline passes
+		 * implements a subset of mark-paid actions, so the timeline passes
 		 * `actionBase="/app/mitglieder"` to reach the list route's full action set.
 		 */
 		actionBase?: string;
 		/** Fired after the surface closes (e.g. to restore focus to the kebab). */
 		onClose?: () => void;
+		/**
+		 * C2/S3b: the "Erinnerung senden" ghost no longer POSTs — it asks the screen
+		 * to open the consolidated Bulk-Reminder sheet pre-filtered to this member
+		 * (single = n=1). The screen owns the sheet + the send.
+		 */
+		onRemind?: (memberId: string) => void;
 		/** Optional trigger element (the card renders its own pay button). */
 		trigger?: Snippet<[{ props: Record<string, unknown>; open: boolean }]>;
 	} = $props();
@@ -207,17 +215,11 @@
 		}
 	}
 
-	async function handleReminder(detail: { memberId: string; year: number }) {
+	function handleReminder(detail: { memberId: string; year: number }) {
+		// Consolidated (C2/S3b): close this popover and hand off to the screen's
+		// Bulk-Reminder sheet (pre-filtered to this member) — no inline POST.
 		open = false;
-		const result = await post('send-reminder', {
-			memberId: detail.memberId,
-			year: String(detail.year)
-		});
-		if (!result.ok) {
-			toast.error(result.error ?? 'Erinnerung konnte nicht gesendet werden.');
-			return;
-		}
-		toast.success(`Erinnerung an ${memberName} gesendet`);
+		onRemind?.(detail.memberId);
 	}
 
 	const sheetTitle = $derived(`${memberName} · ${year} · Beitrag bearbeiten`);

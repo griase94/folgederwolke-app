@@ -14,6 +14,7 @@
 	import { projectForList } from '$lib/domain/beitrag-state.js';
 	import type { CellState, MatrixCell } from '$lib/domain/beitrag-cell.js';
 	import BeitragCell from './BeitragCell.svelte';
+	import MemberAvatar from './MemberAvatar.svelte';
 	import MarkPaidControl from './MarkPaidControl.svelte';
 
 	let {
@@ -27,35 +28,6 @@
 		 *  of beitrag state (replaces the client-side resolveBeitragState). */
 		cells: ReadonlyMap<string, MatrixCell>;
 	} = $props();
-
-	function nameHash(s: string): number {
-		let h = 0;
-		for (let i = 0; i < s.length; i++) {
-			h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
-		}
-		return Math.abs(h);
-	}
-
-	const avatarColors = [
-		'bg-rose-100 text-rose-900',
-		'bg-pink-100 text-pink-900',
-		'bg-fuchsia-100 text-fuchsia-900',
-		'bg-purple-100 text-purple-900',
-		'bg-violet-100 text-violet-900',
-		'bg-indigo-100 text-indigo-900',
-		'bg-sky-100 text-sky-900',
-		'bg-teal-100 text-teal-900',
-		'bg-emerald-100 text-emerald-900',
-		'bg-amber-100 text-amber-900',
-	];
-
-	function avatarColor(name: string): string {
-		return avatarColors[nameHash(name) % avatarColors.length] ?? avatarColors[0]!;
-	}
-
-	function initials(vorname: string, nachname: string): string {
-		return (vorname.charAt(0) ?? '') + (nachname.charAt(0) ?? '');
-	}
 
 	// Package D: badge year = the actual current Buchungsjahr (ADR-0001),
 	// clamped into the supplied window.
@@ -102,12 +74,7 @@
 		class="flex min-w-0 flex-1 items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 		aria-label="{member.nachname}, {member.vorname} – Details öffnen"
 	>
-		<div
-			class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold {avatarColor(member.vorname + member.nachname)}"
-			aria-hidden="true"
-		>
-			{initials(member.vorname, member.nachname).toUpperCase()}
-		</div>
+		<MemberAvatar vorname={member.vorname} nachname={member.nachname} size="md" />
 
 		<div class="min-w-0 flex-1">
 			<p class="truncate font-medium text-foreground">{member.nachname}, {member.vorname}</p>
