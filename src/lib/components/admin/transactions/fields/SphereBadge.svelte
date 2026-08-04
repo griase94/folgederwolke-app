@@ -37,7 +37,7 @@
 		ideeller: 'bg-pink-600 dark:bg-pink-400',
 		vermoegen: 'bg-blue-600 dark:bg-blue-400',
 		zweckbetrieb: 'bg-violet-600 dark:bg-violet-400',
-		wirtschaftlich: 'bg-amber-500 dark:bg-amber-400',
+		wirtschaftlich: 'bg-amber-600 dark:bg-amber-400',
 	};
 </script>
 
