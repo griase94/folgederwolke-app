@@ -4,13 +4,16 @@
  * hooks.server.ts already gates /portal/** (session required; member_self_service
  * or an admin who is also a member). This load re-asserts defensively and
  * hydrates the display identity from the LINKED Mitglied row — never from the
- * client. The full IBAN never enters a portal payload (privacy rule §2.2b); the
- * masked form and the einreichen surface arrive in S2b.
+ * client. The full IBAN never enters a portal payload (privacy rule §2.2b):
+ * every portal surface — Willkommens-Karte, Profil, the Auslagen form's payout
+ * block — reads the MASKED form from here, and changing it means typing a new
+ * one (replace semantics).
  */
 
 import { redirect } from "@sveltejs/kit";
 import type { LayoutServerLoad } from "./$types.js";
 import { getActiveMemberById } from "$lib/server/auth/member-allowlist.js";
+import { maskIbanDisplay } from "$lib/domain/iban.js";
 
 export const load: LayoutServerLoad = async ({ locals }) => {
   const session = locals.session;
@@ -32,6 +35,8 @@ export const load: LayoutServerLoad = async ({ locals }) => {
       vorname: member.vorname,
       nachname: member.nachname,
       email: member.email,
+      // MASKED, never the stored value — this is the payload boundary.
+      maskedIban: maskIbanDisplay(member.iban),
     },
   };
 };

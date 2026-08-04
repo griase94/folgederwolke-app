@@ -107,12 +107,7 @@ export interface InboxSubmissionDetailView extends InboxSubmissionView {
 }
 
 /**
- * Mask an IBAN to "DE12 …3000" form (first 4 chars + last 4 chars).
- * Used by server projections before the value reaches the client.
+ * Mask an IBAN before it reaches the client. One implementation app-wide —
+ * see `maskIbanDisplay` in `$lib/domain/iban.ts`.
  */
-export function maskIban(iban: string | null | undefined): string | null {
-  if (!iban) return null;
-  const trimmed = iban.replace(/\s+/g, "");
-  if (trimmed.length <= 8) return trimmed;
-  return `${trimmed.slice(0, 4)} … ${trimmed.slice(-4)}`;
-}
+export { maskIbanDisplay as maskIban } from "$lib/domain/iban.js";

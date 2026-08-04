@@ -23,9 +23,18 @@
 		betragCents: number;
 		rechnungsdatum: string | null;
 		status: AuslageStatus;
+		/** Detail route (S2b). Omit for a plain display row. */
+		href?: string | null;
 	}
 
-	let { businessId, bezeichnung, betragCents, rechnungsdatum, status }: Props = $props();
+	let {
+		businessId,
+		bezeichnung,
+		betragCents,
+		rechnungsdatum,
+		status,
+		href = null
+	}: Props = $props();
 
 	const presentation = $derived(statusPresentation(status));
 
@@ -55,12 +64,7 @@
 	<AuslageStatusChip variant={presentation.chip} label={presentation.pill} />
 {/snippet}
 
-<div
-	class="flex items-center gap-3 px-4 py-3"
-	role="listitem"
-	data-testid="member-auslage-row"
-	data-status={status}
->
+{#snippet rowBody()}
 	<span
 		class="grid size-9 shrink-0 place-items-center self-start rounded-full bg-type-ausgabe-tint text-type-ausgabe sm:self-center [&_svg]:size-4"
 		aria-hidden="true"
@@ -91,4 +95,26 @@
 			{@render chipEl()}
 		</div>
 	</div>
+{/snippet}
+
+<!--
+	The listitem wraps the link rather than being it: an <a role="listitem">
+	would trade away the link semantics that make the row keyboard- and
+	screen-reader-navigable.
+-->
+<div role="listitem" data-testid="member-auslage-row" data-status={status}>
+	{#if href}
+		<!-- eslint-disable svelte/no-navigation-without-resolve -- caller-supplied in-app portal route -->
+		<a
+			{href}
+			class="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-secondary/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:-outline-offset-2 focus-visible:outline-none"
+			data-testid="member-auslage-link"
+		>
+			{@render rowBody()}
+		</a>
+	{:else}
+		<div class="flex items-center gap-3 px-4 py-3">
+			{@render rowBody()}
+		</div>
+	{/if}
 </div>

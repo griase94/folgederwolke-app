@@ -45,6 +45,14 @@ export const users = pgTable(
     memberId: uuid("member_id").references(() => members.id, {
       onDelete: "restrict",
     }),
+    /**
+     * When the member portal's one-time Willkommens-Karte (IBAN onboarding,
+     * Aurora A-flow S2b) was resolved (save | confirm | skip | replace). NULL =
+     * not yet shown/resolved → the card renders on the next /portal visit;
+     * once set the card never appears again (device-crossing, role-agnostic).
+     * "undecided ≠ declined" — only an explicit resolution stamps this.
+     */
+    welcomeSeenAt: timestamp("welcome_seen_at", { withTimezone: true }),
     disabledAt: timestamp("disabled_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

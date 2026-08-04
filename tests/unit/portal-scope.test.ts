@@ -13,9 +13,26 @@
 import { describe, it, expect } from "vitest";
 import { getDb } from "$lib/server/db/index.js";
 import { members } from "$lib/server/db/schema/members.js";
+import { users } from "$lib/server/db/schema/users.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 
 let seq = 0;
+
+/** The loader reads the user row (Willkommens-Karte), so it must be real. */
+async function seedUserFor(memberId: string) {
+  const db = getDb();
+  const email = `scope-user-${Date.now()}-${seq++}@portal.test`;
+  const [row] = await db
+    .insert(users)
+    .values({
+      email,
+      emailCanonical: email,
+      role: "member_self_service",
+      memberId,
+    })
+    .returning();
+  return row!;
+}
 
 async function seedMember(vorname: string) {
   const db = getDb();
@@ -52,10 +69,13 @@ async function seedSubmission(memberId: string, bezeichnung: string) {
 }
 
 async function loadPortal(memberId: string) {
+  const user = await seedUserFor(memberId);
   const { load } = await import("../../src/routes/portal/+page.server.js");
   const event = {
     locals: {
-      session: { user: { id: "u", role: "member_self_service", memberId } },
+      session: {
+        user: { id: user.id, role: "member_self_service", memberId },
+      },
     },
   };
   return (await load(event as never)) as unknown as {

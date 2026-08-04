@@ -25,12 +25,12 @@
  * `auslagen_submissions_beleg_or_grund_ck` enforces the either/or).
  */
 
-import { inArray, eq } from "drizzle-orm";
+import { and, inArray, eq } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
-import { members } from "$lib/server/db/schema/members.js";
 import { allocateBusinessIds } from "./id-allocator.js";
 import { composeBezahltVonDisplay, type BezahltVon } from "./auslagen.js";
+import { updateMemberIban } from "./member-iban.js";
 import { logAudit } from "$lib/server/audit-log/index.js";
 import { bus } from "$lib/server/events/index.js";
 import { berlinYear } from "$lib/domain/year.js";
@@ -41,6 +41,17 @@ import { berlinYear } from "$lib/domain/year.js";
  * source of truth so the domain backstop below and the UI stay in lockstep.
  */
 export const MAX_BATCH_ITEMS = 10;
+
+/**
+ * A submission_nonce is already taken by a row the caller may not resolve to
+ * (another member's submission). Reloading the form mints fresh nonces.
+ */
+export class NonceConflictError extends Error {
+  constructor() {
+    super("SUBMISSION_NONCE_CONFLICT");
+    this.name = "NonceConflictError";
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -86,6 +97,14 @@ export interface SubmitAuslagenBatchInput {
    * caller. Audited in-tx as a member update (kind='iban_updated').
    */
   memberIbanWrite?: { memberId: string; iban: string } | null;
+  /**
+   * Restrict nonce dedup to ONE member's rows. The member portal passes its
+   * session member so a nonce replayed from someone else's submission can
+   * never resolve to — and hand back — THEIR row. The public extern arm has no
+   * member to scope by and leaves this null (a nonce is a client-generated
+   * UUIDv4; global lookup is the intended behaviour there).
+   */
+  nonceScopeMemberId?: string | null;
   /** Digest EingangsMail recipient — null skips the mail (e.g. verein arm). */
   notifyEmail?: string | null;
   notifyVorname?: string;
@@ -102,6 +121,17 @@ export interface SubmitAuslagenBatchResult {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * The WHERE for a nonce lookup — optionally narrowed to one member's rows so a
+ * replayed foreign nonce cannot resolve to that member's submission.
+ */
+function nonceScope(nonces: string[], memberId?: string | null) {
+  const byNonce = inArray(auslagenSubmissions.submissionNonce, nonces);
+  return memberId
+    ? and(byNonce, eq(auslagenSubmissions.bezahltVonMemberId, memberId))
+    : byNonce;
+}
 
 /**
  * True if `err` is a Postgres unique-violation (23505) raised by the named
@@ -194,7 +224,7 @@ export async function submitAuslagenBatch(
               submissionNonce: auslagenSubmissions.submissionNonce,
             })
             .from(auslagenSubmissions)
-            .where(inArray(auslagenSubmissions.submissionNonce, nonces))
+            .where(nonceScope(nonces, input.nonceScopeMemberId))
         : [];
 
       const existingByNonce = new Map(
@@ -288,21 +318,17 @@ export async function submitAuslagenBatch(
         );
       }
 
-      // 5. Optional profile-IBAN write (Fall B/C) — in-tx so it commits with
-      //    the batch. The value is pre-normalized/validated by the caller.
+      // 5. Optional profile-IBAN write (Fall B/C) — delegated to the ONE member-
+      //    IBAN write path so normalize+validate+in-tx-audit stay identical
+      //    across all three callers (card, submit, profil). In-tx so it commits
+      //    with the batch (a failed/invalid write rolls the whole submit back).
       if (input.memberIbanWrite) {
-        await tx
-          .update(members)
-          .set({ iban: input.memberIbanWrite.iban, updatedAt: new Date() })
-          .where(eq(members.id, input.memberIbanWrite.memberId));
-        await logAudit(
+        await updateMemberIban(
           {
-            action: "update",
-            entityKind: "member",
-            entityId: input.memberIbanWrite.memberId,
+            memberId: input.memberIbanWrite.memberId,
+            rawIban: input.memberIbanWrite.iban,
             actorUserId: input.actorUserId ?? null,
-            actorKind,
-            payload: { kind: "iban_updated", source: "auslage_submit" },
+            source: "auslage_submit",
           },
           tx,
         );
@@ -333,7 +359,7 @@ export async function submitAuslagenBatch(
               submissionGroupId: auslagenSubmissions.submissionGroupId,
             })
             .from(auslagenSubmissions)
-            .where(inArray(auslagenSubmissions.submissionNonce, nonces))
+            .where(nonceScope(nonces, input.nonceScopeMemberId))
         : [];
       if (rows.length) {
         return {
@@ -347,6 +373,11 @@ export async function submitAuslagenBatch(
           deduped: true,
         };
       }
+      // The nonce exists but NOT within our scope — i.e. it belongs to another
+      // member. Refusing is the point (we must not hand back their row), but
+      // this is a client-side conflict, not a server fault: say so, so the
+      // caller can answer 409 instead of 500.
+      throw new NonceConflictError();
     }
     throw err;
   }

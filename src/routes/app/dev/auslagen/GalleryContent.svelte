@@ -21,6 +21,12 @@
 	import BatchStatusGroup from '$lib/components/public/BatchStatusGroup.svelte';
 	import AuslageBlock from '$lib/components/forms/AuslageBlock.svelte';
 	import BatchReviewList from '$lib/components/forms/BatchReviewList.svelte';
+	import BelegUpload from '$lib/components/forms/BelegUpload.svelte';
+	import LockedIdentity from '$lib/components/portal/LockedIdentity.svelte';
+	import PayoutBlock from '$lib/components/portal/PayoutBlock.svelte';
+	import IbanInlineEdit from '$lib/components/portal/IbanInlineEdit.svelte';
+	import WelcomeCard from '$lib/components/portal/WelcomeCard.svelte';
+	import SubmitHandoff from '$lib/components/portal/SubmitHandoff.svelte';
 
 	import Clock from '@lucide/svelte/icons/clock';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
@@ -111,6 +117,27 @@
 		{ clientKey: 'a1', title: 'Kuchen fürs Sommerfest', dateLabel: '04.07.2026', betragCents: 2490, belegOk: true },
 		{ clientKey: 'a2', title: 'Standmiete Flohmarkt', dateLabel: '06.07.2026', betragCents: 1490, belegOk: true },
 		{ clientKey: 'a3', title: 'Auslage 3', betragCents: null, incomplete: true }
+	];
+	// ── A-flow S2b · portal kit demo state ───────────────────────────────────
+	const DEMO_MASKED = 'DE12 •••• 4321';
+	// Live bindings so the gallery exercises the real interactive states.
+	let payoutEntryIban = $state('');
+	let payoutEntrySave = $state(true);
+	let payoutOverrideIban = $state('DE21 7015 0000 0123 4567 89');
+	let payoutOverrideSave = $state(false);
+	let payoutOverrideOpen = $state(true);
+	let payoutErrorIban = $state('DE44 5001 0517 5407 3249 9');
+	let payoutErrorSave = $state(true);
+	let belegKein = $state(false);
+	let belegGrund = $state('');
+
+	const handoffSingle = [
+		{ ausId: 'AUS-2026-0071', bezeichnung: 'Getränke fürs Sommerfest', betragCents: 2490, belegOk: true, belegName: 'bon_sommerfest.jpg' }
+	];
+	const handoffBatch = [
+		{ ausId: 'AUS-2026-0071', bezeichnung: 'Getränke fürs Sommerfest', betragCents: 2490, belegOk: true },
+		{ ausId: 'AUS-2026-0072', bezeichnung: 'Standmiete Flohmarkt', betragCents: 1490, belegOk: true },
+		{ ausId: 'AUS-2026-0073', bezeichnung: 'Kuchenzutaten', betragCents: 2390, belegOk: false }
 	];
 </script>
 
@@ -247,4 +274,86 @@
 		</div>
 	{/snippet}
 	{@render frame('StatusSplitShell (done tone)', shells)}
+	<h2 class="mt-14 mb-8 border-t border-hairline pt-8 text-2xl font-bold tracking-tight text-ink-900">
+		Portal-Kit · A-flow S2b
+	</h2>
+
+	{#snippet lockedIdentity()}
+		<div class="w-full max-w-md">
+			<LockedIdentity vorname="Anna" nachname="Müller" email="anna.mueller@web.de" confirm />
+		</div>
+	{/snippet}
+	{@render frame('LockedIdentity (confirm mode)', lockedIdentity)}
+
+	{#snippet payoutA()}
+		<div class="w-full max-w-md">
+			<PayoutBlock maskedIban={DEMO_MASKED} />
+		</div>
+	{/snippet}
+	{@render frame('PayoutBlock · Fall A — hinterlegtes Konto bestätigt', payoutA)}
+
+	{#snippet payoutB()}
+		<div class="w-full max-w-md">
+			<PayoutBlock maskedIban={null} bind:iban={payoutEntryIban} bind:saveToProfile={payoutEntrySave} />
+		</div>
+	{/snippet}
+	{@render frame('PayoutBlock · Fall B — keine Profil-IBAN (Speichern default an)', payoutB)}
+
+	{#snippet payoutC()}
+		<div class="w-full max-w-md">
+			<PayoutBlock
+				maskedIban={DEMO_MASKED}
+				bind:iban={payoutOverrideIban}
+				bind:saveToProfile={payoutOverrideSave}
+				bind:override={payoutOverrideOpen}
+			/>
+		</div>
+	{/snippet}
+	{@render frame('PayoutBlock · Fall C — abweichende IBAN für diese Einreichung', payoutC)}
+
+	{#snippet payoutErr()}
+		<div class="w-full max-w-md">
+			<PayoutBlock maskedIban={null} bind:iban={payoutErrorIban} bind:saveToProfile={payoutErrorSave} />
+		</div>
+	{/snippet}
+	{@render frame('PayoutBlock · IBAN-Format ungültig (live)', payoutErr)}
+
+	{#snippet welcome()}
+		<div class="w-full max-w-md"><WelcomeCard vorname="Anna" maskedIban={null} /></div>
+		<div class="w-full max-w-md"><WelcomeCard vorname="Anna" maskedIban={DEMO_MASKED} /></div>
+	{/snippet}
+	{@render frame('WelcomeCard · W1 (IBAN fehlt) + W2 (passt dein Konto noch?)', welcome)}
+
+	{#snippet ibanEdit()}
+		<div class="w-full max-w-md rounded-2xl border border-hairline bg-secondary px-4">
+			<IbanInlineEdit maskedIban={DEMO_MASKED} action="?/iban" />
+		</div>
+		<div class="w-full max-w-md rounded-2xl border border-hairline bg-secondary px-4">
+			<IbanInlineEdit maskedIban={null} action="?/iban" error="Das ist keine gültige IBAN — prüf Ländercode und Länge." />
+		</div>
+	{/snippet}
+	{@render frame('IbanInlineEdit · view / keine hinterlegt + Fehler', ibanEdit)}
+
+	{#snippet belegCanonical()}
+		<div class="w-full max-w-md">
+			<BelegUpload idPrefix="gal-a" bind:keinBeleg={belegKein} bind:begruendung={belegGrund} />
+		</div>
+		<div class="w-full max-w-md">
+			<BelegUpload idPrefix="gal-b" variant="segment" />
+		</div>
+		<div class="w-full max-w-md">
+			<BelegUpload idPrefix="gal-c" allowVerzicht={false} hint="Public: Beleg ist Pflicht, kein Verzicht-Arm." />
+		</div>
+	{/snippet}
+	{@render frame('BelegUpload (F3, kanonisch) · checkbox / segment / public', belegCanonical)}
+
+	{#snippet handoff()}
+		<div class="w-full max-w-md">
+			<SubmitHandoff vorname="Anna" items={handoffSingle} gesamtCents={2490} statusHref="#" />
+		</div>
+		<div class="w-full max-w-md">
+			<SubmitHandoff vorname="Anna" items={handoffBatch} gesamtCents={6370} statusHref="#" />
+		</div>
+	{/snippet}
+	{@render frame('SubmitHandoff · einzeln + Batch', handoff)}
 </div>

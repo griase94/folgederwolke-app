@@ -1,5 +1,6 @@
 <script lang="ts" module>
 	import { cn, type WithElementRef } from "$lib/utils.js";
+	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import type { HTMLAnchorAttributes, HTMLButtonAttributes } from "svelte/elements";
 	import { type VariantProps, tv } from "tailwind-variants";
 
@@ -42,6 +43,11 @@
 		WithElementRef<HTMLAnchorAttributes> & {
 			variant?: ButtonVariant;
 			size?: ButtonSize;
+			/**
+			 * Submit in flight: spinner + disabled + aria-busy, from one place
+			 * (DESIGN-GUIDELINES §2.1 — never copy the animate-spin SVG).
+			 */
+			loading?: boolean;
 		};
 </script>
 
@@ -54,22 +60,32 @@
 		href = undefined,
 		type = "button",
 		disabled,
+		loading = false,
 		children,
 		...restProps
 	}: ButtonProps = $props();
+
+	// A loading button is never clickable twice.
+	const isDisabled = $derived(disabled || loading);
 </script>
+
+{#snippet spinner()}
+	<LoaderCircle class="animate-spin" aria-hidden="true" />
+{/snippet}
 
 {#if href}
 	<a
 		bind:this={ref}
 		data-slot="button"
 		class={cn(buttonVariants({ variant, size }), className)}
-		href={disabled ? undefined : href}
-		aria-disabled={disabled}
-		role={disabled ? "link" : undefined}
-		tabindex={disabled ? -1 : undefined}
+		href={isDisabled ? undefined : href}
+		aria-disabled={isDisabled}
+		aria-busy={loading ? "true" : undefined}
+		role={isDisabled ? "link" : undefined}
+		tabindex={isDisabled ? -1 : undefined}
 		{...restProps}
 	>
+		{#if loading}{@render spinner()}{/if}
 		{@render children?.()}
 	</a>
 {:else}
@@ -78,9 +94,11 @@
 		data-slot="button"
 		class={cn(buttonVariants({ variant, size }), className)}
 		{type}
-		{disabled}
+		disabled={isDisabled}
+		aria-busy={loading ? "true" : undefined}
 		{...restProps}
 	>
+		{#if loading}{@render spinner()}{/if}
 		{@render children?.()}
 	</button>
 {/if}

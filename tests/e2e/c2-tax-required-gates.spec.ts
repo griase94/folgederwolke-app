@@ -77,10 +77,22 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     await datum.fill("04.07.2026");
     await datum.blur();
 
-    // The submit button stays disabled purely because Beleg is missing, and the
-    // footer gate names it (C2-TAX: no receipt-less Auslage).
-    await expect(page.getByTestId("auslage-submit")).toBeDisabled();
+    // C2-TAX holds: no receipt-less Auslage. The primary is no longer disabled
+    // for a missing field (DESIGN-GUIDELINES §4 — a disabled button cannot
+    // explain itself), so the gate is enforced by REFUSING the submit and
+    // pointing at the gap instead.
+    const submit = page.getByTestId("auslage-submit");
+    await expect(submit).toBeEnabled();
     await expect(page.getByTestId("einreichen-gate")).toContainText(/Beleg/);
+
+    await submit.click();
+
+    // Still on the form — the submission did NOT go through.
+    await expect(page).toHaveURL(/auslage-einreichen/);
+    await expect(page.getByTestId("auslage-submit")).toBeVisible();
+    // …and the missing Beleg is both named and focused.
+    await expect(page.getByTestId("einreichen-gate")).toContainText(/Beleg/);
+    await expect(page.getByTestId("beleg-pick")).toBeFocused();
   });
 
   test("ausgaben/neu submit blocked without Beleg (M4 gate: CTA disabled + gate-line names Beleg)", async ({
@@ -118,13 +130,15 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     }
     // Beleg deliberately left empty → now the ONLY missing gate.
 
-    // M4 state-matrix contract (mirrors the AuslagenForm toBeDisabled assertion
-    // above): the Beleg redesign replaced the native `required` (a hidden
+    // M4 state-matrix contract: the Beleg redesign replaced the native `required` (a hidden
     // custom-dropzone file input can't surface a focusable validation bubble)
     // with a client+server gate. With every OTHER required field filled, the CTA
     // stays disabled purely because Beleg is missing, and the footer gate-line
     // names it. The server 422 for a bypassed submit is proven by the
     // route-level unit tests in ausgaben-create.server.test.ts.
+    // NOTE: this is the ADMIN entry-modal footer, which still gates by
+    // disabling. The public/member AuslagenForm above no longer does — it
+    // refuses the submit and points at the gap instead (§4).
     const submit = page.locator(
       '[data-slot="entry-footer"] button[type="submit"]',
     );

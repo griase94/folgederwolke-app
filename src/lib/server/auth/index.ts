@@ -444,29 +444,27 @@ export async function resolveSession(
   // no effect for up to 30 days (the session absolute lifetime). Original admin
   // check flagged by the 2026-05-19 security review (CRIT-3); the member arm is
   // its S2a analogue. Stays awaited (correctness: must complete before return).
+  let revoked: boolean;
   if (joined.userRole === "admin") {
-    // Admin path — byte-identical to the original CRIT-3 re-check.
-    if (!isAdminEmail(joined.userEmailCanonical)) {
-      await db.delete(sessions).where(eq(sessions.id, row.id));
-      clearSessionCookie(cookies);
-      return null;
-    }
+    // Admin path — same condition as the original CRIT-3 re-check.
+    revoked = !isAdminEmail(joined.userEmailCanonical);
   } else if (joined.userRole === "member_self_service") {
-    // Member path — the session survives (unlike the old unconditional nuke of
-    // every non-admin), but dies the moment the bound Mitglied is deactivated
+    // Member path — survives (unlike the old unconditional nuke of every
+    // non-admin), but revoked the moment the bound Mitglied is deactivated
     // (past Austritt) or the FK is null. O(1) by member_id.
-    if (
-      !joined.userMemberId ||
-      !(await getActiveMemberById(joined.userMemberId))
-    ) {
-      await db.delete(sessions).where(eq(sessions.id, row.id));
-      clearSessionCookie(cookies);
-      return null;
-    }
+    revoked =
+      !joined.userMemberId || !(await getActiveMemberById(joined.userMemberId));
   } else {
     // Any other role (e.g. steuerberater) has no active allowlist path yet —
     // deny defensively rather than trust a stale row.
-    await db.delete(sessions).where(eq(sessions.id, row.id));
+    revoked = true;
+  }
+  if (revoked) {
+    // Revocation nukes ALL of the user's sessions by user_id (S2b hygiene) — a
+    // revoked account is logged out on every device at once, not just on the
+    // device that happened to make this request. The idle/absolute EXPIRY above
+    // stays per-row (that's per-session lifetime, not a revocation).
+    await db.delete(sessions).where(eq(sessions.userId, row.userId));
     clearSessionCookie(cookies);
     return null;
   }

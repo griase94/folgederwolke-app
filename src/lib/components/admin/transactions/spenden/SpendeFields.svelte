@@ -14,7 +14,7 @@
 -->
 <script lang="ts">
 	import { AmountField, DateField as HeroDateField } from '$lib/components/ui/hero-field/index.js';
-	import BelegUpload from '$lib/components/admin/transactions/fields/BelegUpload.svelte';
+	import BelegUpload from '$lib/components/forms/BelegUpload.svelte';
 	import LockedSphereField from '$lib/components/admin/transactions/fields/LockedSphereField.svelte';
 	import DerivedKategorieBadge from './DerivedKategorieBadge.svelte';
 	import FileCheckIcon from '@lucide/svelte/icons/file-check';

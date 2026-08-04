@@ -10,12 +10,19 @@
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
 	import Receipt from '@lucide/svelte/icons/receipt';
 	import Check from '@lucide/svelte/icons/check';
+	import Pencil from '@lucide/svelte/icons/pencil';
 
 	export interface BatchConfirmItem {
 		ausId: string;
 		bezeichnung: string;
 		betragCents: number;
 		belegOk?: boolean;
+		/**
+		 * 'verzicht' → the row shows a quiet neutral marker instead of the green
+		 * Beleg tick. A documented Verzicht is a legitimate outcome, so the slot
+		 * must not read as "something is missing here".
+		 */
+		belegMode?: 'file' | 'verzicht';
 	}
 
 	export interface BatchConfirmGroupProps {
@@ -62,6 +69,13 @@
 						{#if item.belegOk}
 							<span class="inline-flex items-center gap-1 text-[11px] font-semibold text-type-einnahme [&_svg]:size-3">
 								<Check aria-hidden="true" />Beleg
+							</span>
+						{:else if item.belegMode === 'verzicht'}
+							<span
+								class="inline-flex items-center gap-1 text-[11px] font-medium text-ink-500 [&_svg]:size-3"
+								data-testid="bcg-verzicht"
+							>
+								<Pencil aria-hidden="true" />Verzicht begründet
 							</span>
 						{/if}
 					</span>
