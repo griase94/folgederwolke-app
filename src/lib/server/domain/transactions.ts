@@ -26,7 +26,11 @@ import { members } from "$lib/server/db/schema/members.js";
 import { bus } from "$lib/server/events/index.js";
 import type { YearScope } from "$lib/domain/year.js";
 import { isUuid } from "$lib/domain/uuid.js";
-import type { FilterState } from "$lib/domain/transaction-filters.js";
+import {
+  feedKindsSelected,
+  feedKindsSupported,
+  type FilterState,
+} from "$lib/domain/transaction-filters.js";
 import {
   buildAusgabenWhere,
   buildEinnahmenWhere,
@@ -689,24 +693,15 @@ interface RawFeedRow extends Record<string, unknown> {
   year_of_buchung: number | null;
 }
 
-const FEED_TYP_TO_KIND: Record<string, TransactionKind> = {
-  ausgaben: "expense",
-  einnahmen: "income",
-  spenden: "donation",
-};
-
 export async function listTransaktionenFeedPage(
   opts: FeedPageOptions,
 ): Promise<FeedPage> {
   const db = getDb();
-  const typVals = opts.state.enums["typ"] ?? [];
-  const wanted = new Set<TransactionKind>(
-    typVals.length
-      ? typVals.flatMap((t) =>
-          FEED_TYP_TO_KIND[t] ? [FEED_TYP_TO_KIND[t]!] : [],
-        )
-      : (["expense", "income", "donation"] as TransactionKind[]),
-  );
+  // Which UNION arms to include: the `typ` chips, narrowed by the honesty rule
+  // (a filter field that cannot describe an arm removes it — see
+  // feedKindsSupported). Both this query and the chip counts read the same
+  // helper, so an excluded arm's chip is a truthful 0.
+  const wanted = feedKindsSelected(opts.state) as Set<TransactionKind>;
 
   const arms: SQL[] = [];
 
@@ -876,11 +871,25 @@ export async function countTransaktionenFeedByKind(opts: {
   const db = getDb();
   const whereOf = (conds: SQL[]): SQL =>
     conds.length ? and(...conds)! : sql`TRUE`;
-  const arms: SQL[] = [
-    sql`SELECT 'expense'::text AS kind FROM ${expenses} WHERE ${whereOf(buildAusgabenWhere(opts.state, opts.year))}`,
-    sql`SELECT 'income'::text AS kind FROM ${income} WHERE ${whereOf(buildEinnahmenWhere(opts.state, opts.year))}`,
-    sql`SELECT 'donation'::text AS kind FROM ${donations} WHERE ${whereOf(buildSpendenWhere(opts.state, opts.year))}`,
-  ];
+  // `typ` is ignored on purpose (a chip must show its own full count), but the
+  // honesty rule is NOT: an arm a filter cannot describe counts 0, so the chip
+  // agrees with the empty result the user would get by clicking it.
+  const supported = feedKindsSupported(opts.state);
+  const arms: SQL[] = [];
+  if (supported.has("expense"))
+    arms.push(
+      sql`SELECT 'expense'::text AS kind FROM ${expenses} WHERE ${whereOf(buildAusgabenWhere(opts.state, opts.year))}`,
+    );
+  if (supported.has("income"))
+    arms.push(
+      sql`SELECT 'income'::text AS kind FROM ${income} WHERE ${whereOf(buildEinnahmenWhere(opts.state, opts.year))}`,
+    );
+  if (supported.has("donation"))
+    arms.push(
+      sql`SELECT 'donation'::text AS kind FROM ${donations} WHERE ${whereOf(buildSpendenWhere(opts.state, opts.year))}`,
+    );
+  if (arms.length === 0)
+    return { expense: 0, income: 0, donation: 0, total: 0 };
   const rows = await db.execute<{ kind: string; n: number }>(
     sql`SELECT kind, count(*)::int AS n FROM (${sql.join(arms, sql` UNION ALL `)}) AS feed GROUP BY kind`,
   );

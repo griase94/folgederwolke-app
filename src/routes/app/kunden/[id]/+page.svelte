@@ -3,6 +3,7 @@
 	import { replaceState, invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import PageShell from '$lib/components/layout/PageShell.svelte';
+	import PageHeader from '$lib/components/layout/PageHeader.svelte';
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
 	import CustomerDetailHero from '$lib/components/admin/customers/CustomerDetailHero.svelte';
 	import CustomerInfoCard from '$lib/components/admin/customers/CustomerInfoCard.svelte';
@@ -97,16 +98,7 @@
 </svelte:head>
 
 <PageShell width="list">
-	<!-- breadcrumb -->
-	<nav class="mb-4 flex items-center gap-2 text-sm text-ink-500" aria-label="Brotkrümel">
-		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-		<a href="/app/kunden" class="inline-flex items-center gap-1 font-semibold text-ink-700 hover:text-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
-			<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 18l-6-6 6-6" /></svg>
-			Kunden
-		</a>
-		<svg class="h-3.5 w-3.5 text-ink-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 18l6-6-6-6" /></svg>
-		<span class="truncate font-semibold text-ink-900">{data.customer.name}</span>
-	</nav>
+	<PageHeader title={data.customer.name} backHref="/app/kunden" backLabel="Kunden" />
 
 	<div class="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
 		<!-- head -->

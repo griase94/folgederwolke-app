@@ -36,6 +36,7 @@
 		'/app/jahresabschluss',
 		'/app/rechnungen',
 		'/app/kunden',
+		'/app/files',
 		'/app/einstellungen',
 		'/app/dsgvo'
 	];

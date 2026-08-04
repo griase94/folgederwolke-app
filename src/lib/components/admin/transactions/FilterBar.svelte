@@ -77,6 +77,23 @@
     exportHref?: string;
     /** The page's own actions — the ONE primary CTA, plus any extra link. */
     pageActions?: Snippet;
+    /**
+     * Registry keys this page renders ELSEWHERE, so the popover must not repeat
+     * them. The feed passes ["typ"]: the type chips are its identity and live in
+     * their own row (spec §5).
+     */
+    excludeFields?: string[];
+    /**
+     * A sentence explaining a consequence of the current filters, shown at the
+     * top of the filter surface. The feed uses it for the honesty rule (a field
+     * that cannot describe an arm removes that arm — say so instead of showing
+     * a silent zero).
+     */
+    notice?: string | null;
+    /** Test id for the search input, where a route already has an established one. */
+    searchTestId?: string;
+    /** Placeholder for the search input. */
+    searchPlaceholder?: string;
   }
 
   // External prop is `state` (Phase-3 contract); alias locally to `filterState`
@@ -90,6 +107,10 @@
     totalCount,
     exportHref,
     pageActions,
+    excludeFields = [],
+    notice = null,
+    searchTestId,
+    searchPlaceholder = "Suchen…",
   }: Props = $props();
 
   // German display labels for the tab key (the raw key is lowercase + reads off
@@ -107,9 +128,11 @@
   // Registry fields for the active tab, with runtime options injected for the
   // kategorie field (the registry leaves its `options` undefined — P2-04).
   const fields = $derived(
-    FILTER_REGISTRY[tab].map((f) =>
-      f.key === "kategorie" ? { ...f, options: kategorieOptions } : f,
-    ),
+    FILTER_REGISTRY[tab]
+      .filter((f) => !excludeFields.includes(f.key))
+      .map((f) =>
+        f.key === "kategorie" ? { ...f, options: kategorieOptions } : f,
+      ),
   );
 
   // ── State helpers ───────────────────────────────────────────────────────────
@@ -479,6 +502,15 @@
   sheet, so the two never drift apart.
 -->
 {#snippet sections()}
+  {#if notice}
+    <p
+      data-testid="filter-notice"
+      class="rounded-[10px] bg-secondary px-3 py-2 text-xs leading-snug text-ink-700"
+      role="status"
+    >
+      {notice}
+    </p>
+  {/if}
   {#each fields as field (field.key)}
     {#if field.type === "boolean"}
       <!-- A boolean needs no heading: the toggle already carries the label. -->
@@ -652,8 +684,9 @@
   {#snippet leading()}
     <input
       type="search"
+      data-testid={searchTestId}
       value={filterState.search ?? ""}
-      placeholder="Suchen…"
+      placeholder={searchPlaceholder}
       aria-label="Suchen"
       class="w-full {CONTROL} md:w-56"
       onchange={(e) => setSearch((e.currentTarget as HTMLInputElement).value)}

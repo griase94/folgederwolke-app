@@ -45,7 +45,7 @@ describe("MehrSheet", () => {
     expect(screen.getByText("Konto")).toBeTruthy();
   });
 
-  it("renders the six spec tiles in order", () => {
+  it("renders the spec tiles in order, incl. Dateien (spec §1 orphan fix)", () => {
     render(MehrSheet);
     const tiles = [...document.querySelectorAll('[data-testid="mehr-tile"]')];
     expect(tiles.map((t) => t.textContent?.trim())).toEqual([
@@ -54,6 +54,7 @@ describe("MehrSheet", () => {
       "Jahresabschluss",
       "Rechnungen",
       "Kunden",
+      "Dateien",
       "Einstellungen",
     ]);
   });

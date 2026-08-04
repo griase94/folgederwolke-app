@@ -10,9 +10,7 @@
 		<input type="search" aria-label="Suchen" class={TOOLBAR_BUTTON} />
 		<button type="button" class={TOOLBAR_BUTTON}>+ Filter</button>
 	{/snippet}
-	{#if withMeta}
-		{#snippet meta()}7 von 42{/snippet}
-	{/if}
+	{#snippet meta()}{withMeta ? '7 von 42' : ''}{/snippet}
 	{#snippet actions()}
 		<a href="/export" class={TOOLBAR_BUTTON}>CSV</a>
 		<a href="/neu" data-slot="new-cta" class={TOOLBAR_PRIMARY}>Neue Ausgabe</a>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import PageShell from '$lib/components/layout/PageShell.svelte';
+	import PageHeader from '$lib/components/layout/PageHeader.svelte';
 	import InvoiceForm from '$lib/components/admin/invoices/InvoiceForm.svelte';
 	import type { PageData, ActionData } from './$types.js';
 
@@ -44,22 +45,11 @@
 </svelte:head>
 
 <PageShell width="list">
-	<!-- eslint-disable svelte/no-navigation-without-resolve -->
-	<div class="mb-6">
-		<a
-			href="/app/rechnungen"
-			class="inline-flex items-center gap-1 text-sm text-ink-500 hover:text-ink-900"
-		>
-			<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-			</svg>
-			Zurück zu Rechnungen
-		</a>
-		<h1 class="mt-2 text-2xl font-semibold tracking-[-0.02em] text-ink-900">Neue Rechnung</h1>
-		<p class="mt-0.5 text-sm text-ink-500">
-			Die Vorschau ist das echte PDF — was du siehst, geht raus.
-		</p>
-	</div>
+	<PageHeader title="Neue Rechnung" backHref="/app/rechnungen" backLabel="Rechnungen">
+		{#snippet meta()}
+		<p>Die Vorschau ist das echte PDF — was du siehst, geht raus.</p>
+		{/snippet}
+	</PageHeader>
 
 	{#if form && 'error' in form && form.error}
 		<div class="mb-4 rounded-xl border border-severity-critical/30 bg-severity-critical/10 px-4 py-3 text-sm text-severity-critical-text">

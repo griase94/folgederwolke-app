@@ -55,3 +55,4 @@ vite.config.ts.timestamp-*
 # local render harness (agent tooling, never shipped)
 shoot.local.mjs
 measure.local.mjs
+navcheck.local.mjs

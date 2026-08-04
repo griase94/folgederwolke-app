@@ -17,6 +17,8 @@
 	import TransactionRow from '$lib/components/ui/TransactionRow.svelte';
 	import MonthGroup from '$lib/components/ui/MonthGroup.svelte';
 	import { SegmentedControl } from '$lib/components/ui/segmented-control/index.js';
+	import FilterBar from '$lib/components/admin/transactions/FilterBar.svelte';
+	import CreateMenu from '$lib/components/admin/CreateMenu.svelte';
 	import { Pagination } from '$lib/components/ui/pagination/index.js';
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
 	import { groupByMonth } from '$lib/domain/month-group.js';
@@ -24,6 +26,7 @@
 	import { SPHERE_LABELS, type Sphere } from '$lib/domain/sphere.js';
 	import { statusPresentation } from '$lib/domain/transaction-status.js';
 	import { yearScopeMetaLabel } from '$lib/domain/year.js';
+	import { feedExclusionHint } from '$lib/domain/transaction-filters.js';
 	import type { FeedRow } from '$lib/server/domain/transactions.js';
 	import type { PageData } from './$types.js';
 
@@ -93,24 +96,6 @@
 		`${data.monthCount} ${data.monthCount === 1 ? 'Monat' : 'Monate'}`,
 	);
 
-	// ── Search (?q=, debounced) — the feed's PageHeader toolbar owns search. ──
-	let searchValue = $state($page.url.searchParams.get('q') ?? '');
-	let searchTimer: ReturnType<typeof setTimeout> | undefined;
-	function onSearchInput(e: Event) {
-		searchValue = (e.currentTarget as HTMLInputElement).value;
-		clearTimeout(searchTimer);
-		searchTimer = setTimeout(applySearch, 300);
-	}
-	function applySearch() {
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local URL builder
-		const url = new URLSearchParams($page.url.search);
-		const trimmed = searchValue.trim();
-		if (trimmed) url.set('q', trimmed.slice(0, 200));
-		else url.delete('q');
-		url.delete('page');
-		navigate(url);
-	}
-
 	function onLensChange(value: string) {
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- local URL builder
 		const url = new URLSearchParams($page.url.search);
@@ -147,6 +132,9 @@
 		})(),
 	);
 	const hasActiveFilters = $derived(!!data.filterState.search || !!activeTyp);
+	// Honesty hint: a filter field that cannot describe an arm removes it — the
+	// popover says which and why, so a Spenden chip reading 0 is never a lie.
+	const exclusionHint = $derived(feedExclusionHint(data.filterState));
 </script>
 
 <svelte:head>
@@ -219,31 +207,38 @@
 			</p>
 		{/snippet}
 		{#snippet toolbar()}
-			<div class="flex w-full flex-wrap items-center gap-2">
+			<!-- The type chips stay the feed's identity and keep their own row above
+			     the composed toolbar; everything else (search, the §5 filter fields,
+			     Ansichten, sort, "Neu erfassen") is the SAME anatomy the type lists
+			     use, so the feed no longer has a second toolbar grammar. -->
+			<div class="flex w-full flex-col gap-2">
 				<FilterChips options={TYP_OPTIONS} active={activeTyp} paramName="typ" />
-				<input
-					type="search"
-					data-testid="feed-search"
-					value={searchValue}
-					oninput={onSearchInput}
-					placeholder="Mitglied, Beleg, Betrag …"
-					aria-label="Transaktionen durchsuchen"
-					autocomplete="off"
-					class="h-11 min-w-0 flex-1 rounded-[10px] border border-(--hairline) bg-card px-3 text-sm text-ink-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring) md:h-10 md:max-w-xs"
-				/>
-				<div class="ml-auto flex items-center gap-2">
-					<span
-						class="hidden text-[11px] font-bold uppercase tracking-wider text-ink-300 sm:inline"
-						>Sortieren</span
-					>
-					<SegmentedControl
-						options={LENS_OPTIONS}
-						value={lens}
-						onChange={onLensChange}
-						ariaLabel="Sortierung"
-						data-testid="feed-lens"
-					/>
-				</div>
+				<FilterBar
+					tab="transaktionen"
+					state={data.filterState}
+					kategorieOptions={data.kategorieOptions}
+					resultCount={data.total}
+					totalCount={data.chipCounts.total}
+					excludeFields={['typ']}
+					notice={exclusionHint}
+					searchTestId="feed-search"
+					searchPlaceholder="Mitglied, Beleg, Betrag …"
+				>
+					{#snippet pageActions()}
+						<span
+							class="hidden text-[11px] font-bold uppercase tracking-wider text-ink-300 md:inline"
+							>Sortieren</span
+						>
+						<SegmentedControl
+							options={LENS_OPTIONS}
+							value={lens}
+							onChange={onLensChange}
+							ariaLabel="Sortierung"
+							data-testid="feed-lens"
+						/>
+						<CreateMenu />
+					{/snippet}
+				</FilterBar>
 			</div>
 		{/snippet}
 	</PageHeader>
