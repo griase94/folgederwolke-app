@@ -58,6 +58,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { OptionGrid, type OptionGridItem } from '$lib/components/ui/option-grid/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
 
 	let {
 		open = $bindable(false),
@@ -155,7 +156,11 @@
 		if (!el) return;
 		void grund; // re-run on every edit AND on template switches
 		el.style.height = 'auto';
-		el.style.height = `${Math.min(el.scrollHeight, 260)}px`;
+		// `height` sizes the BORDER box while scrollHeight measures the content
+		// box, so the borders have to be added back — otherwise the field is
+		// two pixels short and clips the descenders of its last line.
+		const borders = el.offsetHeight - el.clientHeight;
+		el.style.height = `${Math.min(el.scrollHeight + borders, 260)}px`;
 	});
 
 	// Below Tailwind `sm` the modal is a bottom sheet, not a centered card —
@@ -223,10 +228,15 @@
 				<label for="reject-grund" class="text-[12.5px] font-bold text-ink-700">
 					Grund für die Ablehnung <span class="text-severity-critical-text">*</span>
 				</label>
-				<textarea
+				<!-- Kit-Textarea (#171) for the ONE field baseline. `resize-none` on
+				     purpose: the auto-grow below owns the height, and a drag handle
+				     beside it would mean two mechanisms fighting — the next
+				     keystroke would snap a hand-dragged box back. Do not "fix" the
+				     missing resize. -->
+				<Textarea
 					id="reject-grund"
 					name="grund"
-					bind:this={textareaEl}
+					bind:ref={textareaEl}
 					bind:value={grund}
 					oninput={onGrundInput}
 					onkeydown={onTextareaKeydown}
@@ -235,9 +245,9 @@
 					minlength={GRUND_MIN}
 					maxlength={2000}
 					data-testid="reject-grund"
-					class="w-full rounded-[10px] border border-input bg-background px-3 py-2 text-base leading-relaxed placeholder:text-ink-300 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none sm:text-sm"
+					class="resize-none leading-relaxed"
 					placeholder="In eigenen Worten — freundlich, aber klar …"
-				></textarea>
+				/>
 				<p
 					class="flex items-start gap-1.5 text-xs text-ink-500"
 					data-testid="reject-hint"

@@ -20,6 +20,7 @@
   import PageHeader from '$lib/components/layout/PageHeader.svelte';
   import DateField from '$lib/components/ui/date-field/DateField.svelte';
   import { Button } from '$lib/components/ui/button/index.js';
+  import { Select } from '$lib/components/ui/select/index.js';
   import { SegmentedControl } from '$lib/components/ui/segmented-control/index.js';
   import { CopyAnnouncer } from '$lib/components/ui/copy-field/index.js';
   import MoneyStrip from '$lib/components/ui/MoneyStrip.svelte';
@@ -361,17 +362,18 @@
               <label class="text-sm font-medium text-ink-900" for="ueberweisung-zahlungsart">
                 Zahlungsart
               </label>
-              <!-- min-w by the longest option ("Überweisung (SEPA)") so it never
-                   truncates (Abnahme #4). -->
-              <select
-                id="ueberweisung-zahlungsart"
-                bind:value={zahlungsartId}
-                class="h-11 min-w-[22ch] rounded-[10px] border border-hairline bg-card px-3 text-base sm:text-sm md:h-10"
-              >
+              <!-- Kit-Select (#171): ONE field baseline. The hand-rolled version
+                   copied FIELD_CLASS by hand and carried a `md:h-10` the height
+                   canon reserves for ROW controls — a form field stays 44px on
+                   every viewport. The old `min-w-[22ch]` guard against
+                   truncating "Überweisung (SEPA)" is gone with it: the Kit
+                   wraps in a full-width container, so the rail's 288px already
+                   exceed it. -->
+              <Select id="ueberweisung-zahlungsart" bind:value={zahlungsartId}>
                 {#each data.zahlungsarten as za (za.id)}
                   <option value={za.id}>{za.label}</option>
                 {/each}
-              </select>
+              </Select>
             </div>
 
             <Button
