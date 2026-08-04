@@ -10,13 +10,16 @@
 	export const TOOLBAR_CONTROL =
 		'h-11 min-h-11 rounded-[10px] border border-hairline bg-card px-3 text-sm text-ink-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:h-10 md:min-h-10';
 
+	/**
+	 * The row's single primary CTA is NOT defined here: it is the Kit
+	 * `Button size="cta"` (h-11 md:h-10 rounded-[10px]), which matches this
+	 * scale exactly. Guidelines §2.1 — never rebuild that geometry as a chain.
+	 */
+
 	/** TOOLBAR_CONTROL for things you click rather than type into. */
 	export const TOOLBAR_BUTTON =
 		`inline-flex items-center gap-1.5 whitespace-nowrap font-medium hover:bg-secondary ${TOOLBAR_CONTROL}`;
 
-	/** The single primary CTA of the row — same geometry, brand fill. */
-	export const TOOLBAR_PRIMARY =
-		'inline-flex h-11 min-h-11 items-center gap-1.5 whitespace-nowrap rounded-[10px] bg-primary-strong px-4 text-sm font-semibold text-primary-foreground shadow-(--glow-brand) transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 md:h-10 md:min-h-10';
 
 	export interface ListToolbarProps {
 		/** Row 1, left: search, filter trigger, views — the controls that narrow the list. */

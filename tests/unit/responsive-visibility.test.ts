@@ -25,6 +25,8 @@ describe("responsive visibility of toolbar affordances", () => {
     const s = src("lib/components/admin/CreateMenu.svelte");
     expect(s).toContain("max-md:hidden");
     expect(s).not.toMatch(/'hidden md:inline-flex'/);
+    // It wears the Kit CTA geometry, not a rebuilt class chain (§2.1).
+    expect(s).toContain("buttonVariants({ size: 'cta' })");
   });
 
   it("the CSV export hides below md with a variant, not a bare `hidden`", () => {

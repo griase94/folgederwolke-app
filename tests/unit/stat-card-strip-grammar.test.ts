@@ -16,6 +16,8 @@
  */
 import { render, cleanup } from "@testing-library/svelte";
 import { describe, it, expect, afterEach } from "vitest";
+import { SPHERE_DOT_CLASSES } from "$lib/components/admin/transactions/fields/SphereBadge.svelte";
+import { SPHERES } from "$lib/domain/sphere.js";
 import SpendenKpi from "$lib/components/admin/transactions/spenden/SpendenKpi.svelte";
 import AusgabenKpi from "$lib/components/admin/transactions/ausgaben/AusgabenKpi.svelte";
 import EinnahmenKpi from "$lib/components/admin/transactions/einnahmen/EinnahmenKpi.svelte";
@@ -162,5 +164,40 @@ describe("StatCardStrip grammar — the migrated strips", () => {
       },
     });
     assertStripGrammar(container, "EinnahmenKpi");
+  });
+});
+
+describe("sphere identity on stat cards", () => {
+  /**
+   * The dataviz `--sphere-*` variables are a SERIES palette, not the §13
+   * identity — ideeller is green there and pink here. A card fed from the
+   * dataviz vars would state a different Sphäre than the SphereBadge beside it,
+   * which is the same class of bug as the Jahresabschluss colour swap (S7).
+   */
+  it("takes its dots from SPHERE_DOT_CLASSES, never from the dataviz palette", () => {
+    const { container } = render(EinnahmenKpi, {
+      props: {
+        totalCents: 125000,
+        count: 12,
+        bySphere: {
+          ideeller: 80000,
+          vermoegen: 0,
+          zweckbetrieb: 30000,
+          wirtschaftlich: 15000,
+        },
+        year: 2026,
+      },
+    });
+    for (const sphere of SPHERES) {
+      const card = container.querySelector<HTMLElement>(
+        `[data-sphere-chip][data-sphere="${sphere}"]`,
+      )!;
+      const dot = card.querySelector<HTMLElement>("span[aria-hidden]")!;
+      expect(dot.className, `${sphere} dot`).toContain(
+        SPHERE_DOT_CLASSES[sphere],
+      );
+      // No inline colour: the hue must carry its own dark-mode variant.
+      expect(dot.getAttribute("style")).toBeNull();
+    }
   });
 });

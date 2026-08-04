@@ -1,5 +1,6 @@
 <script lang="ts">
-	import ListToolbar, { TOOLBAR_BUTTON, TOOLBAR_PRIMARY } from './ListToolbar.svelte';
+	import ListToolbar, { TOOLBAR_BUTTON } from './ListToolbar.svelte';
+	import { Button } from '../button/index.js';
 
 	let { hasChips = false, withMeta = false }: { hasChips?: boolean; withMeta?: boolean } =
 		$props();
@@ -13,7 +14,7 @@
 	{#snippet meta()}{withMeta ? '7 von 42' : ''}{/snippet}
 	{#snippet actions()}
 		<a href="/export" class={TOOLBAR_BUTTON}>CSV</a>
-		<a href="/neu" data-slot="new-cta" class={TOOLBAR_PRIMARY}>Neue Ausgabe</a>
+		<Button href="/neu" size="cta" data-slot="new-cta">Neue Ausgabe</Button>
 	{/snippet}
 	{#snippet chips()}
 		<span data-slot="filter-chip">Status: Offen</span>

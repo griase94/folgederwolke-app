@@ -10,7 +10,8 @@
 import { render, cleanup } from "@testing-library/svelte";
 import { describe, it, expect, afterEach } from "vitest";
 import Harness from "./ListToolbar.test.svelte";
-import { TOOLBAR_CONTROL, TOOLBAR_BUTTON, TOOLBAR_PRIMARY } from "./index.js";
+import { TOOLBAR_CONTROL, TOOLBAR_BUTTON } from "./index.js";
+import { buttonVariants } from "../button/index.js";
 
 afterEach(() => cleanup());
 
@@ -65,7 +66,13 @@ describe("ListToolbar — anatomy", () => {
 
 describe("ListToolbar — one control scale (spec §3)", () => {
   it("every exported geometry is 44px on mobile and 40px from md", () => {
-    for (const cls of [TOOLBAR_CONTROL, TOOLBAR_BUTTON, TOOLBAR_PRIMARY]) {
+    // …including the Kit CTA the row's primary action wears (guidelines §2.1):
+    // the toolbar scale and the CTA geometry have to agree or the row breaks.
+    for (const cls of [
+      TOOLBAR_CONTROL,
+      TOOLBAR_BUTTON,
+      buttonVariants({ size: "cta" }),
+    ]) {
       expect(cls).toContain("h-11");
       expect(cls).toContain("md:h-10");
       expect(cls).toContain("rounded-[10px]");
@@ -73,7 +80,7 @@ describe("ListToolbar — one control scale (spec §3)", () => {
   });
 
   it("uses the md breakpoint, never lg (guidelines §1.5)", () => {
-    for (const cls of [TOOLBAR_CONTROL, TOOLBAR_BUTTON, TOOLBAR_PRIMARY]) {
+    for (const cls of [TOOLBAR_CONTROL, TOOLBAR_BUTTON]) {
       expect(cls).not.toMatch(/\blg:h-/);
     }
   });

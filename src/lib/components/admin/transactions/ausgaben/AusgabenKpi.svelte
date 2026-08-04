@@ -40,7 +40,7 @@
 			label="Summe Ausgaben"
 			format="money"
 			value={formatMoney(totalCents)}
-			accent="var(--type-ausgabe)"
+			accentClass="bg-type-ausgabe"
 			sub={leer ? `Noch keine Ausgaben in ${yearLabel}` : `${yearLabel} · ${buchungenLabel}`}
 			empty={leer}
 		/>

@@ -15,9 +15,10 @@
 	 * md it renders nothing: the tab bar's ⊕ already owns that job, and two
 	 * create affordances on one phone screen is one too many.
 	 *
-	 * `max-md:hidden`, not `hidden md:inline-flex`: TOOLBAR_PRIMARY already sets
-	 * `inline-flex`, and two unprefixed display utilities of equal specificity are
-	 * decided by stylesheet order — the button stayed visible on the phone.
+	 * `max-md:hidden`, not `hidden md:inline-flex`: the Kit button base already
+	 * sets `inline-flex`, and two unprefixed display utilities of equal
+	 * specificity are decided by stylesheet order — the button stayed visible on
+	 * the phone.
 	 *
 	 * Built on the Kit DropdownMenu, so arrow-key navigation, Esc and focus
 	 * return to the trigger come for free. Each entry is a REAL <a> via the
@@ -25,7 +26,7 @@
 	 * not navigate on Enter or middle-click.
 	 */
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
-	import { TOOLBAR_PRIMARY } from '$lib/components/ui/list-toolbar/index.js';
+	import { buttonVariants } from '$lib/components/ui/button/index.js';
 	import { CREATE_ENTRIES } from './create-entries.js';
 
 	let { label = 'Neu erfassen', class: className }: CreateMenuProps = $props();
@@ -33,7 +34,7 @@
 
 <DropdownMenu.Root>
 	<DropdownMenu.Trigger
-		class={[TOOLBAR_PRIMARY, 'max-md:hidden', className]}
+		class={[buttonVariants({ size: 'cta' }), 'max-md:hidden', className]}
 		data-testid="create-menu-trigger"
 	>
 		{label}

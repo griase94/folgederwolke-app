@@ -23,7 +23,7 @@ const base = {
 describe("StatCard — anatomy", () => {
   it("renders label, value and the accent dot in that order", () => {
     const { container } = render(StatCard, {
-      props: { ...base, accent: "var(--type-spende)" },
+      props: { ...base, accentClass: "bg-type-spende" },
     });
     const card = container.querySelector<HTMLElement>(
       '[data-slot="stat-card"]',
@@ -45,12 +45,15 @@ describe("StatCard — anatomy", () => {
 
   it("puts the identity hue on the dot, never on the number", () => {
     const { container } = render(StatCard, {
-      props: { ...base, accent: "var(--type-spende)" },
+      props: { ...base, accentClass: "bg-type-spende" },
     });
     const dot = container.querySelector<HTMLElement>(
       '[data-slot="stat-card"] span[aria-hidden]',
     )!;
-    expect(dot.getAttribute("style")).toContain("var(--type-spende)");
+    expect(dot.className).toContain("bg-type-spende");
+    expect(dot.className).not.toContain("bg-ink-300");
+    // The hue is a class, not an inline colour, so it carries its dark variant.
+    expect(dot.getAttribute("style")).toBeNull();
     const value = screen.getByText("1.250,00 €");
     expect(value.className).toContain("text-ink-900");
     expect(value.getAttribute("style")).toBeNull();

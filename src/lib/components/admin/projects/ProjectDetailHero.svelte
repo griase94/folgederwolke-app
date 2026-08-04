@@ -19,7 +19,6 @@
 	import SaldoPill from './SaldoPill.svelte';
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
 	import { StatCard, StatCardStrip } from '$lib/components/ui/stat-card/index.js';
-	import { TOKEN } from '$lib/components/charts/_shared/tokens.js';
 	import type {
 		ProjectView,
 		ProjectFinancials,
@@ -51,7 +50,7 @@
 			label="Einnahmen"
 			format="money"
 			value={formatMoney(financials.einnahmenCents)}
-			accent={TOKEN.einnahme}
+			accentClass="bg-type-einnahme"
 			empty={financials.einnahmenCents === 0}
 			data-kpi-label="Einnahmen"
 		/>
@@ -59,7 +58,7 @@
 			label="Ausgaben"
 			format="money"
 			value={formatMoney(financials.ausgabenCents)}
-			accent={TOKEN.ausgabe}
+			accentClass="bg-type-ausgabe"
 			empty={financials.ausgabenCents === 0}
 			data-kpi-label="Ausgaben"
 		/>

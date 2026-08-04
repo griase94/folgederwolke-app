@@ -18,10 +18,17 @@
 		/** Format class of `value` — one class per strip. */
 		format: StatCardFormat;
 		/**
-		 * Identity hue as a CSS var string (type-/sphere token). Omitted ⇒ the
-		 * neutral ink-300 dot. NEVER a status colour — status lives in `meta`.
+		 * Identity hue of the dot, as Tailwind background classes — a type token
+		 * (`bg-type-spende`) or, for a Sphäre, SPHERE_DOT_CLASSES. Omitted ⇒ the
+		 * neutral ink-300 dot. NEVER a status colour: status lives in `meta`.
+		 *
+		 * Classes rather than a CSS var so the hue can carry its own dark-mode
+		 * variant, and so sphere dots come from the ONE sanctioned source. The
+		 * dataviz `--sphere-*` vars are a different palette (ideeller is green
+		 * there, pink in the §13 identity) — feeding those in would make a card
+		 * state a different Sphäre than the badge beside it.
 		 */
-		accent?: string;
+		accentClass?: string;
 		/** Context anchor under the value ("Buchungsjahr 2026"). */
 		sub?: string;
 		/** Status/delta slot — StatusPill, DeltaChip, a lock chip. */
@@ -54,7 +61,7 @@
 		label,
 		value,
 		format,
-		accent,
+		accentClass,
 		sub,
 		meta,
 		href,
@@ -94,8 +101,7 @@
 	<span class="flex items-start gap-2">
 		<!-- Accent dot is ALWAYS present so the strip keeps one accent column. -->
 		<span
-			class={['mt-1 size-2 flex-none rounded-full', !accent && 'bg-ink-300']}
-			style:background-color={accent}
+			class={['mt-1 size-2 flex-none rounded-full', accentClass || 'bg-ink-300']}
 			aria-hidden="true"
 		></span>
 		<span class="text-[11px] font-semibold uppercase leading-tight tracking-wider text-ink-500">

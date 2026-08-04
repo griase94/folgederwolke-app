@@ -16,10 +16,8 @@
 	import StaleYearBanner from '$lib/components/admin/StaleYearBanner.svelte';
 	import ListRailLayout from '$lib/components/layout/ListRailLayout.svelte';
 	import FilterBar from '$lib/components/admin/transactions/FilterBar.svelte';
-	import {
-		TOOLBAR_BUTTON,
-		TOOLBAR_PRIMARY
-	} from '$lib/components/ui/list-toolbar/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { TOOLBAR_BUTTON } from '$lib/components/ui/list-toolbar/index.js';
 	import AusgabenKpi from '$lib/components/admin/transactions/ausgaben/AusgabenKpi.svelte';
 	import TransactionRow from '$lib/components/ui/TransactionRow.svelte';
 	import MonthGroup from '$lib/components/ui/MonthGroup.svelte';
@@ -154,10 +152,10 @@
 							/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4" />
 						</svg>Überweisungsliste</a
 					>
-					<a
+					<Button
 						href={`/app/ausgaben/neu${listQueryString('ausgaben', $page.url.searchParams)}`}
-						data-slot="new-cta"
-						class={TOOLBAR_PRIMARY}>Neue Ausgabe</a
+						size="cta"
+						data-slot="new-cta">Neue Ausgabe</Button
 					>
 					<!-- eslint-enable svelte/no-navigation-without-resolve -->
 				{/snippet}

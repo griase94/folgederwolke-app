@@ -2,7 +2,6 @@ import ListToolbar, {
   type ListToolbarProps,
   TOOLBAR_CONTROL,
   TOOLBAR_BUTTON,
-  TOOLBAR_PRIMARY,
 } from "./ListToolbar.svelte";
 
 export {
@@ -10,5 +9,4 @@ export {
   type ListToolbarProps,
   TOOLBAR_CONTROL,
   TOOLBAR_BUTTON,
-  TOOLBAR_PRIMARY,
 };

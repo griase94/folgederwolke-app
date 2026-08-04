@@ -10,6 +10,6 @@
 </script>
 
 <StatCardStrip {orientation} {label}>
-	<StatCard label="Summe" format="money" value="1.250,00 €" accent="var(--type-einnahme)" />
+	<StatCard label="Summe" format="money" value="1.250,00 €" accentClass="bg-type-einnahme" />
 	<StatCard label="Rest" format="money" value="0,00 €" empty />
 </StatCardStrip>

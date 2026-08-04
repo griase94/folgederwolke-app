@@ -14,7 +14,7 @@
 	import StaleYearBanner from '$lib/components/admin/StaleYearBanner.svelte';
 	import ListRailLayout from '$lib/components/layout/ListRailLayout.svelte';
 	import FilterBar from '$lib/components/admin/transactions/FilterBar.svelte';
-	import { TOOLBAR_PRIMARY } from '$lib/components/ui/list-toolbar/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
 	import EinnahmenKpi from '$lib/components/admin/transactions/einnahmen/EinnahmenKpi.svelte';
 	import TransactionRow from '$lib/components/ui/TransactionRow.svelte';
 	import MonthGroup from '$lib/components/ui/MonthGroup.svelte';
@@ -124,10 +124,10 @@
 			>
 				{#snippet pageActions()}
 					<!-- eslint-disable svelte/no-navigation-without-resolve -->
-					<a
+					<Button
 						href={`/app/einnahmen/neu${listQueryString('einnahmen', $page.url.searchParams)}`}
-						data-slot="new-cta"
-						class={TOOLBAR_PRIMARY}>Neue Einnahme</a
+						size="cta"
+						data-slot="new-cta">Neue Einnahme</Button
 					>
 					<!-- eslint-enable svelte/no-navigation-without-resolve -->
 				{/snippet}

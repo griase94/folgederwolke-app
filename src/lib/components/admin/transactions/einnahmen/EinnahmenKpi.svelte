@@ -7,10 +7,12 @@
 	 * / Wirtschaftlich), each with its total. ALL FOUR are ALWAYS shown — an empty
 	 * sphere renders a dimmed 0,00 € rather than being hidden, so the
 	 * Gemeinnützigkeit reading is always complete. Sphere hue rides the dot, never
-	 * the number (ANDY-LENS §4).
+	 * the number (ANDY-LENS §4) — and it comes from SPHERE_DOT_CLASSES, the §13
+	 * identity, NOT from the dataviz `--sphere-*` series palette (which paints
+	 * ideeller green and would contradict every SphereBadge in the app).
 	 */
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
-	import { SPHERE_VAR } from '$lib/components/charts/_shared/tokens.js';
+	import { SPHERE_DOT_CLASSES } from '$lib/components/admin/transactions/fields/SphereBadge.svelte';
 	import { StatCard, StatCardStrip } from '$lib/components/ui/stat-card/index.js';
 	import { SPHERES, type Sphere } from '$lib/domain/sphere.js';
 	import { yearScopeLabel, type YearScope } from '$lib/domain/year.js';
@@ -67,7 +69,7 @@
 				label={SPHERE_TILE_LABEL[sphere]}
 				format="money"
 				value={formatMoney(bySphere[sphere])}
-				accent={SPHERE_VAR[sphere]}
+				accentClass={SPHERE_DOT_CLASSES[sphere]}
 				empty={bySphere[sphere] === 0}
 				href={sphereHref(sphere)}
 				data-sphere-chip=""

@@ -39,7 +39,7 @@
 			label="Summe Spenden"
 			format="money"
 			value={formatMoney(totalCents)}
-			accent="var(--type-spende)"
+			accentClass="bg-type-spende"
 			sub={leer ? `Noch keine Spenden in ${yearLabel}` : `${yearLabel} · ${spendenLabel}`}
 			empty={leer}
 		/>
