@@ -42,7 +42,11 @@
 		/** Package D: current Buchungsjahr for the status hero. ADR-0001. */
 		currentYear = null,
 		/** Package D: satz by year for no-row betrag resolution. */
-		satzByYear = {}
+		satzByYear = {},
+		/** S4 #1: the REAL festgeschrieben_bis (server-provided) — no more festBis:null. */
+		festBis = null,
+		/** S4 #1: Zoe-clamped overdue days from the server cell (max(Fälligkeit, Eintritt)). */
+		heroDaysOverdue = null
 	}: {
 		beitrags: BeitragRow[];
 		memberId: string;
@@ -58,6 +62,10 @@
 		currentYear?: number | null;
 		/** Per-year Beitragssatz in cents — used by the hero for no-row open years. */
 		satzByYear?: Record<number, number>;
+		/** S4 #1: real festgeschrieben_bis from the server (never null-derived). */
+		festBis?: number | null;
+		/** S4 #1: Zoe-clamped hero overdue days from the server cell (null = not overdue). */
+		heroDaysOverdue?: number | null;
 	} = $props();
 
 	const displayName = $derived(memberName.trim() || 'Mitglied');
@@ -83,7 +91,7 @@
 					}
 				: null,
 			satzCents: satzByYear[heroYear] ?? null,
-			festBis: null,
+			festBis,
 		}),
 	);
 
@@ -141,14 +149,9 @@
 					.reduce((sum, b) => sum + Math.max(0, b.betragCents - b.paidCents), 0),
 	);
 
-	// Overdue days for the hero amber accent ("seit N Tagen überfällig", brief §2).
-	// Consistent with heroState's own overdue derivation (default Fälligkeit 31.03).
-	const heroDaysOverdue = $derived.by(() => {
-		if (heroState.state !== 'overdue') return null;
-		const faellig = new Date(`${heroYear}-03-31T00:00:00Z`);
-		const days = Math.floor((Date.now() - faellig.getTime()) / 86_400_000);
-		return days > 0 ? days : null;
-	});
+	// S4 #1: `heroDaysOverdue` is now a prop — the server cell's Zoe-clamped value
+	// (max(Fälligkeit, Eintritt)), replacing the old client computation that used a
+	// hard-coded 31.03 Fälligkeit and ignored a mid-year Eintritt.
 
 	function fmtEur(cents: number): string {
 		return (cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
@@ -177,7 +180,7 @@
 				gezahltAm: b.gezahltAm,
 			},
 			satzCents: satzByYear[b.year] ?? null,
-			festBis: null,
+			festBis,
 		});
 	}
 

@@ -8,18 +8,18 @@
 
 ## VVT-1: Auslagen-Einreichung
 
-| Feld                      | Inhalt                                                                                                    |
-| ------------------------- | --------------------------------------------------------------------------------------------------------- |
-| **Bezeichnung**           | Erfassung und Bearbeitung von Auslagen-Einreichungen durch Vereinsmitglieder und Externe                  |
-| **Zweck**                 | Erstattung von Vereinsausgaben; GoBD-konforme Buchführung                                                 |
-| **Rechtsgrundlage**       | Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung Mitgliedschaft); Art. 6 Abs. 1 lit. f (Externe)             |
-| **Betroffene Personen**   | Vereinsmitglieder; externe Einreicher (z.B. Gastmusiker)                                                  |
-| **Datenkategorien**       | Name, E-Mail-Adresse, IBAN (bei Erstattung), Betrag, Verwendungszweck, Beleg-Datei (Foto/PDF)             |
-| **Empfänger**             | Kassenwart und Vorstand (intern); Auftragsverarbeiter: Neon (DB), Vercel (Hosting), Google Drive (Belege) |
-| **Drittlandübermittlung** | Nein (alle Dienste EU-Region oder SCCs)                                                                   |
-| **Löschfrist**            | Buchungsdaten: 10 Jahre (§ 147 AO); Personendaten ohne Buchungsbezug: nach Zweckerfüllung                 |
-| **TOMs**                  | Siehe [TOM-Katalog](tom-katalog.md)                                                                       |
-| **DB-Tabellen**           | `auslagen_submissions`, `expenses`, `audit_log`                                                           |
+| Feld                      | Inhalt                                                                                                                   |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **Bezeichnung**           | Erfassung und Bearbeitung von Auslagen-Einreichungen durch Vereinsmitglieder und Externe                                 |
+| **Zweck**                 | Erstattung von Vereinsausgaben; GoBD-konforme Buchführung                                                                |
+| **Rechtsgrundlage**       | Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung Mitgliedschaft); Art. 6 Abs. 1 lit. f (Externe)                            |
+| **Betroffene Personen**   | Vereinsmitglieder; externe Einreicher (z.B. Gastmusiker)                                                                 |
+| **Datenkategorien**       | Name, E-Mail-Adresse, IBAN (bei Erstattung), Betrag, Verwendungszweck, Beleg-Datei (Foto/PDF)                            |
+| **Empfänger**             | Kassenwart und Vorstand (intern); Auftragsverarbeiter: Neon (DB), Vercel (Hosting + Beleg-Speicherung, Vercel Blob fra1) |
+| **Drittlandübermittlung** | Vercel/Neon sind US-Unternehmen; Speicherorte EU-Region (Blob fra1, Neon Frankfurt); Garantien: EU-US DPF bzw. SCCs      |
+| **Löschfrist**            | Buchungsdaten: 10 Jahre (§ 147 AO); Personendaten ohne Buchungsbezug: nach Zweckerfüllung                                |
+| **TOMs**                  | Siehe [TOM-Katalog](tom-katalog.md)                                                                                      |
+| **DB-Tabellen**           | `auslagen_submissions`, `expenses`, `audit_log`                                                                          |
 
 ---
 
@@ -33,7 +33,7 @@
 | **Betroffene Personen**   | Aktive und ehemalige Vereinsmitglieder                                                                                                    |
 | **Datenkategorien**       | Vorname, Nachname, E-Mail, IBAN, Telefon, Adresse, Geburtsdatum, Rolle im Verein, Eintrittsdatum, Austrittsdatum, Mitgliedsbeitragsstatus |
 | **Empfänger**             | Kassenwart und Vorstand (intern); Auftragsverarbeiter: Neon (DB), Vercel (Hosting)                                                        |
-| **Drittlandübermittlung** | Nein                                                                                                                                      |
+| **Drittlandübermittlung** | Vercel/Neon sind US-Unternehmen; Speicherorte EU-Region; Garantien: EU-US DPF bzw. SCCs                                                   |
 | **Löschfrist**            | Aktive Mitglieder: während Mitgliedschaft; nach Austritt: 3 Jahre (Verjährungsfristen); Beitragsdaten: 10 Jahre (§ 147 AO)                |
 | **TOMs**                  | Siehe [TOM-Katalog](tom-katalog.md)                                                                                                       |
 | **DB-Tabellen**           | `members`, `member_beitrags`                                                                                                              |
@@ -50,7 +50,7 @@
 | **Betroffene Personen**   | Kassenwart, Vorstand, Mitglieder (als Kostenstellen), Kunden (Rechnungsempfänger), Lieferanten                                                                                                                                          |
 | **Datenkategorien**       | Name/Firmenname, Adresse, Betrag, Verwendungszweck, Zahlungsweg, Sphäre, Buchungsjahr, Beleg-Referenz                                                                                                                                   |
 | **Empfänger**             | Kassenwart, Vorstand (intern); Steuerberater (extern, auf Anfrage); Finanzamt (EÜR-Abgabe); Auftragsverarbeiter: Neon, Vercel (Hosting + Blob für Ausgangsrechnungen/Belege in fra1)                                                    |
-| **Drittlandübermittlung** | Nein                                                                                                                                                                                                                                    |
+| **Drittlandübermittlung** | Vercel/Neon sind US-Unternehmen; Speicherorte EU-Region (Blob fra1, Neon Frankfurt); Garantien: EU-US DPF bzw. SCCs                                                                                                                     |
 | **Löschfrist**            | 10 Jahre (§ 147 AO, § 14b UStG) — keine Löschung, nur Anonymisierung wenn möglich                                                                                                                                                       |
 | **TOMs**                  | Siehe [TOM-Katalog](tom-katalog.md)                                                                                                                                                                                                     |
 | **DB-Tabellen**           | `expenses`, `income`, `donations`, `invoices`, `customers`, `kategorien`, `files` (Blob-Index: Belege + Ausgangsrechnungen)                                                                                                             |
@@ -67,7 +67,7 @@
 | **Betroffene Personen**   | Admin-Benutzer (Kassenwart, Vorstand)                                                                       |
 | **Datenkategorien**       | E-Mail-Adresse, IP-Adresse-Präfix (gekürzt), User-Agent-Hash, Sitzungstoken (verschlüsselt), Zeitstempel    |
 | **Empfänger**             | Intern (System); Auftragsverarbeiter: Neon (Token-Speicherung), Vercel (Logs), SMTP-Anbieter (Link-Versand) |
-| **Drittlandübermittlung** | Nein                                                                                                        |
+| **Drittlandübermittlung** | Vercel/Neon sind US-Unternehmen; Speicherorte EU-Region; Garantien: EU-US DPF bzw. SCCs                     |
 | **Löschfrist**            | Sitzungsdaten: nach Ablauf (Session-Cookie TTL); Audit-Log: 10 Jahre                                        |
 | **TOMs**                  | Siehe [TOM-Katalog](tom-katalog.md)                                                                         |
 | **DB-Tabellen**           | `users`, `audit_log` (action: sign_in, magic_link_issue, magic_link_verify)                                 |

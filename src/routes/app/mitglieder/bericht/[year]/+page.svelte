@@ -149,8 +149,12 @@
 			</div>
 		</div>
 
-		<!-- Per-member table -->
-		<table class="kb-table" data-testid="bericht-table" aria-label="Mitglieder-Beitragsstatus">
+		<!-- Per-member table. S4 #5: on a narrow paper the wide row (Bezahlt am /
+		     Anmerkung) would clip — wrap in an overflow-x scroller with an edge-fade
+		     + „→ wischen" hint (§1/§3 T15) so the columns stay reachable. -->
+		<p class="kb-swipe" aria-hidden="true">→ wischen</p>
+		<div class="kb-table-wrap">
+			<table class="kb-table" data-testid="bericht-table" aria-label="Mitglieder-Beitragsstatus">
 			<thead>
 				<tr>
 					<th scope="col">Mitglied</th>
@@ -200,7 +204,8 @@
 					</td>
 				</tr>
 			</tfoot>
-		</table>
+			</table>
+		</div>
 
 		{#if data.isLockedYear}
 			<p class="kb-trust" data-testid="bericht-trust-line">
@@ -291,10 +296,43 @@
 		font-variant-numeric: tabular-nums;
 	}
 
+	/* S4 #5: horizontal scroller so the wide row never clips on a narrow paper. */
+	.kb-table-wrap {
+		position: relative;
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+	.kb-swipe {
+		display: none;
+	}
 	.kb-table {
 		width: 100%;
+		/* Keep the columns legible; below this the wrapper scrolls (no clip). */
+		min-width: 460px;
 		border-collapse: collapse;
 		font-size: 12px;
+	}
+	@media (max-width: 560px) {
+		.kb-swipe {
+			display: block;
+			margin: 0 0 2px;
+			text-align: right;
+			font-size: 10px;
+			font-weight: 600;
+			letter-spacing: 0.02em;
+			color: var(--dp-faint);
+		}
+		/* Right-edge fade cueing more content to the right (paper is white). */
+		.kb-table-wrap::after {
+			content: '';
+			position: absolute;
+			top: 0;
+			right: 0;
+			bottom: 0;
+			width: 28px;
+			pointer-events: none;
+			background: linear-gradient(to right, rgb(255 255 255 / 0), rgb(255 255 255 / 0.95));
+		}
 	}
 	.kb-table thead th {
 		text-align: left;
@@ -391,6 +429,17 @@
 		.kb-table tbody tr,
 		.kb-sigs {
 			break-inside: avoid;
+		}
+		/* S4 #5: the screen scroll-affordance must never affect the printed sheet. */
+		.kb-table-wrap {
+			overflow: visible;
+		}
+		.kb-table {
+			min-width: 0;
+		}
+		.kb-swipe,
+		.kb-table-wrap::after {
+			display: none;
 		}
 	}
 

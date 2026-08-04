@@ -71,10 +71,10 @@ describe("loadCurrentLegalDoc — placeholder substitution contract", () => {
     expect(out).toContain("[NICHT_VEREIN]");
   });
 
-  it("picks the highest version from the bundled docs (datenschutz ships v1 + v2 → v2)", async () => {
+  it("picks the highest version from the bundled docs (datenschutz ships v1 + v2 + v3 → v3)", async () => {
     const { loadCurrentLegalDoc } = await import("$lib/server/legal/loader.js");
     const doc = await loadCurrentLegalDoc("datenschutzerklaerung");
-    expect(doc.version).toBe("v2");
+    expect(doc.version).toBe("v3");
   });
 });
 
@@ -134,7 +134,7 @@ describe("loadCurrentLegalDoc — real docs tokenization (white-label PR3)", () 
     );
   });
 
-  it("datenschutz is version v2, substitutes name/Kontakt/Aufsichtsbehörde, drops BayLDA literals", async () => {
+  it("datenschutz is version v3, substitutes name/Kontakt/Aufsichtsbehörde, drops BayLDA literals", async () => {
     vi.stubEnv("VEREIN_NAME", "Verein X e.V.");
     vi.stubEnv("VEREIN_KONTAKT_EMAIL", "x@y.de");
     vi.stubEnv(
@@ -146,7 +146,7 @@ describe("loadCurrentLegalDoc — real docs tokenization (white-label PR3)", () 
     const doc = await loadCurrentLegalDoc("datenschutzerklaerung");
 
     // Loader auto-picks the highest version.
-    expect(doc.version).toBe("v2");
+    expect(doc.version).toBe("v3");
 
     // Configured values are substituted in.
     expect(doc.markdown).toContain("Verein X e.V.");

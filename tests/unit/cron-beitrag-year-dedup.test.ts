@@ -30,9 +30,20 @@ vi.mock("$lib/server/db/index.js", () => ({
   }),
 }));
 
-const mockSendMail = vi.fn();
-vi.mock("$lib/server/mail/index.js", () => ({
-  sendMail: mockSendMail,
+// C2: the cron emits `beitrag.reminder_requested` on the bus (no inline sendMail).
+const mockEmit = vi.fn().mockResolvedValue(undefined);
+vi.mock("$lib/server/events/index.js", () => ({
+  bus: { emit: mockEmit },
+  registerHandlers: () => undefined,
+}));
+
+// Isolate the DB-backed reminder helpers so this unit test exercises only the
+// cron's selection + the jahresbasierte send_attempt (the real formula is pinned
+// separately by beitrag-reminder-send-attempt.test + the integration test).
+vi.mock("$lib/server/domain/beitrag-reminder.js", () => ({
+  reminderSendAttempt: (y: number) => y - 2020,
+  remindedMemberIdsForYear: vi.fn().mockResolvedValue(new Set<string>()),
+  resolveReminderFrist: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("drizzle-orm", () => ({
@@ -107,10 +118,15 @@ beforeEach(() => vi.clearAllMocks());
 // Tests
 // ---------------------------------------------------------------------------
 
+function attemptOf(call: number): unknown {
+  return (mockEmit.mock.calls[call]?.[1] as Record<string, unknown>)[
+    "sendAttempt"
+  ];
+}
+
 describe("@phase-0 dispatchBeitragsreminder — B7 year-dedup rotation", () => {
-  it("passes send_attempt = year - 2020 to sendMail (2026 → 6)", async () => {
+  it("emits with sendAttempt = year - 2020 (2026 → 6)", async () => {
     makeSelectChain([{ ...openRow, year: 2026 }]);
-    mockSendMail.mockResolvedValue({ messageId: "msg-1", deduped: false });
 
     await dispatchBeitragsreminder({
       iban: "DE43830654089999999999",
@@ -120,15 +136,13 @@ describe("@phase-0 dispatchBeitragsreminder — B7 year-dedup rotation", () => {
       year: 2026,
     });
 
-    expect(mockSendMail).toHaveBeenCalledOnce();
-    const callArgs = mockSendMail.mock.calls[0]?.[0] as Record<string, unknown>;
-    // B7 fix: send_attempt should be 2026 - 2020 = 6
-    expect(callArgs["send_attempt"]).toBe(6);
+    expect(mockEmit).toHaveBeenCalledOnce();
+    expect(mockEmit.mock.calls[0]?.[0]).toBe("beitrag.reminder_requested");
+    expect(attemptOf(0)).toBe(6);
   });
 
-  it("passes send_attempt = 5 for year 2025", async () => {
+  it("emits with sendAttempt = 5 for year 2025", async () => {
     makeSelectChain([{ ...openRow, year: 2025 }]);
-    mockSendMail.mockResolvedValue({ messageId: "msg-2", deduped: false });
 
     await dispatchBeitragsreminder({
       iban: "DE43830654089999999999",
@@ -138,16 +152,12 @@ describe("@phase-0 dispatchBeitragsreminder — B7 year-dedup rotation", () => {
       year: 2025,
     });
 
-    expect(mockSendMail).toHaveBeenCalledOnce();
-    const callArgs = mockSendMail.mock.calls[0]?.[0] as Record<string, unknown>;
-    // 2025 - 2020 = 5
-    expect(callArgs["send_attempt"]).toBe(5);
+    expect(mockEmit).toHaveBeenCalledOnce();
+    expect(attemptOf(0)).toBe(5);
   });
 
-  it("uses different send_attempt for different years (no cross-year dedup)", async () => {
-    // Simulate: 2025 reminder sends with attempt=5
+  it("uses different sendAttempt for different years (no cross-year dedup)", async () => {
     makeSelectChain([{ ...openRow, year: 2025 }]);
-    mockSendMail.mockResolvedValue({ messageId: "msg-3", deduped: false });
     await dispatchBeitragsreminder({
       iban: "DE43830654089999999999",
       bic: "BELADEBEXXX",
@@ -155,15 +165,11 @@ describe("@phase-0 dispatchBeitragsreminder — B7 year-dedup rotation", () => {
       empfaenger: "Folge der Wolke e.V.",
       year: 2025,
     });
-    const attempt2025 = (
-      mockSendMail.mock.calls[0]?.[0] as Record<string, unknown>
-    )["send_attempt"];
+    const attempt2025 = attemptOf(0);
 
     vi.clearAllMocks();
 
-    // 2026 reminder sends with attempt=6 — different from 2025
     makeSelectChain([{ ...openRow, year: 2026 }]);
-    mockSendMail.mockResolvedValue({ messageId: "msg-4", deduped: false });
     await dispatchBeitragsreminder({
       iban: "DE43830654089999999999",
       bic: "BELADEBEXXX",
@@ -171,9 +177,7 @@ describe("@phase-0 dispatchBeitragsreminder — B7 year-dedup rotation", () => {
       empfaenger: "Folge der Wolke e.V.",
       year: 2026,
     });
-    const attempt2026 = (
-      mockSendMail.mock.calls[0]?.[0] as Record<string, unknown>
-    )["send_attempt"];
+    const attempt2026 = attemptOf(0);
 
     expect(attempt2025).toBe(5);
     expect(attempt2026).toBe(6);
