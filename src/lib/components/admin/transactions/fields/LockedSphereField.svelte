@@ -1,18 +1,3 @@
-<script lang="ts" module>
-	import type { Sphere } from '$lib/domain/sphere.js';
-
-	/**
-	 * The sphere swatch colour token per §13 (light/dark handled by the token).
-	 * Mirrors the plate `.locked-field .swatch` background: `var(--sphere-<s>)`.
-	 */
-	export const SPHERE_SWATCH_VAR: Record<Sphere, string> = {
-		ideeller: 'var(--sphere-ideeller)',
-		vermoegen: 'var(--sphere-vermoegen)',
-		zweckbetrieb: 'var(--sphere-zweckbetrieb)',
-		wirtschaftlich: 'var(--sphere-wirtschaftlich)',
-	};
-</script>
-
 <script lang="ts">
 	/**
 	 * LockedSphereField — the read-only, kategorie-derived Sphäre (entry-modal-v4
@@ -23,9 +8,13 @@
 	 * There is deliberately NO project-sphere override here — the entry create
 	 * path derives the Sphäre strictly from the Kategorie (the project override is
 	 * a pre-Festschreibung admin correction on the detail view, not an entry field).
+	 *
+	 * The swatch hue comes from SPHERE_DOT_CLASSES — the same §13 source as the
+	 * SphereBadge the KategoriePicker renders one field above.
 	 */
-	// `Sphere` is imported in the module <script> above and is in scope here.
+	import type { Sphere } from '$lib/domain/sphere.js';
 	import { SPHERE_LABELS } from '$lib/domain/sphere.js';
+	import { SPHERE_DOT_CLASSES } from './SphereBadge.svelte';
 	import LockIcon from '@lucide/svelte/icons/lock';
 
 	interface Props {
@@ -55,8 +44,7 @@
 	>
 		<span class="flex items-center gap-2 text-sm font-medium text-ink-900">
 			<span
-				class="size-2.5 shrink-0 rounded-full"
-				style="background: {SPHERE_SWATCH_VAR[sphere]}"
+				class="size-2.5 shrink-0 rounded-full {SPHERE_DOT_CLASSES[sphere]}"
 				aria-hidden="true"
 			></span>
 			{sphereLabel}
