@@ -195,4 +195,25 @@ describe("GoBD-Z3 journal vs EÜR — Einnahmen sum identity", () => {
       expect(rec).toContain("<Sphare>ideeller</Sphare>");
     }
   });
+
+  it("the export screen's Paket-Inhalt counter mirrors the journal's Arten", async () => {
+    // §4.5 Manifest-Lüge, one level above the filename it already guards: the
+    // screen promises what the ZIP holds, so a counter naming only
+    // Einnahmen/Ausgaben/Spenden describes a package that has carried
+    // Mitgliedsbeitrag records since S1. Pins the counter's query against the
+    // journal it advertises — if one grows an Art, the other has to follow.
+    const { agg, xml } = await buildJournal(YEAR);
+    const journalBeitraege = [...xml.matchAll(/<Art>Mitgliedsbeitrag<\/Art>/g)]
+      .length;
+    expect(journalBeitraege).toBeGreaterThan(0);
+    expect(journalBeitraege).toBe(agg.beitragEurRows.length);
+
+    // The screen's own counting query, verbatim in its money-relevant part.
+    const [row] = (await getDb().execute(sql`
+      SELECT count(*)::int AS n FROM member_beitrags
+       WHERE EXTRACT(YEAR FROM gezahlt_am)::int = ${YEAR}
+         AND gezahlt_am IS NOT NULL AND paid_cents > 0
+    `)) as unknown as Array<{ n: number }>;
+    expect(row!.n).toBe(journalBeitraege);
+  });
 });
