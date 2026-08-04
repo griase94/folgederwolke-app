@@ -11,6 +11,8 @@
 	 * lesson): every editable field is local $state, seeded once from `values`.
 	 */
 	import { AmountField, DateField as HeroDateField } from '$lib/components/ui/hero-field/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Select } from '$lib/components/ui/select/index.js';
 	import KategoriePicker from '$lib/components/admin/transactions/fields/KategoriePicker.svelte';
 	import LockedSphereField from '$lib/components/admin/transactions/fields/LockedSphereField.svelte';
 	import BelegUpload from '$lib/components/forms/BelegUpload.svelte';
@@ -197,7 +199,7 @@
 					name="bezeichnung"
 					type="text"
 					required
-					maxlength="500"
+					maxlength={500}
 					bind:value={bezeichnung}
 					placeholder="z.B. Teilnahmebeitrag, Standgebühr"
 					list={vorschlaege.length ? 'einnahme-bezeichnung-vorschlaege' : undefined}
@@ -253,33 +255,32 @@
 			<!-- Projekt (optional) -->
 			<div class="flex flex-col gap-1.5">
 				<label for="projectId" class="text-sm font-medium text-ink-900">Projekt (optional)</label>
-				<select
+				<Select
 					id="projectId"
 					name="projectId"
 					bind:value={projectId}
 					onchange={markDirty}
 					data-testid="transaction-project-picker"
-					class={FIELD_CLASS}
 				>
 					<option value="">— Kein Projekt —</option>
 					{#each projects as p (p.id)}
 						<option value={p.id}>{p.name}</option>
 					{/each}
-				</select>
+				</Select>
 			</div>
 
 			<!-- Kommentar -->
 			<div class="flex flex-col gap-1.5">
 				<label for="kommentar" class="text-sm font-medium text-ink-900">Kommentar</label>
-				<textarea
+				<Textarea
 					id="kommentar"
 					name="kommentar"
-					rows="3"
-					maxlength="2000"
+					rows={3}
+					maxlength={2000}
 					bind:value={kommentar}
 					oninput={markDirty}
 					class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 sm:text-sm"
-				></textarea>
+				></Textarea>
 			</div>
 		</div>
 	</section>

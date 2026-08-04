@@ -14,6 +14,8 @@
 -->
 <script lang="ts">
 	import { AmountField, DateField as HeroDateField } from '$lib/components/ui/hero-field/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Select } from '$lib/components/ui/select/index.js';
 	import BelegUpload from '$lib/components/forms/BelegUpload.svelte';
 	import LockedSphereField from '$lib/components/admin/transactions/fields/LockedSphereField.svelte';
 	import DerivedKategorieBadge from './DerivedKategorieBadge.svelte';
@@ -143,9 +145,6 @@
 				: { ok: true, text: 'Alles da.' },
 		);
 	});
-
-	const TEXTAREA_CLASS =
-		'w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 sm:text-sm';
 </script>
 
 <div class="flex flex-col gap-4">
@@ -305,20 +304,19 @@
 						<label for="wertermittlung_methode" class="block text-sm font-medium text-ink-900">
 							Wertermittlungsmethode <span class="text-severity-critical" aria-hidden="true">*</span>
 						</label>
-						<select
+						<Select
 							id="wertermittlung_methode"
 							name="wertermittlung_methode"
 							value={v('wertermittlung_methode')}
 							onchange={markDirty}
 							data-testid="wertermittlung-methode"
-							class={FIELD_CLASS}
 						>
 							<option value="">— wählen —</option>
 							<option value="marktpreis">Marktpreis</option>
 							<option value="kaufbeleg">Kaufbeleg</option>
 							<option value="schaetzung">Schätzung</option>
 							<option value="buchwert">Buchwert</option>
-						</select>
+						</Select>
 						{#if err('wertermittlung_methode')}
 							<p class="text-xs text-severity-critical">{err('wertermittlung_methode')}</p>
 						{/if}
@@ -329,15 +327,14 @@
 							Beschreibung des Gegenstands (Art, Zustand)
 							<span class="text-severity-critical" aria-hidden="true">*</span>
 						</label>
-						<textarea
+						<Textarea
 							id="zustand_beschreibung"
 							name="zustand_beschreibung"
-							rows="2"
+							rows={2}
 							value={v('zustand_beschreibung')}
 							oninput={markDirty}
 							data-testid="zustand-beschreibung"
-							class={TEXTAREA_CLASS}
-						></textarea>
+						></Textarea>
 						{#if err('zustand_beschreibung')}
 							<p class="text-xs text-severity-critical">{err('zustand_beschreibung')}</p>
 						{/if}
@@ -429,18 +426,17 @@
 				</div>
 
 				{#if spenderMode === 'member'}
-					<select
+					<Select
 						name="member_id"
 						bind:value={selectedMemberId}
 						onchange={markDirty}
 						data-testid="spender-member-select"
-						class={FIELD_CLASS}
 					>
 						<option value="">Mitglied auswählen…</option>
 						{#each members as m (m.id)}
 							<option value={m.id}>{m.label}</option>
 						{/each}
-					</select>
+					</Select>
 					{#if selectedMember}
 						<p class="mt-1 text-xs text-muted-foreground" data-testid="member-adresse-autofill">
 							Adresse: {memberAdresse || '— im Mitgliedsprofil hinterlegen —'}
@@ -510,18 +506,17 @@
 			{#if projects.length}
 				<div class="flex flex-col gap-1.5">
 					<label for="project_id" class="text-sm font-medium text-ink-900">Projekt (optional)</label>
-					<select
+					<Select
 						id="project_id"
 						name="project_id"
 						value={v('project_id')}
 						onchange={markDirty}
-						class={FIELD_CLASS}
 					>
 						<option value="">— Kein Projekt —</option>
 						{#each projects as p (p.id)}
 							<option value={p.id}>{p.name}</option>
 						{/each}
-					</select>
+					</Select>
 				</div>
 			{/if}
 

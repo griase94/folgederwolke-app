@@ -16,6 +16,8 @@
 	 * lesson): every editable field is local $state seeded once from `values`.
 	 */
 	import { AmountField, DateField as HeroDateField } from '$lib/components/ui/hero-field/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Select } from '$lib/components/ui/select/index.js';
 	import CompactDateField from '$lib/components/ui/date-field/DateField.svelte';
 	import KategoriePicker from '$lib/components/admin/transactions/fields/KategoriePicker.svelte';
 	import LockedSphereField from '$lib/components/admin/transactions/fields/LockedSphereField.svelte';
@@ -370,12 +372,12 @@
 			{#if projects.length > 0}
 				<div class="flex flex-col gap-1.5">
 					<label for="projectId" class="text-sm font-medium text-ink-900">Projekt (optional)</label>
-					<select id="projectId" name="projectId" bind:value={projectId} class={FIELD_CLASS}>
+					<Select id="projectId" name="projectId" bind:value={projectId}>
 						<option value="">— Kein Projekt —</option>
 						{#each projects as p (p.id)}
 							<option value={p.id}>{p.name}</option>
 						{/each}
-					</select>
+					</Select>
 				</div>
 			{/if}
 
@@ -426,12 +428,12 @@
 						oben).
 					</div>
 				{:else if bezahltVonKind === 'member'}
-					<select name="bezahltVonMemberId" bind:value={selectedMemberId} class={FIELD_CLASS}>
+					<Select name="bezahltVonMemberId" bind:value={selectedMemberId}>
 						<option value="">Mitglied auswählen…</option>
 						{#each members as m (m.id)}
 							<option value={m.id}>{m.nachname}, {m.vorname}</option>
 						{/each}
-					</select>
+					</Select>
 				{:else}
 					<!-- M8: real labels (the * lives on the label, never in the placeholder). -->
 					<div class="flex flex-col gap-3">
@@ -501,11 +503,11 @@
 								<label for="zahlungsartId" class="text-sm font-medium text-ink-900">
 									Zahlungsart <span class="text-severity-critical" aria-hidden="true">*</span>
 								</label>
-								<select id="zahlungsartId" name="zahlungsartId" bind:value={zahlungsartId} class={FIELD_CLASS}>
+								<Select id="zahlungsartId" name="zahlungsartId" bind:value={zahlungsartId}>
 									{#each zahlungsarten as z (z.id)}
 										<option value={z.id}>{z.label}</option>
 									{/each}
-								</select>
+								</Select>
 							</div>
 							<div class="flex flex-col gap-1.5">
 								<label for="erstattetAm" class="text-sm font-medium text-ink-900">
@@ -528,26 +530,26 @@
 				<!-- Verein path: optional Zahlungsart picker. -->
 				<div class="flex flex-col gap-1.5">
 					<label for="zahlungsartId-verein" class="text-sm font-medium text-ink-900">Zahlungsart</label>
-					<select id="zahlungsartId-verein" name="zahlungsartId" bind:value={zahlungsartId} class={FIELD_CLASS}>
+					<Select id="zahlungsartId-verein" name="zahlungsartId" bind:value={zahlungsartId}>
 						<option value="">— Keine —</option>
 						{#each zahlungsarten as z (z.id)}
 							<option value={z.id}>{z.label}</option>
 						{/each}
-					</select>
+					</Select>
 				</div>
 			{/if}
 
 			<!-- Kommentar (optional) -->
 			<div class="flex flex-col gap-1.5">
 				<label for="kommentar" class="text-sm font-medium text-ink-900">Kommentar</label>
-				<textarea
+				<Textarea
 					id="kommentar"
 					name="kommentar"
 					rows={2}
 					maxlength={2000}
 					bind:value={kommentar}
 					class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 sm:text-sm"
-				></textarea>
+				></Textarea>
 			</div>
 		</div>
 	</section>

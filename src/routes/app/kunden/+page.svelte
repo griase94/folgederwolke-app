@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { TOOLBAR_CONTROL } from '$lib/components/ui/list-toolbar/index.js';
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import PageShell from '$lib/components/layout/PageShell.svelte';
@@ -90,7 +91,7 @@
 				bind:value={searchQuery}
 				aria-label="Kunden suchen"
 				data-testid="customer-search"
-				class="h-10 w-full rounded-lg border border-border bg-card py-1 pl-9 pr-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
+				class={[TOOLBAR_CONTROL, "w-full pl-9"]}
 			/>
 		</div>
 		<p class="text-xs text-ink-500 sm:ml-auto">
