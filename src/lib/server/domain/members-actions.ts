@@ -434,20 +434,11 @@ export async function markBeitragPaid(args: {
     return { ok: false, status: 422, error: FUTURE_PAYMENT_DATE_ERROR };
   }
 
-  // ADR-0006 — the Festschreibung follows the MONEY, not the Beitragsjahr.
-  // This is the fix for a verified prod trap: with 2025 festgeschrieben, a
-  // member paying their 2025 Beitrag in 2026 got a 409 and the Kassenwart had
-  // no way to record cash that had genuinely arrived. It books into 2026 now,
-  // which is open, so it is recordable — while a payment dated inside the
-  // closed year is still correctly rejected.
-  const festgeschriebenBis = await fetchFestgeschriebenBis();
-  if (festgeschriebenBis !== null && buchungsjahr <= festgeschriebenBis) {
-    return { ok: false, status: 409, error: "Jahr ist festgeschrieben" };
-  }
-
   const db = getDb();
 
-  // Fetch existing row — betragCents from an existing row MUST be preserved.
+  // Fetch existing row FIRST: it decides the Festschreibungs-Gate below (which
+  // year the money is currently booked into), and its betragCents MUST be
+  // preserved further down.
   const [existingRow] = await db
     .select()
     .from(memberBeitrags)
@@ -455,6 +446,33 @@ export async function markBeitragPaid(args: {
       and(eq(memberBeitrags.memberId, memberId), eq(memberBeitrags.year, year)),
     )
     .limit(1);
+
+  // ADR-0006 — the Festschreibung follows the MONEY, not the Beitragsjahr, and
+  // it has to hold on BOTH SIDES of the write.
+  //
+  //   - `buchungsjahr` (target): where this payment will land. Blocking a
+  //     closed target is what stops backdating cash into sealed books. It is
+  //     also what makes the B2b case work: a 2025 Beitrag paid in an open 2026
+  //     books into 2026, so a festgeschriebenes 2025 no longer rejects real,
+  //     arrived money.
+  //   - `prevBuchungsjahr` (source): where the money currently sits. Without
+  //     this second check, re-marking a payment that was booked into a CLOSED
+  //     year with a date in an open one silently moved the amount out of the
+  //     sealed year — no Storno, no 409, no audit trace, and member_beitrags
+  //     has no trigger backstop to catch it. That is a regression the S2 gate
+  //     introduced: the old `year <= festgeschriebenBis` test blocked every
+  //     write to a closed Beitragsjahr and therefore covered this by accident.
+  //
+  // A row with no payment date has no source year (null) and is correctly
+  // unaffected — that is the ordinary late-payment path.
+  const prevBuchungsjahr = buchungsjahrOfGezahltAm(existingRow?.gezahltAm);
+  const festgeschriebenBis = await fetchFestgeschriebenBis();
+  if (festgeschriebenBis !== null) {
+    if (buchungsjahr <= festgeschriebenBis)
+      return { ok: false, status: 409, error: "Jahr ist festgeschrieben" };
+    if (prevBuchungsjahr !== null && prevBuchungsjahr <= festgeschriebenBis)
+      return { ok: false, status: 409, error: "Jahr ist festgeschrieben" };
+  }
 
   // Resolve the obligation amount:
   //   - Existing row → use its betragCents (no clobber).

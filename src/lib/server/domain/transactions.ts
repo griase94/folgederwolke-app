@@ -164,10 +164,28 @@ export interface TransactionDetail extends TransactionRow {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Normalize a timestamp column to ISO-8601.
+ *
+ * The string branch must PARSE, not pass through: the very same column arrives
+ * as a JS `Date` from the Drizzle query builder but as a raw Postgres string
+ * from `db.execute` — `"2026-03-31 23:30:00+00"`, with a space instead of the
+ * `T`. Passing that through gave one field two wire formats depending on which
+ * query built the row, and `berlinMonthKey` reads a `T`-less string as an
+ * already-local date and slices the month straight off the UTC text. A row
+ * booked at 23:30 UTC on the last of a month is 01:30 the NEXT day in Berlin,
+ * so it landed in the previous month's group and subtotal — an ADR-0001-class
+ * error. The 23:30 case is pinned in `tests/unit/month-group.test.ts`.
+ *
+ * `new Date(raw)` parses the Postgres form directly. Do NOT "helpfully" swap
+ * the space for a `T` first: `"…T23:30:00+00"` carries a two-digit offset and
+ * parses to NaN.
+ */
 function formatTs(d: Date | string | null | undefined): string | null {
   if (!d) return null;
-  if (typeof d === "string") return d;
-  return d.toISOString();
+  if (typeof d !== "string") return d.toISOString();
+  const parsed = new Date(d);
+  return Number.isNaN(parsed.getTime()) ? d : parsed.toISOString();
 }
 
 // ---------------------------------------------------------------------------

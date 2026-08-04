@@ -88,11 +88,25 @@ export function foldSphereBuckets(rows: SphereGroupRow[]): EinnahmenKpi {
  * The four-key `bySphere` fold guarantees every sphere is present (0 when
  * empty), `totalCents` = Σ buckets, `count` = Σ group counts.
  *
- * The Beitrags arm is what makes this header agree with the Dashboard: both now
- * read the same money. Before S4 the Dashboard's ideeller total counted paid
- * Beiträge and this one did not, so clicking from the KPI into the list showed
- * a visibly smaller number with no explanation. Beiträge are always ideeller
- * (§§ 51-68 AO) and book by Zufluss, hence the same predicates the EÜR uses.
+ * The Beitrags arm is what makes this header agree with the Dashboard's
+ * Einnahmen tile: `totalCents === cashflow.einnahmenExclSpendenYtdCents`, both
+ * being income + paid Beiträge. Before S4 the Dashboard counted the Beiträge
+ * and this header did not, so the same figure read differently in two places.
+ * Beiträge are always ideeller (§§ 51-68 AO) and book by Zufluss, hence the
+ * same predicates the EÜR uses.
+ *
+ * That agreement does NOT extend to `cashflow.einnahmenBySphereCents`. The
+ * Dashboard's sphere split folds Spenden in; this list omits them on purpose,
+ * because they have their own tile, their own tab and their own
+ * Bescheinigungs-Workflow. The two ideeller buckets therefore differ by exactly
+ * the Spendensumme — measured 259,07 € here against 509,07 € there in a year
+ * with one 250 € Spende. Compare this header against the Einnahmen TILE, never
+ * against the sphere split.
+ *
+ * The rule behind which sources this list carries: an income source appears
+ * here when it has nowhere else to live. Mitgliedsbeiträge have no money list
+ * of their own (the Mitglieder-Matrix is a Soll matrix, not a Geld-Liste), so
+ * they belong here; Spenden already have one, so they do not.
  *
  * Deliberately independent of the active list filters — like the feed's chip
  * counts, this is the year anchor ("Jahr · Summe · N"), not a readout of the

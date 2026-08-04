@@ -264,6 +264,45 @@ describe("S2 — Mitgliedsbeiträge book by Zufluss", () => {
       if (!res.ok) expect(res.status).toBe(409);
     });
 
+    it("refuses to move money OUT of a closed year by re-marking it", async () => {
+      // The gate has to hold on both sides of the write. Checking only the
+      // TARGET year let a payment already booked into a closed year be
+      // re-marked with a date in an open one: the sealed year silently lost the
+      // amount — no Storno, no 409, no audit trace, and member_beitrags has no
+      // trigger backstop. The pre-S2 gate blocked every write to a closed
+      // Beitragsjahr and covered this by accident.
+      const db = getDb();
+      const memberId = await anyMemberWithBeitragRow(BEITRAGSJAHR);
+
+      // Construct the pre-state directly: a payment recorded while 2025 was
+      // still open. It cannot be created through the action any more (the
+      // target-year gate now rejects it), which is the point.
+      await db.execute(sql`
+        UPDATE member_beitrags
+           SET paid_cents = betrag_cents, gezahlt_am = ${`${BEITRAGSJAHR}-06-01`}
+         WHERE member_id = ${memberId}::uuid AND year = ${BEITRAGSJAHR}
+      `);
+      const before = await loadEurWorkspaceData(BEITRAGSJAHR);
+      expect(before.beitragEinnahmenCents).toBeGreaterThan(0);
+
+      const res = await markBeitragPaid({
+        memberId,
+        year: BEITRAGSJAHR,
+        gezahltAm: LATE_PAYMENT, // 2026 — an open year
+        actorUserId: null,
+        actorRole: "admin",
+      });
+
+      expect(res.ok).toBe(false);
+      if (!res.ok) expect(res.status).toBe(409);
+
+      // The closed year still holds every cent, and nothing leaked into 2026.
+      const after = await loadEurWorkspaceData(BEITRAGSJAHR);
+      expect(after.beitragEinnahmenCents).toBe(before.beitragEinnahmenCents);
+      const open = await loadEurWorkspaceData(ZUFLUSSJAHR);
+      expect(open.beitragEinnahmenCents).toBe(0);
+    });
+
     it("records a late payment for a CLOSED Beitragsjahr (the B2b trap)", async () => {
       const memberId = await anyMemberWithBeitragRow(BEITRAGSJAHR);
 
