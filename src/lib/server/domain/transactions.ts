@@ -12,6 +12,7 @@
 
 import { and, asc, desc, eq, sql, type AnyColumn, type SQL } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
+import { erstattungAusNr, payoutIbanSql } from "./erstattung-payout.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
 import { donations } from "$lib/server/db/schema/donations.js";
@@ -1202,7 +1203,7 @@ export async function getTransactionDetail(
 }
 
 // ---------------------------------------------------------------------------
-// listApprovedPendingErstattet — for SEPA XML generator
+// listApprovedPendingErstattet — the Überweisungs-Werkstatt pool
 // ---------------------------------------------------------------------------
 
 export interface ApprovedExpense {
@@ -1214,9 +1215,26 @@ export interface ApprovedExpense {
   bezahltVonKind: string;
   externIban: string | null;
   externName: string | null;
-  /** Member IBAN: must be looked up separately — stored on member row */
   bezahltVonMemberId: string | null;
   memberIban: string | null;
+  /**
+   * The AUS-Nr of the submission this expense came from (M4). The Werkstatt
+   * shows THIS, not the expense number — it is what the member sees and what
+   * the decision mails quote. NULL for directly-booked expenses.
+   */
+  ausNr: string | null;
+  /**
+   * The resolved payout target (M4 precedence: submission snapshot → extern →
+   * live member IBAN). `null` means the claim is not payable and the server
+   * will refuse it (§7).
+   */
+  payoutIban: string | null;
+  /**
+   * From a Buchungsjahr that is already closed (F4). Such claims stay in the
+   * pool — the reimbursement columns are carved out of the Festschreibung
+   * (ADR-0006) — but the UI marks them quietly so nobody is surprised.
+   */
+  festgeschrieben: boolean;
 }
 
 export async function listApprovedPendingErstattet(): Promise<
@@ -1236,14 +1254,21 @@ export async function listApprovedPendingErstattet(): Promise<
       externName: expenses.externName,
       bezahltVonMemberId: expenses.bezahltVonMemberId,
       memberIban: members.iban,
+      ausNr: erstattungAusNr,
+      payoutIban: payoutIbanSql,
+      festgeschrieben: sql<boolean>`${expenses.festgeschriebenAt} IS NOT NULL`,
     })
     .from(expenses)
     .leftJoin(members, eq(members.id, expenses.bezahltVonMemberId))
+    // F4 (ratified): festgeschriebene-but-unreimbursed claims STAY in the pool.
+    // They used to be filtered out and simply vanished — the money was still
+    // owed, but nobody could see it. The reimbursement columns are carved out
+    // of the Festschreibung (ADR-0006 / #153), so committing them is allowed;
+    // the UI flags them quietly instead of hiding them.
     .where(
       and(
         sql`${expenses.approvedAt} IS NOT NULL`,
         sql`${expenses.erstattetAm} IS NULL`,
-        sql`${expenses.festgeschriebenAt} IS NULL`,
       ),
     )
     .orderBy(expenses.businessId);
@@ -1259,6 +1284,9 @@ export async function listApprovedPendingErstattet(): Promise<
     externName: r.externName ?? null,
     bezahltVonMemberId: r.bezahltVonMemberId ?? null,
     memberIban: r.memberIban ?? null,
+    ausNr: r.ausNr ?? null,
+    payoutIban: r.payoutIban ?? null,
+    festgeschrieben: Boolean(r.festgeschrieben),
   }));
 }
 

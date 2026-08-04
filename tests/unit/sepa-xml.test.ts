@@ -191,6 +191,11 @@ describe("buildSepaInputs", () => {
     externName: "Max Mustermann",
     bezahltVonMemberId: null,
     memberIban: null,
+    // A-S3: the pool now also carries the AUS-Nr, the resolved payout target
+    // and the closed-year flag. SEPA generation is unaffected by them.
+    ausNr: "AUS-2026-001",
+    payoutIban: "DE89370400440532013000",
+    festgeschrieben: false,
   };
 
   it("maps extern expenses to SepaTransactionInput using externIban", () => {

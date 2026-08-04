@@ -22,7 +22,9 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
-import { resolvePayoutIban } from "./erstattung-payout.js";
+import { resolvePayoutIban, erstattungAusNr } from "./erstattung-payout.js";
+import { erstattungsVerwendungszweck } from "./erstattung-verwendungszweck.js";
+import { env } from "$lib/server/env.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { members } from "$lib/server/db/schema/members.js";
@@ -847,6 +849,15 @@ export async function markExpenseErstattet(
   // Verein having paid a vendor directly — no payee, no IBAN to demand;
   // "erstattet" there merely records the cash-out. Applying §7 to it would
   // make every Verein-direct expense unpayable.
+  // The AUS-Nr of the originating submission — what the member quotes and what
+  // the Verwendungszweck must carry. NULL for a directly-booked expense.
+  const [ausRow] = await db
+    .select({ ausNr: erstattungAusNr })
+    .from(expenses)
+    .where(eq(expenses.id, expenseId))
+    .limit(1);
+  const ausNr = ausRow?.ausNr ?? null;
+
   const needsIban =
     "Keine IBAN hinterlegt — Erstattung erst möglich, sobald die IBAN ergänzt ist.";
   if (expense.bezahltVonKind === "extern") {
@@ -953,7 +964,13 @@ export async function markExpenseErstattet(
     vorname,
     bezeichnung: expense.bezeichnung,
     betragCents: Number(expense.betragCents),
-    verwendungszweck: input.verwendungszweck ?? expense.bezeichnung,
+    // ONE Verwendungszweck: the string the Werkstatt copies into the bank
+    // form is the string this mail tells the member to look for. A caller may
+    // still override it, but the default is no longer the Bezeichnung — which
+    // the member would never see on their statement.
+    verwendungszweck:
+      input.verwendungszweck ??
+      erstattungsVerwendungszweck(ausNr, env.VEREIN_NAME),
     erstattungsAm: new Date(`${chosenDate}T00:00:00Z`),
   });
 

@@ -51,6 +51,7 @@ type RowStatus =
   | "erstattet"
   | "bereits-erstattet"
   | "festgeschrieben"
+  | "iban-fehlt"
   | "nicht-gefunden"
   | "fehler";
 interface RowResult {
@@ -62,6 +63,13 @@ interface RowResult {
 interface BulkSummary {
   erstattet: string[];
   festgeschrieben: string[];
+  /**
+   * Skipped because there is no payout account (§7). Its own bucket, not a
+   * generic error: nothing went wrong, the claim simply cannot be paid yet —
+   * and the result toast has to say so, otherwise a partly-successful batch
+   * looks like a failure.
+   */
+  ibanFehlt: string[];
   bereitsBezahlt: string[];
   notFound: string[];
   fehler: { id: string; error: string }[];
@@ -89,6 +97,7 @@ async function bulkMarkErstattet(
   const summary: BulkSummary = {
     erstattet: [],
     festgeschrieben: [],
+    ibanFehlt: [],
     bereitsBezahlt: [],
     notFound: [],
     fehler: [],
@@ -116,6 +125,17 @@ async function bulkMarkErstattet(
         error: result.error,
       });
       summary.festgeschrieben.push(expenseId);
+    } else if (result.status === 422) {
+      // §7 — the server refused for a missing payout account. The client is
+      // supposed to skip these, but it may send them anyway (or the IBAN may
+      // have vanished between render and submit), so the batch reports them
+      // rather than counting them as failures.
+      results.push({
+        id: expenseId,
+        status: "iban-fehlt",
+        error: result.error,
+      });
+      summary.ibanFehlt.push(expenseId);
     } else if (result.status === 404) {
       results.push({
         id: expenseId,
@@ -129,6 +149,8 @@ async function bulkMarkErstattet(
     }
   }
 
+  // A skipped IBAN-less claim is a reportable outcome, not a failure — `ok`
+  // stays true so the toast reads "partly done" rather than "broken".
   const ok = summary.fehler.length === 0;
   return { ok, results, summary };
 }
