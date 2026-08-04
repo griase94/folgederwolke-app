@@ -21,10 +21,16 @@ export const HERO_WRAP_ERROR =
   "border-severity-critical " +
   "focus-within:shadow-[0_0_0_4px_color-mix(in_srgb,var(--sev-critical)_16%,transparent)]";
 
-/** The 20px accent prefix zone. Insets tighten on mobile (10px/6px vs 16px/10px)
- *  so a full date (TT.MM.JJJJ) never clips in the side-by-side hero at 390px. */
+/** The 20px accent prefix zone. Insets tighten on mobile (8px/4px vs 16px/10px)
+ *  so a full date (TT.MM.JJJJ) never clips in the side-by-side hero.
+ *
+ *  SLOT-FELD measured this: the previous mobile insets (10px/6px) were tuned
+ *  against 390px and fall 3px short at 375px — a real device width (iPhone SE /
+ *  mini) and the narrowest one we support. There `04.08.2026` needed 111px in a
+ *  108px box and dropped its last digit. 8px/4px buys the 4px that closes it;
+ *  390px and up are unaffected in appearance beyond 4px more value room. */
 export const HERO_PREFIX =
-  "flex-none grid place-items-center w-5 ml-2.5 mr-1.5 sm:ml-4 sm:mr-2.5 text-[color:var(--hero-accent)]";
+  "flex-none grid place-items-center w-5 ml-2 mr-1 sm:ml-4 sm:mr-2.5 text-[color:var(--hero-accent)]";
 
 /** The value input — identical metric in both fields (right-aligned tabular
  *  extrabold). 18px on mobile so a full date fits the side-by-side hero cell at
