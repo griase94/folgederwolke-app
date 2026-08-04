@@ -133,6 +133,7 @@ export function registerHandlers(): void {
           bezeichnung: p.bezeichnung,
           betragCents: p.betragCents,
           kategorie: p.kategorie,
+          sphaere: p.sphaere,
           decidedAt: p.decidedAt,
         },
       });
@@ -278,6 +279,7 @@ export function registerHandlers(): void {
             betragCents: payload.betragCents,
             grund: payload.grund,
             abgelehntAm: new Date(),
+            eingereichtAm: payload.eingereichtAm,
           },
         });
       } catch (mailErr) {

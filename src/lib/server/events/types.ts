@@ -139,6 +139,8 @@ export type Events = {
     bezeichnung: string;
     betragCents: number;
     grund: string;
+    /** `submitted_at` — the RejectionMail's fact block dates the SUBMISSION. */
+    eingereichtAm: Date;
   };
 
   /**
@@ -159,6 +161,8 @@ export type Events = {
     bezeichnung: string;
     betragCents: number;
     kategorie: string;
+    /** Display name of the sphere derived from `kategorie` (ADR-0002). */
+    sphaere: string;
     decidedAt: string;
     decidedByUserId: string;
     /** P2-B6: per ADR-0005 UNIQUE(template, entity_kind, entity_id, send_attempt). */

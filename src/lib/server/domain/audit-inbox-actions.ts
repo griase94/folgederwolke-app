@@ -38,6 +38,7 @@ import {
 } from "$lib/server/domain/auslagen.js";
 import { DATENSCHUTZ_VERSION } from "$lib/server/domain/datenschutz.js";
 import { berlinYear } from "$lib/domain/year.js";
+import { SPHERE_LABELS } from "$lib/domain/sphere.js";
 
 // ---------------------------------------------------------------------------
 // manualImportSubmission
@@ -589,8 +590,11 @@ export async function approveSubmission(
       bezeichnung: submission.bezeichnung,
       betragCents: Number(submission.betragCents),
       // Spec §4.6: the ApprovalMail carries the treasurer-chosen Kategorie
-      // (same value stamped on the expense INSERT above, kept CONSISTENT).
+      // (same value stamped on the expense INSERT above, kept CONSISTENT) plus
+      // the sphere that Kategorie derives — the same one snapshotted on the
+      // expense row, so mail and books can never disagree (ADR-0002).
       kategorie: kat.name,
+      sphaere: SPHERE_LABELS[kat.sphere],
       decidedAt: new Date().toISOString(),
       decidedByUserId: actorUserId,
       send_attempt: sendAttempt,
@@ -762,6 +766,9 @@ export async function rejectSubmission(
     bezeichnung: submission.bezeichnung,
     betragCents: Number(submission.betragCents),
     grund,
+    // The mail dates the SUBMISSION, not the decision — that is the fact the
+    // reader needs to recognise which Auslage this is about.
+    eingereichtAm: submission.submittedAt,
   });
 
   return { ok: true, alreadyDecided: false };

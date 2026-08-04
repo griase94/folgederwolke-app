@@ -184,24 +184,33 @@ describe("EingangsMail", () => {
 // ---------------------------------------------------------------------------
 
 describe("ErstattungsMail", () => {
+  // Structure + copy moved to tests/unit/mail-auslage-decision.test.ts with the
+  // A-S3.3 redesign; what stays here is the render contract every template
+  // shares — identity from props, a usable plain-text part.
   it("renders HTML with key content", async () => {
     const { html } = await renderTemplate("ErstattungsMail", erstattungsProps);
 
     expect(html).toContain(VEREIN_NAME);
-    expect(html).toContain("Liebste:r Lea");
+    expect(html).toContain("Liebe:r Lea");
     expect(html).toContain("AUS-2026-042");
     expect(html).toContain("23,50");
     expect(html).toContain("Erstattung");
-    expect(html).toContain("AUS-2026-042 Lea Mustermann");
+    // The AUS-Nr inside the Verwendungszweck is wrapped in a nowrap span
+    // (A-S3.3) — a reference that breaks mid-number is useless against a bank
+    // statement — so the string appears in two pieces, not one.
+    expect(html).toContain(
+      '<span style="white-space:nowrap;">AUS-2026-042</span>',
+    );
+    expect(html).toContain("Lea Mustermann");
     expect(html).toContain("Werktagen");
-    expect(html).toContain("Mit besten Grüßen");
+    expect(html).toContain("Liebe Grüße");
   });
 
   it("plain-text fallback is non-empty and has key German text", async () => {
     const { text } = await renderTemplate("ErstattungsMail", erstattungsProps);
 
     expect(text.length).toBeGreaterThan(100);
-    expect(text).toContain("Liebste:r Lea");
+    expect(text).toContain("Liebe:r Lea");
     expect(text).toContain("Erstattung");
     expect(text).toContain(VEREIN_NAME);
   });
@@ -460,13 +469,29 @@ describe("subjectFor — name-bearing subjects from props.vereinName", () => {
     expect(s).not.toContain("Folge der Wolke");
   });
 
-  it("auslage_approved subject uses the runtime name", () => {
+  it("auslage_approved subject leads with the outcome and the amount", () => {
+    // A-S3.3: the decision subjects deliberately dropped the Verein name — an
+    // inbox truncates at ~40 characters, and "Genehmigt (36,40 €)" is what the
+    // recipient actually needs there. The sender name carries the identity.
     const s = subjectFor("auslage_approved", {
       vereinName: name,
       ausId: "AUS-2026-042",
+      betragCents: 3640,
     });
-    expect(s).toContain(name);
+    // Built through the same formatter rather than a literal: de-DE puts a
+    // NBSP before the €, and an invisible character is a miserable diff.
+    const eur = (36.4).toLocaleString("de-DE", {
+      style: "currency",
+      currency: "EUR",
+    });
+    expect(s).toBe(`Genehmigt (${eur}): Deine Auslage AUS-2026-042 ist durch`);
     expect(s).not.toContain("Folge der Wolke");
+  });
+
+  it("drops the amount clause rather than shipping NaN when it is missing", () => {
+    const s = subjectFor("auslage_approved", { ausId: "AUS-2026-042" });
+    expect(s).toBe("Genehmigt: Deine Auslage AUS-2026-042 ist durch");
+    expect(s).not.toMatch(/NaN|\(\)/);
   });
 
   it("auslage_eingang subject: single AUS-id vs plural batch", () => {

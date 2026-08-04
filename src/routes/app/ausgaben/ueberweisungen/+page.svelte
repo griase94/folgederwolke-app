@@ -141,11 +141,13 @@
   </Button>
 {/snippet}
 
-<!-- `list` (1100) — PageShell ships form|list|full; the guidelines' "wide"
-     (1680) has no implementation, and inventing a fourth width here would be
-     exactly the drift the width canon exists to prevent. 1100 minus the 320
-     rail still leaves ~750 for the cards. -->
-<PageShell width="list">
+<!-- `list` (1100) + `rail`: a claim list wants a reading width, not a canvas —
+     1100 minus the 320 cockpit still leaves ~750 for the cards, while `wide`
+     (1680, shipped with #170) would stretch a bank-order card to ~1330px and
+     pull the Empfängername away from the IBAN it belongs to. `rail` only
+     relaxes the cap from 2240px up, where a 1100px channel in a 2560px window
+     otherwise strands 610px of empty plain on each side (Andys Regel 6). -->
+<PageShell width="list" rail>
   <PageHeader title="Überweisungs-Werkstatt" backHref="/app/ausgaben" backLabel="Ausgaben">
     {#snippet meta()}
       <span class="text-sm text-ink-500" data-testid="werkstatt-meta">

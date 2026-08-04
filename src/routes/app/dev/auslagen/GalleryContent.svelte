@@ -34,6 +34,10 @@
 	import ErstattungClaimCard from '$lib/components/admin/erstattung/ErstattungClaimCard.svelte';
 	import { SegmentedControl } from '$lib/components/ui/segmented-control/index.js';
 	import { buildBulkResult } from '$lib/components/admin/erstattung/bulk-result.js';
+	import { OptionGrid } from '$lib/components/ui/option-grid/index.js';
+	import RejectDialog, {
+		REJECT_TEMPLATES
+	} from '$lib/components/admin/inbox/RejectDialog.svelte';
 
 	import Clock from '@lucide/svelte/icons/clock';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
@@ -149,6 +153,10 @@
 	// ── A-flow S3.1 · Erstattung-Kit demo state ──────────────────────────────
 	let announcer = $state<{ announce: (l: string) => void } | null>(null);
 	let lens = $state('vorbereiten');
+
+	// ── A-flow S3.3 · Ablehnen-Kit demo state ────────────────────────────────
+	let galleryTemplate = $state(REJECT_TEMPLATES[0]!.key);
+	let rejectDemoOpen = $state(false);
 
 	const claimPayable = {
 		id: 'c1',
@@ -481,4 +489,41 @@
 		{/each}
 	{/snippet}
 	{@render frame('Bulk-Ergebnis · sauber vs. gemischt (Tally)', bulkResults)}
+</div>
+
+<div class="mt-14 space-y-8">
+	<h2 class="text-lg font-bold tracking-tight text-ink-900">
+		Ablehnen-Kit · A-flow S3.3
+	</h2>
+
+	{#snippet optionGrid()}
+		<div class="w-full max-w-lg">
+			<OptionGrid
+				legend="Grund-Vorlage"
+				testid="g-tpl"
+				options={REJECT_TEMPLATES.map((t) => ({
+					value: t.key,
+					label: t.label,
+					full: t.key === 'sonstiges'
+				}))}
+				value={galleryTemplate}
+				onselect={(v) => (galleryTemplate = v)}
+			/>
+		</div>
+	{/snippet}
+	{@render frame('OptionGrid · 2-spaltig, „Sonstiges" volle Breite (native Radios)', optionGrid)}
+
+	{#snippet rejectDialog()}
+		<Button variant="outline" onclick={() => (rejectDemoOpen = true)}>
+			Ablehnen-Dialog öffnen
+		</Button>
+		<RejectDialog
+			bind:open={rejectDemoOpen}
+			submissionId="demo"
+			ausId="AUS-2026-0040"
+			empfaengerDisplay="Lena Huber"
+			formAction="?/noop"
+		/>
+	{/snippet}
+	{@render frame('RejectDialog · Vorlagen + Grund + 1:1-Hinweis + gleich breite Buttons', rejectDialog)}
 </div>

@@ -1,6 +1,29 @@
 <script lang="ts">
+	/**
+	 * RejectionMail — "noch ein kleiner Schritt" (mail-auslage-abgelehnt.md, v1).
+	 *
+	 * The hardest of the four: it must be unambiguous about the reason and still
+	 * feel solvable. Two registers, strictly separated — the frame around the
+	 * reason is warm (it lives here), the reason itself is sober (it comes from
+	 * the treasurer's Reject-Modal and is rendered verbatim, never reworded,
+	 * shortened or decorated).
+	 *
+	 * Exactly ONE path forward: resubmit. The reply channel is the secondary way
+	 * and stays text, not a button.
+	 *
+	 * A rejected batch element gets this mail alone — the siblings are never
+	 * mentioned and never implied to be at risk (auslagen-spec §3.6).
+	 */
+	/* eslint-disable svelte/no-navigation-without-resolve */
 	import type { RejectionMailProps } from '../types.js';
-	import MailFooter from './MailFooter.svelte';
+	import { BRAND_PRIMARY_STRONG } from '$lib/brand.js';
+	import ChipLead from './kit/ChipLead.svelte';
+	import DetailCard, { type MailFactRow } from './kit/DetailCard.svelte';
+	import GrundBox from './kit/GrundBox.svelte';
+	import MailShell from './kit/MailShell.svelte';
+	import Signoff from './kit/Signoff.svelte';
+	import { datum, eur } from './kit/format.js';
+	import { INK_500, INK_700, INK_900 } from './kit/tokens.js';
 
 	let {
 		vorname,
@@ -8,185 +31,74 @@
 		bezeichnung,
 		betragCents,
 		grund,
-		abgelehntAm,
+		eingereichtAm,
+		baseUrl = '',
 		vereinName = '',
 		adresse = '',
 		vr = '',
 		steuernummer = ''
 	}: RejectionMailProps & {
+		/** Absolute public origin (PUBLIC_BASE_URL), injected by sendMail. */
+		baseUrl?: string;
 		vereinName?: string;
 		adresse?: string;
 		vr?: string;
 		steuernummer?: string;
 	} = $props();
 
-	const betragFmt = $derived(
-		(betragCents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
-	);
-	const datumFmt = $derived(
-		abgelehntAm.toLocaleDateString('de-DE', {
-			day: '2-digit',
-			month: '2-digit',
-			year: 'numeric'
-		})
-	);
-	import { BRAND_PRIMARY_STRONG } from '$lib/brand.js';
+	const rows = $derived<MailFactRow[]>([
+		{ label: 'Auslage', value: bezeichnung },
+		{ label: 'Betrag', value: eur(betragCents), variant: 'amount' },
+		{ label: 'AUS-Nr.', value: ausId, variant: 'mono' },
+		...(eingereichtAm
+			? [{ label: 'Eingereicht am', value: datum(eingereichtAm), variant: 'num' as const }]
+			: [])
+	]);
+
+	// Relative paths are dead in mail clients; strip a trailing slash so the
+	// origin and the path never produce a double slash.
+	const einreichenUrl = $derived(`${baseUrl.replace(/\/+$/, '')}/auslage-einreichen`);
 </script>
 
-<!--
-  Auslage-Ablehnung email. Always gentle tone; surfaces the rejection
-  reason so the member can correct and resubmit. Brand-strip pattern
-  matches MagicLink.svelte (UI-031, 2026-05-19 §3.13).
--->
-<table
-	role="presentation"
-	cellspacing="0"
-	cellpadding="0"
-	border="0"
-	width="100%"
-	style="background:#f8f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;"
->
-	<tbody>
-		<tr>
-			<td align="center" style="padding:40px 16px;">
-				<table
-					role="presentation"
-					cellspacing="0"
-					cellpadding="0"
-					border="0"
-					width="560"
-					style="max-width:560px;background:#ffffff;border-radius:16px;border:1px solid #f1e6ec;"
-				>
-					<tbody>
-						<!-- Brand strip -->
-						<tr>
-							<td style="background:{BRAND_PRIMARY_STRONG};padding:18px 32px;border-radius:16px 16px 0 0;">
-								<p
-									style="margin:0;color:#ffffff;font-size:13px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;"
-								>
-									{vereinName}
-								</p>
-							</td>
-						</tr>
+<MailShell {vereinName} {adresse} {vr} {steuernummer}>
+	<ChipLead label="Korrektur nötig" />
+	<h1
+		style="margin:0 0 14px 0;font-size:22px;font-weight:700;color:{INK_900};letter-spacing:-0.2px;"
+	>
+		Zu deiner Auslage — noch ein kleiner Schritt
+	</h1>
 
-						<!-- Body -->
-						<tr>
-							<td style="padding:36px 32px 8px 32px;line-height:1.55;font-size:15px;color:#1f2937;">
-								<h1
-									style="margin:0 0 16px 0;font-size:22px;font-weight:700;color:#111827;letter-spacing:-0.2px;"
-								>
-									Zu deiner Auslage
-								</h1>
+	<p style="margin:0 0 16px 0;color:{INK_700};">
+		Liebe:r {vorname}, deine Auslage können wir in dieser Form
+		<strong style="color:{INK_900};">noch nicht erstatten</strong>. Kein Drama — wir sagen dir genau,
+		woran’s liegt, und dann kriegen wir das zusammen hin.
+	</p>
 
-								<p style="margin:0 0 18px 0;color:#374151;">
-									<strong>Liebste:r {vorname},</strong> wir haben deine Auslage geprüft und können
-									sie leider in dieser Form noch nicht erstatten. Wir sagen dir aber genau warum,
-									damit du sie ggf. korrigiert <strong>noch einmal</strong> einreichen kannst.
-								</p>
+	<DetailCard {rows} />
 
-								<!-- Detail card (neutral) -->
-								<table
-									role="presentation"
-									cellspacing="0"
-									cellpadding="0"
-									border="0"
-									width="100%"
-									style="background:#fdf2f8;border-radius:12px;margin:0 0 18px 0;"
-								>
-									<tbody>
-										<tr>
-											<td style="padding:16px 20px;">
-												<table
-													role="presentation"
-													cellspacing="0"
-													cellpadding="0"
-													border="0"
-													width="100%"
-													style="font-size:13px;color:#374151;"
-												>
-													<tbody>
-														<tr>
-															<td
-																style="padding:5px 0;color:#6b7280;width:140px;white-space:nowrap;vertical-align:top;"
-																>AUS-ID</td
-															>
-															<td style="padding:5px 0;color:#111827;font-weight:700;">{ausId}</td>
-														</tr>
-														<tr>
-															<td
-																style="padding:5px 0;color:#6b7280;white-space:nowrap;vertical-align:top;"
-																>Bezeichnung</td
-															>
-															<td style="padding:5px 0;color:#111827;">{bezeichnung}</td>
-														</tr>
-														<tr>
-															<td
-																style="padding:5px 0;color:#6b7280;white-space:nowrap;vertical-align:top;"
-																>Betrag</td
-															>
-															<td style="padding:5px 0;color:#111827;font-weight:600;">{betragFmt}</td>
-														</tr>
-														<tr>
-															<td
-																style="padding:5px 0;color:#6b7280;white-space:nowrap;vertical-align:top;"
-																>Geprüft am</td
-															>
-															<td style="padding:5px 0;color:#111827;">{datumFmt}</td>
-														</tr>
-													</tbody>
-												</table>
-											</td>
-										</tr>
-									</tbody>
-								</table>
+	<GrundBox title="Woran’s liegt" text={grund} />
 
-								<!-- Grund card (amber-50 / amber border per UI-031) -->
-								<p style="margin:0 0 8px 0;color:#374151;">
-									<strong>Unsere Begründung:</strong>
-								</p>
-								<table
-									role="presentation"
-									cellspacing="0"
-									cellpadding="0"
-									border="0"
-									width="100%"
-									style="background:#fef3c7;border-left:4px solid #f59e0b;border-radius:8px;margin:0 0 22px 0;"
-								>
-									<tbody>
-										<tr>
-											<td style="padding:14px 20px;color:#78350f;font-size:13px;line-height:1.6;">
-												{grund}
-											</td>
-										</tr>
-									</tbody>
-								</table>
+	<p style="margin:0 0 16px 0;color:{INK_700};">
+		Kein Aufwand: Beleg neu machen, hochladen, fertig. Deine Angaben kannst du dabei direkt
+		übernehmen.
+	</p>
 
-								<p style="margin:0 0 24px 0;color:#374151;">
-									Wenn du den Beleg in korrigierter Form noch einmal einreichen möchtest, kannst du
-									das jederzeit über das Auslagen-Formular tun. Bei Fragen — schreib uns einfach
-									zurück.
-								</p>
+	<!-- The one CTA. Bulletproof shape: a solid-background <a> block, no gradient
+	     and no <button> — mail clients strip both (Abnahme #24). -->
+	<div style="margin:0 0 8px 0;">
+		<a
+			href={einreichenUrl}
+			style="display:block;width:100%;box-sizing:border-box;text-align:center;background:{BRAND_PRIMARY_STRONG};color:#ffffff;font-size:16px;font-weight:700;letter-spacing:0.01em;padding:15px 24px;border-radius:9px;text-decoration:none;"
+			>Auslage neu einreichen</a
+		>
+	</div>
+	<p style="margin:9px 0 20px 0;font-size:12.5px;line-height:1.5;text-align:center;color:{INK_500};">
+		Dauert keine zwei Minuten — und dann ist dein Geld auf dem Weg.
+	</p>
 
-								<!-- Divider -->
-								<div
-									style="border-top:1px solid #f1e6ec;margin:8px 0 22px 0;font-size:1px;line-height:1px;"
-								>
-									&nbsp;
-								</div>
+	<p style="margin:0 0 18px 0;font-size:13.5px;line-height:1.5;color:{INK_500};">
+		Fragen dazu? Antworte einfach auf diese E-Mail — wir helfen gern weiter.
+	</p>
 
-								<p style="margin:0;font-size:13px;color:#6b7280;line-height:1.5;">
-									Mit besten Grüßen,<br /><strong style="color:#374151;"
-										>deine {vereinName} Finanz-Geschäftler:innen</strong
-									>
-								</p>
-							</td>
-						</tr>
-
-						<!-- Footer -->
-						<MailFooter {vereinName} {adresse} {vr} {steuernummer} />
-					</tbody>
-				</table>
-			</td>
-		</tr>
-	</tbody>
-</table>
+	<Signoff />
+</MailShell>
