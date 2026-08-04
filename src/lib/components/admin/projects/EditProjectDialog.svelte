@@ -5,6 +5,8 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Select } from '$lib/components/ui/select/index.js';
 	import { toast } from 'svelte-sonner';
 	import type { ProjectView } from '$lib/server/domain/projects.js';
 
@@ -154,34 +156,32 @@
 
 				<div class="space-y-1">
 					<Label for="edit-proj-sphere">Sphäre (Standard)</Label>
-					<select
+					<Select
 						id="edit-proj-sphere"
 						name="sphere_default"
-						class="border-input bg-background h-9 w-full rounded-lg border px-2.5 py-1 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
-					>
+						>
 						{#each sphereOptions as opt (opt.value)}
 							<option value={opt.value} selected={project.sphereDefault === opt.value || (!project.sphereDefault && opt.value === '')}>
 								{opt.label}
 							</option>
 						{/each}
-					</select>
+					</Select>
 				</div>
 
 				<!-- C1-PRJ-A: Default-Kunde combobox. /rechnungen/new?projectId=X
 				     uses this FK to pre-fill the customer picker. -->
 				<div class="space-y-1">
 					<Label for="edit-proj-default-customer">Standard-Kunde (optional)</Label>
-					<select
+					<Select
 						id="edit-proj-default-customer"
 						name="default_customer_id"
-						class="border-input bg-background h-9 w-full rounded-lg border px-2.5 py-1 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
-						data-testid="project-default-customer"
+							data-testid="project-default-customer"
 					>
 						<option value="" selected={!project.defaultCustomerId}>— Kein Standard-Kunde —</option>
 						{#each customers as c (c.id)}
 							<option value={c.id} selected={project.defaultCustomerId === c.id}>{c.name}</option>
 						{/each}
-					</select>
+					</Select>
 				</div>
 
 				<div class="grid grid-cols-2 gap-3">
@@ -197,12 +197,12 @@
 
 				<div class="space-y-1">
 					<Label for="edit-proj-notes">Notizen</Label>
-					<textarea
+					<Textarea
 						id="edit-proj-notes"
 						name="notes"
-						rows="3"
-						class="border-input bg-background focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 sm:text-sm"
-					>{project.notes ?? ''}</textarea>
+						rows={3}
+						value={project.notes ?? ''}
+					/>
 				</div>
 
 				{#if errors['_']}

@@ -4,6 +4,8 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Select } from '$lib/components/ui/select/index.js';
 
 	let {
 		open = $bindable(false),
@@ -90,15 +92,14 @@
 
 			<div class="space-y-1">
 				<Label for="add-proj-sphere">Sphäre (Standard)</Label>
-				<select
+				<Select
 					id="add-proj-sphere"
 					name="sphere_default"
-					class="border-input bg-background h-9 w-full rounded-lg border px-2.5 py-1 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
 				>
 					{#each sphereOptions as opt (opt.value)}
 						<option value={opt.value}>{opt.label}</option>
 					{/each}
-				</select>
+				</Select>
 				{#if fieldError('sphere_default')}
 					<p class="text-xs text-destructive">{fieldError('sphere_default')}</p>
 				{/if}
@@ -108,17 +109,16 @@
 			     /rechnungen/new?projectId=X to pre-fill the customer FK. -->
 			<div class="space-y-1">
 				<Label for="add-proj-default-customer">Standard-Kunde (optional)</Label>
-				<select
+				<Select
 					id="add-proj-default-customer"
 					name="default_customer_id"
-					class="border-input bg-background h-9 w-full rounded-lg border px-2.5 py-1 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
 					data-testid="project-default-customer"
 				>
 					<option value="">— Kein Standard-Kunde —</option>
 					{#each customers as c (c.id)}
 						<option value={c.id}>{c.name}</option>
 					{/each}
-				</select>
+				</Select>
 			</div>
 
 			<div class="grid grid-cols-2 gap-3">
@@ -134,13 +134,12 @@
 
 			<div class="space-y-1">
 				<Label for="add-proj-notes">Notizen</Label>
-				<textarea
+				<Textarea
 					id="add-proj-notes"
 					name="notes"
-					rows="3"
-					class="border-input bg-background focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 sm:text-sm"
+					rows={3}
 					placeholder="Optionale Notizen zum Projekt"
-				></textarea>
+				></Textarea>
 			</div>
 
 			{#if errors['_']}

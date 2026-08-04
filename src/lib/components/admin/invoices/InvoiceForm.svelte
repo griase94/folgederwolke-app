@@ -31,7 +31,7 @@
 	import { formatMoney } from '$lib/components/ui/money/money.svelte';
 	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 	import { leistungszeitraumFromDatum } from '$lib/domain/datum.js';
-	import { FIELD_CLASS } from '$lib/components/admin/transactions/fields/field-class.js';
+	import { FIELD_CLASS } from '$lib/components/ui/field-class/index.js';
 	// Betrag "hero" anatomy (F1 shared primitive, Kit anatomy signature
 	// element) — same tokens the entry-modals Betrag field is built from.
 	// We compose these directly (rather than the AmountField component)
