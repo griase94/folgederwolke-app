@@ -18,6 +18,7 @@
 	import { AmountField, DateField as HeroDateField } from '$lib/components/ui/hero-field/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Select } from '$lib/components/ui/select/index.js';
+	import { FieldGroup } from '$lib/components/ui/field-group/index.js';
 	import CompactDateField from '$lib/components/ui/date-field/DateField.svelte';
 	import KategoriePicker from '$lib/components/admin/transactions/fields/KategoriePicker.svelte';
 	import LockedSphereField from '$lib/components/admin/transactions/fields/LockedSphereField.svelte';
@@ -236,45 +237,44 @@
 			     on mobile per the plate — ANDY-LENS §2). -->
 			<div>
 				<div class="grid grid-cols-2 gap-2 sm:gap-3">
-					<div class="flex flex-col gap-1.5">
-						<label for="betrag-display" class="text-sm font-medium text-ink-900">
-							Betrag <span class="text-severity-critical" aria-hidden="true">*</span>
-						</label>
-						<AmountField
-							id="betrag-display"
-							name="betragCents"
-							value={values.betrag}
-							type="ausgabe"
-							sign="minus"
-							aria-invalid={betragError ? true : undefined}
-							onchange={(c) => {
-								betragCents = c;
-								markDirty();
-							}}
-						/>
-						{#if betragError}
-							<p class="text-xs text-severity-critical">{betragError}</p>
-						{/if}
-					</div>
-					<div class="flex flex-col gap-1.5">
-						<label for="rechnungsdatum" class="text-sm font-medium text-ink-900">
-							Rechnungsdatum <span class="text-severity-critical" aria-hidden="true">*</span>
-						</label>
-						<HeroDateField
-							id="rechnungsdatum"
-							name="rechnungsdatum"
-							value={rechnungsdatum}
-							required
-							aria-invalid={err('rechnungsdatum') ? true : undefined}
-							onchange={(iso) => {
-								rechnungsdatum = iso;
-								markDirty();
-							}}
-						/>
-						{#if err('rechnungsdatum')}
-							<p class="text-xs text-severity-critical">{err('rechnungsdatum')}</p>
-						{/if}
-					</div>
+					<FieldGroup label="Betrag" for="betrag-display" required error={betragError ?? undefined}>
+						{#snippet children({ describedBy, invalid })}
+							<AmountField
+								id="betrag-display"
+								name="betragCents"
+								value={values.betrag}
+								type="ausgabe"
+								sign="minus"
+								aria-invalid={invalid}
+								aria-describedby={describedBy}
+								onchange={(c) => {
+									betragCents = c;
+									markDirty();
+								}}
+							/>
+						{/snippet}
+					</FieldGroup>
+					<FieldGroup
+						label="Rechnungsdatum"
+						for="rechnungsdatum"
+						required
+						error={err('rechnungsdatum') ?? undefined}
+					>
+						{#snippet children({ describedBy, invalid })}
+							<HeroDateField
+								id="rechnungsdatum"
+								name="rechnungsdatum"
+								value={rechnungsdatum}
+								required
+								aria-invalid={invalid}
+								aria-describedby={describedBy}
+								onchange={(iso) => {
+									rechnungsdatum = iso;
+									markDirty();
+								}}
+							/>
+						{/snippet}
+					</FieldGroup>
 				</div>
 				<p class="mt-2 flex items-center gap-1.5 text-xs text-ink-500">
 					<span class="size-1.5 rounded-full bg-type-ausgabe" aria-hidden="true"></span>
@@ -283,48 +283,51 @@
 			</div>
 
 			<!-- Abfluss-Datum (payment date → Buchungsjahr) -->
-			<div class="flex flex-col gap-1.5">
-				<label for="abfluss_datum" class="text-sm font-medium text-ink-900">
-					Abfluss-Datum <span class="text-severity-critical" aria-hidden="true">*</span>
-				</label>
-				<CompactDateField
-					id="abfluss_datum"
-					name="abfluss_datum"
-					value={abflussDatum}
-					required
-					onchange={(iso) => {
-						abflussDatum = iso;
-						markDirty();
-					}}
-				/>
-				<span class="text-xs text-ink-500">
-					Wann das Geld abgeflossen ist — bestimmt das Buchungsjahr (oft = Rechnungsdatum).
-				</span>
-				{#if err('abfluss_datum')}
-					<p class="text-xs text-severity-critical">{err('abfluss_datum')}</p>
-				{/if}
-			</div>
+			<FieldGroup
+				label="Abfluss-Datum"
+				for="abfluss_datum"
+				required
+				hint="Wann das Geld abgeflossen ist — bestimmt das Buchungsjahr (oft = Rechnungsdatum)."
+				error={err('abfluss_datum') ?? undefined}
+			>
+				{#snippet children({ describedBy, invalid })}
+					<CompactDateField
+						id="abfluss_datum"
+						name="abfluss_datum"
+						value={abflussDatum}
+						required
+						aria-invalid={invalid}
+						aria-describedby={describedBy}
+						onchange={(iso) => {
+							abflussDatum = iso;
+							markDirty();
+						}}
+					/>
+				{/snippet}
+			</FieldGroup>
 
 			<!-- Bezeichnung -->
-			<div class="flex flex-col gap-1.5">
-				<label for="bezeichnung" class="text-sm font-medium text-ink-900">
-					Bezeichnung <span class="text-severity-critical" aria-hidden="true">*</span>
-				</label>
-				<input
-					id="bezeichnung"
-					name="bezeichnung"
-					type="text"
-					required
-					maxlength={500}
-					bind:value={bezeichnung}
-					placeholder="z.B. Druckerpatronen, Raummiete März"
-					aria-invalid={err('bezeichnung') ? true : undefined}
-					class={FIELD_CLASS}
-				/>
-				{#if err('bezeichnung')}
-					<p class="text-xs text-severity-critical">{err('bezeichnung')}</p>
-				{/if}
-			</div>
+			<FieldGroup
+				label="Bezeichnung"
+				for="bezeichnung"
+				required
+				error={err('bezeichnung') ?? undefined}
+			>
+				{#snippet children({ describedBy, invalid })}
+					<input
+						id="bezeichnung"
+						name="bezeichnung"
+						type="text"
+						required
+						maxlength={500}
+						bind:value={bezeichnung}
+						placeholder="z.B. Druckerpatronen, Raummiete März"
+						aria-invalid={invalid}
+						aria-describedby={describedBy}
+						class={FIELD_CLASS}
+					/>
+				{/snippet}
+			</FieldGroup>
 
 			<!-- Kategorie (drives Sphäre strictly; sphere shown in the locked field below) -->
 			<div class="flex flex-col gap-1.5">
@@ -370,15 +373,21 @@
 		<div class="flex flex-col gap-3">
 			<!-- Projekt (optional) -->
 			{#if projects.length > 0}
-				<div class="flex flex-col gap-1.5">
-					<label for="projectId" class="text-sm font-medium text-ink-900">Projekt (optional)</label>
-					<Select id="projectId" name="projectId" bind:value={projectId}>
-						<option value="">— Kein Projekt —</option>
-						{#each projects as p (p.id)}
-							<option value={p.id}>{p.name}</option>
-						{/each}
-					</Select>
-				</div>
+				<FieldGroup label="Projekt" for="projectId" optional>
+					{#snippet children({ describedBy })}
+						<Select
+							id="projectId"
+							name="projectId"
+							bind:value={projectId}
+							aria-describedby={describedBy}
+						>
+							<option value="">— Kein Projekt —</option>
+							{#each projects as p (p.id)}
+								<option value={p.id}>{p.name}</option>
+							{/each}
+						</Select>
+					{/snippet}
+				</FieldGroup>
 			{/if}
 
 			<!-- Bezahlt von (ADR-0007 union) — neutral segmented toggle (never brand pink) -->
@@ -437,46 +446,46 @@
 				{:else}
 					<!-- M8: real labels (the * lives on the label, never in the placeholder). -->
 					<div class="flex flex-col gap-3">
-						<div class="flex flex-col gap-1.5">
-							<label for="externName" class="text-sm font-medium text-ink-900">
-								Name <span class="text-severity-critical" aria-hidden="true">*</span>
-							</label>
-							<input
-								id="externName"
-								name="externName"
-								type="text"
-								placeholder="Name der externen Person"
-								bind:value={externName}
-								data-testid="extern-name-input"
-								class={FIELD_CLASS}
-							/>
-						</div>
-						<div class="flex flex-col gap-1.5">
-							<label for="externIban" class="text-sm font-medium text-ink-900">
-								IBAN <span class="text-severity-critical" aria-hidden="true">*</span>
-							</label>
-							<input
-								id="externIban"
-								name="externIban"
-								type="text"
-								placeholder="DE00 0000 0000 0000 0000 00"
-								bind:value={externIban}
-								class="{FIELD_CLASS} font-mono"
-							/>
-						</div>
-						<div class="flex flex-col gap-1.5">
-							<label for="externEmail" class="text-sm font-medium text-ink-900">
-								E-Mail <span class="text-xs font-normal text-muted-foreground">(optional)</span>
-							</label>
-							<input
-								id="externEmail"
-								name="externEmail"
-								type="email"
-								placeholder="name@example.org"
-								bind:value={externEmail}
-								class={FIELD_CLASS}
-							/>
-						</div>
+						<FieldGroup label="Name" for="externName" required>
+							{#snippet children({ describedBy })}
+								<input
+									id="externName"
+									name="externName"
+									type="text"
+									placeholder="Name der externen Person"
+									bind:value={externName}
+									aria-describedby={describedBy}
+									data-testid="extern-name-input"
+									class={FIELD_CLASS}
+								/>
+							{/snippet}
+						</FieldGroup>
+						<FieldGroup label="IBAN" for="externIban" required>
+							{#snippet children({ describedBy })}
+								<input
+									id="externIban"
+									name="externIban"
+									type="text"
+									placeholder="DE00 0000 0000 0000 0000 00"
+									bind:value={externIban}
+									aria-describedby={describedBy}
+									class="{FIELD_CLASS} font-mono"
+								/>
+							{/snippet}
+						</FieldGroup>
+						<FieldGroup label="E-Mail" for="externEmail" optional>
+							{#snippet children({ describedBy })}
+								<input
+									id="externEmail"
+									name="externEmail"
+									type="email"
+									placeholder="name@example.org"
+									bind:value={externEmail}
+									aria-describedby={describedBy}
+									class={FIELD_CLASS}
+								/>
+							{/snippet}
+						</FieldGroup>
 					</div>
 				{/if}
 			</div>
@@ -499,58 +508,68 @@
 
 					{#if schonBezahlt}
 						<div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-							<div class="flex flex-col gap-1.5">
-								<label for="zahlungsartId" class="text-sm font-medium text-ink-900">
-									Zahlungsart <span class="text-severity-critical" aria-hidden="true">*</span>
-								</label>
-								<Select id="zahlungsartId" name="zahlungsartId" bind:value={zahlungsartId}>
-									{#each zahlungsarten as z (z.id)}
-										<option value={z.id}>{z.label}</option>
-									{/each}
-								</Select>
-							</div>
-							<div class="flex flex-col gap-1.5">
-								<label for="erstattetAm" class="text-sm font-medium text-ink-900">
-									Erstattungsdatum <span class="text-severity-critical" aria-hidden="true">*</span>
-								</label>
-								<CompactDateField
-									id="erstattetAm"
-									name="erstattetAm"
-									value={erstattetAm}
-									onchange={(iso) => {
-										erstattetAm = iso;
-										markDirty();
-									}}
-								/>
-							</div>
+							<FieldGroup label="Zahlungsart" for="zahlungsartId" required>
+								{#snippet children({ describedBy })}
+									<Select
+										id="zahlungsartId"
+										name="zahlungsartId"
+										bind:value={zahlungsartId}
+										aria-describedby={describedBy}
+									>
+										{#each zahlungsarten as z (z.id)}
+											<option value={z.id}>{z.label}</option>
+										{/each}
+									</Select>
+								{/snippet}
+							</FieldGroup>
+							<FieldGroup label="Erstattungsdatum" for="erstattetAm" required>
+								{#snippet children({ describedBy })}
+									<CompactDateField
+										id="erstattetAm"
+										name="erstattetAm"
+										value={erstattetAm}
+										aria-describedby={describedBy}
+										onchange={(iso) => {
+											erstattetAm = iso;
+											markDirty();
+										}}
+									/>
+								{/snippet}
+							</FieldGroup>
 						</div>
 					{/if}
 				</div>
 			{:else}
 				<!-- Verein path: optional Zahlungsart picker. -->
-				<div class="flex flex-col gap-1.5">
-					<label for="zahlungsartId-verein" class="text-sm font-medium text-ink-900">Zahlungsart</label>
-					<Select id="zahlungsartId-verein" name="zahlungsartId" bind:value={zahlungsartId}>
+				<FieldGroup label="Zahlungsart" for="zahlungsartId-verein">
+					{#snippet children({ describedBy })}
+					<Select
+						id="zahlungsartId-verein"
+						name="zahlungsartId"
+						bind:value={zahlungsartId}
+						aria-describedby={describedBy}
+					>
 						<option value="">— Keine —</option>
 						{#each zahlungsarten as z (z.id)}
 							<option value={z.id}>{z.label}</option>
 						{/each}
 					</Select>
-				</div>
+					{/snippet}
+				</FieldGroup>
 			{/if}
 
-			<!-- Kommentar (optional) -->
-			<div class="flex flex-col gap-1.5">
-				<label for="kommentar" class="text-sm font-medium text-ink-900">Kommentar</label>
-				<Textarea
-					id="kommentar"
-					name="kommentar"
-					rows={2}
-					maxlength={2000}
-					bind:value={kommentar}
-					class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 sm:text-sm"
-				></Textarea>
-			</div>
+			<FieldGroup label="Kommentar" for="kommentar" optional>
+				{#snippet children({ describedBy })}
+					<Textarea
+						id="kommentar"
+						name="kommentar"
+						rows={2}
+						maxlength={2000}
+						bind:value={kommentar}
+						aria-describedby={describedBy}
+					></Textarea>
+				{/snippet}
+			</FieldGroup>
 		</div>
 	</section>
 </div>

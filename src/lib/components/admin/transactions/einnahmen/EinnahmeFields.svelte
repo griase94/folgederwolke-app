@@ -13,6 +13,7 @@
 	import { AmountField, DateField as HeroDateField } from '$lib/components/ui/hero-field/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Select } from '$lib/components/ui/select/index.js';
+	import { FieldGroup } from '$lib/components/ui/field-group/index.js';
 	import KategoriePicker from '$lib/components/admin/transactions/fields/KategoriePicker.svelte';
 	import LockedSphereField from '$lib/components/admin/transactions/fields/LockedSphereField.svelte';
 	import BelegUpload from '$lib/components/forms/BelegUpload.svelte';
@@ -144,44 +145,43 @@
 			<!-- Betrag-Hero + Geldeingang-Hero (side-by-side even on mobile) -->
 			<div>
 				<div class="grid grid-cols-2 gap-2 sm:gap-3">
-					<div class="flex flex-col gap-1.5">
-						<label for="betragEur" class="text-sm font-medium text-ink-900">
-							Betrag <span class="text-severity-critical" aria-hidden="true">*</span>
-						</label>
+					<FieldGroup label="Betrag" for="betragEur" required error={betragError ?? undefined}>
+						{#snippet children({ describedBy, invalid })}
 						<AmountField
 							id="betragEur"
 							name="betragCents"
 							value={values.betragEur}
 							type="einnahme"
 							sign="plus"
-							aria-invalid={betragError ? true : undefined}
+							aria-invalid={invalid}
+							aria-describedby={describedBy}
 							onchange={(c) => {
 								betragCents = c;
 								markDirty();
 							}}
 						/>
-						{#if betragError}
-							<p class="text-xs text-severity-critical">{betragError}</p>
-						{/if}
-					</div>
-					<div class="flex flex-col gap-1.5">
-						<label for="geldEingangDatum" class="text-sm font-medium text-ink-900"
-							>Geldeingang (optional)</label
-						>
+					{/snippet}
+				</FieldGroup>
+				<FieldGroup
+					label="Geldeingang"
+					for="geldEingangDatum"
+					optional
+					error={err('geldEingangDatum') ?? undefined}
+				>
+					{#snippet children({ describedBy, invalid })}
 						<HeroDateField
 							id="geldEingangDatum"
 							name="geldEingangDatum"
 							value={geldEingangDatum}
-							aria-invalid={err('geldEingangDatum') ? true : undefined}
+							aria-invalid={invalid}
+							aria-describedby={describedBy}
 							onchange={(iso) => {
 								geldEingangDatum = iso;
 								markDirty();
 							}}
 						/>
-						{#if err('geldEingangDatum')}
-							<p class="text-xs text-severity-critical">{err('geldEingangDatum')}</p>
-						{/if}
-					</div>
+					{/snippet}
+				</FieldGroup>
 				</div>
 				<p class="mt-2 flex items-center gap-1.5 text-xs text-ink-500">
 					<span class="size-1.5 rounded-full bg-type-einnahme" aria-hidden="true"></span>
@@ -189,36 +189,37 @@
 				</p>
 			</div>
 
-			<!-- Bezeichnung -->
-			<div class="flex flex-col gap-1.5">
-				<label for="bezeichnung" class="text-sm font-medium text-ink-900">
-					Bezeichnung <span class="text-severity-critical" aria-hidden="true">*</span>
-				</label>
-				<input
-					id="bezeichnung"
-					name="bezeichnung"
-					type="text"
-					required
-					maxlength={500}
-					bind:value={bezeichnung}
-					placeholder="z.B. Teilnahmebeitrag, Standgebühr"
-					list={vorschlaege.length ? 'einnahme-bezeichnung-vorschlaege' : undefined}
-					aria-invalid={err('bezeichnung') ? true : undefined}
-					oninput={markDirty}
-					class={FIELD_CLASS}
-				/>
-				{#if vorschlaege.length}
-					<!-- #115 Stufe 4: per-Kategorie hints; the field stays free-text. -->
-					<datalist id="einnahme-bezeichnung-vorschlaege">
-						{#each vorschlaege as v (v)}
-							<option value={v}></option>
-						{/each}
-					</datalist>
-				{/if}
-				{#if err('bezeichnung')}
-					<p class="text-xs text-severity-critical">{err('bezeichnung')}</p>
-				{/if}
-			</div>
+			<FieldGroup
+				label="Bezeichnung"
+				for="bezeichnung"
+				required
+				error={err('bezeichnung') ?? undefined}
+			>
+				{#snippet children({ describedBy, invalid })}
+					<input
+						id="bezeichnung"
+						name="bezeichnung"
+						type="text"
+						required
+						maxlength={500}
+						bind:value={bezeichnung}
+						placeholder="z.B. Teilnahmebeitrag, Standgebühr"
+						list={vorschlaege.length ? 'einnahme-bezeichnung-vorschlaege' : undefined}
+						aria-invalid={invalid}
+						aria-describedby={describedBy}
+						oninput={markDirty}
+						class={FIELD_CLASS}
+					/>
+					{#if vorschlaege.length}
+						<!-- #115 Stufe 4: per-Kategorie hints; the field stays free-text. -->
+						<datalist id="einnahme-bezeichnung-vorschlaege">
+							{#each vorschlaege as v (v)}
+								<option value={v}></option>
+							{/each}
+						</datalist>
+					{/if}
+				{/snippet}
+			</FieldGroup>
 
 			<!-- Kategorie (drives Sphäre strictly; sphere shown in the locked field below) -->
 			<div class="flex flex-col gap-1.5">
@@ -252,36 +253,37 @@
 	<section class="rounded-xl border border-hairline bg-card/60 p-4" data-slot="einnahme-section">
 		<h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-500">Zuordnung</h3>
 		<div class="flex flex-col gap-3">
-			<!-- Projekt (optional) -->
-			<div class="flex flex-col gap-1.5">
-				<label for="projectId" class="text-sm font-medium text-ink-900">Projekt (optional)</label>
-				<Select
-					id="projectId"
-					name="projectId"
-					bind:value={projectId}
-					onchange={markDirty}
-					data-testid="transaction-project-picker"
-				>
-					<option value="">— Kein Projekt —</option>
-					{#each projects as p (p.id)}
-						<option value={p.id}>{p.name}</option>
-					{/each}
-				</Select>
-			</div>
+			<FieldGroup label="Projekt" for="projectId" optional>
+				{#snippet children({ describedBy })}
+					<Select
+						id="projectId"
+						name="projectId"
+						bind:value={projectId}
+						onchange={markDirty}
+						aria-describedby={describedBy}
+						data-testid="transaction-project-picker"
+					>
+						<option value="">— Kein Projekt —</option>
+						{#each projects as p (p.id)}
+							<option value={p.id}>{p.name}</option>
+						{/each}
+					</Select>
+				{/snippet}
+			</FieldGroup>
 
-			<!-- Kommentar -->
-			<div class="flex flex-col gap-1.5">
-				<label for="kommentar" class="text-sm font-medium text-ink-900">Kommentar</label>
-				<Textarea
-					id="kommentar"
-					name="kommentar"
-					rows={3}
-					maxlength={2000}
-					bind:value={kommentar}
-					oninput={markDirty}
-					class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 sm:text-sm"
-				></Textarea>
-			</div>
+			<FieldGroup label="Kommentar" for="kommentar" optional>
+				{#snippet children({ describedBy })}
+					<Textarea
+						id="kommentar"
+						name="kommentar"
+						rows={3}
+						maxlength={2000}
+						bind:value={kommentar}
+						oninput={markDirty}
+						aria-describedby={describedBy}
+					></Textarea>
+				{/snippet}
+			</FieldGroup>
 		</div>
 	</section>
 </div>
