@@ -165,6 +165,7 @@ async function readSubmission(businessId: string) {
       belegFileId: auslagenSubmissions.belegFileId,
       submissionGroupId: auslagenSubmissions.submissionGroupId,
       betragCents: auslagenSubmissions.betragCents,
+      bezeichnung: auslagenSubmissions.bezeichnung,
     })
     .from(auslagenSubmissions)
     .where(eq(auslagenSubmissions.businessId, businessId));
@@ -181,7 +182,7 @@ async function readMemberIban(memberId: string) {
 
 function handoffOf(res: Record<string, unknown>) {
   return res.handoff as {
-    items: { ausId: string; betragCents: number }[];
+    items: { ausId: string; bezeichnung: string; betragCents: number }[];
     gesamtCents: number;
     statusHref: string;
   };
@@ -400,6 +401,48 @@ describe("@phase-2 member submit — Beleg, batch, identity", () => {
     const row = await readSubmission(res.handoff!.items[0]!.ausId);
     expect(row.bezahltVonMemberId).toBe(member.id);
     expect(row.bezahltVonMemberId).not.toBe(victim.member.id);
+  });
+
+  it("labels every receipt row from the row itself, also across a partial retry", async () => {
+    const { member, user } = await seedMemberWithUser(STORED_IBAN);
+
+    const first = buildForm([
+      { bezeichnung: "Kuchen fürs Fest", betrag_cents: 2490 },
+      { bezeichnung: "Standmiete Flohmarkt", betrag_cents: 1490 },
+    ]);
+    const firstPayload = JSON.parse(String(first.get("data")));
+    await submit(user.id, member.id, first);
+
+    // Retry that replays one committed nonce and adds a new item — the receipt
+    // is built from the committed rows, never by zipping the payload against
+    // the returned order.
+    const retryPayload = {
+      auslagen: [
+        firstPayload.auslagen[0],
+        {
+          ...firstPayload.auslagen[0],
+          client_key: "k9",
+          submission_nonce: uuid(),
+          bezeichnung: "Zutaten",
+          betrag_cents: 990,
+        },
+      ],
+    };
+    const retry = new FormData();
+    retry.set("data", JSON.stringify(retryPayload));
+
+    const second = handoffOf(await submit(user.id, member.id, retry));
+
+    // Every row's label and amount match what is actually committed for it.
+    for (const item of second.items) {
+      const row = await readSubmission(item.ausId);
+      expect(item.betragCents).toBe(Number(row.betragCents));
+      expect(item.bezeichnung).not.toBe("Auslage");
+      expect(item.betragCents).toBeGreaterThan(0);
+    }
+    expect(second.gesamtCents).toBe(
+      second.items.reduce((sum, i) => sum + i.betragCents, 0),
+    );
   });
 
   it("is idempotent: replaying the same nonces creates nothing new", async () => {

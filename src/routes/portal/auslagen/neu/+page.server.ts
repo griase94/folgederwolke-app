@@ -312,17 +312,35 @@ export const actions: Actions = {
       });
     }
 
-    const byId = new Map(items.map((it, idx) => [idx, it]));
+    // Read the receipt back from the rows themselves. Zipping `items` (payload
+    // order, NEW items only) against `result.submissions` (the WHOLE group in
+    // business-id order) would mislabel every row after a partial retry, where
+    // the group already contains submissions this request never sent.
     return handoffFrom(
-      result.submissions.map((sub, idx) => ({
-        businessId: sub.businessId,
-        bezeichnung: byId.get(idx)?.bezeichnung ?? "Auslage",
-        betragCents: byId.get(idx)?.betragCents ?? 0,
-        belegOk: byId.get(idx)?.belegFileId != null,
-      })),
+      await readGroupRows(result.submissions.map((s) => s.businessId)),
     );
   },
 };
+
+/** The committed facts for a set of AUS-Nrn — the receipt's source of truth. */
+async function readGroupRows(businessIds: string[]) {
+  if (businessIds.length === 0) return [];
+  const rows = await getDb()
+    .select({
+      businessId: auslagenSubmissions.businessId,
+      bezeichnung: auslagenSubmissions.bezeichnung,
+      betragCents: auslagenSubmissions.betragCents,
+      belegFileId: auslagenSubmissions.belegFileId,
+    })
+    .from(auslagenSubmissions)
+    .where(inArray(auslagenSubmissions.businessId, businessIds));
+  return rows.map((r) => ({
+    businessId: r.businessId,
+    bezeichnung: r.bezeichnung,
+    betragCents: Number(r.betragCents),
+    belegOk: r.belegFileId != null,
+  }));
+}
 
 function handoffFrom(
   rows: {
