@@ -115,6 +115,14 @@ export type Events = {
   "expense.erstattet": {
     expenseId: string;
     expenseBusinessId: string;
+    /**
+     * The number the MEMBER knows — the submission's AUS-Nr, falling back to
+     * the expense's own id for a directly-booked row. The mail quotes this and
+     * the Verwendungszweck is built from it, so both name the same token.
+     */
+    ausNr: string;
+    /** The account the money went to — shown masked in the confirmation mail. */
+    payoutIban: string | null;
     actorUserId: string | null;
     /** Recipient email — `null` skips the mail (e.g. bezahlt_von = verein). */
     email: string | null;

@@ -143,6 +143,9 @@ test.describe("@phase-2 Überweisungs-Werkstatt — commits through the real UI"
       .getByTestId("prep-row")
       .filter({ hasText: claim.businessId });
     await expect(row).toBeVisible();
+    // The payee shown here — and copied into the bank form — is the person's
+    // name. "Mitglied: …" is a list label, not something a bank accepts.
+    await expect(row).not.toContainText("Mitglied:");
     await row.getByTestId("mark-erstattet").click();
 
     // The claim leaves the pool — that is the user-visible proof.

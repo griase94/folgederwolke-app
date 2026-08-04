@@ -23,7 +23,6 @@ import {
 } from "$lib/server/domain/transactions.js";
 import { markExpenseErstattet } from "$lib/server/domain/audit-inbox-actions.js";
 import { isoCalendarDate } from "$lib/domain/date.js";
-import { claimName } from "$lib/domain/ueberweisung.js";
 import { erstattungsVerwendungszweck } from "$lib/server/domain/erstattung-verwendungszweck.js";
 import { env } from "$lib/server/env.js";
 
@@ -43,21 +42,45 @@ export const load: PageServerLoad = async () => {
     businessId: r.businessId,
     bezeichnung: r.bezeichnung,
     betragCents: r.betragCents,
-    empfaenger: claimName(r),
+    // The BANK's Empfängername — a plain person's name. `claimName` returns the
+    // display string with its "Mitglied: " prefix, which is right on a list row
+    // and useless in a transfer form (board #172 MAJOR 3).
+    empfaenger: r.empfaengerName,
     payoutIban: r.payoutIban,
-    verwendungszweck: erstattungsVerwendungszweck(r.ausNr, env.VEREIN_NAME),
+    verwendungszweck: erstattungsVerwendungszweck(
+      r.ausNr ?? r.businessId,
+      env.VEREIN_NAME,
+    ),
     festgeschrieben: r.festgeschrieben,
+    // What the SERVER would answer today. The card offers a commit button only
+    // when this is true — a button that answers 409 is worse than no button.
+    committable: r.committable,
+    blockReason: r.blockReason,
     // Where the gap can be closed: the Mitglied for a member, the Ausgabe for
     // an extern payer.
     ibanFixHref: r.bezahltVonMemberId
       ? `/app/mitglieder/${r.bezahltVonMemberId}`
       : `/app/ausgaben/${r.id}`,
+    // Where an Abfluss-Datum can be entered — the only way out of the
+    // closed-year block.
+    ausgabeHref: `/app/ausgaben/${r.id}`,
   }));
 
   const gesamtCents = claims.reduce((sum, c) => sum + c.betragCents, 0);
-  const countIbanFehlt = claims.filter((c) => c.payoutIban === null).length;
+  const countIbanFehlt = claims.filter(
+    (c) => c.blockReason === "iban-fehlt",
+  ).length;
+  const countJahrGesperrt = claims.filter(
+    (c) => c.blockReason === "festgeschrieben-ohne-abfluss",
+  ).length;
 
-  return { claims, zahlungsarten, gesamtCents, countIbanFehlt };
+  return {
+    claims,
+    zahlungsarten,
+    gesamtCents,
+    countIbanFehlt,
+    countJahrGesperrt,
+  };
 };
 
 // ---------------------------------------------------------------------------

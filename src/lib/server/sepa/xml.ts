@@ -17,13 +17,19 @@
 
 import type { ApprovedExpense } from "$lib/server/domain/transactions.js";
 import { readStammdaten } from "$lib/server/domain/settings-stammdaten.js";
+import {
+  erstattungsVerwendungszweck,
+  sepaSafe,
+} from "$lib/server/domain/erstattung-verwendungszweck.js";
 
 export interface SepaTransactionInput {
   id: string;
   businessId: string;
+  /** The token the MEMBER knows — drives the Verwendungszweck. */
+  ausNr: string;
   bezeichnung: string;
   betragCents: number;
-  /** IBAN of the recipient — built by caller from externIban or memberIban */
+  /** The resolved payout target (M4 precedence), never a raw column. */
   recipientIban: string;
   /** Display name for recipient */
   recipientName: string;
@@ -74,26 +80,28 @@ export interface SepaXmlResult {
 
 /**
  * Build SepaTransactionInput[] from ApprovedExpense[] — filters to rows that
- * have a known IBAN (extern or member). Rows without an IBAN are skipped.
+ * are actually payable. Rows without a payout target are skipped.
+ *
+ * Reads the SAME resolved fields the Werkstatt reads: `payoutIban` (the M4
+ * precedence: submission snapshot → extern → live member IBAN) and
+ * `empfaengerName`. It used to pick `memberIban` on its own, which quietly
+ * bypassed the snapshot and could pay an account the member had since replaced.
+ * Sharing the resolved fields is what keeps this file from drifting again.
  */
 export function buildSepaInputs(
   expenses: ApprovedExpense[],
 ): SepaTransactionInput[] {
   const result: SepaTransactionInput[] = [];
   for (const e of expenses) {
-    const iban = e.bezahltVonKind === "extern" ? e.externIban : e.memberIban;
-    if (!iban) continue;
-    const name =
-      e.bezahltVonKind === "extern"
-        ? (e.externName ?? e.bezahltVonDisplay)
-        : e.bezahltVonDisplay;
+    if (!e.payoutIban) continue;
     result.push({
       id: e.id,
       businessId: e.businessId,
+      ausNr: e.ausNr ?? e.businessId,
       bezeichnung: e.bezeichnung,
       betragCents: e.betragCents,
-      recipientIban: iban.replace(/\s/g, ""),
-      recipientName: sanitizeSepaText(name).slice(0, 70),
+      recipientIban: e.payoutIban.replace(/\s/g, ""),
+      recipientName: sepaSafe(e.empfaengerName).slice(0, 70),
     });
   }
   return result;
@@ -112,10 +120,7 @@ export function generateSepaXml(
     throw new Error("Keine Transaktionen für SEPA-XML vorhanden");
   }
 
-  const initiatorName = sanitizeSepaText(options.initiatorName ?? "").slice(
-    0,
-    70,
-  );
+  const initiatorName = sepaSafe(options.initiatorName ?? "").slice(0, 70);
 
   const now = options.now ?? new Date();
   // XSD-strict validators (notably KBC, ING, Sparkassen profiles) reject
@@ -134,9 +139,11 @@ export function generateSepaXml(
     .map((t, idx) => {
       const endToEndId = `${msgId}-${String(idx + 1).padStart(3, "0")}`;
       const amtEur = centsToEurStr(t.betragCents);
-      const remittance = sanitizeSepaText(
-        `Erstattung ${t.businessId}: ${t.bezeichnung}`,
-      ).slice(0, 140);
+      // The SAME Verwendungszweck the Werkstatt copies and the mail quotes —
+      // this file used to build a fourth format of its own, so an export and a
+      // manual transfer put different references on the same statement.
+      // Transliteration and the 140-char cap live inside that function.
+      const remittance = erstattungsVerwendungszweck(t.ausNr, initiatorName);
 
       return `      <CdtTrfTxInf>
         <PmtId>
@@ -299,20 +306,4 @@ function escapeXml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
-}
-
-/**
- * Replaces non-SEPA characters with safe equivalents.
- * SEPA character set: a-z A-Z 0-9 and /-.?:(),'+
- * Also strips leading/trailing whitespace.
- */
-function sanitizeSepaText(s: string): string {
-  return s
-    .replace(/[äÄ]/g, "ae")
-    .replace(/[öÖ]/g, "oe")
-    .replace(/[üÜ]/g, "ue")
-    .replace(/ß/g, "ss")
-    .replace(/[^a-zA-Z0-9 /\-.?:(),'+]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
 }

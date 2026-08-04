@@ -6,6 +6,11 @@
 	widths made the second look like an afterthought rather than a number the
 	admin has to act on.
 
+	Equal WIDTH, not equal ROW: forcing N columns into a 320px rail squeezed a
+	third chip until its label collided with its own count. The chips now wrap
+	onto as many rows as they need and stay equal within each row — the
+	comparability survives, the collision does not.
+
 	The amount is plum (`type-ausgabe`) in every state — an Auslage is an
 	Ausgabe whether it is waiting, blocked or done. Tone lives on the chips.
 -->
@@ -54,16 +59,17 @@
 	</p>
 
 	{#if chips.length > 0}
-		<!-- Equal columns, so the counts line up and none looks secondary. -->
+		<!-- Equal columns, so the counts line up and none looks secondary — but
+		     auto-fit, so a narrow rail wraps instead of crushing them. -->
 		<div
 			class="mt-3 grid gap-2"
-			style="grid-template-columns: repeat({chips.length}, minmax(0, 1fr));"
+			style="grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));"
 		>
 			{#each chips as chip (chip.label)}
 				<span
 					data-testid={chip.testId}
 					class={cn(
-						'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full border px-3 text-[12.5px] font-semibold',
+						'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full border px-3 text-center text-[12.5px] font-semibold',
 						chip.tone === 'crit'
 							? 'border-severity-critical/30 bg-severity-critical-tint text-severity-critical-text'
 							: 'border-hairline bg-secondary text-ink-700'

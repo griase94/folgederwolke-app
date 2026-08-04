@@ -27,6 +27,7 @@
 		bezeichnung,
 		betragCents,
 		verwendungszweck,
+		zielIban = null,
 		erstattungsAm,
 		vereinName = '',
 		adresse = '',
@@ -42,6 +43,12 @@
 	const rows = $derived<MailFactRow[]>([
 		{ label: 'Auslage', value: bezeichnung },
 		{ label: 'AUS-Nr.', value: ausId, variant: 'mono' },
+		// WHICH account the money went to. The payout precedence may pick the
+		// IBAN snapshotted at submission time over the one in the profile today,
+		// and the member has no way to see that — so the mail names it.
+		...(zielIban
+			? [{ label: 'Auf dein Konto', value: zielIban, variant: 'mono' as const }]
+			: []),
 		{
 			label: 'Verwendungszweck',
 			value: verwendungszweck,

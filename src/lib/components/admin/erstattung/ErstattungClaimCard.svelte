@@ -12,8 +12,13 @@
 	underneath that LINKS to where the IBAN can be added. The commit button is
 	the one thing that goes away — there is nothing to commit.
 
-	F4: a claim from a closed Buchungsjahr stays payable (ADR-0006 carve-out)
-	and says so quietly. It is a note, not a warning — nothing is wrong.
+	F4: a claim from a closed Buchungsjahr usually stays payable (ADR-0006
+	carve-out) and says so quietly — a note, not a warning. But the carve-out
+	only PRESERVES an existing Abfluss-Datum; a closed row that has none cannot
+	be paid without moving its Buchungsjahr, and the server refuses it. That
+	claim gets the same treatment as an IBAN-less one: no commit button, and the
+	actual way out written next to it. The UI may promise less than the server
+	allows — never more.
 -->
 <script lang="ts" module>
 	import { cn } from '$lib/utils.js';
@@ -37,8 +42,13 @@
 		/** Same string the reimbursement mail quotes (Abnahme #14). */
 		verwendungszweck: string;
 		festgeschrieben: boolean;
+		/** False ⇒ the server would refuse this claim today; see blockReason. */
+		committable?: boolean;
+		blockReason?: 'iban-fehlt' | 'festgeschrieben-ohne-abfluss' | null;
 		/** Where a missing IBAN can be added. */
 		ibanFixHref?: string | null;
+		/** Where the Abfluss-Datum can be set. */
+		ausgabeHref?: string | null;
 	}
 
 	export interface ErstattungClaimCardProps {
@@ -62,6 +72,13 @@
 		$props();
 
 	const payable = $derived(claim.payoutIban !== null);
+	/**
+	 * Defaults to `payable` so a caller that predates the gate (the gallery,
+	 * older fixtures) still renders a payable claim as payable. The server stays
+	 * the authority either way — this only decides what we OFFER.
+	 */
+	const committable = $derived(claim.committable ?? payable);
+	const yearBlocked = $derived(claim.blockReason === 'festgeschrieben-ohne-abfluss');
 	const ibanDisplay = $derived(
 		claim.payoutIban ? groupIban(claim.payoutIban) : 'IBAN fehlt'
 	);
@@ -89,11 +106,12 @@
 	</header>
 
 	{#if claim.festgeschrieben}
-		<!-- A note, not a warning: the year is closed but the payout carve-out
-		     (ADR-0006) still permits this. -->
+		<!-- A note, not a warning, as long as the carve-out actually applies. -->
 		<p class="mt-2 flex items-center gap-2 text-xs text-ink-500" data-testid="claim-festgeschrieben">
 			<LockChip />
-			aus einem abgeschlossenen Jahr — Erstattung bleibt möglich
+			{yearBlocked
+				? 'aus einem abgeschlossenen Jahr — ohne Abfluss-Datum nicht erstattbar'
+				: 'aus einem abgeschlossenen Jahr — Erstattung bleibt möglich'}
 		</p>
 	{/if}
 
@@ -133,8 +151,16 @@
 	</div>
 
 	<div class="mt-4 flex flex-wrap items-center gap-3">
-		{#if payable}
+		{#if committable}
 			{@render commit?.()}
+		{:else if yearBlocked}
+			<ProblemFlag href={claim.ausgabeHref ?? null} data-testid="claim-jahr-gesperrt">
+				Abfluss-Datum fehlt — bei der Ausgabe nachtragen
+			</ProblemFlag>
+			<p class="text-xs text-ink-500">
+				Das Buchungsjahr ist abgeschlossen. Erstattet werden kann erst, wenn ein
+				Abfluss-Datum in diesem Jahr eingetragen ist.
+			</p>
 		{:else}
 			<ProblemFlag href={claim.ibanFixHref ?? null} data-testid="claim-iban-fehlt">
 				IBAN fehlt — bei der Ausgabe ergänzen

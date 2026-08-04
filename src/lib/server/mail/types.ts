@@ -85,6 +85,13 @@ export interface ErstattungsMailProps {
   bezeichnung: string;
   betragCents: number;
   verwendungszweck: string;
+  /**
+   * The payout account, already masked for display ("DE12 •••• 3000"). The
+   * member cannot otherwise tell WHICH account the M4 precedence picked — a
+   * snapshot taken at submission time may differ from the IBAN in their
+   * profile today — so the mail names it. Null when there is no payee.
+   */
+  zielIban?: string | null;
   erstattungsAm: Date;
 }
 

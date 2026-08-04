@@ -18,6 +18,7 @@ import {
 const tx: SepaTransactionInput = {
   id: "uuid-1",
   businessId: "AUS-2026-001",
+  ausNr: "AUS-2026-001",
   bezeichnung: "Druckerpatronen",
   betragCents: 2350,
   recipientIban: "DE89370400440532013000",

@@ -168,8 +168,40 @@ describe("MoneyStrip", () => {
     // An Auslage is an Ausgabe in every state — the amount stays plum.
     expect(total.className).toMatch(/text-type-ausgabe/);
     // Equal columns: neither count may look like the lesser one (Abnahme #6).
+    // auto-fit rather than a fixed column count — three chips forced into a
+    // 320px rail collided with their own labels (board #172 render finding),
+    // so they wrap to another row and stay equal within it.
     const grid = container.querySelector('[style*="grid-template-columns"]');
-    expect(grid?.getAttribute("style")).toContain("repeat(2, minmax(0, 1fr))");
+    expect(grid?.getAttribute("style")).toContain(
+      "repeat(auto-fit, minmax(140px, 1fr))",
+    );
+  });
+
+  it("keeps a third chip readable instead of crushing the row", () => {
+    const { container } = render(MoneyStrip, {
+      props: {
+        eyebrow: "Offen",
+        totalCents: 1000,
+        chips: [
+          { label: "Erstattungen", count: 4, testId: "chip-count" },
+          { label: "IBAN fehlt", count: 2, tone: "crit", testId: "chip-iban" },
+          {
+            label: "Jahr abgeschlossen",
+            count: 1,
+            tone: "crit",
+            testId: "chip-jahr",
+          },
+        ],
+      },
+    });
+    // The template must not name the chip COUNT — that is what pinned three
+    // chips into three columns however narrow the rail was.
+    const style =
+      container
+        .querySelector('[style*="grid-template-columns"]')
+        ?.getAttribute("style") ?? "";
+    expect(style).not.toMatch(/repeat\(3,/);
+    expect(screen.getByTestId("chip-jahr").className).toContain("text-center");
   });
 });
 
@@ -212,7 +244,13 @@ describe("bulk result tally", () => {
       festgeschrieben: ["b"],
       bereitsBezahlt: ["c"],
     });
-    expect(r.tally.some((t) => t.includes("festgeschrieben"))).toBe(true);
+    // Not just the category — the REASON. "festgeschrieben" alone leaves the
+    // admin guessing; the missing Abfluss-Datum is the actionable part.
+    expect(
+      r.tally.some((t) =>
+        t.includes("abgeschlossenes Jahr ohne Abfluss-Datum"),
+      ),
+    ).toBe(true);
     expect(r.tally.some((t) => t.includes("bereits erstattet"))).toBe(true);
   });
 

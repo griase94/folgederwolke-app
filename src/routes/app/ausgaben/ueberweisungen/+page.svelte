@@ -59,7 +59,10 @@
     replaceState(url, {});
   }
 
-  const payable = $derived(data.claims.filter((c) => c.payoutIban !== null));
+  // What the SERVER would accept — not merely what has an IBAN. A closed-year
+  // row without an Abfluss-Datum is refused with 409, so offering it in the
+  // bulk run would produce a batch that reports failures for rows we knew about.
+  const payable = $derived(data.claims.filter((c) => c.committable));
 
   let announcer = $state<{ announce: (l: string) => void } | null>(null);
   function onCopied(label: string) {
@@ -118,6 +121,16 @@
             count: data.countIbanFehlt,
             tone: 'crit' as const,
             testId: 'chip-iban-fehlt'
+          }
+        ]
+      : []),
+    ...(data.countJahrGesperrt > 0
+      ? [
+          {
+            label: 'Jahr abgeschlossen',
+            count: data.countJahrGesperrt,
+            tone: 'crit' as const,
+            testId: 'chip-jahr-gesperrt'
           }
         ]
       : [])
@@ -205,8 +218,10 @@
               <li class="flex flex-wrap items-center gap-3 px-4 py-3" data-testid="prep-row">
                 <div class="min-w-0 flex-1">
                   <p class="truncate text-sm font-semibold text-ink-900">{claim.empfaenger}</p>
-                  <p class="flex items-center gap-1.5 truncate text-xs text-ink-500">
-                    <span class="tabular-nums">{claim.ausNr ?? claim.businessId}</span>
+                  <!-- No `truncate` on the row itself: it clipped the lock chip
+                       that follows. Only the Bezeichnung shortens. -->
+                  <p class="flex items-center gap-1.5 overflow-hidden text-xs text-ink-500">
+                    <span class="shrink-0 tabular-nums">{claim.ausNr ?? claim.businessId}</span>
                     · <span class="truncate">{claim.bezeichnung}</span>
                     {#if claim.festgeschrieben}
                       <!-- F4: the whole point is that a closed-year claim is
@@ -222,12 +237,16 @@
                 <!-- Fixed slot widths so the status column stays a ruler and
                      rows do not jitter between "wartet" and the flag. -->
                 <span class="flex w-[168px] justify-end">
-                  {#if claim.payoutIban}
+                  {#if claim.committable}
                     <span
                       class="inline-flex items-center rounded-full bg-secondary px-2.5 py-1 text-[12px] font-medium text-ink-700"
                     >
                       wartet
                     </span>
+                  {:else if claim.blockReason === 'festgeschrieben-ohne-abfluss'}
+                    <ProblemFlag href="/app/ausgaben/{claim.id}" data-testid="prep-jahr-gesperrt">
+                      Abfluss fehlt
+                    </ProblemFlag>
                   {:else}
                     <ProblemFlag href={claim.ibanFixHref} data-testid="prep-iban-fehlt">
                       IBAN fehlt
@@ -235,7 +254,7 @@
                   {/if}
                 </span>
                 <span class="flex w-[190px] justify-end">
-                  {#if claim.payoutIban}{@render commitButton(claim.id)}{/if}
+                  {#if claim.committable}{@render commitButton(claim.id)}{/if}
                 </span>
               </li>
             {/each}
@@ -302,11 +321,20 @@
             >
               Alle als erstattet markieren
             </Button>
-            <p class="text-xs leading-snug text-ink-500">
-              Setzt Datum &amp; Zahlungsart für alle Erstattungen mit IBAN.
+            <!-- Name EVERY reason a row gets skipped. Listing only the missing
+                 IBANs would leave the closed-year rows as a silent difference
+                 between "4 Erstattungen" and the number that actually went. -->
+            <p class="text-xs leading-snug text-ink-500" data-testid="werkstatt-skip-note">
+              Setzt Datum &amp; Zahlungsart für {payable.length}
+              {payable.length === 1 ? 'Erstattung' : 'Erstattungen'}.
               {#if data.countIbanFehlt > 0}
                 <b class="font-semibold">{data.countIbanFehlt}</b>
                 ohne IBAN {data.countIbanFehlt === 1 ? 'wird' : 'werden'} übersprungen.
+              {/if}
+              {#if data.countJahrGesperrt > 0}
+                <b class="font-semibold">{data.countJahrGesperrt}</b>
+                aus abgeschlossenen Jahren ohne Abfluss-Datum
+                {data.countJahrGesperrt === 1 ? 'wird' : 'werden'} übersprungen.
               {/if}
             </p>
           </div>

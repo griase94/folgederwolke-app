@@ -21,6 +21,7 @@ import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.
 import { files } from "$lib/server/db/schema/files.js";
 import { getFileStorage } from "$lib/server/files/storage.js";
 import { logAudit } from "$lib/server/audit-log/index.js";
+import { maskIbanDisplay } from "$lib/domain/iban.js";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 let registered = false;
@@ -190,10 +191,13 @@ export function registerHandlers(): void {
           to: payload.email,
           props: {
             vorname: payload.vorname,
-            ausId: payload.expenseBusinessId,
+            // The member's own token, not the internal expense id — the
+            // Verwendungszweck right below it is built from the same one.
+            ausId: payload.ausNr,
             bezeichnung: payload.bezeichnung,
             betragCents: payload.betragCents,
             verwendungszweck: payload.verwendungszweck,
+            zielIban: maskIbanDisplay(payload.payoutIban),
             erstattungsAm: payload.erstattungsAm,
           },
         });

@@ -868,11 +868,15 @@ export async function markExpenseErstattet(
 
   const needsIban =
     "Keine IBAN hinterlegt — Erstattung erst möglich, sobald die IBAN ergänzt ist.";
+  // The account the money actually goes to — also what the confirmation mail
+  // shows the member, so they can check it against their own records.
+  let payoutIban: string | null = null;
   if (expense.bezahltVonKind === "extern") {
     // The extern arm carries its IBAN on the row we already loaded.
     if (!expense.externIban) {
       return { ok: false, status: 422, error: needsIban };
     }
+    payoutIban = expense.externIban;
   } else if (expense.bezahltVonKind === "member") {
     // The member arm needs the ratified M4 precedence (submission snapshot →
     // live profile), so it is judged by the IBAN it will ACTUALLY be paid to.
@@ -880,6 +884,7 @@ export async function markExpenseErstattet(
     if (!payout.iban) {
       return { ok: false, status: 422, error: needsIban };
     }
+    payoutIban = payout.iban;
   }
 
   // NO festschreibung pre-gate (ADR-0006 Nachtrag / migration 0040) — mirrors
@@ -964,9 +969,20 @@ export async function markExpenseErstattet(
 
   // A6: surface audit-handler failures (no swallow). Mail handler in
   // handlers.ts has its own internal best-effort try/catch.
+  // ONE token everywhere. A member knows their Auslage by its AUS-Nr, so the
+  // mail's reference line, the Verwendungszweck and the Werkstatt card all
+  // quote THAT — never the internal expense number. A directly-booked expense
+  // has no submission behind it; then its own business id is the only handle
+  // there is, and both places cite it consistently.
+  const citedNr = ausNr ?? expense.businessId;
+
   await bus.emit("expense.erstattet", {
     expenseId,
     expenseBusinessId: expense.businessId,
+    // What the member sees quoted. Deliberately separate from
+    // expenseBusinessId, which the audit row needs to stay the EXPENSE's id.
+    ausNr: citedNr,
+    payoutIban,
     actorUserId,
     email,
     vorname,
@@ -978,7 +994,7 @@ export async function markExpenseErstattet(
     // the member would never see on their statement.
     verwendungszweck:
       input.verwendungszweck ??
-      erstattungsVerwendungszweck(ausNr, env.VEREIN_NAME),
+      erstattungsVerwendungszweck(citedNr, env.VEREIN_NAME),
     erstattungsAm: new Date(`${chosenDate}T00:00:00Z`),
   });
 

@@ -52,8 +52,13 @@ export function buildBulkResult(s: BulkErstattungSummary): BulkResult {
     tally.push(`${s.ibanFehlt.length}× IBAN fehlt — übersprungen`);
   if (s.bereitsBezahlt.length)
     tally.push(`${s.bereitsBezahlt.length}× bereits erstattet`);
+  // Say WHY the closed-year rows were refused. "3× festgeschrieben" reads like
+  // a category; the reason is specific and actionable (the row has no
+  // Abfluss-Datum, so paying it would move its Buchungsjahr).
   if (s.festgeschrieben.length)
-    tally.push(`${s.festgeschrieben.length}× festgeschrieben`);
+    tally.push(
+      `${s.festgeschrieben.length}× abgeschlossenes Jahr ohne Abfluss-Datum — übersprungen`,
+    );
   if (s.notFound.length) tally.push(`${s.notFound.length}× nicht gefunden`);
   if (s.fehler.length) tally.push(n(s.fehler.length, "Fehler", "Fehler"));
 

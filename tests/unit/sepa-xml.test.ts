@@ -16,6 +16,7 @@ import type { ApprovedExpense } from "$lib/server/domain/transactions.js";
 const tx1: SepaTransactionInput = {
   id: "uuid-1",
   businessId: "AUS-2026-001",
+  ausNr: "AUS-2026-001",
   bezeichnung: "Druckerpatronen",
   betragCents: 2350,
   recipientIban: "DE89370400440532013000",
@@ -25,6 +26,7 @@ const tx1: SepaTransactionInput = {
 const tx2: SepaTransactionInput = {
   id: "uuid-2",
   businessId: "AUS-2026-002",
+  ausNr: "AUS-2026-002",
   bezeichnung: "Raummiete März",
   betragCents: 15000,
   recipientIban: "DE75512108001245126199",
@@ -191,14 +193,19 @@ describe("buildSepaInputs", () => {
     externName: "Max Mustermann",
     bezahltVonMemberId: null,
     memberIban: null,
-    // A-S3: the pool now also carries the AUS-Nr, the resolved payout target
-    // and the closed-year flag. SEPA generation is unaffected by them.
+    // A-S3: the pool carries the AUS-Nr, the RESOLVED payout target, the bank
+    // payee name and the commit gate. buildSepaInputs reads the resolved
+    // fields — it must not re-derive them from raw columns.
     ausNr: "AUS-2026-001",
     payoutIban: "DE89370400440532013000",
+    empfaengerName: "Max Mustermann",
     festgeschrieben: false,
+    abflussDatum: null,
+    committable: true,
+    blockReason: null,
   };
 
-  it("maps extern expenses to SepaTransactionInput using externIban", () => {
+  it("maps a payable expense onto the RESOLVED payout target", () => {
     const inputs = buildSepaInputs([baseExpense]);
     expect(inputs).toHaveLength(1);
     const first = inputs[0];
@@ -207,39 +214,49 @@ describe("buildSepaInputs", () => {
     expect(first?.recipientName).toBe("Max Mustermann");
   });
 
-  it("skips extern expenses without IBAN", () => {
-    const noIban: ApprovedExpense = { ...baseExpense, externIban: null };
+  it("skips an expense with no payout target", () => {
+    const noIban: ApprovedExpense = { ...baseExpense, payoutIban: null };
     expect(buildSepaInputs([noIban])).toHaveLength(0);
   });
 
-  it("maps member expenses to SepaTransactionInput using memberIban", () => {
+  it("pays the SNAPSHOT, not the member's current profile IBAN (M4)", () => {
+    // The board's finding: this file used to read `memberIban` directly, which
+    // silently bypassed the submission snapshot. A member who changed banks
+    // after submitting would have been paid on the NEW account, while the
+    // Werkstatt and the mail named the old one.
     const memberExpense: ApprovedExpense = {
       ...baseExpense,
       bezahltVonKind: "member",
       externIban: null,
       externName: null,
       bezahltVonMemberId: "member-uuid",
-      memberIban: "DE75512108001245126199",
+      memberIban: "DE75512108001245126199", // profile today
+      payoutIban: "DE89370400440532013000", // snapshot at submission
+      empfaengerName: "Maria Schmidt",
     };
     const inputs = buildSepaInputs([memberExpense]);
     expect(inputs).toHaveLength(1);
-    expect(inputs[0]?.recipientIban).toBe("DE75512108001245126199");
+    expect(inputs[0]?.recipientIban).toBe("DE89370400440532013000");
   });
 
-  it("skips member expenses without memberIban", () => {
-    const noIban: ApprovedExpense = {
+  it("uses the bank payee name, never the UI display prefix", () => {
+    const memberExpense: ApprovedExpense = {
       ...baseExpense,
       bezahltVonKind: "member",
-      externIban: null,
-      memberIban: null,
+      bezahltVonDisplay: "Mitglied: Maria Schmidt",
+      empfaengerName: "Maria Schmidt",
+      externName: null,
     };
-    expect(buildSepaInputs([noIban])).toHaveLength(0);
+    // "Mitglied: Maria Schmidt" is not a payee any bank accepts.
+    expect(buildSepaInputs([memberExpense])[0]?.recipientName).toBe(
+      "Maria Schmidt",
+    );
   });
 
   it("strips whitespace from IBAN", () => {
     const spacedIban: ApprovedExpense = {
       ...baseExpense,
-      externIban: "DE89 3704 0044 0532 0130 00",
+      payoutIban: "DE89 3704 0044 0532 0130 00",
     };
     const inputs = buildSepaInputs([spacedIban]);
     expect(inputs[0]?.recipientIban).toBe("DE89370400440532013000");
@@ -248,7 +265,7 @@ describe("buildSepaInputs", () => {
   it("truncates recipientName to 70 chars", () => {
     const longName: ApprovedExpense = {
       ...baseExpense,
-      externName: "A".repeat(100),
+      empfaengerName: "A".repeat(100),
     };
     const inputs = buildSepaInputs([longName]);
     expect(inputs[0]?.recipientName.length).toBeLessThanOrEqual(70);

@@ -18,14 +18,34 @@
 /** SEPA end-to-end remittance information limit. */
 const SEPA_USTRD_MAX = 140;
 
+/**
+ * The SEPA character set: `a-z A-Z 0-9` and `/-.?:(),'+`. Everything else is
+ * transliterated (umlauts) or replaced by a space.
+ *
+ * This runs BEFORE the 140-character cap, never after: "Turnverein Grünwald"
+ * becomes "Turnverein Gruenwald" and GROWS by one character. Measuring first
+ * would let a name that just fits become one the bank truncates — and then the
+ * reference we showed the member is not the one on their statement.
+ */
+export function sepaSafe(s: string): string {
+  return s
+    .replace(/[äÄ]/g, "ae")
+    .replace(/[öÖ]/g, "oe")
+    .replace(/[üÜ]/g, "ue")
+    .replace(/ß/g, "ss")
+    .replace(/[^a-zA-Z0-9 /\-.?:(),'+]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function erstattungsVerwendungszweck(
   ausNr: string | null,
   vereinName: string,
 ): string {
   // A directly-booked expense has no AUS-Nr; then the Verein name alone is the
   // most useful thing we can offer.
-  const head = ausNr ? `Erstattung ${ausNr}` : "Erstattung";
-  const verein = vereinName.trim();
+  const head = sepaSafe(ausNr ? `Erstattung ${ausNr}` : "Erstattung");
+  const verein = sepaSafe(vereinName);
   if (!verein) return head;
 
   const full = `${head} ${verein}`;

@@ -1239,11 +1239,31 @@ export interface ApprovedExpense {
    */
   payoutIban: string | null;
   /**
+   * The payee as a BANK wants it — a plain person's name.
+   * `bezahlt_von_display` carries the UI prefix ("Mitglied: Max Mustermann"),
+   * which is right on a list row and wrong in a transfer form.
+   */
+  empfaengerName: string;
+  /**
    * From a Buchungsjahr that is already closed (F4). Such claims stay in the
    * pool — the reimbursement columns are carved out of the Festschreibung
    * (ADR-0006) — but the UI marks them quietly so nobody is surprised.
    */
   festgeschrieben: boolean;
+  /**
+   * Cash-out date, or null when none is booked yet. Load-bearing for a
+   * festgeschriebene claim: the carve-out PRESERVES an existing abfluss_datum,
+   * so a row without one would have to move its Buchungsjahr — which the DB
+   * trigger refuses. See `committable`.
+   */
+  abflussDatum: string | null;
+  /**
+   * False when the server would refuse this claim today, with the reason
+   * beside it. The Werkstatt must never offer a button the action answers
+   * 409/422 to: the UI may promise less than the server allows, never more.
+   */
+  committable: boolean;
+  blockReason: "iban-fehlt" | "festgeschrieben-ohne-abfluss" | null;
 }
 
 export async function listApprovedPendingErstattet(): Promise<
@@ -1263,9 +1283,12 @@ export async function listApprovedPendingErstattet(): Promise<
       externName: expenses.externName,
       bezahltVonMemberId: expenses.bezahltVonMemberId,
       memberIban: members.iban,
+      memberVorname: members.vorname,
+      memberNachname: members.nachname,
       ausNr: erstattungAusNr,
       payoutIban: payoutIbanSql,
       festgeschrieben: sql<boolean>`${expenses.festgeschriebenAt} IS NOT NULL`,
+      abflussDatum: expenses.abflussDatum,
     })
     .from(expenses)
     .leftJoin(members, eq(members.id, expenses.bezahltVonMemberId))
@@ -1295,8 +1318,54 @@ export async function listApprovedPendingErstattet(): Promise<
     memberIban: r.memberIban ?? null,
     ausNr: r.ausNr ?? null,
     payoutIban: r.payoutIban ?? null,
+    empfaengerName: bankPayeeName(r),
     festgeschrieben: Boolean(r.festgeschrieben),
+    abflussDatum: r.abflussDatum ?? null,
+    ...commitGate(r),
   }));
+}
+
+/**
+ * The payee a bank form needs. For a member that is the person's own name —
+ * `bezahlt_von_display` carries the "Mitglied: " prefix that belongs on a list
+ * row, not in a transfer. Falls back to the display value when the join found
+ * no member (a deleted row), because a prefixed name still beats an empty one.
+ */
+function bankPayeeName(r: {
+  bezahltVonKind: string;
+  externName: string | null;
+  bezahltVonDisplay: string;
+  memberVorname: string | null;
+  memberNachname: string | null;
+}): string {
+  if (r.bezahltVonKind === "extern" && r.externName) return r.externName;
+  const full = `${r.memberVorname ?? ""} ${r.memberNachname ?? ""}`.trim();
+  return full || r.bezahltVonDisplay;
+}
+
+/**
+ * Whether `markExpenseErstattet` would accept this claim today — mirrored from
+ * the action's own guards so the Werkstatt can hide a button instead of
+ * offering one that answers 409/422.
+ */
+function commitGate(r: {
+  payoutIban: string | null;
+  festgeschrieben: unknown;
+  abflussDatum: string | null;
+  bezahltVonKind: string;
+}): { committable: boolean; blockReason: ApprovedExpense["blockReason"] } {
+  // §7: a payout to a PERSON needs an IBAN. `verein` rows have no payee at all
+  // — "erstattet" just books the cash-out — so they are not gated on one.
+  if (r.bezahltVonKind !== "verein" && !r.payoutIban) {
+    return { committable: false, blockReason: "iban-fehlt" };
+  }
+  // ADR-0006 carve-out: the reimbursement columns may change after
+  // Festschreibung, but abfluss_datum is only PRESERVED, never set — a closed
+  // row without one cannot be committed without moving its Buchungsjahr.
+  if (Boolean(r.festgeschrieben) && !r.abflussDatum) {
+    return { committable: false, blockReason: "festgeschrieben-ohne-abfluss" };
+  }
+  return { committable: true, blockReason: null };
 }
 
 // ---------------------------------------------------------------------------
