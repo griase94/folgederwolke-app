@@ -20,10 +20,10 @@
 				xs: "h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
 				sm: "h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] in-data-[slot=button-group]:rounded-lg has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
 				lg: "h-9 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
-				// The ONE CTA geometry (DESIGN-GUIDELINES §2.1): page + takeover
-				// forms and public screens. Replaces the hand-rolled
-				// h-11/min-h-[52px]/text-[15px] chains.
-				cta: "h-11 md:h-10 gap-2 rounded-[10px] px-4 text-sm font-semibold",
+				// The ONE page-level CTA geometry (DESIGN-GUIDELINES §2.1): page /
+				// takeover forms, public + error screens. Touch-safe on mobile,
+				// desktop-tight at md. Never rebuild this as a class chain.
+				cta: "h-11 min-h-11 gap-2 rounded-[10px] px-5 font-semibold md:h-10",
 				icon: "size-8",
 				"icon-xs": "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
 				"icon-sm": "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",

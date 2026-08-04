@@ -15,7 +15,8 @@
   import BelegViewer from "$lib/components/files/BelegViewer.svelte";
   import EinnahmeDetailFields from "$lib/components/admin/transactions/einnahmen/EinnahmeDetailFields.svelte";
   import DeleteConfirm from "$lib/components/admin/transactions/detail/DeleteConfirm.svelte";
-  import { SPHERE_LABELS, type Sphere } from "$lib/domain/sphere.js";
+  import { type Sphere } from "$lib/domain/sphere.js";
+  import SphereBadge from "$lib/components/admin/transactions/fields/SphereBadge.svelte";
   import type { DetailStatusChip } from "$lib/components/admin/transactions/detail/DetailHead.svelte";
   import type { ActionData, PageData } from "./$types.js";
 
@@ -76,16 +77,7 @@
     />
     <KeyValue label="Kategorie" value={detail.kategorieNameSnapshot} />
     <KeyValue label="Sphäre" sub="aus Kategorie abgeleitet">
-      <span
-        class="inline-flex items-center gap-1.5 rounded-md bg-secondary px-2 py-0.5 text-[13px] font-medium text-ink-700"
-      >
-        <span
-          class="size-2.5 rounded-[3px]"
-          style="background: var(--sphere-{sphereEffective});"
-          aria-hidden="true"
-        ></span>
-        {SPHERE_LABELS[sphereEffective]}
-      </span>
+      <SphereBadge sphere={sphereEffective} />
     </KeyValue>
     {#if projectName}
       <KeyValue label="Projekt">
