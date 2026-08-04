@@ -21,7 +21,7 @@
  */
 
 import { fail, redirect } from "@sveltejs/kit";
-import { inArray, eq, isNull } from "drizzle-orm";
+import { and, inArray, eq, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types.js";
 import { getDb } from "$lib/server/db/index.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
@@ -34,6 +34,7 @@ import {
 import {
   submitAuslagenBatch,
   MAX_BATCH_ITEMS,
+  NonceConflictError,
   type AuslageBatchItem,
 } from "$lib/server/domain/auslage-submit.js";
 import { intakeBeleg } from "$lib/server/domain/auslage-beleg-upload.js";
@@ -134,7 +135,15 @@ export const actions: Actions = {
           submissionNonce: auslagenSubmissions.submissionNonce,
         })
         .from(auslagenSubmissions)
-        .where(inArray(auslagenSubmissions.submissionNonce, itemNonces));
+        // Scoped to the session member like every other portal query: a nonce
+        // guessed or replayed from someone else's submission must not hand back
+        // THEIR receipt.
+        .where(
+          and(
+            inArray(auslagenSubmissions.submissionNonce, itemNonces),
+            eq(auslagenSubmissions.bezahltVonMemberId, memberId),
+          ),
+        );
       const known = new Set(existing.map((r) => r.submissionNonce));
       if (existing.length > 0 && itemNonces.every((n) => known.has(n))) {
         // Same answer as a fresh submit: the receipt, in-shell.
@@ -298,6 +307,9 @@ export const actions: Actions = {
           email: member.email ?? undefined,
         },
         erstattungIban,
+        // A nonce replayed from another member's submission must never resolve
+        // to their row (the early dedup above is scoped the same way).
+        nonceScopeMemberId: memberId,
         items,
         consentTextVersion: DATENSCHUTZ_VERSION,
         actorUserId: userId,
@@ -306,6 +318,14 @@ export const actions: Actions = {
         notifyVorname: member.vorname,
       });
     } catch (dbErr) {
+      if (dbErr instanceof NonceConflictError) {
+        // Not our row to resolve to — practically unreachable with UUIDv4
+        // nonces, but never a 500 and never someone else's receipt.
+        return fail(409, {
+          error:
+            "Diese Einreichung wurde schon verarbeitet. Lade die Seite neu und versuch es nochmal.",
+        });
+      }
       console.error("[portal/auslagen/neu] batch submit failed:", dbErr);
       return fail(500, {
         error: "Das hat gerade nicht geklappt — bitte versuch es noch einmal.",

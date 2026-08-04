@@ -445,6 +445,54 @@ describe("@phase-2 member submit — Beleg, batch, identity", () => {
     );
   });
 
+  it("never hands back another member's receipt for a replayed nonce", async () => {
+    const owner = await seedMemberWithUser(STORED_IBAN);
+    const stranger = await seedMemberWithUser(STORED_IBAN);
+
+    // Owner submits; the stranger replays the very same nonce.
+    const form = buildForm([
+      { bezeichnung: "Fremde Auslage", betrag_cents: 4200 },
+    ]);
+    const ownerRes = handoffOf(
+      await submit(owner.user.id, owner.member.id, form),
+    );
+    const stolenNonce = JSON.parse(String(form.get("data"))).auslagen[0]
+      .submission_nonce;
+
+    const replay = new FormData();
+    replay.set(
+      "data",
+      JSON.stringify({
+        auslagen: [
+          {
+            client_key: "k0",
+            submission_nonce: stolenNonce,
+            bezeichnung: "Getarnt",
+            kommentar: null,
+            rechnungsdatum: "2026-07-01",
+            betrag_cents: 100,
+            wofuer: null,
+            beleg_mode: "verzicht",
+            beleg_verzicht_grund: "Replay-Versuch.",
+          },
+        ],
+      }),
+    );
+    const res = (await submit(
+      stranger.user.id,
+      stranger.member.id,
+      replay,
+    )) as unknown as { status: number; handoff?: unknown };
+
+    // A 409, NOT the owner's receipt — and not a 500 either.
+    expect(res.status).toBe(409);
+    expect(res.handoff).toBeUndefined();
+    // The owner's row is untouched and still theirs.
+    const ownerRow = await readSubmission(ownerRes.items[0]!.ausId);
+    expect(ownerRow.bezahltVonMemberId).toBe(owner.member.id);
+    expect(Number(ownerRow.betragCents)).toBe(4200);
+  });
+
   it("is idempotent: replaying the same nonces creates nothing new", async () => {
     const { member, user } = await seedMemberWithUser(STORED_IBAN);
     const form = buildForm([{}]);
