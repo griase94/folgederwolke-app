@@ -127,11 +127,11 @@
 	}
 
 	// ── Foot sum (client-side over the filtered view) ─────────────────────────
-	// The Buchungsliste is the TRANSACTION feed (income ∪ expense ∪ donation) —
-	// it does NOT carry Mitgliedsbeiträge. The EÜR-Überschuss additionally
-	// includes paid Mitgliedsbeiträge, so the feed-saldo equals the EÜR ONLY in a
-	// year without paid Beiträge. We show the ✓-Kreuzprobe when they truly match,
-	// and otherwise state the honest Mitgliedsbeitrags-delta (never a false ✓).
+	// The Buchungsliste is the TRANSACTION feed, and since S3 that feed has four
+	// arms: income ∪ expense ∪ donation ∪ paid Mitgliedsbeiträge. It therefore
+	// covers the same money as the EÜR-Überschuss, and the foot-saldo equals it
+	// outright on an unfiltered, uncapped year — no correction term, no
+	// reconciliation note.
 	const footSum = $derived(
 		rows.reduce((a, r) => a + (r.kind === 'expense' ? -r.betragCents : r.betragCents), 0)
 	);
