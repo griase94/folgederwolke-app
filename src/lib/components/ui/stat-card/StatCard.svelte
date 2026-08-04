@@ -36,7 +36,6 @@
 		/** Makes the whole card a link, usually to the matching filtered list. */
 		href?: string;
 		variant?: 'card' | 'bare';
-		size?: 'md' | 'lg';
 		/** Empty dignity: dims the value to ink-500. The dot stays. */
 		empty?: boolean;
 		class?: string;
@@ -66,7 +65,6 @@
 		meta,
 		href,
 		variant = 'card',
-		size = 'md',
 		empty = false,
 		class: className,
 		...rest
@@ -77,10 +75,6 @@
 		bare: ''
 	};
 
-	const VALUE_SIZE: Record<'md' | 'lg', string> = {
-		md: 'text-xl',
-		lg: 'text-2xl tracking-[-0.02em]'
-	};
 </script>
 
 <svelte:element
@@ -111,8 +105,7 @@
 
 	<span
 		class={[
-			'font-bold tabular-nums',
-			VALUE_SIZE[size],
+			'text-xl font-bold tabular-nums',
 			empty ? 'text-ink-500' : 'text-ink-900'
 		]}>{value}</span
 	>

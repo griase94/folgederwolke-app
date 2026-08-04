@@ -127,6 +127,7 @@
 					<Button
 						href={`/app/spenden/neu${listQueryString('spenden', $page.url.searchParams)}`}
 						size="cta"
+						class="max-md:w-full"
 						data-slot="new-cta">Neue Spende</Button
 					>
 					<!-- eslint-enable svelte/no-navigation-without-resolve -->

@@ -23,7 +23,11 @@
 				// The ONE page-level CTA geometry (DESIGN-GUIDELINES §2.1): page /
 				// takeover forms, public + error screens. Touch-safe on mobile,
 				// desktop-tight at md. Never rebuild this as a class chain.
-				cta: "h-11 min-h-11 gap-2 rounded-[10px] px-5 font-semibold md:h-10",
+				// `md:min-h-10` is load-bearing, not decoration: `min-h-11` has no
+				// md variant of its own, so a 44px min-height outranked `md:h-10`
+				// and every CTA in the app rendered 44px at desktop — 4px taller
+				// than the 40px controls it stands next to.
+				cta: "h-11 min-h-11 gap-2 rounded-[10px] px-5 font-semibold md:h-10 md:min-h-10",
 				icon: "size-8",
 				"icon-xs": "size-6 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-lg [&_svg:not([class*='size-'])]:size-3",
 				"icon-sm": "size-7 rounded-[min(var(--radius-md),12px)] in-data-[slot=button-group]:rounded-lg",

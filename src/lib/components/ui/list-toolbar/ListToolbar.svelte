@@ -78,7 +78,12 @@
 		{@render leading()}
 
 		{#if meta || actions}
-			<div class="ml-auto flex flex-wrap items-center gap-2">
+			<!-- Under md the action group is its OWN full-width row and the primary
+			     fills it (the sheet-footer pattern). That is deliberate, not a
+			     wrap accident: at 390px a right-aligned primary sharing a line with
+			     the filter controls either collides or forces a cryptic short
+			     label, and the brand voice does not shorten. -->
+			<div class="flex w-full flex-wrap items-center gap-2 md:ml-auto md:w-auto">
 				{#if meta}
 					<span
 						data-slot="result-meta"

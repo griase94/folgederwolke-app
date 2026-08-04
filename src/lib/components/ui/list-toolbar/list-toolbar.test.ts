@@ -79,6 +79,24 @@ describe("ListToolbar — one control scale (spec §3)", () => {
     }
   });
 
+  it("pins the EFFECTIVE height at md — a min-height without an md variant wins", () => {
+    // The bug this pins: `min-h-11` (44px) has no md counterpart, so it
+    // outranked `md:h-10` (40px) and every CTA rendered 44px at desktop, 4px
+    // taller than the controls beside it. A height class alone is not enough —
+    // whatever sets a min-height at the mobile size must release it at md.
+    for (const cls of [
+      TOOLBAR_CONTROL,
+      TOOLBAR_BUTTON,
+      buttonVariants({ size: "cta" }),
+    ]) {
+      if (/\bmin-h-11\b/.test(cls)) {
+        expect(cls, `"${cls}" raises min-height at md`).toMatch(
+          /\bmd:min-h-10\b/,
+        );
+      }
+    }
+  });
+
   it("uses the md breakpoint, never lg (guidelines §1.5)", () => {
     for (const cls of [TOOLBAR_CONTROL, TOOLBAR_BUTTON]) {
       expect(cls).not.toMatch(/\blg:h-/);

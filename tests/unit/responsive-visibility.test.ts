@@ -31,8 +31,10 @@ describe("responsive visibility of toolbar affordances", () => {
 
   it("the CSV export hides below md with a variant, not a bare `hidden`", () => {
     const s = src("lib/components/admin/transactions/FilterBar.svelte");
-    expect(s).toContain('csvLink("max-md:hidden")');
+    expect(s).toMatch(/csvLink\("max-md:hidden"/);
     expect(s).not.toMatch(/csvLink\("hidden md:/);
+    // The sheet copy spells the action out; the toolbar keeps the short label.
+    expect(s).toContain('"Gefilterte Liste als CSV"');
   });
 
   it("no toolbar geometry class carries a display utility that a `hidden` could fight", () => {

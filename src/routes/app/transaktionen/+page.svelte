@@ -229,11 +229,16 @@
 							class="hidden text-[11px] font-bold uppercase tracking-wider text-ink-300 md:inline"
 							>Sortieren</span
 						>
+						<!-- Lifted to the toolbar scale (h-11 md:h-10): a 32px segmented
+						     control between 40px controls made the row read as three
+						     scales instead of one line. The segments stay compact
+						     inside that frame. -->
 						<SegmentedControl
 							options={LENS_OPTIONS}
 							value={lens}
 							onChange={onLensChange}
 							ariaLabel="Sortierung"
+							class="h-11 md:h-10"
 							data-testid="feed-lens"
 						/>
 						<CreateMenu />

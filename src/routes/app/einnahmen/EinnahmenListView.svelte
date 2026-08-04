@@ -127,6 +127,7 @@
 					<Button
 						href={`/app/einnahmen/neu${listQueryString('einnahmen', $page.url.searchParams)}`}
 						size="cta"
+						class="max-md:w-full"
 						data-slot="new-cta">Neue Einnahme</Button
 					>
 					<!-- eslint-enable svelte/no-navigation-without-resolve -->

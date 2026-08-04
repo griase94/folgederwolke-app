@@ -29,8 +29,15 @@
 	 * R6.3 rail axis at ultra-wide.
 	 *
 	 * Strip grammar (enforced by tests/unit/stat-card-strip-grammar.test.ts):
-	 * one format class per strip, subs all-or-none, the accent column always
-	 * occupied. Mixing money and count tiles in one strip is a finding.
+	 *  - the value is the NUMBER ALONE — a label inside it ("0 versandt") is
+	 *    what made the original strip unreadable as a column of figures;
+	 *  - sub-lines are all-or-none within one strip;
+	 *  - money in one strip shares ONE decimal discipline;
+	 *  - the accent column is always occupied (every card has its dot).
+	 *
+	 * Mixing FORMAT classes is explicitly fine and ratified — the Spenden strip
+	 * is money + count + ratio by design. What must not drift is how a number is
+	 * written, not which kind of number it is.
 	 */
 	let {
 		children,

@@ -58,3 +58,5 @@ measure.local.mjs
 navcheck.local.mjs
 chartcheck.local.mjs
 probe.local.mjs
+remeasure.local.mjs
+dbg.local.mjs

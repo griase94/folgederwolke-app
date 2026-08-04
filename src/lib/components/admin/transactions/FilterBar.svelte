@@ -684,7 +684,7 @@
   {/if}
 {/snippet}
 
-{#snippet csvLink(extraClass: string)}
+{#snippet csvLink(extraClass: string, label: string)}
   {#if exportHref}
     <!-- eslint-disable svelte/no-navigation-without-resolve -->
     <a
@@ -706,7 +706,7 @@
         <path d="M12 15V3" /><path
           d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"
         /><path d="m7 10 5 5 5-5" />
-      </svg>CSV
+      </svg>{label}
     </a>
     <!-- eslint-enable svelte/no-navigation-without-resolve -->
   {/if}
@@ -772,7 +772,7 @@
           </div>
           <Sheet.Footer class="shrink-0 gap-2 border-t border-hairline">
             <!-- CSV has no room in the mobile toolbar, so it lives here. -->
-            {@render csvLink("w-full justify-center")}
+            {@render csvLink("w-full justify-center", "Gefilterte Liste als CSV")}
             <div class="flex items-center gap-2">
               <button
                 type="button"
@@ -857,7 +857,7 @@
   {/snippet}
 
   {#snippet actions()}
-    {@render csvLink("max-md:hidden")}
+    {@render csvLink("max-md:hidden", "CSV")}
     {#if pageActions}{@render pageActions()}{/if}
   {/snippet}
 
