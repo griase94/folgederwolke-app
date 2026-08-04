@@ -243,13 +243,19 @@ export const GET: RequestHandler = async ({ params }) => {
   // paid_cents > 0 but no payment date is not realized cashflow and the EÜR
   // skips it, so listing it here would make 08_Mitgliedsbeitraege disagree
   // with both the EÜR PDF and the GoBD journal in the same bundle.
+  //
+  // The year filter is the Zufluss year (S2, see
+  // $lib/server/domain/beitrag-buchungsjahr.ts) — written out against the `mb`
+  // alias because the shared fragment renders an unaliased column reference.
+  // The `Jahr` column still carries the Beitragsjahr, so a 2025 Beitrag paid in
+  // 2026 appears in the 2026 bundle and says so.
   const beitragRows = (await db.execute(sql`
     SELECT concat_ws(' ', m.vorname, m.nachname) AS member_name,
            mb.year, mb.betrag_cents, mb.paid_cents,
            mb.gezahlt_am::text AS gezahlt_am
       FROM member_beitrags mb
       JOIN members m ON m.id = mb.member_id
-     WHERE mb.year = ${year}
+     WHERE EXTRACT(YEAR FROM mb.gezahlt_am)::int = ${year}
        AND mb.paid_cents > 0
        AND mb.gezahlt_am IS NOT NULL
      ORDER BY m.nachname ASC, m.vorname ASC

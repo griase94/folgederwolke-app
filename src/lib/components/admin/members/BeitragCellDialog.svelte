@@ -152,9 +152,14 @@
 		!Number.isNaN(parsedCents) && parsedCents > 0 && parsedCents <= betragCents
 	);
 
-	// Live EÜR-Buchungsjahr from the chosen date (ADR-0001 Europe/Berlin). Pure UI
-	// hint — Beiträge are synthesised into the EÜR from member_beitrags, not booked
-	// as income rows, so there is no kategorie resolution here.
+	// Live EÜR-Buchungsjahr from the chosen date (ADR-0001 Europe/Berlin).
+	// Since S2 this is a PROMISE, not a hint: Beiträge book by Zufluss, so the
+	// year shown here is the year the EÜR, the GoBD journal and the
+	// Festschreibungs-Gate all agree this payment lands in — see
+	// $lib/server/domain/beitrag-buchungsjahr.ts. Before S2 the EÜR bucketed by
+	// Beitragsjahr, so a late payment was announced here as one year and booked
+	// into another. Beiträge are still synthesised rather than written as income
+	// rows, so there is no kategorie resolution here.
 	const euerYear = $derived.by(() => {
 		if (!dateInput) return berlinYear();
 		const parsed = new Date(`${dateInput}T12:00:00`);
