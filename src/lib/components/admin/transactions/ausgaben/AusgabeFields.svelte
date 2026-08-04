@@ -20,7 +20,7 @@
 	import KategoriePicker from '$lib/components/admin/transactions/fields/KategoriePicker.svelte';
 	import LockedSphereField from '$lib/components/admin/transactions/fields/LockedSphereField.svelte';
 	import BelegUpload from '$lib/components/forms/BelegUpload.svelte';
-	import { FIELD_CLASS } from '$lib/components/admin/transactions/fields/field-class.js';
+	import { FIELD_CLASS } from '$lib/components/ui/field-class/index.js';
 	import { parseBetragCents } from '$lib/client/parse-betrag.js';
 	import type { Sphere } from '$lib/domain/sphere.js';
 

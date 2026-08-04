@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as Popover from "$lib/components/ui/popover/index.js";
 	import { cn } from "$lib/utils.js";
+	import { FIELD_CLASS } from "$lib/components/ui/field-class/index.js";
 
 	type Option = { value: string; label: string };
 
@@ -133,7 +134,14 @@
 	<Popover.Trigger
 		data-slot="combobox-trigger"
 		class={cn(
-			"border-input bg-background hover:bg-accent hover:text-accent-foreground flex h-9 min-h-11 w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm whitespace-nowrap shadow-xs transition-colors outline-none focus-visible:ring-1 focus-visible:ring-ring",
+			cn(
+				FIELD_CLASS,
+				// The trigger is a field, so it wears the field baseline. It used to
+				// carry `h-9 min-h-11` on the SAME element — the min-height won and it
+				// rendered 44px while claiming 36 — plus a `ring-1` that exists
+				// nowhere else in the app.
+				"flex items-center justify-between gap-2 whitespace-nowrap hover:bg-accent hover:text-accent-foreground transition-colors"
+			),
 			className
 		)}
 	>

@@ -13,7 +13,7 @@
 <script lang="ts" module>
 	import { cn } from '$lib/utils.js';
 	import { enhance } from '$app/forms';
-	import { FIELD_CLASS } from '$lib/components/admin/transactions/fields/field-class.js';
+	import { FIELD_CLASS } from '$lib/components/ui/field-class/index.js';
 	import { handleIbanInput } from '$lib/client/iban.js';
 	import { validateIban } from '$lib/domain/iban.js';
 	import { Button } from '$lib/components/ui/button/index.js';

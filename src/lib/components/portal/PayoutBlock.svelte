@@ -21,7 +21,7 @@
 -->
 <script lang="ts" module>
 	import { cn } from '$lib/utils.js';
-	import { FIELD_CLASS } from '$lib/components/admin/transactions/fields/field-class.js';
+	import { FIELD_CLASS } from '$lib/components/ui/field-class/index.js';
 	import { handleIbanInput } from '$lib/client/iban.js';
 	import { maskIbanDisplay, validateIban } from '$lib/domain/iban.js';
 	import Wallet from '@lucide/svelte/icons/wallet';
