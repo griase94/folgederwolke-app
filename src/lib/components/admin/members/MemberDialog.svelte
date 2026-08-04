@@ -16,6 +16,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import { Select } from '$lib/components/ui/select/index.js';
 	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 	import { toast } from 'svelte-sonner';
 	import { berlinYmd } from '$lib/domain/year.js';
@@ -286,16 +287,15 @@
 
 			<div class="space-y-1">
 				<Label for="m-role">Rolle</Label>
-				<select
+				<Select
 					id="m-role"
 					name="role"
 					data-testid="{mode}-role-select"
-					class="border-input bg-background h-9 w-full rounded-lg border px-2.5 py-1 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
 				>
 					{#each roleOptions as r (r.value)}
 						<option value={r.value} selected={isEdit && member?.role === r.value}>{r.label}</option>
 					{/each}
-				</select>
+				</Select>
 			</div>
 
 			<!-- Beitragspflicht aussetzen (indigo, never pink, never on the Betrag) -->
