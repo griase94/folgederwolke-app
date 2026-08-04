@@ -256,7 +256,6 @@
 							enterkeyhint="send"
 							placeholder="du@beispiel.de"
 							required
-							class="h-11 rounded-[10px] lg:h-10"
 						/>
 						{#if form?.error}
 							<p class="text-xs text-severity-critical-text">{form.error}</p>
