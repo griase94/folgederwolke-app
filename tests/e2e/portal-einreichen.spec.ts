@@ -178,6 +178,67 @@ test.describe("@phase-2 Portal — Einreichen transportiert die Eingabe", () => 
     expect(row?.["member_iban"]).toBe(STORED_IBAN);
   });
 
+  test("submit explains the gap instead of sitting disabled (member arm)", async ({
+    page,
+  }) => {
+    const email = await seedMember("gap", null);
+    await signIn(page, email);
+    await page.goto("/portal/auslagen/neu");
+
+    const submit = page.getByTestId("auslage-submit");
+    // Never disabled for a missing field — it has to be able to explain itself.
+    await expect(submit).toBeEnabled();
+
+    // Fall B with nothing typed: the first gap is the payout IBAN.
+    await submit.click();
+    await expect(page.getByTestId("payout-iban-input")).toBeFocused();
+    await expect(page.getByTestId("einreichen-gate")).toContainText("IBAN");
+
+    // With the IBAN in place the gate moves to the block — and names only the
+    // fields that are ACTUALLY empty, not a blanket phrase.
+    await page.getByTestId("payout-iban-input").fill(TYPED_IBAN);
+    await page.getByTestId("amount-field-input").fill("19,90");
+    await submit.click();
+    const gate = page.getByTestId("einreichen-gate");
+    await expect(gate).toContainText("Bezeichnung");
+    await expect(gate).not.toContainText("Betrag");
+  });
+
+  test("batch receipt marks a documented Verzicht instead of leaving a gap", async ({
+    page,
+  }) => {
+    const email = await seedMember("verzicht", STORED_IBAN);
+    await signIn(page, email);
+    await page.goto("/portal/auslagen/neu");
+
+    await fillBlock(page);
+    // Second block — the batch receipt only appears from two upwards.
+    await page.getByTestId("add-auslage").click();
+    const second = page.locator("[data-block]").last();
+    await second
+      .getByPlaceholder("z. B. Getränke fürs Sommerfest")
+      .fill("E2E Zweite Auslage");
+    await second.getByTestId("amount-field-input").fill("14,90");
+    const d2 = second.getByTestId("date-field-input");
+    await d2.fill("02.07.2026");
+    await d2.blur();
+    await second.getByTestId("beleg-kein-beleg").check();
+    await second
+      .getByTestId("beleg-verzicht-grund")
+      .fill("E2E: zweiter Bon fehlt ebenfalls.");
+
+    await page.getByTestId("auslage-submit").click();
+    await expect(page.getByTestId("submit-handoff")).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Both rows are Verzicht — the slot reads as a documented exception, not
+    // as something missing.
+    const markers = page.getByTestId("bcg-verzicht");
+    await expect(markers).toHaveCount(2);
+    await expect(markers.first()).toHaveText(/Verzicht begründet/);
+  });
+
   test("Fall A: no typing needed, the stored IBAN is snapshotted", async ({
     page,
   }) => {

@@ -9,7 +9,7 @@
 	import { enhance } from '$app/forms';
 	import { page } from '$app/state';
 	import { browser } from '$app/environment';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { beforeNavigate } from '$app/navigation';
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
@@ -320,6 +320,42 @@
 	}
 
 	// ── submit (use:enhance builds the multipart payload) ─────────────────────────
+	function focusGap(selector: string) {
+		const el = document.querySelector<HTMLElement>(selector);
+		if (!el) return;
+		el.focus({ preventScroll: true });
+		el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+	}
+
+	/**
+	 * The primary is never disabled for a missing field (DESIGN-GUIDELINES §4) —
+	 * so a click has to EXPLAIN the gap: jump to the first one, expanding a
+	 * collapsed block on the way. The gate line names it in words.
+	 */
+	async function jumpToFirstGap() {
+		if (isMember && !payoutValid) {
+			focusGap('[data-testid="payout-iban-input"]');
+			return;
+		}
+		if (!isMember) {
+			const ids = identityGaps();
+			if (ids[0]) {
+				focusGap(ids[0].selector);
+				return;
+			}
+		}
+		const bad = blocks.find((b) => !blockValid(b));
+		if (bad) {
+			bad.open = true;
+			// The block may have been collapsed — let it render before focusing.
+			await tick();
+			const gap = blockGaps(bad)[0];
+			if (gap) focusGap(gap.selector);
+			return;
+		}
+		if (!isMember && !consent) focusGap('[data-testid="consent-checkbox"]');
+	}
+
 	const submit = () => {
 		attempted = true;
 		if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -329,9 +365,7 @@
 		}
 		offlineError = false;
 		if (!formValid) {
-			// expand the first invalid block + scroll to it
-			const firstInvalid = blocks.find((b) => !blockValid(b));
-			if (firstInvalid) firstInvalid.open = true;
+			void jumpToFirstGap();
 			return { cancelled: true };
 		}
 		return { ok: true };
@@ -390,18 +424,65 @@
 		const noun = n === 1 ? 'Auslage einreichen' : `${n} Auslagen einreichen`;
 		return formValid ? `${noun} — ${formatMoney(gesamtCents)}` : noun;
 	});
+	/**
+	 * The fields a block is ACTUALLY still missing. Naming a filled field is
+	 * worse than saying nothing — the gate line is the load-bearing explanation
+	 * now that the CTA is never disabled.
+	 */
+	type Gap = { label: string; selector: string };
+	function blockGaps(b: Block): Gap[] {
+		const scope = `[data-block="${b.clientKey}"]`;
+		const gaps: Gap[] = [];
+		if (b.bezeichnung.trim().length < 3)
+			gaps.push({ label: 'Bezeichnung', selector: `#bez-${b.clientKey}` });
+		if (b.betragCents == null || b.betragCents <= 0)
+			gaps.push({ label: 'Betrag', selector: `${scope} [data-testid="amount-field-input"]` });
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(b.rechnungsdatum))
+			gaps.push({ label: 'Datum', selector: `${scope} [data-testid="date-field-input"]` });
+		if (!belegOk(b))
+			gaps.push({
+				label: isMember && b.keinBeleg ? 'Begründung' : isMember ? 'Beleg oder Begründung' : 'Beleg',
+				selector:
+					isMember && b.keinBeleg
+						? `${scope} [data-testid="beleg-verzicht-grund"]`
+						: `${scope} [data-testid="beleg-pick"]`
+			});
+		return gaps;
+	}
+
+	/** "A", "A und B", "A, B und C" — German list, no Oxford comma. */
+	function listAnd(items: string[]): string {
+		if (items.length <= 1) return items[0] ?? '';
+		return `${items.slice(0, -1).join(', ')} und ${items.at(-1)}`;
+	}
+
+	/** Identity/consent gaps of the public arm, in the order they appear. */
+	function identityGaps(): Gap[] {
+		const gaps: Gap[] = [];
+		if (externName.trim().length === 0)
+			gaps.push({ label: 'Name', selector: '#ext-name' });
+		if (!emailRe.test(externEmail.trim()))
+			gaps.push({ label: 'E-Mail', selector: '#ext-email' });
+		if (externIban.replace(/\s+/g, '').length < 15)
+			gaps.push({ label: 'IBAN', selector: '#ext-iban' });
+		return gaps;
+	}
+
 	const missingHint = $derived.by(() => {
-		if (isMember) {
-			if (!payoutValid) return payoutHint ?? 'Fehlt noch: IBAN fürs Zurücküberweisen.';
-			const bad = blocks.findIndex((b) => !blockValid(b));
-			if (bad >= 0)
-				return `Fehlt noch: Beleg (oder Begründung), Betrag & Datum für Auslage ${bad + 1}.`;
-			return '';
+		if (isMember && !payoutValid)
+			return payoutHint ?? 'Fehlt noch: IBAN fürs Zurücküberweisen.';
+		if (!isMember) {
+			const ids = identityGaps();
+			if (ids.length > 0) return `Fehlt noch: ${listAnd(ids.map((g) => g.label))}.`;
 		}
-		if (!identityValid) return 'Bitte zuerst Name, E-Mail und IBAN ausfüllen.';
 		const bad = blocks.findIndex((b) => !blockValid(b));
-		if (bad >= 0) return `Fehlt noch: Beleg, Betrag & Datum für Auslage ${bad + 1}.`;
-		if (!consent) return 'Bitte den Datenschutzhinweis bestätigen.';
+		if (bad >= 0) {
+			const gaps = listAnd(blockGaps(blocks[bad]!).map((g) => g.label));
+			return blocks.length > 1
+				? `Fehlt noch: ${gaps} für Auslage ${bad + 1}.`
+				: `Fehlt noch: ${gaps}.`;
+		}
+		if (!isMember && !consent) return 'Bitte den Datenschutzhinweis bestätigen.';
 		return '';
 	});
 </script>
@@ -413,7 +494,7 @@
 {/snippet}
 
 {#snippet blockFields(block: Block)}
-	<div class="flex flex-col gap-4">
+	<div class="flex flex-col gap-4" data-block={block.clientKey}>
 		<div class="flex flex-col gap-1.5">
 			<Label for="bez-{block.clientKey}">Was war's <span class="text-primary-text" aria-hidden="true">*</span></Label>
 			<Input
@@ -661,7 +742,7 @@
 	{#if !isMember}
 	<section class="flex flex-col gap-3">
 		<label class="flex cursor-pointer items-start gap-3">
-			<input type="checkbox" bind:checked={consent} onchange={triggerSave} class="mt-0.5 size-4 shrink-0 accent-primary" aria-invalid={attempted && !consent} />
+			<input type="checkbox" bind:checked={consent} onchange={triggerSave} data-testid="consent-checkbox" class="mt-0.5 size-4 shrink-0 accent-primary" aria-invalid={attempted && !consent} />
 			<span class="text-sm text-ink-700">
 				Ich bin einverstanden, dass meine Angaben zur Bearbeitung der Erstattung gespeichert werden.
 				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
@@ -709,7 +790,7 @@
 				type="submit"
 				size="cta"
 				class="min-h-[52px] w-full text-[15px]"
-				disabled={!formValid}
+				disabled={submitting}
 				loading={submitting}
 				data-testid="auslage-submit"
 			>
