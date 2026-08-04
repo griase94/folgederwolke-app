@@ -285,6 +285,17 @@ export interface EurPdfAggregates {
    */
   einnahmenRowsWithKategorien: EurRow[];
   ausgabenRowsWithKategorien: EurRow[];
+  /**
+   * The synthesized donation + paid-Mitgliedsbeitrag rows folded into `eur` —
+   * the EXACT rows, not a re-derivation.
+   *
+   * Exposed so the GoBD-Z3 journal emits the same Einnahmen the EÜR counts.
+   * Without this, the tax-audit XML and the EÜR PDF *inside one bundle*
+   * disagree by the Beitragssumme — the contradiction a Betriebsprüfer opens
+   * the bundle to find. Pinned by `tests/integration/gobd-eur-identity.test.ts`.
+   */
+  donationEurRows: EurRow[];
+  beitragEurRows: EurRow[];
 }
 
 /**
@@ -399,8 +410,13 @@ export async function loadEurAggregatesForPdf(
     belegOriginalName: null,
   }));
 
+  // BelegNr: `MB-<jahr>-<8 hex des PK>` — stable (derived from the immutable
+  // primary key), unique, and readable next to `E-2026-0001` in the GoBD
+  // journal. The raw UUID was fine while these rows only fed aggregates, but
+  // since S1 they surface as <BelegNr> in the Betriebsprüfer-XML.
   const beitragRows = (await db.execute(sql`
-    SELECT id::text AS business_id, gezahlt_am,
+    SELECT 'MB-' || year::text || '-' || left(id::text, 8) AS business_id,
+           gezahlt_am,
            paid_cents AS betrag_cents,
            'Mitgliedsbeitrag ' || year::text AS bezeichnung
       FROM member_beitrags
@@ -444,6 +460,8 @@ export async function loadEurAggregatesForPdf(
     vereinName,
     einnahmenRowsWithKategorien,
     ausgabenRowsWithKategorien,
+    donationEurRows,
+    beitragEurRows,
   };
 }
 
@@ -593,8 +611,11 @@ export async function loadEurWorkspaceData(
   // member_beitrags: synthesize an ideeller EurRow per paid beitrag.
   // year column is the explicit fiscal year (not a GENERATED column —
   // beitrags are billed per fiscal year independent of when paid).
+  // Same synthetic BelegNr as loadEurAggregatesForPdf — the two loaders must
+  // describe a Beitrag identically.
   const beitragRows = (await db.execute(sql`
-    SELECT id::text AS business_id, gezahlt_am, year,
+    SELECT 'MB-' || year::text || '-' || left(id::text, 8) AS business_id,
+           gezahlt_am, year,
            paid_cents AS betrag_cents,
            'Mitgliedsbeitrag ' || year::text AS bezeichnung
       FROM member_beitrags
