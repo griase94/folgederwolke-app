@@ -288,35 +288,40 @@ describe("@phase-2 M4 — payout precedence: snapshot → extern → live member
     });
   });
 
-  it("stays single-valued even if TWO submissions link the same expense", async () => {
-    // approved_expense_id has an FK but NO unique constraint, so the schema
-    // permits this. In the Werkstatt pool a row-multiplying JOIN would show the
-    // amount twice — money double-counted on screen.
+  it("the SCHEMA now forbids a second submission on the same expense", async () => {
+    // Before 0044 this was schema-legal, and a row-multiplying join would have
+    // double-counted the amount in the Werkstatt pool. The invariant now lives
+    // in the database rather than in query discipline alone; the deterministic
+    // scalar subquery stays as defense in depth for any pre-index row.
     const { expenseId, memberId } = await seedApprovedExpense({
       kind: "member",
       memberIban: MEMBER_LIVE_IBAN,
       snapshotIban: SNAPSHOT_IBAN,
     });
     const n = 60000 + seq++;
-    await getDb()
-      .insert(auslagenSubmissions)
-      .values({
-        businessId: `AUS-2099-${n}`,
-        bezeichnung: "Zweite Submission auf dieselbe Expense",
-        betragCents: 2490n,
-        rechnungsdatum: "2026-07-01",
-        bezahltVonKind: "member",
-        bezahltVonMemberId: memberId,
-        bezahltVonDisplay: "Mitglied: Gate",
-        belegVerzichtGrund: "Gate-Fixture",
-        consentTextVersion: "test",
-        erstattungIban: EXTERN_IBAN,
-        approvedExpenseId: expenseId,
-      });
 
-    const payout = await resolvePayoutIban(expenseId);
-    // Deterministic by business_id — one answer, never two rows.
-    expect(payout.source).toBe("snapshot");
-    expect([SNAPSHOT_IBAN, EXTERN_IBAN]).toContain(payout.iban);
+    await expect(
+      getDb()
+        .insert(auslagenSubmissions)
+        .values({
+          businessId: `AUS-2099-${n}`,
+          bezeichnung: "Zweiter Link auf dieselbe Expense",
+          betragCents: 2490n,
+          rechnungsdatum: "2026-07-01",
+          bezahltVonKind: "member",
+          bezahltVonMemberId: memberId,
+          bezahltVonDisplay: "Mitglied: Gate",
+          belegVerzichtGrund: "Gate-Fixture",
+          consentTextVersion: "test",
+          erstattungIban: EXTERN_IBAN,
+          approvedExpenseId: expenseId,
+        }),
+    ).rejects.toMatchObject({ cause: { code: "23505" } });
+
+    // …and the payout still resolves to the one legitimate snapshot.
+    expect(await resolvePayoutIban(expenseId)).toEqual({
+      iban: SNAPSHOT_IBAN,
+      source: "snapshot",
+    });
   });
 });
