@@ -11,6 +11,7 @@
 -->
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { toast } from 'svelte-sonner';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -155,7 +156,7 @@
 
 			<div class="space-y-1.5">
 				<Label for="reject-grund">Grund (wird im Mail-Text verwendet)</Label>
-				<textarea
+				<Textarea
 					id="reject-grund"
 					name="grund"
 					bind:value={grund}
@@ -163,8 +164,7 @@
 					required
 					minlength={3}
 					maxlength={2000}
-					class="flex w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-				></textarea>
+				></Textarea>
 			</div>
 
 			{#if error}

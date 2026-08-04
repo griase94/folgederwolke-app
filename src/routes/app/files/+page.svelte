@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
+	import { Select } from '$lib/components/ui/select/index.js';
   import { enhance } from "$app/forms";
   import { page as pageStore } from "$app/state";
   import { SvelteURLSearchParams } from "svelte/reactivity";
@@ -54,17 +55,12 @@
 
   <div class="mb-6 flex items-center gap-2">
     <label for="year-filter" class="text-sm font-medium text-muted-foreground">Jahr</label>
-    <select
-      id="year-filter"
-      onchange={onYearChange}
-      value={data.year ?? ""}
-      class="min-h-9 rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-    >
+    <Select id="year-filter" onchange={onYearChange} value={data.year ?? ""}>
       <option value="">Alle</option>
       {#each data.years as y (y)}
         <option value={y}>{y}</option>
       {/each}
-    </select>
+    </Select>
   </div>
 
   {#if data.rows.length === 0}

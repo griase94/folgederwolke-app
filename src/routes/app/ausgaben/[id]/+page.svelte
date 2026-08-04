@@ -10,6 +10,7 @@
    * → prefill /app/ausgaben/neu).
    */
   import { applyAction, enhance } from "$app/forms";
+	import { Select } from '$lib/components/ui/select/index.js';
   import { page } from "$app/stores";
   import { goto, invalidateAll } from "$app/navigation";
   import { toast } from "svelte-sonner";
@@ -258,16 +259,12 @@
           required
           class="h-9 w-36"
         />
-        <select
-          name="zahlartId"
-          bind:value={markPaidZahlartId}
-          class="h-9 rounded-lg border border-border bg-card px-2 text-sm"
-        >
+        <Select name="zahlartId" bind:value={markPaidZahlartId}>
           <option value="">— Zahlungsart —</option>
           {#each data.zahlungsarten as z (z.id)}
             <option value={z.id}>{z.label}</option>
           {/each}
-        </select>
+        </Select>
         <button
           type="submit"
           class="inline-flex h-9 items-center gap-2 rounded-lg bg-[color:var(--cta-einnahme)] px-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"

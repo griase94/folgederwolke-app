@@ -7,6 +7,7 @@
    * "Als erstattet markieren" posts the absorbed ?/bulk-mark-erstattet.
    */
   import { tick } from 'svelte';
+	import { Select } from '$lib/components/ui/select/index.js';
   import { page } from '$app/state';
   import PageShell from '$lib/components/layout/PageShell.svelte';
   import PageHeader from '$lib/components/layout/PageHeader.svelte';
@@ -181,15 +182,11 @@
           class="h-11 md:h-10"
         />
         <label class="text-sm text-ink-500" for="ueberweisung-zahlungsart">Zahlungsart</label>
-        <select
-          id="ueberweisung-zahlungsart"
-          bind:value={zahlungsartId}
-          class="h-11 rounded-[10px] border border-(--hairline) bg-card px-2 text-sm md:h-10"
-        >
+        <Select id="ueberweisung-zahlungsart" bind:value={zahlungsartId}>
           {#each data.zahlungsarten as za (za.id)}
             <option value={za.id}>{za.label}</option>
           {/each}
-        </select>
+        </Select>
       </div>
     {/snippet}
   </PageHeader>
