@@ -65,6 +65,11 @@ export interface EingangsMailProps {
   bezeichnung: string;
   /** Single: the amount. Batch: the group TOTAL. */
   betragCents: number;
+  /**
+   * ISO receipt date. Single only — a digest has n of them and shows the
+   * per-Auslage rows instead. Null when the submitter left it empty.
+   */
+  rechnungsdatum?: string | null;
   eingereichtAm: Date;
   /**
    * Batch digest: when present (a multi-Auslage submit), the template renders a

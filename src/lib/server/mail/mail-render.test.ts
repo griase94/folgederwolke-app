@@ -117,15 +117,18 @@ describe("EingangsMail", () => {
     expect(html).toContain(VEREIN_NAME);
     // Identity is fully prop-driven — no hardcoded FdW literal survives.
     expect(html).not.toContain("Folge der Wolke");
-    expect(html).toContain("Hallo");
     // Greeting
-    expect(html).toContain("Liebste:r Lea");
+    expect(html).toContain("Liebe:r Lea");
     // AUS-ID
     expect(html).toContain("AUS-2026-042");
     // Betrag formatted
     expect(html).toContain("23,50");
-    // German phrase
+    // The thank-you that gives this mail its warmth — kept through the redesign.
     expect(html).toContain("in Vorkasse gegangen");
+    // The three-step block: what stops people asking a week later.
+    expect(html).toContain("Was jetzt passiert");
+    expect(html).toContain("Eingereicht ✓");
+    expect(html).toContain("1–2 Wochen");
     // CTA link — must be an ABSOLUTE URL (relative paths are dead in email
     // clients; Task 2.3). Built from the injected baseUrl (PUBLIC_BASE_URL).
     expect(html).toContain(
@@ -134,15 +137,17 @@ describe("EingangsMail", () => {
     expect(html).toMatch(
       /href="https:\/\/[^"]*\/auslage-status\/AUS-2026-042"/,
     );
-    // Closing
-    expect(html).toContain("Mit besten Grüßen");
+    // Closing — one sign-off across the whole Auslagen suite.
+    expect(html).toContain("Liebe Grüße");
+    expect(html).toContain("die Finanz-Gschaftler:innen");
+    expect(html).not.toContain("Geschäftler");
   });
 
   it("plain-text fallback is non-empty and has key German text", async () => {
     const { text } = await renderTemplate("EingangsMail", eingangsProps);
 
     expect(text.length).toBeGreaterThan(100);
-    expect(text).toContain("Liebste:r Lea");
+    expect(text).toContain("Liebe:r Lea");
     expect(text).toContain("AUS-2026-042");
     expect(text).toContain(VEREIN_NAME);
   });
@@ -494,15 +499,25 @@ describe("subjectFor — name-bearing subjects from props.vereinName", () => {
     expect(s).not.toMatch(/NaN|\(\)/);
   });
 
-  it("auslage_eingang subject: single AUS-id vs plural batch", () => {
-    const single = subjectFor("auslage_eingang", { ausId: "AUS-2026-042" });
-    expect(single).toContain("AUS-2026-042");
-    expect(single).toContain("ist bei uns angekommen");
+  it("auslage_eingang subject: single AUS-id vs plural batch, amount up front", () => {
+    const eur = (v: number) =>
+      v.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
+
+    const single = subjectFor("auslage_eingang", {
+      ausId: "AUS-2026-042",
+      betragCents: 8760,
+    });
+    expect(single).toBe(
+      `Angekommen: Deine Auslage AUS-2026-042 (${eur(87.6)}) liegt bei uns`,
+    );
 
     const batch = subjectFor("auslage_eingang", {
       items: [{}, {}, {}],
+      betragCents: 19595,
     });
-    expect(batch).toBe("Deine 3 Auslagen sind bei uns angekommen");
+    expect(batch).toBe(
+      `Alles drin: 3 Auslagen (${eur(195.95)}) sind bei uns gelandet`,
+    );
   });
 
   it("default subject uses the runtime name", () => {

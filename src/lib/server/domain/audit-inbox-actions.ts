@@ -166,6 +166,7 @@ export async function manualImportSubmission(
     vorname,
     bezeichnung: input.bezeichnung,
     betragCents: input.betragCents,
+    rechnungsdatum: input.rechnungsdatum ?? null,
     driveFileId: input.belegDriveFileId ?? null,
     consentTextVersion: DATENSCHUTZ_VERSION,
     // Admin entry — no real IP/UA. Use actor UUID as a stable sentinel.

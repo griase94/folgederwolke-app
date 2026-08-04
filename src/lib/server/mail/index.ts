@@ -82,12 +82,13 @@ export function subjectFor(
     case "magic_link":
       return `Dein Anmelde-Link für ${vereinName}`;
     case "auslage_eingang": {
-      // Batch digest → plural subject ("Deine 3 Auslagen sind …"); single →
-      // the AUS-id subject.
+      // Amount up front on both variants — the fact that survives the inbox's
+      // ~40-character truncation. Batch digest → plural.
       const items = props.items;
       const n = Array.isArray(items) ? items.length : 0;
-      if (n > 1) return `Deine ${n} Auslagen sind bei uns angekommen`;
-      return `Deine Auslage ${props.ausId ?? ""} ist bei uns angekommen`;
+      if (n > 1)
+        return `Alles drin: ${n} Auslagen${amountClause(props.betragCents)} sind bei uns gelandet`;
+      return `Angekommen: Deine Auslage ${props.ausId ?? ""}${amountClause(props.betragCents)} liegt bei uns`;
     }
     // The three decision subjects lead with what survives inbox truncation
     // (~40 chars): the outcome and the amount, not the AUS-id.

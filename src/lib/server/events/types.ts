@@ -76,6 +76,8 @@ export type Events = {
     vorname: string;
     bezeichnung: string;
     betragCents: number;
+    /** ISO receipt date — the confirmation mail's context row. */
+    rechnungsdatum?: string | null;
     driveFileId: string | null;
     consentTextVersion: string;
     ipPrefix: string;

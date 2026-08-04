@@ -397,6 +397,7 @@ export async function submitAuslagenBatch(
         businessId: auslagenSubmissions.businessId,
         bezeichnung: auslagenSubmissions.bezeichnung,
         betragCents: auslagenSubmissions.betragCents,
+        rechnungsdatum: auslagenSubmissions.rechnungsdatum,
       })
       .from(auslagenSubmissions)
       .where(eq(auslagenSubmissions.submissionGroupId, groupId))
@@ -420,6 +421,8 @@ export async function submitAuslagenBatch(
         vorname: input.notifyVorname ?? "",
         bezeichnung: first.bezeichnung,
         betragCents: gesamtCents,
+        // Single-submit fallback only: a digest shows its own per-Auslage rows.
+        rechnungsdatum: groupRows[0]?.rechnungsdatum ?? null,
         driveFileId: null,
         consentTextVersion: input.consentTextVersion,
         ipPrefix: input.submitterIpPrefix ?? "",

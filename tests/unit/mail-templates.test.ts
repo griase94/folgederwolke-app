@@ -99,11 +99,11 @@ describe("EingangsMail — brand strip + content", () => {
 
   it("renders body content (greeting, AUS-ID, Betrag, CTA)", async () => {
     const { html } = await renderTemplate("EingangsMail", props);
-    expect(html).toContain("Liebste:r Lea");
+    expect(html).toContain("Liebe:r Lea");
     expect(html).toContain("AUS-2026-042");
     expect(html).toContain("23,50");
     expect(html).toContain("/auslage-status/AUS-2026-042");
-    expect(html).toContain("Mit besten Grüßen");
+    expect(html).toContain("die Finanz-Gschaftler:innen");
   });
 });
 

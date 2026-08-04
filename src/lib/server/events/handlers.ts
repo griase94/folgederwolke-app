@@ -55,6 +55,7 @@ export function registerHandlers(): void {
             ausId: payload.ausId,
             bezeichnung: payload.bezeichnung,
             betragCents: payload.betragCents,
+            rechnungsdatum: payload.rechnungsdatum ?? null,
             eingereichtAm: new Date(),
             items: isBatch ? payload.items : undefined,
           },
