@@ -23,13 +23,41 @@ import {
 } from "$lib/server/domain/transactions.js";
 import { markExpenseErstattet } from "$lib/server/domain/audit-inbox-actions.js";
 import { isoCalendarDate } from "$lib/domain/date.js";
+import { claimName } from "$lib/domain/ueberweisung.js";
+import { erstattungsVerwendungszweck } from "$lib/server/domain/erstattung-verwendungszweck.js";
+import { env } from "$lib/server/env.js";
 
 export const load: PageServerLoad = async () => {
-  const [claims, zahlungsarten] = await Promise.all([
+  const [rows, zahlungsarten] = await Promise.all([
     listApprovedPendingErstattet(),
     listZahlungsarten(),
   ]);
-  return { claims, zahlungsarten };
+
+  // Everything the Werkstatt shows is decided HERE, so the bank form and the
+  // reimbursement mail cannot drift: the payout IBAN is already resolved by M4
+  // precedence, and the Verwendungszweck comes from the one shared function
+  // the mail also uses (Abnahme #14).
+  const claims = rows.map((r) => ({
+    id: r.id,
+    ausNr: r.ausNr,
+    businessId: r.businessId,
+    bezeichnung: r.bezeichnung,
+    betragCents: r.betragCents,
+    empfaenger: claimName(r),
+    payoutIban: r.payoutIban,
+    verwendungszweck: erstattungsVerwendungszweck(r.ausNr, env.VEREIN_NAME),
+    festgeschrieben: r.festgeschrieben,
+    // Where the gap can be closed: the Mitglied for a member, the Ausgabe for
+    // an extern payer.
+    ibanFixHref: r.bezahltVonMemberId
+      ? `/app/mitglieder/${r.bezahltVonMemberId}`
+      : `/app/ausgaben/${r.id}`,
+  }));
+
+  const gesamtCents = claims.reduce((sum, c) => sum + c.betragCents, 0);
+  const countIbanFehlt = claims.filter((c) => c.payoutIban === null).length;
+
+  return { claims, zahlungsarten, gesamtCents, countIbanFehlt };
 };
 
 // ---------------------------------------------------------------------------

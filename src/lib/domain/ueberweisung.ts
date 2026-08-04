@@ -1,71 +1,51 @@
 /**
- * Überweisungsliste copy helpers (Aurora slice 4, spec §7).
+ * Überweisungs-Werkstatt helpers (pure, client-safe).
  *
- * Pure + client-safe. Field order is BINDING: German banking forms ask
- * Empfängername first (Verification-of-Payee rejects mismatches), then IBAN,
- * Betrag, Verwendungszweck.
+ * WHAT LEFT IN A-S3, and why — these were not merely unused, they were WRONG:
  *
- * Betrag here is the ONE sanctioned exception to "format via formatMoney":
- * banking amount fields want a bare comma-decimal ("84,50"), not "84,50 €".
+ * - `claimIban` picked `extern_iban` or the LIVE `members.iban` by payer kind.
+ *   It could not see `auslagen_submissions.erstattung_iban`, the snapshot taken
+ *   when the member submitted, so a member who had changed banks would have
+ *   been paid at the NEW account for an OLD claim. The payout target is now
+ *   resolved server-side by the ratified M4 precedence
+ *   (`server/domain/erstattung-payout.ts`) and arrives as `payoutIban`.
+ *
+ * - `claimZweck` built `"{Expense-Nr} {Bezeichnung}"` — a THIRD Verwendungszweck
+ *   format next to the mail's and the bank form's, so the member could not match
+ *   the transfer on their statement. One function owns it now
+ *   (`server/domain/erstattung-verwendungszweck.ts`), read by the Werkstatt AND
+ *   the mail (Abnahme #14).
+ *
+ * - `COPY_FIELD_ORDER` / `COPY_FIELD_LABELS` / `claimCopyValue` moved into
+ *   `ErstattungClaimCard`, which owns the bank-form order as part of its
+ *   anatomy instead of leaving each page to re-apply a list.
+ *
+ * Deleted rather than deprecated (pre-launch, dead-kit ban).
  */
 
-/**
- * Minimal input shape for the pure copy helpers below — ONLY the fields they
- * read. The route's `ApprovedExpense` (from `listApprovedPendingErstattet`) is
- * a structural superset that also carries `id` / `bezahltVonMemberId`; the
- * +page.svelte component reads those directly off that fuller inferred type
- * (for the IBAN-fehlt link + mark-erstattet), so they intentionally do NOT
- * belong on this helper contract.
- */
+/** Only the fields the remaining helpers read. */
 export interface UeberweisungClaim {
-  businessId: string;
-  bezeichnung: string;
   betragCents: number;
   bezahltVonKind: string;
   bezahltVonDisplay: string;
-  externIban: string | null;
   externName: string | null;
-  memberIban: string | null;
 }
 
-export const COPY_FIELD_ORDER = ["name", "iban", "betrag", "zweck"] as const;
-export type CopyField = (typeof COPY_FIELD_ORDER)[number];
-
-export const COPY_FIELD_LABELS: Record<CopyField, string> = {
-  name: "Empfängername",
-  iban: "IBAN",
-  betrag: "Betrag",
-  zweck: "Verwendungszweck",
-};
-
-export function claimIban(c: UeberweisungClaim): string | null {
-  const iban = c.bezahltVonKind === "extern" ? c.externIban : c.memberIban;
-  return iban && iban.length > 0 ? iban : null;
-}
-
+/**
+ * The bank's "Empfängername". Verification-of-Payee rejects a mismatch, so an
+ * extern payer's own name wins over the display string.
+ */
 export function claimName(c: UeberweisungClaim): string {
   if (c.bezahltVonKind === "extern" && c.externName) return c.externName;
   return c.bezahltVonDisplay;
 }
 
-export function claimBetragText(c: UeberweisungClaim): string {
+/**
+ * The amount as a bank form wants it: bare comma-decimal, no currency symbol.
+ * The one sanctioned exception to "format money via formatMoney".
+ */
+export function claimBetragText(
+  c: Pick<UeberweisungClaim, "betragCents">,
+): string {
   return (c.betragCents / 100).toFixed(2).replace(".", ",");
-}
-
-/** SEPA Verwendungszweck is capped at 140 chars. */
-export function claimZweck(c: UeberweisungClaim): string {
-  return `${c.businessId} ${c.bezeichnung}`.slice(0, 140);
-}
-
-export function claimCopyValue(c: UeberweisungClaim, field: CopyField): string {
-  switch (field) {
-    case "name":
-      return claimName(c);
-    case "iban":
-      return claimIban(c) ?? "";
-    case "betrag":
-      return claimBetragText(c);
-    case "zweck":
-      return claimZweck(c);
-  }
 }

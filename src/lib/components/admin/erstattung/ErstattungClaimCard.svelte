@@ -21,6 +21,7 @@
 	import { CopyField } from '$lib/components/ui/copy-field/index.js';
 	import ProblemFlag from '$lib/components/ui/ProblemFlag.svelte';
 	import LockChip from '$lib/components/ui/LockChip.svelte';
+	import { claimBetragText } from '$lib/domain/ueberweisung.js';
 
 	export interface ErstattungClaim {
 		id: string;
@@ -65,7 +66,7 @@
 		claim.payoutIban ? groupIban(claim.payoutIban) : 'IBAN fehlt'
 	);
 	// The bank wants a plain number, no currency symbol.
-	const betragForBank = $derived((claim.betragCents / 100).toFixed(2).replace('.', ','));
+	const betragForBank = $derived(claimBetragText(claim));
 </script>
 
 <article
