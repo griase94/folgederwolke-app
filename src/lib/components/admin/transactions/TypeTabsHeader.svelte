@@ -3,12 +3,15 @@
 
 	interface Props {
 		activeKind: TransactionKind | undefined;
-		counts?: { expense?: number; income?: number; donation?: number };
+		counts?: Partial<Record<TransactionKind, number>>;
 		onchange: (kind: TransactionKind | undefined) => void;
 	}
 
 	let { activeKind, counts = {}, onchange }: Props = $props();
 
+	// No Beiträge tab on purpose: these tabs switch between per-kind LIST routes,
+	// and a Mitgliedsbeitrag has none — it is owned by the Mitglieder-Matrix.
+	// Beiträge surface as rows in the unified /app/transaktionen feed instead.
 	const tabs: { kind: TransactionKind | undefined; label: string }[] = [
 		{ kind: undefined, label: 'Alle' },
 		{ kind: 'expense', label: 'Ausgaben' },

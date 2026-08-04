@@ -14,7 +14,6 @@
 		allRowsCount={data.allRowsCount}
 		kindCounts={data.kindCounts}
 		ueberschussCents={data.eur.totalUeberschussCents}
-		beitragEinnahmenCents={data.beitragEinnahmenCents}
 		kategorien={data.kategorien}
 		projects={data.projects}
 		closed={data.closed}

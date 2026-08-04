@@ -148,6 +148,7 @@ export const FILTER_REGISTRY: Record<TabKey, FilterFieldDef[]> = {
         { value: "ausgaben", label: "Ausgaben" },
         { value: "einnahmen", label: "Einnahmen" },
         { value: "spenden", label: "Spenden" },
+        { value: "beitraege", label: "Beiträge" },
       ],
     },
     { key: "kategorie", label: "Kategorie", type: "enum-multi" },
@@ -172,13 +173,14 @@ export const FILTER_REGISTRY: Record<TabKey, FilterFieldDef[]> = {
 // Feed arm selection (spec §5 honesty rule)
 // ---------------------------------------------------------------------------
 
-/** The three UNION-ALL arms of the unified feed. */
-export type FeedKind = "expense" | "income" | "donation";
+/** The UNION-ALL arms of the unified feed. */
+export type FeedKind = "expense" | "income" | "donation" | "beitrag";
 
 export const FEED_KINDS: readonly FeedKind[] = [
   "expense",
   "income",
   "donation",
+  "beitrag",
 ];
 
 /** `?typ=` chip value → feed arm. */
@@ -186,6 +188,7 @@ const TYP_TO_KIND: Record<string, FeedKind> = {
   ausgaben: "expense",
   einnahmen: "income",
   spenden: "donation",
+  beitraege: "beitrag",
 };
 
 /**
@@ -198,15 +201,26 @@ const TYP_TO_KIND: Record<string, FeedKind> = {
  * Spenden chip counting 0 with no explanation — the user would read it as "there
  * are no donations", which is false.
  *
+ * Mitgliedsbeiträge (S3) join this rule on both counts: they carry no Kategorie
+ * at all (the EÜR synthesizes them with a fixed "Mitgliedsbeitrag" label, never
+ * a kategorie_id) and no Beleg. Sphäre is deliberately NOT a reason to drop the
+ * arm — Beiträge are always ideeller, so the filter CAN describe them; a Sphären
+ * selection without "ideeller" then legitimately yields zero Beiträge, which is
+ * a real answer rather than an inexpressible one.
+ *
  * The chip counts use exactly this set, so an excluded arm's chip reads 0, and
  * the filter UI explains why next to the field that caused it.
  */
 export function feedKindsSupported(state: FilterState): Set<FeedKind> {
   const kinds = new Set<FeedKind>(FEED_KINDS);
-  if (state.enums["kategorie"]?.length) kinds.delete("donation");
+  if (state.enums["kategorie"]?.length) {
+    kinds.delete("donation");
+    kinds.delete("beitrag");
+  }
   if (state.booleans["belegFehlt"]) {
     kinds.delete("income");
     kinds.delete("donation");
+    kinds.delete("beitrag");
   }
   return kinds;
 }
@@ -230,9 +244,9 @@ export function feedKindsSelected(state: FilterState): Set<FeedKind> {
  */
 export function feedExclusionHint(state: FilterState): string | null {
   if (state.booleans["belegFehlt"])
-    return "„Beleg fehlt“ gibt es nur bei Ausgaben — Einnahmen und Spenden sind hier ausgeblendet.";
+    return "„Beleg fehlt“ gibt es nur bei Ausgaben — Einnahmen, Spenden und Beiträge sind hier ausgeblendet.";
   if (state.enums["kategorie"]?.length)
-    return "Kategorien gelten für Einnahmen & Ausgaben — Spenden sind hier ausgeblendet.";
+    return "Kategorien gelten für Einnahmen & Ausgaben — Spenden und Beiträge sind hier ausgeblendet.";
   return null;
 }
 

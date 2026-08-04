@@ -28,17 +28,21 @@ const withState = (patch: Partial<FilterState>): FilterState => ({
 });
 
 describe("feedKindsSupported", () => {
-  it("spans all three arms when nothing arm-specific is filtered", () => {
+  it("spans all four arms when nothing arm-specific is filtered", () => {
     expect([...feedKindsSupported(empty)].sort()).toEqual([
+      "beitrag",
       "donation",
       "expense",
       "income",
     ]);
   });
 
-  it("drops donations while a Kategorie is picked", () => {
+  it("drops donations AND Beiträge while a Kategorie is picked", () => {
+    // Neither can match: a donation's Kategorie is derived, and a Beitrag has
+    // none at all. The option list is the Einnahmen ∪ Ausgaben snapshot names.
     const s = withState({ enums: { kategorie: ["Bürobedarf"] } });
     expect(feedKindsSupported(s).has("donation")).toBe(false);
+    expect(feedKindsSupported(s).has("beitrag")).toBe(false);
     expect(feedKindsSupported(s).has("expense")).toBe(true);
     expect(feedKindsSupported(s).has("income")).toBe(true);
   });
@@ -51,11 +55,14 @@ describe("feedKindsSupported", () => {
   it("leaves all arms in place for fields that mean the same everywhere", () => {
     for (const s of [
       withState({ enums: { monat: ["3"] } }),
+      // Sphäre stays here on purpose: a Beitrag is always ideeller, so the
+      // field CAN describe it. Picking another sphere yields an honest zero
+      // rather than an excluded arm.
       withState({ enums: { sphaere: ["zweckbetrieb"] } }),
       withState({ amount: { betragMin: 1000 } }),
       withState({ search: "miete" }),
     ]) {
-      expect(feedKindsSupported(s).size).toBe(3);
+      expect(feedKindsSupported(s).size).toBe(4);
     }
   });
 });

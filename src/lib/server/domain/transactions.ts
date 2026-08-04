@@ -22,7 +22,7 @@ import { auditLog } from "$lib/server/db/schema/audit_log.js";
 import { deriveDonationKategorieName } from "$lib/domain/spenden-kategorie.js";
 import type { Sphere } from "$lib/domain/sphere.js";
 import { zahlungsarten } from "$lib/server/db/schema/zahlungsarten.js";
-import { members } from "$lib/server/db/schema/members.js";
+import { members, memberBeitrags } from "$lib/server/db/schema/members.js";
 import { bus } from "$lib/server/events/index.js";
 import type { YearScope } from "$lib/domain/year.js";
 import { isUuid } from "$lib/domain/uuid.js";
@@ -33,15 +33,17 @@ import {
 } from "$lib/domain/transaction-filters.js";
 import {
   buildAusgabenWhere,
+  buildBeitragWhere,
   buildEinnahmenWhere,
   buildSpendenWhere,
 } from "$lib/server/domain/transaction-filter-sql.js";
+import { beitragBuchungsjahr } from "$lib/server/domain/beitrag-buchungsjahr.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type TransactionKind = "expense" | "income" | "donation";
+export type TransactionKind = "expense" | "income" | "donation" | "beitrag";
 
 export interface TransactionRow {
   id: string;
@@ -639,6 +641,12 @@ export interface FeedRow {
   belegFehlt: boolean;
   festgeschriebenAt: string | null;
   yearOfBuchung: number | null;
+  /**
+   * `beitrag` only: the Mitglied the Beitrag belongs to, so the row can link to
+   * the member instead of a (non-existent) transaction detail route. NULL on
+   * every other arm.
+   */
+  memberId: string | null;
 }
 
 export interface FeedPageOptions {
@@ -691,6 +699,7 @@ interface RawFeedRow extends Record<string, unknown> {
   beleg_fehlt: boolean;
   festgeschrieben_at: Date | string | null;
   year_of_buchung: number | null;
+  member_id: string | null;
 }
 
 export async function listTransaktionenFeedPage(
@@ -726,7 +735,8 @@ export async function listTransaktionenFeedPage(
              ${expenses.status}::text AS status,
              (${expenses.belegFileId} IS NULL AND ${expenses.belegVerzichtGrund} IS NULL) AS beleg_fehlt,
              ${expenses.festgeschriebenAt} AS festgeschrieben_at,
-             ${expenses.yearOfBuchung} AS year_of_buchung
+             ${expenses.yearOfBuchung} AS year_of_buchung,
+             NULL::uuid AS member_id
       FROM ${expenses}
       WHERE ${where}`);
   }
@@ -752,7 +762,8 @@ export async function listTransaktionenFeedPage(
              NULL::text AS status,
              FALSE AS beleg_fehlt,
              ${income.festgeschriebenAt} AS festgeschrieben_at,
-             ${income.yearOfBuchung} AS year_of_buchung
+             ${income.yearOfBuchung} AS year_of_buchung,
+             NULL::uuid AS member_id
       FROM ${income}
       WHERE ${where}`);
   }
@@ -778,8 +789,43 @@ export async function listTransaktionenFeedPage(
              NULL::text AS status,
              FALSE AS beleg_fehlt,
              ${donations.festgeschriebenAt} AS festgeschrieben_at,
-             ${donations.yearOfBuchung} AS year_of_buchung
+             ${donations.yearOfBuchung} AS year_of_buchung,
+             NULL::uuid AS member_id
       FROM ${donations}
+      WHERE ${where}`);
+  }
+
+  if (wanted.has("beitrag")) {
+    const conds = buildBeitragWhere(opts.state, opts.year);
+    const where = conds.length ? and(...conds)! : sql`TRUE`;
+    // Synthesized like the EÜR does it: a Beitrag has no Kategorie, no Beleg,
+    // no Projekt and no own Festschreibungs-Stempel, and its sphere is fixed
+    // (§§ 51-68 AO). The BelegNr matches the GoBD journal's `MB-<jahr>-<8hex>`
+    // so a feed row and a journal record are recognisably the same booking.
+    // `member_id` is projected so the row can link to the Mitglied — the other
+    // arms carry NULL for it.
+    arms.push(sql`
+      SELECT ${memberBeitrags.id} AS id,
+             'beitrag'::text AS kind,
+             'MB-' || ${memberBeitrags.year}::text || '-' || left(${memberBeitrags.id}::text, 8) AS business_id,
+             'Mitgliedsbeitrag ' || ${memberBeitrags.year}::text || ' · ' || concat_ws(' ', ${members.vorname}, ${members.nachname}) AS bezeichnung,
+             ${memberBeitrags.paidCents} AS betrag_cents,
+             'EUR'::char(3) AS currency,
+             ${memberBeitrags.gezahltAm}::timestamptz AS gebucht_am,
+             ${memberBeitrags.gezahltAm}::text AS relevanz_datum,
+             'ideeller'::text AS sphere_snapshot,
+             'ideeller'::text AS sphere_effective,
+             'Mitgliedsbeitrag'::text AS kategorie_name_snapshot,
+             NULL::uuid AS kategorie_id,
+             NULL::uuid AS project_id,
+             FALSE AS has_beleg,
+             NULL::text AS status,
+             FALSE AS beleg_fehlt,
+             NULL::timestamptz AS festgeschrieben_at,
+             ${beitragBuchungsjahr} AS year_of_buchung,
+             ${memberBeitrags.memberId} AS member_id
+      FROM ${memberBeitrags}
+      JOIN ${members} ON ${members.id} = ${memberBeitrags.memberId}
       WHERE ${where}`);
   }
 
@@ -844,6 +890,7 @@ export async function listTransaktionenFeedPage(
       belegFehlt: r.beleg_fehlt === true,
       festgeschriebenAt: formatTs(r.festgeschrieben_at),
       yearOfBuchung: r.year_of_buchung ?? null,
+      memberId: r.member_id ?? null,
     })),
     total,
     sumCents,
@@ -855,6 +902,7 @@ export interface FeedKindCounts {
   expense: number;
   income: number;
   donation: number;
+  beitrag: number;
   total: number;
 }
 
@@ -888,8 +936,12 @@ export async function countTransaktionenFeedByKind(opts: {
     arms.push(
       sql`SELECT 'donation'::text AS kind FROM ${donations} WHERE ${whereOf(buildSpendenWhere(opts.state, opts.year))}`,
     );
+  if (supported.has("beitrag"))
+    arms.push(
+      sql`SELECT 'beitrag'::text AS kind FROM ${memberBeitrags} JOIN ${members} ON ${members.id} = ${memberBeitrags.memberId} WHERE ${whereOf(buildBeitragWhere(opts.state, opts.year))}`,
+    );
   if (arms.length === 0)
-    return { expense: 0, income: 0, donation: 0, total: 0 };
+    return { expense: 0, income: 0, donation: 0, beitrag: 0, total: 0 };
   const rows = await db.execute<{ kind: string; n: number }>(
     sql`SELECT kind, count(*)::int AS n FROM (${sql.join(arms, sql` UNION ALL `)}) AS feed GROUP BY kind`,
   );
@@ -897,6 +949,7 @@ export async function countTransaktionenFeedByKind(opts: {
     expense: 0,
     income: 0,
     donation: 0,
+    beitrag: 0,
     total: 0,
   };
   for (const r of rows) {
@@ -904,6 +957,7 @@ export async function countTransaktionenFeedByKind(opts: {
     if (r.kind === "expense") counts.expense = n;
     else if (r.kind === "income") counts.income = n;
     else if (r.kind === "donation") counts.donation = n;
+    else if (r.kind === "beitrag") counts.beitrag = n;
     counts.total += n;
   }
   return counts;

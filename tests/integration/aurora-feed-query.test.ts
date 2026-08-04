@@ -165,18 +165,21 @@ describe.skipIf(!dbConfigured)("listTransaktionenFeedPage", () => {
       await client.end();
     }
 
-    // DIRECT numeric reconciliation identity (was only pinned by construction):
-    // feed-foot + EÜR-Beitragskomponente === EÜR-Überschuss. This requires BOTH
-    // the feed AND the EÜR to filter supersedes consistently — a Storno double-
-    // count on either side would break it. 2096: one kept 5000-donation only.
+    // DIRECT numeric reconciliation identity: feed-foot === EÜR-Überschuss.
+    // Requires BOTH the feed AND the EÜR to filter supersedes consistently — a
+    // Storno double-count on either side breaks it. 2096: one kept
+    // 5000-donation only.
+    //
+    // Until S3 the feed had no Mitgliedsbeitrags arm, so this identity carried a
+    // `+ ws.beitragEinnahmenCents` correction term and the Buchungsliste showed
+    // the gap as a footnote. The fourth arm closes it: the list IS the EÜR now.
+    // Adding beitragEinnahmenCents back would double-count every Beitrag.
     const footSum = rows.reduce(
       (a, r) => a + (r.kind === "expense" ? -r.betragCents : r.betragCents),
       0,
     );
     const ws = await loadEurWorkspaceData(2096);
-    expect(footSum + ws.beitragEinnahmenCents).toBe(
-      ws.eur.totalUeberschussCents,
-    );
+    expect(footSum).toBe(ws.eur.totalUeberschussCents);
   });
 
   it("LIMIT/OFFSET pages the union window while total stays constant (page-clamp contract)", async () => {
