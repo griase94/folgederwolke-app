@@ -120,17 +120,40 @@ describe("BeitragCellDialog — mark-paid (§1)", () => {
     expect(submit.textContent).toMatch(/Bezahlt/);
   });
 
-  it("submit is disabled for an invalid Betrag (> Soll)", async () => {
+  // FormFooter doctrine (§4): an out-of-range Betrag must not mute the button.
+  // The click is refused, but it says WHY and puts the caret in the field.
+  it("an out-of-range Betrag (> Soll) explains instead of refusing silently", async () => {
+    const onPaid = vi.fn();
     render(BeitragCellDialog, {
-      props: { ...base, initialVariant: "mark-paid", betragCents: 6000 },
+      props: {
+        ...base,
+        initialVariant: "mark-paid",
+        betragCents: 6000,
+        onPaid,
+      },
     });
-    await fireEvent.input(screen.getByTestId("beitrag-dialog-betrag"), {
-      target: { value: "99,99" },
-    });
-    expect(
-      (screen.getByTestId("beitrag-dialog-submit") as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+    const betrag = screen.getByTestId(
+      "beitrag-dialog-betrag",
+    ) as HTMLInputElement;
+    await fireEvent.input(betrag, { target: { value: "99,99" } });
+
+    const submit = screen.getByTestId(
+      "beitrag-dialog-submit",
+    ) as HTMLButtonElement;
+    expect(submit.disabled).toBe(false);
+    expect(screen.queryByTestId("beitrag-dialog-betrag-error")).toBeNull();
+
+    await fireEvent.click(submit);
+    expect(onPaid).not.toHaveBeenCalled();
+    const err = screen.getByTestId("beitrag-dialog-betrag-error");
+    expect(err.getAttribute("role")).toBe("alert");
+    expect(err.textContent).toMatch(/60,00/); // names the Soll as the ceiling
+    expect(document.activeElement).toBe(betrag);
+    expect(betrag.getAttribute("aria-describedby")).toBe(err.id);
+
+    // Typing clears the message again.
+    await fireEvent.input(betrag, { target: { value: "30,00" } });
+    expect(screen.queryByTestId("beitrag-dialog-betrag-error")).toBeNull();
   });
 
   it("hides Befreien when allowExempt=false (list/card/detail surfaces)", () => {
@@ -200,19 +223,38 @@ describe("BeitragCellDialog — live EÜR-Buchungsjahr (§3 AC3)", () => {
 });
 
 describe("BeitragCellDialog — befreien transition (§1.3 / §5)", () => {
-  it("Befreien opens the Grund form; commit disabled until a Grund is entered", async () => {
+  // FormFooter doctrine (§4): the commit stays clickable with an empty Grund —
+  // the component ALREADY had the explain path (showReasonError + focus), the
+  // disabled attribute just made it unreachable by mouse.
+  it("Befreien opens the Grund form; an empty Grund is named, not muted", async () => {
+    const onExempt = vi.fn();
     render(BeitragCellDialog, {
-      props: { ...base, initialVariant: "mark-paid", betragCents: 6000 },
+      props: {
+        ...base,
+        initialVariant: "mark-paid",
+        betragCents: 6000,
+        onExempt,
+      },
     });
     await fireEvent.click(screen.getByTestId("beitrag-dialog-befreien"));
     const commit = screen.getByTestId(
       "beitrag-dialog-befreien-commit",
     ) as HTMLButtonElement;
-    expect(commit.disabled).toBe(true);
-    await fireEvent.input(screen.getByTestId("beitrag-dialog-grund"), {
-      target: { value: "Härtefall" },
-    });
     expect(commit.disabled).toBe(false);
+
+    await fireEvent.click(commit);
+    expect(onExempt).not.toHaveBeenCalled();
+    const grund = screen.getByTestId(
+      "beitrag-dialog-grund",
+    ) as HTMLInputElement;
+    expect(screen.getByRole("alert").textContent).toMatch(/Grund/);
+    expect(document.activeElement).toBe(grund);
+
+    await fireEvent.input(grund, { target: { value: "Härtefall" } });
+    await fireEvent.click(commit);
+    expect(onExempt).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "Härtefall" }),
+    );
   });
 
   it("emits onExempt with the trimmed reason", async () => {

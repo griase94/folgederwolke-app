@@ -4,7 +4,7 @@
  * Drives the real browser through the popover flows:
  *   - mark-paid happy path (date + Bezahlt → cell flips to paid)
  *   - late-payment date override + live EÜR-Buchung line
- *   - befreien (required reason: submit disabled until non-empty)
+ *   - befreien (required reason: the commit names the gap, never goes mute)
  *   - server rejects empty reason (defense in depth)
  *   - storno (paid → open)
  *   - aufheben (exempt → open)
@@ -172,7 +172,7 @@ test.describe("@phase-2 Beitragsmatrix — mark paid", () => {
 });
 
 test.describe("@phase-2 Beitragsmatrix — befreien (required reason)", () => {
-  test("Befreien transform requires a non-empty Grund before submit", async ({
+  test("Befreien transform names the missing Grund, then commits", async ({
     page,
   }) => {
     await signIn(page);
@@ -184,12 +184,16 @@ test.describe("@phase-2 Beitragsmatrix — befreien (required reason)", () => {
 
     const reason = page.getByLabel("Grund (erforderlich)");
     await expect(reason).toBeVisible();
-    // Submit disabled until reason non-empty
+
+    // FormFooter doctrine (§4): the commit stays clickable with an empty Grund
+    // and NAMES the gap instead of going mute. The transform must not happen.
     const submit = page.getByRole("button", { name: /Befreien ↵/ });
-    await expect(submit).toBeDisabled();
+    await expect(submit).toBeEnabled();
+    await submit.click();
+    await expect(page.getByText("Bitte einen Grund angeben.")).toBeVisible();
+    await expect(reason).toBeFocused();
 
     await reason.fill("Härtefall");
-    await expect(submit).toBeEnabled();
     await submit.click();
 
     await expect(cell(page, klaus, ANCHOR)).toHaveAttribute(

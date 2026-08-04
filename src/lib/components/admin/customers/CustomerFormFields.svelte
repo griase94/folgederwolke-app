@@ -28,7 +28,11 @@
 		idPrefix: string;
 		values?: CustomerView | null;
 		errors?: Record<string, string[]>;
-		/** Bound to the Name input so the parent can gate its submit CTA. */
+		/**
+		 * Bound to the Name input. Unlike the address fields this one has no
+		 * local `values` seed, so the EDIT dialog must push the prefill in —
+		 * and the ADD dialog reads it back for its success toast.
+		 */
 		name?: string;
 	} = $props();
 

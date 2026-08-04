@@ -43,9 +43,9 @@
 	$effect(() => {
 		if (open) {
 			// Opening: seed the bound Name from the customer (the other fields
-			// prefill via `values`, but Name is bound to gate the CTA — without
-			// this it opens empty + Speichern disabled), and honour the requested
-			// initial surface (list "Archivieren" jumps straight to the confirm).
+			// prefill via `values`, but Name is bound upward — without this seed
+			// it opens EMPTY), and honour the requested initial surface (list
+			// "Archivieren" jumps straight to the confirm).
 			name = customer?.name ?? '';
 			archiveMode = startInArchiveMode;
 			archiveConfirmed = false;
@@ -54,7 +54,11 @@
 		}
 	});
 
-	const canSave = $derived(name.trim().length > 0 && !loading && !deleteLoading);
+	// FormFooter doctrine (§4) — same reasoning as AddCustomerDialog: `disabled`
+	// belongs to in-flight state, never to completeness. Every required field
+	// carries `required` and the form is not `novalidate`, so a click with a gap
+	// is carried to the offending field by constraint validation.
+	const saveBusy = $derived(loading || deleteLoading);
 </script>
 
 <Dialog.Root
@@ -221,7 +225,7 @@
 									<Button variant="outline" type="button" {...props} disabled={loading} class="sm:w-auto">Abbrechen</Button>
 								{/snippet}
 							</Dialog.Close>
-							<Button type="submit" disabled={!canSave} class="sm:w-auto">
+							<Button type="submit" disabled={saveBusy} class="sm:w-auto">
 								{#if loading}
 									<svg class="mr-2 h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" /><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" /></svg>
 									Wird gespeichert …

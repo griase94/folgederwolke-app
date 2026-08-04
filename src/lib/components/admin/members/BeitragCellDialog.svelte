@@ -143,6 +143,7 @@
 	let notizInput = $state(untrack(() => notes ?? ''));
 	let reason = $state('');
 	let showReasonError = $state(false);
+	let showBetragError = $state(false);
 	let betragInputEl = $state<HTMLInputElement | null>(null);
 	let reasonInputEl = $state<HTMLInputElement | null>(null);
 
@@ -209,8 +210,19 @@
 		dateInput = berlinYmd();
 	}
 
+	// FormFooter doctrine (§4): the commit buttons are disabled only while a
+	// write is in flight or the year is festgeschrieben (a lock the user cannot
+	// resolve in this dialog). An out-of-range Betrag or a missing Grund is a
+	// GAP — the click says which one and puts the caret there. `submitExempt`
+	// already had that path; the disabled attribute made it unreachable by
+	// mouse, so only the Enter key ever saw it.
 	function submitPaid() {
-		if (submitting || isLocked || !betragValid) return;
+		if (submitting || isLocked) return;
+		if (!betragValid) {
+			showBetragError = true;
+			betragInputEl?.focus();
+			return;
+		}
 		onPaid?.({
 			memberId,
 			year,
@@ -271,8 +283,12 @@
 					inputmode="decimal"
 					bind:value={betragInput}
 					onkeydown={handleBetragKeydown}
+					oninput={() => (showBetragError = false)}
 					disabled={isLocked || submitting}
 					aria-invalid={!betragValid || undefined}
+					aria-describedby={showBetragError && !betragValid
+						? `bcdlg-betrag-err-${memberId}-${year}`
+						: undefined}
 					data-testid="beitrag-dialog-betrag"
 					class="min-h-[44px] flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-[invalid=true]:border-destructive disabled:opacity-50 dark:bg-input/30"
 				/>
@@ -285,6 +301,16 @@
 					Voller Betrag
 				</button>
 			</div>
+			{#if showBetragError && !betragValid}
+				<p
+					id={`bcdlg-betrag-err-${memberId}-${year}`}
+					role="alert"
+					class="text-xs text-destructive"
+					data-testid="beitrag-dialog-betrag-error"
+				>
+					Bitte einen Betrag zwischen 0,01 € und {eur(betragCents)} eintragen.
+				</p>
+			{/if}
 		</div>
 
 		<div class="flex flex-col gap-1.5">
@@ -374,7 +400,7 @@
 			<Button
 				class="min-h-[44px] bg-emerald-600 text-white hover:bg-emerald-700"
 				onclick={submitPaid}
-				disabled={submitting || isLocked || !betragValid}
+				disabled={submitting || isLocked}
 				data-testid="beitrag-dialog-submit"
 			>
 				{isEditing ? 'Speichern ↵' : 'Bezahlt ↵'}
@@ -434,7 +460,7 @@
 			<Button
 				class="min-h-[44px] bg-emerald-600 text-white hover:bg-emerald-700"
 				onclick={submitExempt}
-				disabled={!reasonValid || submitting || isLocked}
+				disabled={submitting || isLocked}
 				data-testid="beitrag-dialog-befreien-commit"
 			>
 				Befreien ↵

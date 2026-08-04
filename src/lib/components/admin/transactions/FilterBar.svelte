@@ -491,6 +491,7 @@
   let views = $state<SavedView[]>([]);
   let viewsOpen = $state(false);
   let newViewName = $state("");
+  let newViewNameEl = $state<HTMLInputElement | null>(null);
 
   $effect(() => {
     // Re-read on open so a just-saved view shows up.
@@ -514,7 +515,13 @@
    */
   function saveCurrentView() {
     const name = newViewName.trim();
-    if (!name) return;
+    // FormFooter doctrine (§4): "Speichern" stays clickable without a name and
+    // sends the caret to the field it wants — a dead button next to an empty
+    // input tells the user nothing about which of the two is the problem.
+    if (!name) {
+      newViewNameEl?.focus();
+      return;
+    }
     saveView(tab, { name, query: serializeFilterState(tab, filterState) });
     newViewName = "";
     views = listViews(tab);
@@ -829,6 +836,7 @@
             <input
               type="text"
               bind:value={newViewName}
+              bind:this={newViewNameEl}
               placeholder="Aktuelle Filter speichern als…"
               aria-label="Name der Ansicht"
               class="min-w-0 flex-1 {CONTROL}"
@@ -841,8 +849,7 @@
             />
             <button
               type="button"
-              class="{CONTROL_BUTTON} disabled:opacity-40"
-              disabled={newViewName.trim() === ""}
+              class={CONTROL_BUTTON}
               onclick={saveCurrentView}>Speichern</button
             >
           </li>
