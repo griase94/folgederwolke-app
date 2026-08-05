@@ -83,30 +83,43 @@ describe("RejectDialog", () => {
     expect(grundField().value).toBe("Eigener Text statt Vorlage.");
   });
 
-  it("gates submit below the 3-character minimum and explains the threshold", async () => {
+  // SLOT-FELD §4: the submit is no longer disabled for an unfinished reason —
+  // it stays open and constraint validation refuses the click and names the
+  // gap. What must still hold is that a too-short reason CANNOT be submitted
+  // and that the threshold is explained, so that is what this asserts.
+  it("refuses a reason below the 3-character minimum and explains the threshold", async () => {
     render(RejectDialog, { props: baseProps });
     const submit = screen.getByTestId("reject-submit") as HTMLButtonElement;
-    expect(submit.disabled).toBe(false);
+    const grund = grundField();
 
-    await fireEvent.input(grundField(), { target: { value: "ab" } });
-    expect(submit.disabled).toBe(true);
+    await fireEvent.input(grund, { target: { value: "ab" } });
+    expect(submit.disabled).toBe(false);
+    expect(grund.checkValidity()).toBe(false);
+    expect(grund.validationMessage).toContain(`${GRUND_MIN} Zeichen`);
     expect(screen.getByTestId("reject-hint").textContent).toContain(
       `Mindestens ${GRUND_MIN} Zeichen`,
     );
 
-    await fireEvent.input(grundField(), { target: { value: "abc" } });
+    await fireEvent.input(grund, { target: { value: "abc" } });
     expect(submit.disabled).toBe(false);
+    expect(grund.checkValidity()).toBe(true);
     expect(screen.getByTestId("reject-hint").textContent).toContain(
       "1:1 in der Ablehnungs-Mail",
     );
   });
 
-  it("counts a whitespace-only reason as empty", async () => {
+  // `minlength` counts whitespace; the server trims. Without the custom
+  // validity below, five spaces would clear the HTML rule and buy a round-trip
+  // that comes back with the same "no".
+  it("counts a whitespace-only reason as empty, not as five characters", async () => {
     render(RejectDialog, { props: baseProps });
-    await fireEvent.input(grundField(), { target: { value: "     " } });
+    const grund = grundField();
+    await fireEvent.input(grund, { target: { value: "     " } });
+    expect(grund.value.length).toBeGreaterThanOrEqual(GRUND_MIN);
+    expect(grund.checkValidity()).toBe(false);
     expect(
       (screen.getByTestId("reject-submit") as HTMLButtonElement).disabled,
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("names the recipient of the rejection mail", () => {

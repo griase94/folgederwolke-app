@@ -99,6 +99,20 @@
 
 	const tooShort = $derived(grund.trim().length < GRUND_MIN);
 
+	/**
+	 * `minlength` counts whitespace, the server counts a TRIMMED reason — so five
+	 * spaces clear the HTML rule and still get rejected. Teaching the field the
+	 * server's rule via setCustomValidity keeps the doctrine (button open,
+	 * constraint validation carries the click) AND keeps the truth client-side:
+	 * the browser refuses, names it in German, and focuses the textarea, instead
+	 * of a round-trip that comes back with the same answer.
+	 */
+	$effect(() => {
+		textareaEl?.setCustomValidity(
+			tooShort ? `Bitte mindestens ${GRUND_MIN} Zeichen — Leerzeichen zählen nicht.` : ''
+		);
+	});
+
 	function selectTemplate(key: string): void {
 		selectedKey = key;
 		grund = REJECT_TEMPLATES.find((t) => t.key === key)?.text ?? '';
