@@ -1,13 +1,41 @@
 <script lang="ts">
+	/**
+	 * EingangsMail — "deine Auslage ist da" (mail-auslage-eingang.md).
+	 *
+	 * Answers three questions without scrolling: angekommen? wie viel? was
+	 * passiert jetzt? The three-step block is the load-bearing part — it is what
+	 * stops people from wondering a week later whether anything is happening.
+	 *
+	 * Batch: ONE digest for the whole submission (deduped on the group id,
+	 * ADR-0005) with every Auslage under its OWN number. The decision mails stay
+	 * per Auslage — only the arrival is bundled.
+	 */
 	/* eslint-disable svelte/no-navigation-without-resolve */
 	import type { EingangsMailProps } from '../types.js';
-	import MailFooter from './MailFooter.svelte';
+	import { BRAND_PRIMARY_STRONG } from '$lib/brand.js';
+	import AmountHero from './kit/AmountHero.svelte';
+	import ChipLead from './kit/ChipLead.svelte';
+	import DetailCard, { type MailFactRow } from './kit/DetailCard.svelte';
+	import MailShell from './kit/MailShell.svelte';
+	import NextStep from './kit/NextStep.svelte';
+	import Signoff from './kit/Signoff.svelte';
+	import { datum, eur } from './kit/format.js';
+	import {
+		HAIRLINE,
+		INK_500,
+		INK_700,
+		INK_900,
+		MONO_STACK,
+		PLUM,
+		SURFACE_PLAIN
+	} from './kit/tokens.js';
 
 	let {
 		vorname,
 		ausId,
 		bezeichnung,
 		betragCents,
+		rechnungsdatum = null,
 		eingereichtAm,
 		items = undefined,
 		baseUrl = '',
@@ -16,8 +44,7 @@
 		vr = '',
 		steuernummer = ''
 	}: EingangsMailProps & {
-		/** Absolute public origin (PUBLIC_BASE_URL) — makes the CTA link
-		 *  absolute so it works in email clients (Task 2.3). Injected by sendMail. */
+		/** Absolute public origin (PUBLIC_BASE_URL), injected by sendMail. */
 		baseUrl?: string;
 		vereinName?: string;
 		adresse?: string;
@@ -25,225 +52,136 @@
 		steuernummer?: string;
 	} = $props();
 
-	// Batch digest: >1 Auslage in one submit → render a grouped list + total.
 	const isBatch = $derived(Array.isArray(items) && items.length > 1);
-	const eur = (cents: number) =>
-		(cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+	const count = $derived(items?.length ?? 1);
 	const betragFmt = $derived(eur(betragCents));
-	const datumFmt = $derived(
-		eingereichtAm.toLocaleDateString('de-DE', {
-			day: '2-digit',
-			month: '2-digit',
-			year: 'numeric'
-		})
-	);
-	// Absolute status link — relative paths are dead in email clients
-	// (Task 2.3). baseUrl comes from PUBLIC_BASE_URL via sendMail; strip any
-	// trailing slash so we never emit a double slash.
+
+	const rows = $derived<MailFactRow[]>([
+		{ label: 'AUS-Nr.', value: ausId, variant: 'mono' },
+		...(rechnungsdatum
+			? [{ label: 'Rechnungsdatum', value: datum(rechnungsdatum), variant: 'num' as const }]
+			: []),
+		{ label: 'Eingegangen am', value: datum(eingereichtAm), variant: 'num' }
+	]);
+
+	// Token-free status link. In a batch ANY number opens the whole group, so the
+	// first one is as good as a group id — and one less thing to keep track of.
 	const statusUrl = $derived(`${baseUrl.replace(/\/+$/, '')}/auslage-status/${ausId}`);
-	import { BRAND_PRIMARY_STRONG } from '$lib/brand.js';
 </script>
 
-<!--
-  Auslage-Eingang confirmation email.
-  Brand-strip pattern matches MagicLink.svelte (UI-031, 2026-05-19 §3.13).
-  All colors are solid hex — Gmail/Outlook strip oklch() + linear-gradient().
--->
-<table
-	role="presentation"
-	cellspacing="0"
-	cellpadding="0"
-	border="0"
-	width="100%"
-	style="background:#f8f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;"
->
-	<tbody>
-		<tr>
-			<td align="center" style="padding:40px 16px;">
-				<table
-					role="presentation"
-					cellspacing="0"
-					cellpadding="0"
-					border="0"
-					width="560"
-					style="max-width:560px;background:#ffffff;border-radius:16px;border:1px solid #f1e6ec;"
-				>
-					<tbody>
-						<!-- Brand strip -->
-						<tr>
-							<td style="background:{BRAND_PRIMARY_STRONG};padding:18px 32px;border-radius:16px 16px 0 0;">
-								<p
-									style="margin:0;color:#ffffff;font-size:13px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;"
-								>
-									{vereinName}
-								</p>
-							</td>
-						</tr>
+<MailShell {vereinName} {adresse} {vr} {steuernummer}>
+	<ChipLead label={isBatch ? `${count} Auslagen eingegangen` : 'Eingegangen'} />
+	<h1
+		style="margin:0 0 14px 0;font-size:22px;font-weight:700;color:{INK_900};letter-spacing:-0.2px;"
+	>
+		{isBatch
+			? `Alles drin, ${vorname} — ${count} Auslagen unterwegs`
+			: 'Deine Auslage ist bei uns gelandet'}
+	</h1>
 
-						<!-- Body -->
-						<tr>
-							<td style="padding:36px 32px 8px 32px;line-height:1.55;font-size:15px;color:#1f2937;">
-								<h1
-									style="margin:0 0 16px 0;font-size:22px;font-weight:700;color:#111827;letter-spacing:-0.2px;"
-								>
-									{isBatch ? 'Auslagen eingegangen' : 'Auslage eingegangen'}
-								</h1>
+	{#if isBatch}
+		<p style="margin:0 0 16px 0;color:{INK_700};">
+			Liebe:r {vorname}, tausend Dank, dass du für unsere Wolke in Vorkasse gegangen bist. Alle
+			{count} Auslagen sind da — <strong style="color:{INK_900};">jede mit eigener Nummer</strong>
+			und eigenem Status.
+		</p>
 
-								<p style="margin:0 0 16px 0;color:#374151;">
-									<strong>Liebste:r {vorname},</strong> Hallo und vielen lieben Dank, dass du für
-									unsere Wolke in Vorkasse gegangen bist.
-								</p>
+		<table
+			role="presentation"
+			cellspacing="0"
+			cellpadding="0"
+			border="0"
+			width="100%"
+			lang="de"
+			style="width:100%;background:{SURFACE_PLAIN};border:1px solid {HAIRLINE};border-radius:12px;border-collapse:separate;border-spacing:0;margin:0 0 8px;"
+		>
+			<tbody>
+				{#each items ?? [] as item (item.ausId)}
+					<tr>
+						<td style="padding:12px 16px;border-bottom:1px solid {HAIRLINE};vertical-align:middle;">
+							<span
+								style="display:block;font-family:{MONO_STACK};font-size:11px;letter-spacing:0.2px;color:{INK_500};margin-bottom:2px;"
+								>{item.ausId}</span
+							>
+							<span style="font-size:13.5px;font-weight:600;line-height:1.4;color:{INK_900};"
+								>{item.bezeichnung}</span
+							>
+						</td>
+						<td
+							style="padding:12px 16px;border-bottom:1px solid {HAIRLINE};text-align:right;white-space:nowrap;vertical-align:middle;font-size:14px;font-weight:700;color:{PLUM};font-variant-numeric:tabular-nums;"
+							>{eur(item.betragCents)}</td
+						>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+		<table
+			role="presentation"
+			cellspacing="0"
+			cellpadding="0"
+			border="0"
+			width="100%"
+			style="width:100%;border-collapse:collapse;margin:0 0 18px;"
+		>
+			<tbody>
+				<tr>
+					<td
+						style="padding:11px 16px;font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:{INK_500};"
+						>Gesamt · {count} Auslagen</td
+					>
+					<td
+						style="padding:11px 16px;text-align:right;font-size:19px;font-weight:800;color:{PLUM};letter-spacing:-0.01em;font-variant-numeric:tabular-nums;"
+						>{betragFmt}</td
+					>
+				</tr>
+			</tbody>
+		</table>
 
-								<!-- Detail card -->
-								<table
-									role="presentation"
-									cellspacing="0"
-									cellpadding="0"
-									border="0"
-									width="100%"
-									style="background:#fdf2f8;border-radius:12px;margin:0 0 22px 0;"
-								>
-									<tbody>
-										<tr>
-											<td style="padding:16px 20px;">
-												{#if isBatch && items}
-											<table
-												role="presentation"
-												cellspacing="0"
-												cellpadding="0"
-												border="0"
-												width="100%"
-												style="font-size:13px;color:#374151;"
-											>
-												<tbody>
-													<tr>
-														<td colspan="2" style="padding:0 0 10px 0;color:#6b7280;white-space:nowrap;"
-															>{items.length} Auslagen · eingereicht am {datumFmt}</td
-														>
-													</tr>
-													{#each items as item (item.ausId)}
-														<tr>
-															<td style="padding:5px 0;color:#111827;vertical-align:top;">
-																<strong>{item.ausId}</strong><br />
-																<span style="color:#6b7280;">{item.bezeichnung}</span>
-															</td>
-															<td
-																style="padding:5px 0;color:#111827;font-weight:600;text-align:right;white-space:nowrap;vertical-align:top;"
-																>{eur(item.betragCents)}</td
-															>
-														</tr>
-													{/each}
-													<tr>
-														<td style="padding:12px 0 0 0;border-top:1px solid #f1c6de;color:#111827;font-weight:700;"
-															>Gesamt</td
-														>
-														<td
-															style="padding:12px 0 0 0;border-top:1px solid #f1c6de;color:#111827;font-weight:700;text-align:right;white-space:nowrap;"
-															>{betragFmt}</td
-														>
-													</tr>
-												</tbody>
-											</table>
-										{:else}
-											<table
-													role="presentation"
-													cellspacing="0"
-													cellpadding="0"
-													border="0"
-													width="100%"
-													style="font-size:13px;color:#374151;"
-												>
-													<tbody>
-														<tr>
-															<td
-																style="padding:5px 0;color:#6b7280;width:140px;white-space:nowrap;vertical-align:top;"
-																>AUS-ID</td
-															>
-															<td style="padding:5px 0;color:#111827;font-weight:700;">{ausId}</td>
-														</tr>
-														<tr>
-															<td
-																style="padding:5px 0;color:#6b7280;white-space:nowrap;vertical-align:top;"
-																>Bezeichnung</td
-															>
-															<td style="padding:5px 0;color:#111827;">{bezeichnung}</td>
-														</tr>
-														<tr>
-															<td
-																style="padding:5px 0;color:#6b7280;white-space:nowrap;vertical-align:top;"
-																>Betrag</td
-															>
-															<td style="padding:5px 0;color:#111827;font-weight:600;">{betragFmt}</td>
-														</tr>
-														<tr>
-															<td
-																style="padding:5px 0;color:#6b7280;white-space:nowrap;vertical-align:top;"
-																>Eingereicht am</td
-															>
-															<td style="padding:5px 0;color:#111827;">{datumFmt}</td>
-														</tr>
-													</tbody>
-												</table>
-										{/if}
-											</td>
-										</tr>
-									</tbody>
-								</table>
+		<NextStep title="Was jetzt passiert">
+			Wir prüfen <strong style="color:{INK_900};font-weight:700;">jede Auslage einzeln</strong> — zu
+			jeder Entscheidung bekommst du eine eigene E-Mail. In der Regel ist das Geld innerhalb von 1–2
+			Wochen zurück bei dir.
+		</NextStep>
+	{:else}
+		<p style="margin:0 0 16px 0;color:{INK_700};">
+			Liebe:r {vorname}, tausend Dank, dass du für unsere Wolke in Vorkasse gegangen bist. Deine
+			Auslage ist da — <strong style="color:{INK_900};">du musst jetzt nichts weiter tun</strong>.
+		</p>
 
-								<p style="margin:0 0 18px 0;color:#374151;">
-									<strong>Was jetzt passiert:</strong> Wir prüfen die Unterlagen und überweisen dir
-									das Geld in der Regel innerhalb von 1–2 Wochen. Du bekommst nochmal eine Mail von
-									uns, sobald es raus ist.
-								</p>
+		<AmountHero eyebrow="Eingereichte Auslage" amount={betragFmt} meta={bezeichnung} />
 
-								<!-- CTA Button -->
-								<table
-									role="presentation"
-									cellspacing="0"
-									cellpadding="0"
-									border="0"
-									width="100%"
-									style="margin:0 0 22px 0;"
-								>
-									<tbody>
-										<tr>
-											<td align="center">
-												<a
-													href={statusUrl}
-													style="display:inline-block;padding:14px 32px;background:{BRAND_PRIMARY_STRONG};color:#ffffff;font-size:15px;font-weight:600;text-decoration:none;border-radius:10px;"
-												>
-													Auslage-Status ansehen
-												</a>
-											</td>
-										</tr>
-									</tbody>
-								</table>
+		<DetailCard {rows} />
 
-								<p style="margin:0 0 24px 0;font-size:13px;color:#6b7280;line-height:1.55;">
-									Eine kleine Erinnerung von den Finanz-Geschäftler:innen — falls dir etwas auffällt,
-									melde dich einfach.
-								</p>
+		<NextStep title="Was jetzt passiert">
+			<strong style="color:{INK_900};font-weight:700;">Eingereicht ✓</strong> — alles da, Beleg ist
+			bei uns.<br />
+			<strong style="color:{INK_900};font-weight:700;">Wir schauen drüber</strong> — meistens
+			innerhalb weniger Tage.<br />
+			<strong style="color:{INK_900};font-weight:700;">Geld kommt zurück</strong> — in der Regel innerhalb
+			von 1–2 Wochen.
+		</NextStep>
+	{/if}
 
-								<!-- Divider -->
-								<div
-									style="border-top:1px solid #f1e6ec;margin:8px 0 22px 0;font-size:1px;line-height:1px;"
-								>
-									&nbsp;
-								</div>
+	<!-- The one CTA. Solid fill, no gradient — mail clients strip those. -->
+	<div style="margin:0 0 8px 0;">
+		<a
+			href={statusUrl}
+			style="display:block;width:100%;box-sizing:border-box;text-align:center;background:{BRAND_PRIMARY_STRONG};color:#ffffff;font-size:16px;font-weight:700;letter-spacing:0.01em;padding:15px 24px;border-radius:9px;text-decoration:none;"
+			>{isBatch ? 'Alle Status ansehen' : 'Auslage-Status ansehen'}</a
+		>
+	</div>
+	<p style="margin:9px 0 20px 0;font-size:12.5px;line-height:1.5;text-align:center;color:{INK_500};">
+		{isBatch
+			? 'Jede deiner Nummern öffnet die ganze Gruppe — Hauptsache, du hast eine parat. Ganz ohne Login.'
+			: 'Jederzeit nachschauen, wo deine Erstattung gerade steht — ganz ohne Login.'}
+	</p>
 
-								<p style="margin:0;font-size:13px;color:#6b7280;line-height:1.5;">
-									Mit besten Grüßen,<br /><strong style="color:#374151;"
-										>deine {vereinName} Finanz-Geschäftler:innen</strong
-									>
-								</p>
-							</td>
-						</tr>
+	<!-- The `{#if}` boundary eats the whitespace around it, so the space before
+	     "Passt" is written as an entity — otherwise the two sentences collide. -->
+	<p style="margin:0 0 18px 0;font-size:13.5px;line-height:1.5;color:{INK_500};">
+		{#if !isBatch}Halte deine Nummer <strong style="color:{INK_700};font-weight:600;">{ausId}</strong
+			> bereit.&nbsp;{/if}Passt was nicht? Antworte einfach auf diese E-Mail.
+	</p>
 
-						<!-- Footer -->
-						<MailFooter {vereinName} {adresse} {vr} {steuernummer} />
-					</tbody>
-				</table>
-			</td>
-		</tr>
-	</tbody>
-</table>
+	<Signoff />
+</MailShell>

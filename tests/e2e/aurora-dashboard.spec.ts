@@ -67,14 +67,16 @@ test.describe("@phase-aurora-slice4 Aurora dashboard", () => {
     await expect(page.getByTestId("stand-subline")).toHaveCount(0);
   });
 
-  test("Überweisungsliste renders with header sum and back affordance", async ({
+  test("Überweisungs-Werkstatt renders with header sum and back affordance", async ({
     page,
   }) => {
     await loginAs(page);
     await page.goto("/app/ausgaben/ueberweisungen");
+    // Renamed in A-S3 — same screen, still the one the dashboard task links to.
     await expect(
-      page.getByRole("heading", { name: "Überweisungsliste" }),
+      page.getByRole("heading", { name: "Überweisungs-Werkstatt" }),
     ).toBeVisible();
+    await expect(page.getByTestId("werkstatt-meta")).toBeVisible();
   });
 });
 

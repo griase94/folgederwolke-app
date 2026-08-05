@@ -22,6 +22,9 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
+import { resolvePayoutIban, erstattungAusNr } from "./erstattung-payout.js";
+import { erstattungsVerwendungszweck } from "./erstattung-verwendungszweck.js";
+import { env } from "$lib/server/env.js";
 import { auslagenSubmissions } from "$lib/server/db/schema/auslagen_submissions.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { members } from "$lib/server/db/schema/members.js";
@@ -35,6 +38,7 @@ import {
 } from "$lib/server/domain/auslagen.js";
 import { DATENSCHUTZ_VERSION } from "$lib/server/domain/datenschutz.js";
 import { berlinYear } from "$lib/domain/year.js";
+import { SPHERE_LABELS } from "$lib/domain/sphere.js";
 
 // ---------------------------------------------------------------------------
 // manualImportSubmission
@@ -162,6 +166,7 @@ export async function manualImportSubmission(
     vorname,
     bezeichnung: input.bezeichnung,
     betragCents: input.betragCents,
+    rechnungsdatum: input.rechnungsdatum ?? null,
     driveFileId: input.belegDriveFileId ?? null,
     consentTextVersion: DATENSCHUTZ_VERSION,
     // Admin entry — no real IP/UA. Use actor UUID as a stable sentinel.
@@ -586,8 +591,11 @@ export async function approveSubmission(
       bezeichnung: submission.bezeichnung,
       betragCents: Number(submission.betragCents),
       // Spec §4.6: the ApprovalMail carries the treasurer-chosen Kategorie
-      // (same value stamped on the expense INSERT above, kept CONSISTENT).
+      // (same value stamped on the expense INSERT above, kept CONSISTENT) plus
+      // the sphere that Kategorie derives — the same one snapshotted on the
+      // expense row, so mail and books can never disagree (ADR-0002).
       kategorie: kat.name,
+      sphaere: SPHERE_LABELS[kat.sphere],
       decidedAt: new Date().toISOString(),
       decidedByUserId: actorUserId,
       send_attempt: sendAttempt,
@@ -759,6 +767,9 @@ export async function rejectSubmission(
     bezeichnung: submission.bezeichnung,
     betragCents: Number(submission.betragCents),
     grund,
+    // The mail dates the SUBMISSION, not the decision — that is the fact the
+    // reader needs to recognise which Auslage this is about.
+    eingereichtAm: submission.submittedAt,
   });
 
   return { ok: true, alreadyDecided: false };
@@ -831,9 +842,49 @@ export async function markExpenseErstattet(
     };
   }
 
-  // Idempotency short-circuit.
+  // Idempotency short-circuit — an already-reimbursed row is done, and is not
+  // re-litigated against the IBAN rule below.
   if (expense.erstattetAm) {
     return { ok: true, alreadyErstattet: true };
+  }
+
+  // §7 "Keine Erstattung ohne IBAN — nie" — enforced by the SERVER, because
+  // the Werkstatt's disabled button is UX only: a hand-crafted POST otherwise
+  // reached the UPDATE and fired the ErstattungsMail for an account nobody can
+  // pay into.
+  //
+  // SCOPE: only where money is reimbursed TO SOMEONE. A `verein` row is the
+  // Verein having paid a vendor directly — no payee, no IBAN to demand;
+  // "erstattet" there merely records the cash-out. Applying §7 to it would
+  // make every Verein-direct expense unpayable.
+  // The AUS-Nr of the originating submission — what the member quotes and what
+  // the Verwendungszweck must carry. NULL for a directly-booked expense.
+  const [ausRow] = await db
+    .select({ ausNr: erstattungAusNr })
+    .from(expenses)
+    .where(eq(expenses.id, expenseId))
+    .limit(1);
+  const ausNr = ausRow?.ausNr ?? null;
+
+  const needsIban =
+    "Keine IBAN hinterlegt — Erstattung erst möglich, sobald die IBAN ergänzt ist.";
+  // The account the money actually goes to — also what the confirmation mail
+  // shows the member, so they can check it against their own records.
+  let payoutIban: string | null = null;
+  if (expense.bezahltVonKind === "extern") {
+    // The extern arm carries its IBAN on the row we already loaded.
+    if (!expense.externIban) {
+      return { ok: false, status: 422, error: needsIban };
+    }
+    payoutIban = expense.externIban;
+  } else if (expense.bezahltVonKind === "member") {
+    // The member arm needs the ratified M4 precedence (submission snapshot →
+    // live profile), so it is judged by the IBAN it will ACTUALLY be paid to.
+    const payout = await resolvePayoutIban(expenseId, db);
+    if (!payout.iban) {
+      return { ok: false, status: 422, error: needsIban };
+    }
+    payoutIban = payout.iban;
   }
 
   // NO festschreibung pre-gate (ADR-0006 Nachtrag / migration 0040) — mirrors
@@ -918,15 +969,32 @@ export async function markExpenseErstattet(
 
   // A6: surface audit-handler failures (no swallow). Mail handler in
   // handlers.ts has its own internal best-effort try/catch.
+  // ONE token everywhere. A member knows their Auslage by its AUS-Nr, so the
+  // mail's reference line, the Verwendungszweck and the Werkstatt card all
+  // quote THAT — never the internal expense number. A directly-booked expense
+  // has no submission behind it; then its own business id is the only handle
+  // there is, and both places cite it consistently.
+  const citedNr = ausNr ?? expense.businessId;
+
   await bus.emit("expense.erstattet", {
     expenseId,
     expenseBusinessId: expense.businessId,
+    // What the member sees quoted. Deliberately separate from
+    // expenseBusinessId, which the audit row needs to stay the EXPENSE's id.
+    ausNr: citedNr,
+    payoutIban,
     actorUserId,
     email,
     vorname,
     bezeichnung: expense.bezeichnung,
     betragCents: Number(expense.betragCents),
-    verwendungszweck: input.verwendungszweck ?? expense.bezeichnung,
+    // ONE Verwendungszweck: the string the Werkstatt copies into the bank
+    // form is the string this mail tells the member to look for. A caller may
+    // still override it, but the default is no longer the Bezeichnung — which
+    // the member would never see on their statement.
+    verwendungszweck:
+      input.verwendungszweck ??
+      erstattungsVerwendungszweck(citedNr, env.VEREIN_NAME),
     erstattungsAm: new Date(`${chosenDate}T00:00:00Z`),
   });
 

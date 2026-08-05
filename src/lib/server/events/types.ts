@@ -76,6 +76,8 @@ export type Events = {
     vorname: string;
     bezeichnung: string;
     betragCents: number;
+    /** ISO receipt date — the confirmation mail's context row. */
+    rechnungsdatum?: string | null;
     driveFileId: string | null;
     consentTextVersion: string;
     ipPrefix: string;
@@ -113,6 +115,14 @@ export type Events = {
   "expense.erstattet": {
     expenseId: string;
     expenseBusinessId: string;
+    /**
+     * The number the MEMBER knows — the submission's AUS-Nr, falling back to
+     * the expense's own id for a directly-booked row. The mail quotes this and
+     * the Verwendungszweck is built from it, so both name the same token.
+     */
+    ausNr: string;
+    /** The account the money went to — shown masked in the confirmation mail. */
+    payoutIban: string | null;
     actorUserId: string | null;
     /** Recipient email — `null` skips the mail (e.g. bezahlt_von = verein). */
     email: string | null;
@@ -139,6 +149,8 @@ export type Events = {
     bezeichnung: string;
     betragCents: number;
     grund: string;
+    /** `submitted_at` — the RejectionMail's fact block dates the SUBMISSION. */
+    eingereichtAm: Date;
   };
 
   /**
@@ -159,6 +171,8 @@ export type Events = {
     bezeichnung: string;
     betragCents: number;
     kategorie: string;
+    /** Display name of the sphere derived from `kategorie` (ADR-0002). */
+    sphaere: string;
     decidedAt: string;
     decidedByUserId: string;
     /** P2-B6: per ADR-0005 UNIQUE(template, entity_kind, entity_id, send_attempt). */

@@ -1,182 +1,78 @@
 <script lang="ts">
-	import MailFooter from './MailFooter.svelte';
+	/**
+	 * ApprovalMail — "deine Auslage ist durch" (mail-auslage-approved.md, v8).
+	 *
+	 * Good-news mail with no CTA on purpose: there is nothing for the member to
+	 * do, and a button would suggest otherwise. The one thing it must land is the
+	 * look-ahead — a SECOND mail follows once the money is actually transferred.
+	 *
+	 * Fires once per Auslage, never as a batch digest: a sibling's rejection must
+	 * not cast a shadow on this one (auslagen-spec §3.6).
+	 */
+	import type { ApprovalMailProps } from '../types.js';
+	import AmountHero from './kit/AmountHero.svelte';
+	import ChipLead from './kit/ChipLead.svelte';
+	import DetailCard, { type MailFactRow } from './kit/DetailCard.svelte';
+	import MailShell from './kit/MailShell.svelte';
+	import NextStep from './kit/NextStep.svelte';
+	import Signoff from './kit/Signoff.svelte';
+	import { datum, eur } from './kit/format.js';
+	import { INK_500, INK_700, INK_900 } from './kit/tokens.js';
 
-	type Props = {
-		vorname: string;
-		ausId: string;
-		bezeichnung: string;
-		betragCents: number;
-		kategorie: string;
-		decidedAt: string;
-		vereinName?: string;
-		adresse?: string;
-		vr?: string;
-		steuernummer?: string;
-	};
 	let {
 		vorname,
 		ausId,
 		bezeichnung,
 		betragCents,
 		kategorie,
+		sphaere,
 		decidedAt,
 		vereinName = '',
 		adresse = '',
 		vr = '',
 		steuernummer = ''
-	}: Props = $props();
+	}: ApprovalMailProps & {
+		vereinName?: string;
+		adresse?: string;
+		vr?: string;
+		steuernummer?: string;
+	} = $props();
 
-	const betrag = $derived(
-		(betragCents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
-	);
-	const datum = $derived(
-		new Date(decidedAt).toLocaleDateString('de-DE', {
-			day: '2-digit',
-			month: '2-digit',
-			year: 'numeric'
-		})
-	);
-	import { BRAND_PRIMARY_STRONG } from '$lib/brand.js';
+	const betrag = $derived(eur(betragCents));
+	const rows = $derived<MailFactRow[]>([
+		{ label: 'AUS-Nr.', value: ausId, variant: 'mono' },
+		{ label: 'Kategorie', value: sphaere ? `${kategorie} · ${sphaere}` : kategorie },
+		{ label: 'Genehmigt am', value: datum(decidedAt), variant: 'num' }
+	]);
 </script>
 
-<!--
-  ApprovalMail — sent when an admin approves an Auslage submission.
-  Brand-strip pattern matches EingangsMail.svelte.
-  All colors are solid hex — Gmail/Outlook strip oklch() + linear-gradient().
--->
-<table
-	role="presentation"
-	cellspacing="0"
-	cellpadding="0"
-	border="0"
-	width="100%"
-	style="background:#f8f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;"
->
-	<tbody>
-		<tr>
-			<td align="center" style="padding:40px 16px;">
-				<table
-					role="presentation"
-					cellspacing="0"
-					cellpadding="0"
-					border="0"
-					width="560"
-					style="max-width:560px;background:#ffffff;border-radius:16px;border:1px solid #f1e6ec;"
-				>
-					<tbody>
-						<!-- Brand strip -->
-						<tr>
-							<td style="background:{BRAND_PRIMARY_STRONG};padding:18px 32px;border-radius:16px 16px 0 0;">
-								<p
-									style="margin:0;color:#ffffff;font-size:13px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;"
-								>
-									{vereinName}
-								</p>
-							</td>
-						</tr>
+<MailShell {vereinName} {adresse} {vr} {steuernummer}>
+	<ChipLead label="Genehmigt" tone="success" />
+	<h1
+		style="margin:0 0 14px 0;font-size:22px;font-weight:700;color:{INK_900};letter-spacing:-0.2px;"
+	>
+		Deine Auslage ist durch
+	</h1>
 
-						<!-- Body -->
-						<tr>
-							<td style="padding:36px 32px 8px 32px;line-height:1.55;font-size:15px;color:#1f2937;">
-								<h1
-									style="margin:0 0 16px 0;font-size:22px;font-weight:700;color:#111827;letter-spacing:-0.2px;"
-								>
-									Auslage genehmigt
-								</h1>
+	<p style="margin:0 0 16px 0;color:{INK_700};">
+		Liebe:r {vorname}, gute Neuigkeit: Deine Auslage über
+		<strong style="color:{INK_900};">{betrag}</strong> ist geprüft und
+		<strong style="color:{INK_900};">freigegeben</strong>.
+	</p>
 
-								<p style="margin:0 0 16px 0;color:#374151;">
-									<strong>Hallo {vorname},</strong> gute Neuigkeit! Deine Auslage wurde geprüft und
-									genehmigt.
-								</p>
+	<AmountHero eyebrow="Genehmigter Betrag" amount={betrag} meta={bezeichnung} accent="emerald" />
 
-								<!-- Detail card -->
-								<table
-									role="presentation"
-									cellspacing="0"
-									cellpadding="0"
-									border="0"
-									width="100%"
-									style="background:#fdf2f8;border-radius:12px;margin:0 0 22px 0;"
-								>
-									<tbody>
-										<tr>
-											<td style="padding:16px 20px;">
-												<table
-													role="presentation"
-													cellspacing="0"
-													cellpadding="0"
-													border="0"
-													width="100%"
-													style="font-size:13px;color:#374151;"
-												>
-													<tbody>
-														<tr>
-															<td
-																style="padding:5px 0;color:#6b7280;width:140px;white-space:nowrap;vertical-align:top;"
-																>AUS-ID</td
-															>
-															<td style="padding:5px 0;color:#111827;font-weight:700;">{ausId}</td>
-														</tr>
-														<tr>
-															<td
-																style="padding:5px 0;color:#6b7280;white-space:nowrap;vertical-align:top;"
-																>Bezeichnung</td
-															>
-															<td style="padding:5px 0;color:#111827;">{bezeichnung}</td>
-														</tr>
-														<tr>
-															<td
-																style="padding:5px 0;color:#6b7280;white-space:nowrap;vertical-align:top;"
-																>Betrag</td
-															>
-															<td style="padding:5px 0;color:#111827;font-weight:600;">{betrag}</td>
-														</tr>
-														<tr>
-															<td
-																style="padding:5px 0;color:#6b7280;white-space:nowrap;vertical-align:top;"
-																>Kategorie</td
-															>
-															<td style="padding:5px 0;color:#111827;">{kategorie}</td>
-														</tr>
-														<tr>
-															<td
-																style="padding:5px 0;color:#6b7280;white-space:nowrap;vertical-align:top;"
-																>Genehmigt am</td
-															>
-															<td style="padding:5px 0;color:#111827;">{datum}</td>
-														</tr>
-													</tbody>
-												</table>
-											</td>
-										</tr>
-									</tbody>
-								</table>
+	<DetailCard {rows} />
 
-								<p style="margin:0 0 18px 0;color:#374151;">
-									Du erhältst eine weitere E-Mail, sobald die Erstattung auf dein Konto angewiesen
-									ist.
-								</p>
+	<NextStep title="Wie es weitergeht">
+		Du bekommst von uns nochmal eine E-Mail, sobald die Erstattung
+		<strong style="color:{INK_900};font-weight:700;">überwiesen</strong> ist — dann ist das Geld auf
+		dem Weg zu dir.
+	</NextStep>
 
-								<!-- Divider -->
-								<div
-									style="border-top:1px solid #f1e6ec;margin:8px 0 22px 0;font-size:1px;line-height:1px;"
-								>
-									&nbsp;
-								</div>
+	<p style="margin:0 0 18px 0;font-size:13.5px;line-height:1.5;color:{INK_500};">
+		Stimmt etwas nicht? Antworte einfach auf diese E-Mail, dann schauen wir uns das gemeinsam an.
+	</p>
 
-								<p style="margin:0;font-size:13px;color:#6b7280;line-height:1.5;">
-									Mit besten Grüßen,<br /><strong style="color:#374151;"
-										>deine {vereinName} Finanz-Geschäftler:innen</strong
-									>
-								</p>
-							</td>
-						</tr>
-
-						<!-- Footer -->
-						<MailFooter {vereinName} {adresse} {vr} {steuernummer} />
-					</tbody>
-				</table>
-			</td>
-		</tr>
-	</tbody>
-</table>
+	<Signoff />
+</MailShell>

@@ -294,8 +294,13 @@
   --ink-300: #6f6685;
   --hairline: rgb(255 255 255 / 0.07);
 
-  /* — severity (brighter accents on dark) — */
-  --sev-critical: #ef4444;
+  /* — severity (brighter accents on dark) —
+     `--sev-critical` does two jobs with opposite needs: it FILLS behind white
+     text (WCAG 1.4.3 wants 4.5:1) and it ACCENTS on a dark surface (1.4.11
+     wants 3:1). #ef4444 met only the second — every filled destructive button
+     in dark mode sat at 3.76:1 (board #172). Darkened until the text case
+     passes; the accent keeps its margin because 3:1 is the lower bar. */
+  --sev-critical: #d32f2f;
   --sev-critical-text: #f87171;
   --sev-critical-tint: color-mix(in srgb, var(--sev-critical) 20%, var(--card));
   --sev-warn: #f59e0b;

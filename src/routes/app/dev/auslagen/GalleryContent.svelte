@@ -27,6 +27,17 @@
 	import IbanInlineEdit from '$lib/components/portal/IbanInlineEdit.svelte';
 	import WelcomeCard from '$lib/components/portal/WelcomeCard.svelte';
 	import SubmitHandoff from '$lib/components/portal/SubmitHandoff.svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { CopyField, CopyAnnouncer } from '$lib/components/ui/copy-field/index.js';
+	import ProblemFlag from '$lib/components/ui/ProblemFlag.svelte';
+	import MoneyStrip from '$lib/components/ui/MoneyStrip.svelte';
+	import ErstattungClaimCard from '$lib/components/admin/erstattung/ErstattungClaimCard.svelte';
+	import { SegmentedControl } from '$lib/components/ui/segmented-control/index.js';
+	import { buildBulkResult } from '$lib/components/admin/erstattung/bulk-result.js';
+	import { OptionGrid } from '$lib/components/ui/option-grid/index.js';
+	import RejectDialog, {
+		REJECT_TEMPLATES
+	} from '$lib/components/admin/inbox/RejectDialog.svelte';
 
 	import Clock from '@lucide/svelte/icons/clock';
 	import ShieldCheck from '@lucide/svelte/icons/shield-check';
@@ -139,6 +150,53 @@
 		{ ausId: 'AUS-2026-0072', bezeichnung: 'Standmiete Flohmarkt', betragCents: 1490, belegOk: true },
 		{ ausId: 'AUS-2026-0073', bezeichnung: 'Kuchenzutaten', betragCents: 2390, belegOk: false }
 	];
+	// ── A-flow S3.1 · Erstattung-Kit demo state ──────────────────────────────
+	let announcer = $state<{ announce: (l: string) => void } | null>(null);
+	let lens = $state('vorbereiten');
+
+	// ── A-flow S3.3 · Ablehnen-Kit demo state ────────────────────────────────
+	let galleryTemplate = $state(REJECT_TEMPLATES[0]!.key);
+	let rejectDemoOpen = $state(false);
+
+	const claimPayable = {
+		id: 'c1',
+		ausNr: 'AUS-2026-0071',
+		businessId: 'A-2026-0043',
+		bezeichnung: 'Getränke fürs Sommerfest',
+		betragCents: 2490,
+		empfaenger: 'Anna Müller',
+		payoutIban: 'DE89370400440532013000',
+		verwendungszweck: 'Erstattung AUS-2026-0071 Folge der Wolke e.V.',
+		festgeschrieben: false,
+		ibanFixHref: null
+	};
+	const claimNoIban = {
+		...claimPayable,
+		id: 'c2',
+		ausNr: 'AUS-2026-0072',
+		empfaenger: 'Tobias Kern',
+		bezeichnung: 'Standmiete Flohmarkt',
+		betragCents: 1490,
+		payoutIban: null,
+		ibanFixHref: '/app/mitglieder/demo'
+	};
+	const claimClosedYear = {
+		...claimPayable,
+		id: 'c3',
+		ausNr: 'AUS-2025-0180',
+		bezeichnung: 'Deko-Material (Vorjahr)',
+		betragCents: 1890,
+		festgeschrieben: true
+	};
+
+	const bulkClean = buildBulkResult({
+		erstattet: ['a', 'b', 'c'],
+		ibanFehlt: [], festgeschrieben: [], bereitsBezahlt: [], notFound: [], fehler: []
+	});
+	const bulkMixed = buildBulkResult({
+		erstattet: ['a'], ibanFehlt: ['b'], festgeschrieben: ['c'],
+		bereitsBezahlt: ['d'], notFound: [], fehler: [{ id: 'e', error: 'boom' }]
+	});
 </script>
 
 {#snippet frame(label: string, body: Snippet)}
@@ -356,4 +414,116 @@
 		</div>
 	{/snippet}
 	{@render frame('SubmitHandoff · einzeln + Batch', handoff)}
+	<h2 class="mt-14 mb-8 border-t border-hairline pt-8 text-2xl font-bold tracking-tight text-ink-900">
+		Erstattung-Kit · A-flow S3.1
+	</h2>
+
+	<CopyAnnouncer bind:this={announcer} />
+
+	{#snippet copyFields()}
+		<div class="flex flex-wrap gap-2">
+			<CopyField field="g-empf" label="Empfängername" value="Anna Müller" onCopied={(l) => announcer?.announce(l)} />
+			<CopyField field="g-iban" label="DE89 3704 0044 0532 0130 00" value="DE89370400440532013000" onCopied={(l) => announcer?.announce(l)} />
+			<CopyField field="g-betrag" label="24,90" value="24,90" onCopied={(l) => announcer?.announce(l)} />
+			<CopyField field="g-vwz" label="Verwendungszweck" value="Erstattung AUS-2026-0071" onCopied={(l) => announcer?.announce(l)} />
+			<CopyField field="g-none" label="IBAN fehlt" value="" disabled />
+		</div>
+	{/snippet}
+	{@render frame('CopyField · Bank-Reihenfolge + disabled-Zustand', copyFields)}
+
+	{#snippet flags()}
+		<ProblemFlag href="/app/mitglieder/demo">IBAN fehlt — bei der Ausgabe ergänzen</ProblemFlag>
+		<ProblemFlag tone="warn">Beleg unleserlich</ProblemFlag>
+		<ProblemFlag>Kein Ziel hinterlegt</ProblemFlag>
+	{/snippet}
+	{@render frame('ProblemFlag · crit (verlinkt) / warn / ohne Ziel', flags)}
+
+	{#snippet strip()}
+		<div class="w-full max-w-md">
+			<MoneyStrip
+				eyebrow="Offen · wartet auf Überweisung"
+				totalCents={27370}
+				chips={[
+					{ label: 'Erstattungen', count: 4 },
+					{ label: 'IBAN fehlt', count: 1, tone: 'crit' }
+				]}
+			/>
+		</div>
+	{/snippet}
+	{@render frame('MoneyStrip · Summe + gleich breite Chips', strip)}
+
+	{#snippet lensSwitch()}
+		<SegmentedControl
+			variant="lens"
+			ariaLabel="Ansicht"
+			value={lens}
+			onChange={(v) => (lens = v)}
+			options={[
+				{ value: 'vorbereiten', label: 'Vorzubereiten · 4' },
+				{ value: 'liste', label: 'Auf der Liste · 4' }
+			]}
+		/>
+	{/snippet}
+	{@render frame('SegmentedControl · variant="lens" (recessed, role=tablist)', lensSwitch)}
+
+	{#snippet claims()}
+		<div class="w-full max-w-lg"><ErstattungClaimCard claim={claimPayable} onCopied={(l) => announcer?.announce(l)}>
+			{#snippet commit()}<Button size="cta">Als erstattet markieren</Button>{/snippet}
+		</ErstattungClaimCard></div>
+		<div class="w-full max-w-lg"><ErstattungClaimCard claim={claimNoIban} /></div>
+		<div class="w-full max-w-lg"><ErstattungClaimCard claim={claimClosedYear} onCopied={(l) => announcer?.announce(l)}>
+			{#snippet commit()}<Button size="cta">Als erstattet markieren</Button>{/snippet}
+		</ErstattungClaimCard></div>
+	{/snippet}
+	{@render frame('ErstattungClaimCard · zahlbar / IBAN fehlt / abgeschlossenes Jahr', claims)}
+
+	{#snippet bulkResults()}
+		{#each [bulkClean, bulkMixed] as r (r.headline)}
+			<div class="w-full max-w-sm rounded-2xl border border-hairline bg-card p-4">
+				<p class="text-sm font-semibold text-ink-900">{r.headline}</p>
+				<ul class="mt-2 space-y-0.5 text-xs text-ink-500">
+					{#each r.tally as t (t)}<li>{t}</li>{/each}
+				</ul>
+				<p class="mt-2 text-[11px] text-ink-300">Ton: {r.tone}</p>
+			</div>
+		{/each}
+	{/snippet}
+	{@render frame('Bulk-Ergebnis · sauber vs. gemischt (Tally)', bulkResults)}
+</div>
+
+<div class="mt-14 space-y-8">
+	<h2 class="text-lg font-bold tracking-tight text-ink-900">
+		Ablehnen-Kit · A-flow S3.3
+	</h2>
+
+	{#snippet optionGrid()}
+		<div class="w-full max-w-lg">
+			<OptionGrid
+				legend="Grund-Vorlage"
+				testid="g-tpl"
+				options={REJECT_TEMPLATES.map((t) => ({
+					value: t.key,
+					label: t.label,
+					full: t.key === 'sonstiges'
+				}))}
+				value={galleryTemplate}
+				onselect={(v) => (galleryTemplate = v)}
+			/>
+		</div>
+	{/snippet}
+	{@render frame('OptionGrid · 2-spaltig, „Sonstiges" volle Breite (native Radios)', optionGrid)}
+
+	{#snippet rejectDialog()}
+		<Button variant="outline" onclick={() => (rejectDemoOpen = true)}>
+			Ablehnen-Dialog öffnen
+		</Button>
+		<RejectDialog
+			bind:open={rejectDemoOpen}
+			submissionId="demo"
+			ausId="AUS-2026-0040"
+			empfaengerDisplay="Lena Huber"
+			formAction="?/noop"
+		/>
+	{/snippet}
+	{@render frame('RejectDialog · Vorlagen + Grund + 1:1-Hinweis + gleich breite Buttons', rejectDialog)}
 </div>

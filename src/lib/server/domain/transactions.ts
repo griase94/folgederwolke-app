@@ -12,6 +12,7 @@
 
 import { and, asc, desc, eq, sql, type AnyColumn, type SQL } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
+import { erstattungAusNr, payoutIbanSql } from "./erstattung-payout.js";
 import { expenses } from "$lib/server/db/schema/expenses.js";
 import { income } from "$lib/server/db/schema/income.js";
 import { donations } from "$lib/server/db/schema/donations.js";
@@ -1348,7 +1349,7 @@ export async function getTransactionDetail(
 }
 
 // ---------------------------------------------------------------------------
-// listApprovedPendingErstattet — for SEPA XML generator
+// listApprovedPendingErstattet — the Überweisungs-Werkstatt pool
 // ---------------------------------------------------------------------------
 
 export interface ApprovedExpense {
@@ -1360,15 +1361,66 @@ export interface ApprovedExpense {
   bezahltVonKind: string;
   externIban: string | null;
   externName: string | null;
-  /** Member IBAN: must be looked up separately — stored on member row */
   bezahltVonMemberId: string | null;
   memberIban: string | null;
+  /**
+   * The AUS-Nr of the submission this expense came from (M4). The Werkstatt
+   * shows THIS, not the expense number — it is what the member sees and what
+   * the decision mails quote. NULL for directly-booked expenses.
+   */
+  ausNr: string | null;
+  /**
+   * The resolved payout target (M4 precedence: submission snapshot → extern →
+   * live member IBAN). `null` means the claim is not payable and the server
+   * will refuse it (§7).
+   */
+  payoutIban: string | null;
+  /**
+   * The payee as a BANK wants it — a plain person's name.
+   * `bezahlt_von_display` carries the UI prefix ("Mitglied: Max Mustermann"),
+   * which is right on a list row and wrong in a transfer form.
+   */
+  empfaengerName: string;
+  /**
+   * From a Buchungsjahr that is already closed (F4). Such claims stay in the
+   * pool — the reimbursement columns are carved out of the Festschreibung
+   * (ADR-0006) — but the UI marks them quietly so nobody is surprised.
+   */
+  festgeschrieben: boolean;
+  /**
+   * Cash-out date, or null when none is booked yet. Load-bearing for a
+   * festgeschriebene claim: the carve-out PRESERVES an existing abfluss_datum,
+   * so a row without one would have to move its Buchungsjahr — which the DB
+   * trigger refuses. See `committable`.
+   */
+  abflussDatum: string | null;
+  /**
+   * False when the server would refuse this claim today, with the reason
+   * beside it. The Werkstatt must never offer a button the action answers
+   * 409/422 to: the UI may promise less than the server allows, never more.
+   */
+  committable: boolean;
+  blockReason: "iban-fehlt" | "festgeschrieben-ohne-abfluss" | null;
 }
 
 export async function listApprovedPendingErstattet(): Promise<
   ApprovedExpense[]
 > {
   const db = getDb();
+  // The lock the DB trigger actually reads. `expenses.festgeschrieben_at` is a
+  // per-row marker and NOT the guard — mirroring it left the real case (a row
+  // whose YEAR is closed but which was never individually stamped) offering a
+  // button the action answers 409 to.
+  const [lockRow] = await db.execute<{ value: unknown }>(
+    sql`SELECT value FROM settings WHERE key = 'festgeschrieben_bis'`,
+  );
+  const rawLock = (lockRow as { value: unknown } | undefined)?.value;
+  const festgeschriebenBis =
+    typeof rawLock === "number"
+      ? rawLock
+      : typeof rawLock === "string"
+        ? Number(rawLock.replace(/^"|"$/g, ""))
+        : null;
 
   const rows = await db
     .select({
@@ -1382,14 +1434,31 @@ export async function listApprovedPendingErstattet(): Promise<
       externName: expenses.externName,
       bezahltVonMemberId: expenses.bezahltVonMemberId,
       memberIban: members.iban,
+      memberVorname: members.vorname,
+      memberNachname: members.nachname,
+      ausNr: erstattungAusNr,
+      payoutIban: payoutIbanSql,
+      festgeschrieben: sql<boolean>`${expenses.festgeschriebenAt} IS NOT NULL`,
+      abflussDatum: expenses.abflussDatum,
+      /**
+       * The Buchungsjahr the Festschreibungs-TRIGGER guards on — the
+       * cash-derived year (0034/0040), NOT `festgeschrieben_at`. Those are two
+       * different notions, and mirroring the wrong one made the UI disagree
+       * with the action for exactly the rows that matter.
+       */
+      buchungsjahr: sql<number>`COALESCE(EXTRACT(YEAR FROM ${expenses.abflussDatum})::int, year_for_booking(${expenses.gebuchtAm}))`,
     })
     .from(expenses)
     .leftJoin(members, eq(members.id, expenses.bezahltVonMemberId))
+    // F4 (ratified): festgeschriebene-but-unreimbursed claims STAY in the pool.
+    // They used to be filtered out and simply vanished — the money was still
+    // owed, but nobody could see it. The reimbursement columns are carved out
+    // of the Festschreibung (ADR-0006 / #153), so committing them is allowed;
+    // the UI flags them quietly instead of hiding them.
     .where(
       and(
         sql`${expenses.approvedAt} IS NOT NULL`,
         sql`${expenses.erstattetAm} IS NULL`,
-        sql`${expenses.festgeschriebenAt} IS NULL`,
       ),
     )
     .orderBy(expenses.businessId);
@@ -1405,7 +1474,71 @@ export async function listApprovedPendingErstattet(): Promise<
     externName: r.externName ?? null,
     bezahltVonMemberId: r.bezahltVonMemberId ?? null,
     memberIban: r.memberIban ?? null,
+    ausNr: r.ausNr ?? null,
+    payoutIban: r.payoutIban ?? null,
+    empfaengerName: bankPayeeName(r),
+    // "Closed year" for the UI means what the trigger means: this row's
+    // Buchungsjahr is inside the locked range.
+    festgeschrieben:
+      Boolean(r.festgeschrieben) ||
+      (festgeschriebenBis !== null &&
+        Number.isFinite(festgeschriebenBis) &&
+        Number(r.buchungsjahr) <= festgeschriebenBis),
+    abflussDatum: r.abflussDatum ?? null,
+    ...commitGate({
+      payoutIban: r.payoutIban ?? null,
+      bezahltVonKind: r.bezahltVonKind as string,
+      abflussDatum: r.abflussDatum ?? null,
+      festgeschrieben:
+        Boolean(r.festgeschrieben) ||
+        (festgeschriebenBis !== null &&
+          Number.isFinite(festgeschriebenBis) &&
+          Number(r.buchungsjahr) <= festgeschriebenBis),
+    }),
   }));
+}
+
+/**
+ * The payee a bank form needs. For a member that is the person's own name —
+ * `bezahlt_von_display` carries the "Mitglied: " prefix that belongs on a list
+ * row, not in a transfer. Falls back to the display value when the join found
+ * no member (a deleted row), because a prefixed name still beats an empty one.
+ */
+function bankPayeeName(r: {
+  bezahltVonKind: string;
+  externName: string | null;
+  bezahltVonDisplay: string;
+  memberVorname: string | null;
+  memberNachname: string | null;
+}): string {
+  if (r.bezahltVonKind === "extern" && r.externName) return r.externName;
+  const full = `${r.memberVorname ?? ""} ${r.memberNachname ?? ""}`.trim();
+  return full || r.bezahltVonDisplay;
+}
+
+/**
+ * Whether `markExpenseErstattet` would accept this claim today — mirrored from
+ * the action's own guards so the Werkstatt can hide a button instead of
+ * offering one that answers 409/422.
+ */
+function commitGate(r: {
+  payoutIban: string | null;
+  festgeschrieben: unknown;
+  abflussDatum: string | null;
+  bezahltVonKind: string;
+}): { committable: boolean; blockReason: ApprovedExpense["blockReason"] } {
+  // §7: a payout to a PERSON needs an IBAN. `verein` rows have no payee at all
+  // — "erstattet" just books the cash-out — so they are not gated on one.
+  if (r.bezahltVonKind !== "verein" && !r.payoutIban) {
+    return { committable: false, blockReason: "iban-fehlt" };
+  }
+  // ADR-0006 carve-out: the reimbursement columns may change after
+  // Festschreibung, but abfluss_datum is only PRESERVED, never set — a closed
+  // row without one cannot be committed without moving its Buchungsjahr.
+  if (Boolean(r.festgeschrieben) && !r.abflussDatum) {
+    return { committable: false, blockReason: "festgeschrieben-ohne-abfluss" };
+  }
+  return { committable: true, blockReason: null };
 }
 
 // ---------------------------------------------------------------------------

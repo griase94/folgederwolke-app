@@ -8,8 +8,11 @@
  * bulk-mark-erstattet semantics (one markExpenseErstattet per row, each fires
  * the SEPA-payout confirmation mail — ADR-0005 dedupes re-sends).
  *
- * The /api/sepa/generate endpoint stays (removal decision is a backlog issue,
- * spec §11) but is no longer reachable from the UI.
+ * The /api/sepa/generate endpoint is GONE (board #172): it was unreachable from
+ * the UI, it derived the payout account itself instead of using the ratified M4
+ * precedence, and once F4 kept festgeschriebene claims in the pool it would
+ * have exported claims that must not be paid at all. Deleted rather than
+ * repaired — a pre-launch no-compat call, with the history keeping the code.
  *
  * Bulk Erstattung moved here from /app/ausgaben (Aurora slice 4 — Überweisungsliste
  * absorbs the SepaCopyModal flow).
@@ -23,13 +26,65 @@ import {
 } from "$lib/server/domain/transactions.js";
 import { markExpenseErstattet } from "$lib/server/domain/audit-inbox-actions.js";
 import { isoCalendarDate } from "$lib/domain/date.js";
+import { erstattungsVerwendungszweck } from "$lib/server/domain/erstattung-verwendungszweck.js";
+import { env } from "$lib/server/env.js";
 
 export const load: PageServerLoad = async () => {
-  const [claims, zahlungsarten] = await Promise.all([
+  const [rows, zahlungsarten] = await Promise.all([
     listApprovedPendingErstattet(),
     listZahlungsarten(),
   ]);
-  return { claims, zahlungsarten };
+
+  // Everything the Werkstatt shows is decided HERE, so the bank form and the
+  // reimbursement mail cannot drift: the payout IBAN is already resolved by M4
+  // precedence, and the Verwendungszweck comes from the one shared function
+  // the mail also uses (Abnahme #14).
+  const claims = rows.map((r) => ({
+    id: r.id,
+    ausNr: r.ausNr,
+    businessId: r.businessId,
+    bezeichnung: r.bezeichnung,
+    betragCents: r.betragCents,
+    // The BANK's Empfängername — a plain person's name. `claimName` returns the
+    // display string with its "Mitglied: " prefix, which is right on a list row
+    // and useless in a transfer form (board #172 MAJOR 3).
+    empfaenger: r.empfaengerName,
+    bezahltVonKind: r.bezahltVonKind,
+    payoutIban: r.payoutIban,
+    verwendungszweck: erstattungsVerwendungszweck(
+      r.ausNr ?? r.businessId,
+      env.VEREIN_NAME,
+    ),
+    festgeschrieben: r.festgeschrieben,
+    // What the SERVER would answer today. The card offers a commit button only
+    // when this is true — a button that answers 409 is worse than no button.
+    committable: r.committable,
+    blockReason: r.blockReason,
+    // Where the gap can be closed: the Mitglied for a member, the Ausgabe for
+    // an extern payer.
+    ibanFixHref: r.bezahltVonMemberId
+      ? `/app/mitglieder/${r.bezahltVonMemberId}`
+      : `/app/ausgaben/${r.id}`,
+    // Where an Abfluss-Datum can be entered — the only way out of the
+    // closed-year block.
+    ausgabeHref: `/app/ausgaben/${r.id}`,
+  }));
+
+  const gesamtCents = claims.reduce((sum, c) => sum + c.betragCents, 0);
+  const countIbanFehlt = claims.filter(
+    (c) => c.blockReason === "iban-fehlt",
+  ).length;
+  const countJahrGesperrt = claims.filter(
+    (c) => c.blockReason === "festgeschrieben-ohne-abfluss",
+  ).length;
+
+  return {
+    claims,
+    zahlungsarten,
+    gesamtCents,
+    countIbanFehlt,
+    countJahrGesperrt,
+  };
 };
 
 // ---------------------------------------------------------------------------
@@ -51,6 +106,7 @@ type RowStatus =
   | "erstattet"
   | "bereits-erstattet"
   | "festgeschrieben"
+  | "iban-fehlt"
   | "nicht-gefunden"
   | "fehler";
 interface RowResult {
@@ -62,6 +118,13 @@ interface RowResult {
 interface BulkSummary {
   erstattet: string[];
   festgeschrieben: string[];
+  /**
+   * Skipped because there is no payout account (§7). Its own bucket, not a
+   * generic error: nothing went wrong, the claim simply cannot be paid yet —
+   * and the result toast has to say so, otherwise a partly-successful batch
+   * looks like a failure.
+   */
+  ibanFehlt: string[];
   bereitsBezahlt: string[];
   notFound: string[];
   fehler: { id: string; error: string }[];
@@ -89,6 +152,7 @@ async function bulkMarkErstattet(
   const summary: BulkSummary = {
     erstattet: [],
     festgeschrieben: [],
+    ibanFehlt: [],
     bereitsBezahlt: [],
     notFound: [],
     fehler: [],
@@ -116,6 +180,17 @@ async function bulkMarkErstattet(
         error: result.error,
       });
       summary.festgeschrieben.push(expenseId);
+    } else if (result.status === 422) {
+      // §7 — the server refused for a missing payout account. The client is
+      // supposed to skip these, but it may send them anyway (or the IBAN may
+      // have vanished between render and submit), so the batch reports them
+      // rather than counting them as failures.
+      results.push({
+        id: expenseId,
+        status: "iban-fehlt",
+        error: result.error,
+      });
+      summary.ibanFehlt.push(expenseId);
     } else if (result.status === 404) {
       results.push({
         id: expenseId,
@@ -129,6 +204,8 @@ async function bulkMarkErstattet(
     }
   }
 
+  // A skipped IBAN-less claim is a reportable outcome, not a failure — `ok`
+  // stays true so the toast reads "partly done" rather than "broken".
   const ok = summary.fehler.length === 0;
   return { ok, results, summary };
 }

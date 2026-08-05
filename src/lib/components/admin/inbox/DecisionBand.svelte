@@ -32,12 +32,18 @@
 		submissionId,
 		ausId,
 		kategorieOptions,
+		empfaengerDisplay = '',
+		hasEmail = true,
 		festgeschriebenBis = null,
 		currentYear
 	}: {
 		submissionId: string;
 		ausId: string;
 		kategorieOptions: KategorieOption[];
+		/** Who a rejection mail would reach — shown in the RejectDialog sub-line. */
+		empfaengerDisplay?: string;
+		/** False → the rejection is recorded but no mail can go out. */
+		hasEmail?: boolean;
 		festgeschriebenBis?: number | null;
 		currentYear: number;
 	} = $props();
@@ -214,5 +220,12 @@
 	</p>
 </div>
 
-<RejectDialog bind:open={rejectOpen} {submissionId} {ausId} formAction="?/reject" />
+<RejectDialog
+	bind:open={rejectOpen}
+	{submissionId}
+	{ausId}
+	{empfaengerDisplay}
+	{hasEmail}
+	formAction="?/reject"
+/>
 <AufwandsspendeStubModal bind:open={aufwandsspendeOpen} />
