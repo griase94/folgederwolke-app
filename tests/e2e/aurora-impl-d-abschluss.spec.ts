@@ -98,31 +98,22 @@ test.describe("@aurora-impl-d-abschluss D-Flow cross-probe", () => {
     // The kreuzprobe ✓-footer must render (Σ Sphären == EÜR).
     await expect(page.getByTestId("kreuzprobe")).toBeVisible();
 
-    // ── Buchungsliste: feed-foot + Beitrags-Delta == EÜR ─────────────────────
+    // ── Buchungsliste: feed-foot == EÜR ──────────────────────────────────────
+    // Since S3 the feed carries paid Mitgliedsbeiträge as a fourth arm, so the
+    // foot equals the EÜR-Überschuss directly. The earlier form of this check
+    // added a "+ X Mitgliedsbeiträge" note on top, because the list was missing
+    // that money; the note and its testid are gone, and adding it back would
+    // now double-count.
     await page.goto(`/app/jahresabschluss/${year}/buchungsliste`);
     const footCents = euroToCents(
       await page
         .locator('[data-testid="buchungsliste-foot"] .lf-amt')
         .innerText(),
     );
-    const note = page.getByTestId("foot-beitrag-note");
-    let reconciledCents = footCents;
-    if (await note.isVisible().catch(() => false)) {
-      // "+ 378,45 € Mitgliedsbeiträge … = EÜR-Überschuss 2.546,15 €"
-      const noteText = await note.innerText();
-      const euros = [...noteText.matchAll(/([\d.]+,\d{2})\s*€/g)].map((m) =>
-        euroToCents(m[1]!),
-      );
-      // [0] = Beitrags-Summe, [1] = EÜR-Überschuss (as printed in the note).
-      expect(euros.length).toBeGreaterThanOrEqual(2);
-      reconciledCents = footCents + euros[0]!;
-      expect(euros[1]).toBe(heroCents); // the note's EÜR figure == the Hero
-    } else {
-      // Beitrag-free year → the honest "= EÜR ✓" must be shown instead.
-      await expect(page.getByTestId("foot-kreuzprobe")).toBeVisible();
-    }
-    // THE reconciliation identity: feed-foot + Beitragskomponente == EÜR.
-    expect(reconciledCents).toBe(heroCents);
+    // The list is complete, so the honest "= EÜR ✓" must render — before S3 it
+    // could never appear in a year where anyone had paid their Beitrag.
+    await expect(page.getByTestId("foot-kreuzprobe")).toBeVisible();
+    expect(footCents).toBe(heroCents);
 
     // Art-chip counts (feed).
     const feedIncome = leadingInt(

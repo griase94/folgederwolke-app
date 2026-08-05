@@ -16,6 +16,7 @@
 
 import { sql } from "drizzle-orm";
 import { getDb } from "$lib/server/db/index.js";
+import { beitragBuchungsjahr } from "$lib/server/domain/beitrag-buchungsjahr.js";
 import { berlinYear } from "$lib/domain/year.js";
 import { loadEurWorkspaceData } from "./load.js";
 import type { PreFlightChecklist } from "./index.js";
@@ -76,14 +77,16 @@ export async function loadJahresabschlussHub(): Promise<JahresabschlussHub> {
 
   // Per-year sums + counts over the 3-source Einnahmen union + expense
   // Ausgaben. Donations exclude Storno originals (supersedes_id IS NULL);
-  // Mitgliedsbeiträge count only realized cashflow (gezahlt_am, paid_cents>0).
+  // Mitgliedsbeiträge count only realized cashflow (gezahlt_am, paid_cents>0)
+  // and land in their Zufluss year, not their Beitragsjahr (S2) — so a card's
+  // Einnahmen match the EÜR for the same year.
   const rows = (await db.execute(sql`
     WITH feed AS (
       SELECT year_of_buchung AS year, 'einnahmen'::text AS art, betrag_cents AS cents FROM income
       UNION ALL
       SELECT year_of_buchung, 'spenden', betrag_cents FROM donations WHERE supersedes_id IS NULL
       UNION ALL
-      SELECT year, 'beitrags', paid_cents FROM member_beitrags WHERE gezahlt_am IS NOT NULL AND paid_cents > 0
+      SELECT ${beitragBuchungsjahr}, 'beitrags', paid_cents FROM member_beitrags WHERE gezahlt_am IS NOT NULL AND paid_cents > 0
       UNION ALL
       SELECT year_of_buchung, 'ausgaben', betrag_cents FROM expenses
     )

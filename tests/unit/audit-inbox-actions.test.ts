@@ -450,6 +450,9 @@ vi.mock("$lib/server/db/schema/members.js", () => ({
     email: "email",
     vorname: "vorname",
   },
+  // Pulled in transitively since S3 (transaction-filter-sql imports it for the
+  // Beitrags-Arm); the shape is irrelevant here, its presence is not.
+  memberBeitrags: { _kind: "member_beitrags", gezahltAm: "gezahlt_am" },
 }));
 
 vi.mock("$lib/server/db/schema/zahlungsarten.js", () => ({
@@ -792,6 +795,9 @@ describe("markExpenseErstattet — idempotency", () => {
       bezahltVonKind: "extern",
       externEmail: "lea@example.com",
       externName: "Lea Mustermann",
+      // §7: a reimbursement needs a payout account. This test is about
+      // idempotency, so the fixture simply has to be payable.
+      externIban: "DE89370400440532013000",
     });
 
     const result = await markExpenseErstattet({

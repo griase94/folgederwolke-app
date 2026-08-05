@@ -32,6 +32,20 @@
 				: null
 	);
 
+	// Who a rejection mail would reach. Mirrors the recipient resolution in
+	// rejectSubmission (extern fields for extern, the member otherwise) — the
+	// dialog must not promise a mail the server cannot send.
+	const rejectRecipient = $derived.by(() => {
+		const s = data.submission;
+		if (s.bezahltVonKind === 'extern') {
+			return { display: s.externName ?? '', hasEmail: Boolean(s.externEmail) };
+		}
+		return {
+			display: s.bezahltVonMemberDisplay ?? '',
+			hasEmail: Boolean(s.memberContext?.email)
+		};
+	});
+
 	function backToList(): void {
 		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		goto('/app/inbox?status=Offen');
@@ -101,6 +115,8 @@
 						submissionId={data.submission.id}
 						ausId={data.submission.ausId}
 						kategorieOptions={data.kategorieOptions}
+						empfaengerDisplay={rejectRecipient.display}
+						hasEmail={rejectRecipient.hasEmail}
 						festgeschriebenBis={page.data.festgeschriebenBis}
 						currentYear={page.data.currentYear}
 					/>

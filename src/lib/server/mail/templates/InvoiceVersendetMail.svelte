@@ -84,7 +84,7 @@
 					cellpadding="0"
 					border="0"
 					width="560"
-					style="max-width:560px;background:#ffffff;border-radius:16px;border:1px solid #ece7f2;"
+					style="width:100%;max-width:560px;background:#ffffff;border-radius:16px;border:1px solid #ece7f2;"
 				>
 					<tbody>
 						<!-- 1. Brand strip -->

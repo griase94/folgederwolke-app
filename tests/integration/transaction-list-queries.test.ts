@@ -201,7 +201,7 @@ describe.skipIf(!dbConfigured)("per-tab paginated queries", () => {
   // therefore carry a `kind` discriminant — without it pages show expenses as
   // positive/green with a blank pill. These assert each query stamps the right
   // constant.
-  it("every per-tab row carries its `kind` discriminant (expense/income/donation)", async () => {
+  it("every per-tab row carries its `kind` discriminant (Einnahmen spans income + beitrag)", async () => {
     const noFilter = (tab: "ausgaben" | "einnahmen" | "spenden") =>
       parseFilterState(tab, new URLSearchParams(""));
 
@@ -228,8 +228,22 @@ describe.skipIf(!dbConfigured)("per-tab paginated queries", () => {
     expect(ein.rows.length).toBeGreaterThan(0);
     expect(spe.rows.length).toBeGreaterThan(0);
     expect(aus.rows.every((r) => r.kind === "expense")).toBe(true);
-    expect(ein.rows.every((r) => r.kind === "income")).toBe(true);
     expect(spe.rows.every((r) => r.kind === "donation")).toBe(true);
+
+    // The Einnahmen tab is the one list that is deliberately NOT single-kind:
+    // since S4 it unions the income table with the paid Mitgliedsbeiträge, so
+    // that the KPI header and the list it links into count the same money.
+    // Assert both arms are actually present — a regression dropping either one
+    // would still satisfy a bare `every(...)` check.
+    expect(ein.rows.every((r) => ["income", "beitrag"].includes(r.kind))).toBe(
+      true,
+    );
+    expect(ein.rows.some((r) => r.kind === "income")).toBe(true);
+    expect(ein.rows.some((r) => r.kind === "beitrag")).toBe(true);
+    // Only the synthesized Beitrags rows carry a Mitglied.
+    expect(
+      ein.rows.every((r) => (r.kind === "beitrag") === (r.memberId !== null)),
+    ).toBe(true);
   });
 
   // ── Sort plumbing (§13 sortable headers) ────────────────────────────────────

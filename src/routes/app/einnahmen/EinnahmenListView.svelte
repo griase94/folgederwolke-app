@@ -23,7 +23,10 @@
 	import { formatDatumDe } from '$lib/domain/datum.js';
 	import { SPHERE_LABELS, type Sphere } from '$lib/domain/sphere.js';
 	import { yearScopeLabel, yearScopeMetaLabel } from '$lib/domain/year.js';
-	import { listQueryString } from '$lib/domain/transaction-filters.js';
+	import {
+		einnahmenBeitragExclusionHint,
+		listQueryString,
+	} from '$lib/domain/transaction-filters.js';
 	import type { EinnahmenRow } from '$lib/server/domain/transactions.js';
 	import type { EinnahmenListData } from './list-load.js';
 
@@ -31,14 +34,34 @@
 
 	function metaLine(row: EinnahmenRow): string {
 		const sphere = SPHERE_LABELS[row.sphereSnapshot as Sphere] ?? row.sphereSnapshot;
+		// A Beitrag's Kategorie is the synthesized constant "Mitgliedsbeitrag",
+		// which the „Beitrag“-Chip right next to it already says. Repeating it
+		// wastes a whole line on mobile, where the meta wraps.
+		if (row.kind === 'beitrag') return `${formatDatumDe(row.gebuchtAm)} · ${sphere}`;
 		return `${formatDatumDe(row.gebuchtAm)} · ${sphere} · ${row.kategorieNameSnapshot}`;
 	}
 	function chips(row: EinnahmenRow): { label: string; kind?: 'warn' | 'neutral' }[] {
 		// master §2.4: "aus Rechnung FDW-…" is a provenance signal, not a warning → neutral.
+		// "Beitrag" is the same class of signal: it marks where the row comes from
+		// and that it is read-only here (the Mitglieder-Matrix owns it).
+		if (row.kind === 'beitrag') return [{ label: 'Beitrag', kind: 'neutral' }];
 		return row.rechnungBusinessId
 			? [{ label: `aus Rechnung ${row.rechnungBusinessId}`, kind: 'neutral' }]
 			: [];
 	}
+
+	// A Beitrag has no Einnahmen-detail route — editing, Storno and Befreiung all
+	// live on the Mitglieder-Matrix, so the row goes there instead.
+	function rowHref(row: EinnahmenRow): string {
+		if (row.kind === 'beitrag')
+			return row.memberId ? `/app/mitglieder/${row.memberId}` : '/app/mitglieder';
+		return `/app/einnahmen/${row.id}`;
+	}
+
+	// Honesty hint (same contract as the feed): when a filter can't describe a
+	// Mitgliedsbeitrag the arm drops out, and the toolbar says so — otherwise the
+	// Beiträge would just silently vanish from a list that normally has them.
+	const beitragHint = $derived(einnahmenBeitragExclusionHint(data.filterState));
 
 	const sortOverride = $derived($page.url.searchParams.has('sort'));
 	const groups = $derived(
@@ -97,7 +120,7 @@
 			statusChips={chips(row)}
 			amountCents={row.betragCents}
 			signed={true}
-			href={`/app/einnahmen/${row.id}`}
+			href={rowHref(row)}
 		/>
 	{/each}
 {/snippet}
@@ -120,6 +143,7 @@
 				memberOptions={data.memberOptions}
 				resultCount={data.total}
 				totalCount={data.kpi.count}
+				notice={beitragHint}
 				{exportHref}
 			>
 				{#snippet pageActions()}

@@ -19,6 +19,19 @@ describe("berlinMonthKey", () => {
     // 2025-12-31T23:30:00Z is already 2026-01-01 00:30 in Berlin (CET +1).
     expect(berlinMonthKey("2025-12-31T23:30:00.000Z")).toBe("2026-01");
   });
+
+  it("must be fed ISO, never a raw Postgres timestamp string", () => {
+    // The date-only fast path keys off the missing "T", so a raw PG wire string
+    // ("2026-03-31 23:30:00+00") is mistaken for an already-local date and the
+    // month gets sliced straight off the UTC text — März, though that instant
+    // is 01:30 on 1 April in Berlin. This is why `formatTs` in transactions.ts
+    // parses instead of passing strings through: `db.execute` returns this
+    // form where the Drizzle query builder returns a Date.
+    expect(berlinMonthKey("2026-03-31 23:30:00+00")).toBe("2026-03");
+    expect(
+      berlinMonthKey(new Date("2026-03-31 23:30:00+00").toISOString()),
+    ).toBe("2026-04");
+  });
 });
 
 describe("monthLabel", () => {

@@ -200,7 +200,7 @@ test.describe("@phase-2 Portal — Einreichen transportiert die Eingabe", () => 
     await page.getByTestId("amount-field-input").fill("19,90");
     await submit.click();
     const gate = page.getByTestId("einreichen-gate");
-    await expect(gate).toContainText("Bezeichnung");
+    await expect(gate).toContainText("Was war's");
     await expect(gate).not.toContainText("Betrag");
   });
 

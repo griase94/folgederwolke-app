@@ -67,21 +67,35 @@ export const GET: RequestHandler = async ({ params }) => {
   // the 3-source union (income + donations + member_beitrags) so the PDF
   // matches Übersicht byte-for-byte on the totals.
   //
-  // Separately, the Anlage-Gem-CSV and the GoBD-Z3 XML rely on the *non*-
-  // union row arrays (with eur_zeile + anlage_gem_zeile from the kategorien
-  // JOIN). Donations + Mitgliedsbeiträge have no eur_zeile / anlage_gem_zeile
-  // and have their own dedicated bundle exports (03_Spendenliste,
-  // 08_Mitgliedsbeitraege). We therefore keep a second non-union `eurForRows`
-  // for those two consumers.
+  // Separately, the Anlage-Gem-CSV relies on the *non*-union row arrays (with
+  // eur_zeile + anlage_gem_zeile from the kategorien JOIN), because it
+  // aggregates BY those Zeilen. We therefore keep a second non-union `eur`
+  // for it.
+  //
+  // The GoBD-Z3 journal, by contrast, must carry ALL Einnahmen: it takes the
+  // income rows from that non-union `eur`, the Spenden from the Spendenliste
+  // rows below, and (since S1) the paid Mitgliedsbeiträge from
+  // `beitragEurRows` — the exact rows the EÜR folded in. Before S1 the
+  // Beitrags-arm was missing entirely, so the journal and the EÜR PDF in this
+  // same ZIP disagreed by the whole Beitragssumme.
   const {
     eur: eurForPdf,
     vereinName,
     einnahmenRowsWithKategorien: einnahmen,
     ausgabenRowsWithKategorien: ausgaben,
+    beitragEurRows,
   } = await loadEurAggregatesForPdf(year);
   const eur = computeEurYear(year, einnahmen, ausgaben);
 
-  // 2. Fetch Spenden
+  // 2. Fetch Spenden.
+  //
+  // `supersedes_id IS NULL` is the app-wide "live row" predicate (dashboard,
+  // einnahmen-kpi, transaction-filter-sql, the EÜR union, and the
+  // Bescheinigungs-query 20 lines below all carry it). This query was the one
+  // money path that omitted it, so a superseded Spende was counted in the
+  // Spendenliste + GoBD journal but NOT in the EÜR — a silent divergence in
+  // the same bundle. Aligning it is what makes the GoBD/EÜR sum identity hold
+  // for the Spenden arm the way S1 makes it hold for the Beitrags arm.
   const rawDonationRows = await db.execute(sql`
     SELECT
       d.business_id,
@@ -103,6 +117,7 @@ export const GET: RequestHandler = async ({ params }) => {
     FROM donations d
     LEFT JOIN members m ON m.id = d.member_id
     WHERE d.year_of_buchung = ${year}
+      AND d.supersedes_id IS NULL
     ORDER BY d.gebucht_am ASC
   `);
   const donationRows = rawDonationRows as unknown as DonationRow[];
@@ -223,14 +238,26 @@ export const GET: RequestHandler = async ({ params }) => {
   }));
 
   // C1-M3 — Paid Mitgliedsbeiträge for the year.
+  //
+  // `gezahlt_am IS NOT NULL` mirrors the EÜR union's predicate: a row with
+  // paid_cents > 0 but no payment date is not realized cashflow and the EÜR
+  // skips it, so listing it here would make 08_Mitgliedsbeitraege disagree
+  // with both the EÜR PDF and the GoBD journal in the same bundle.
+  //
+  // The year filter is the Zufluss year (S2, see
+  // $lib/server/domain/beitrag-buchungsjahr.ts) — written out against the `mb`
+  // alias because the shared fragment renders an unaliased column reference.
+  // The `Jahr` column still carries the Beitragsjahr, so a 2025 Beitrag paid in
+  // 2026 appears in the 2026 bundle and says so.
   const beitragRows = (await db.execute(sql`
     SELECT concat_ws(' ', m.vorname, m.nachname) AS member_name,
            mb.year, mb.betrag_cents, mb.paid_cents,
            mb.gezahlt_am::text AS gezahlt_am
       FROM member_beitrags mb
       JOIN members m ON m.id = mb.member_id
-     WHERE mb.year = ${year}
+     WHERE EXTRACT(YEAR FROM mb.gezahlt_am)::int = ${year}
        AND mb.paid_cents > 0
+       AND mb.gezahlt_am IS NOT NULL
      ORDER BY m.nachname ASC, m.vorname ASC
   `)) as unknown as Array<{
     member_name: string;
@@ -275,6 +302,7 @@ export const GET: RequestHandler = async ({ params }) => {
     bescheinigungPdfs,
     auditLogSlice,
     memberBeitrags,
+    beitragEurRows,
     belegAttachments,
   });
 

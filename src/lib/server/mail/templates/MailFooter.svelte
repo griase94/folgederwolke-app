@@ -20,12 +20,17 @@
 	};
 
 	import { BRAND_PRIMARY_STRONG } from '$lib/brand.js';
+	import { HAIRLINE, INK_300 } from './kit/tokens.js';
 	let { vereinName, adresse, vr, steuernummer, brandColor = BRAND_PRIMARY_STRONG }: Props = $props();
 </script>
 
+<!-- Neutrals come from the mail palette, not from Tailwind's cold blue-grays:
+     #9ca3af next to Aurora's warm ink read as a different design system in the
+     same card (Abnahme "Kit-Fix statt Plate-Pflaster"). Shared by all eight
+     templates, so this is one fix, not eight. -->
 <tr>
 	<td
-		style="padding:24px 32px 28px 32px;text-align:center;font-size:11px;color:#9ca3af;line-height:1.6;border-top:1px solid #f1e6ec;"
+		style="padding:24px 32px 28px 32px;text-align:center;font-size:11px;color:{INK_300};line-height:1.6;border-top:1px solid {HAIRLINE};"
 	>
 		<strong style="color:{brandColor};">{vereinName}</strong> · {adresse}<br />
 		{vr} · Steuernummer {steuernummer}

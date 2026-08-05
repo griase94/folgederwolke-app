@@ -427,6 +427,24 @@
 		return formValid ? `${noun} — ${formatMoney(gesamtCents)}` : noun;
 	});
 	/**
+	 * Field labels, single-sourced: the visible <Label> and the gate line read
+	 * from the SAME constant. They drifted before — the gate line asked for
+	 * "Bezeichnung" and "Datum" while the form showed "Was war's" and
+	 * "Rechnungsdatum", sending people hunting for fields that do not exist by
+	 * that name. A rename here now changes both at once.
+	 */
+	const FIELD = {
+		bezeichnung: "Was war's",
+		betrag: 'Betrag',
+		datum: 'Rechnungsdatum',
+		beleg: 'Beleg',
+		begruendung: 'Begründung',
+		name: 'Name',
+		email: 'E-Mail',
+		iban: 'IBAN'
+	} as const;
+
+	/**
 	 * The fields a block is ACTUALLY still missing. Naming a filled field is
 	 * worse than saying nothing — the gate line is the load-bearing explanation
 	 * now that the CTA is never disabled.
@@ -436,14 +454,18 @@
 		const scope = `[data-block="${b.clientKey}"]`;
 		const gaps: Gap[] = [];
 		if (b.bezeichnung.trim().length < 3)
-			gaps.push({ label: 'Bezeichnung', selector: `#bez-${b.clientKey}` });
+			gaps.push({ label: FIELD.bezeichnung, selector: `#bez-${b.clientKey}` });
 		if (b.betragCents == null || b.betragCents <= 0)
-			gaps.push({ label: 'Betrag', selector: `${scope} [data-testid="amount-field-input"]` });
+			gaps.push({ label: FIELD.betrag, selector: `${scope} [data-testid="amount-field-input"]` });
 		if (!/^\d{4}-\d{2}-\d{2}$/.test(b.rechnungsdatum))
-			gaps.push({ label: 'Datum', selector: `${scope} [data-testid="date-field-input"]` });
+			gaps.push({ label: FIELD.datum, selector: `${scope} [data-testid="date-field-input"]` });
 		if (!belegOk(b))
+			// Name the field the eye can find: "Beleg" until the Verzicht arm is
+			// chosen, "Begründung" once its textarea is on screen. The either/or is
+			// explained INSIDE the control by its two options, so the gate line does
+			// not have to invent a compound name for it.
 			gaps.push({
-				label: isMember && b.keinBeleg ? 'Begründung' : isMember ? 'Beleg oder Begründung' : 'Beleg',
+				label: isMember && b.keinBeleg ? FIELD.begruendung : FIELD.beleg,
 				selector:
 					isMember && b.keinBeleg
 						? `${scope} [data-testid="beleg-verzicht-grund"]`
@@ -462,11 +484,11 @@
 	function identityGaps(): Gap[] {
 		const gaps: Gap[] = [];
 		if (externName.trim().length === 0)
-			gaps.push({ label: 'Name', selector: '#ext-name' });
+			gaps.push({ label: FIELD.name, selector: '#ext-name' });
 		if (!emailRe.test(externEmail.trim()))
-			gaps.push({ label: 'E-Mail', selector: '#ext-email' });
+			gaps.push({ label: FIELD.email, selector: '#ext-email' });
 		if (externIban.replace(/\s+/g, '').length < 15)
-			gaps.push({ label: 'IBAN', selector: '#ext-iban' });
+			gaps.push({ label: FIELD.iban, selector: '#ext-iban' });
 		return gaps;
 	}
 
@@ -498,7 +520,7 @@
 {#snippet blockFields(block: Block)}
 	<div class="flex flex-col gap-4" data-block={block.clientKey}>
 		<div class="flex flex-col gap-1.5">
-			<Label for="bez-{block.clientKey}">Was war's <span class="text-primary-text" aria-hidden="true">*</span></Label>
+			<Label for="bez-{block.clientKey}">{FIELD.bezeichnung} <span class="text-primary-text" aria-hidden="true">*</span></Label>
 			<Input
 				id="bez-{block.clientKey}"
 				type="text"
@@ -513,7 +535,7 @@
 
 		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 			<div class="flex flex-col gap-1.5">
-				<Label>Betrag <span class="text-primary-text" aria-hidden="true">*</span></Label>
+				<Label>{FIELD.betrag} <span class="text-primary-text" aria-hidden="true">*</span></Label>
 				<AmountField
 					name="_betrag_{block.clientKey}"
 					value={centsToInput(block.betragCents)}
@@ -531,7 +553,7 @@
 				{@render fieldError(`err-betrag-${block.clientKey}`, itemError(block.clientKey, 'betrag_cents'))}
 			</div>
 			<div class="flex flex-col gap-1.5">
-				<Label>Rechnungsdatum <span class="text-primary-text" aria-hidden="true">*</span></Label>
+				<Label>{FIELD.datum} <span class="text-primary-text" aria-hidden="true">*</span></Label>
 				<DateField
 					name="_datum_{block.clientKey}"
 					value={block.rechnungsdatum}
@@ -667,17 +689,17 @@
 			{@render payout?.()}
 		{:else}
 		<div class="flex flex-col gap-1.5">
-			<Label for="ext-name">Name <span class="text-primary-text" aria-hidden="true">*</span></Label>
+			<Label for="ext-name">{FIELD.name} <span class="text-primary-text" aria-hidden="true">*</span></Label>
 			<Input id="ext-name" type="text" maxlength={120} placeholder="Vor- und Nachname" bind:value={externName} oninput={triggerSave} aria-invalid={Boolean(identityError('name'))} />
 			{@render fieldError('err-name', identityError('name'))}
 		</div>
 		<div class="flex flex-col gap-1.5">
-			<Label for="ext-email">E-Mail <span class="text-primary-text" aria-hidden="true">*</span></Label>
+			<Label for="ext-email">{FIELD.email} <span class="text-primary-text" aria-hidden="true">*</span></Label>
 			<Input id="ext-email" type="email" inputmode="email" autocapitalize="none" maxlength={254} placeholder="damit wir dich erreichen" bind:value={externEmail} oninput={triggerSave} aria-invalid={Boolean(identityError('email'))} />
 			{@render fieldError('err-email', identityError('email'))}
 		</div>
 		<div class="flex flex-col gap-1.5">
-			<Label for="ext-iban">IBAN <span class="text-primary-text" aria-hidden="true">*</span></Label>
+			<Label for="ext-iban">{FIELD.iban} <span class="text-primary-text" aria-hidden="true">*</span></Label>
 			<Input id="ext-iban" type="text" class="max-w-[30ch] tabular-nums tracking-[0.04em]" maxlength={34} placeholder="DE00 0000 0000 0000 0000 00" bind:value={externIban} oninput={triggerSave} aria-invalid={Boolean(identityError('iban'))} />
 			<p class="text-xs leading-snug text-ink-500">Für die Rücküberweisung — geht <b class="font-semibold">verschlüsselt</b> direkt an den Vorstand.</p>
 			{@render fieldError('err-iban', identityError('iban'))}

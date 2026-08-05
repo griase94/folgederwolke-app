@@ -112,12 +112,14 @@ test.describe("@phase-2 auslage form (extern-only + batch)", () => {
     await expect(page.getByTestId("einreichen-gate")).toContainText("Name");
 
     // Once identity is filled, the gate moves on to the block's real gaps —
-    // and names only what is actually still empty.
+    // and names only what is actually still empty, under the label that is ON
+    // SCREEN ("Was war's"), never the column name behind it.
     await fillIdentity(page);
     await submit.click();
     const gate = page.getByTestId("einreichen-gate");
-    await expect(gate).toContainText("Bezeichnung");
+    await expect(gate).toContainText("Was war's");
     await expect(gate).toContainText("Betrag");
+    await expect(gate).not.toContainText("Bezeichnung");
   });
 
   test("project select is populated from the seeded projects (AT-002 guard)", async ({

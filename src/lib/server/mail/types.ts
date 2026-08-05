@@ -65,6 +65,11 @@ export interface EingangsMailProps {
   bezeichnung: string;
   /** Single: the amount. Batch: the group TOTAL. */
   betragCents: number;
+  /**
+   * ISO receipt date. Single only — a digest has n of them and shows the
+   * per-Auslage rows instead. Null when the submitter left it empty.
+   */
+  rechnungsdatum?: string | null;
   eingereichtAm: Date;
   /**
    * Batch digest: when present (a multi-Auslage submit), the template renders a
@@ -80,6 +85,13 @@ export interface ErstattungsMailProps {
   bezeichnung: string;
   betragCents: number;
   verwendungszweck: string;
+  /**
+   * The payout account, already masked for display ("DE12 •••• 3000"). The
+   * member cannot otherwise tell WHICH account the M4 precedence picked — a
+   * snapshot taken at submission time may differ from the IBAN in their
+   * profile today — so the mail names it. Null when there is no payee.
+   */
+  zielIban?: string | null;
   erstattungsAm: Date;
 }
 
@@ -98,7 +110,14 @@ export interface RejectionMailProps {
   bezeichnung: string;
   betragCents: number;
   grund: string;
+  /**
+   * Kept for the subject line and future use; the v1 body deliberately shows
+   * `eingereichtAm` instead — "which submission is this about?" is the reader's
+   * question, not "when did you decide?" (mail-auslage-abgelehnt.md §5).
+   */
   abgelehntAm: Date;
+  /** `auslagen_submissions.submitted_at` — the fact block's context row. */
+  eingereichtAm: Date;
 }
 
 export interface BeitragsReminderProps {
@@ -223,6 +242,12 @@ export interface ApprovalMailProps {
   bezeichnung: string;
   betragCents: number;
   kategorie: string;
+  /**
+   * Display name of the sphere the chosen Kategorie derives (ADR-0002), e.g.
+   * "Zweckbetrieb" — rendered as "{kategorie} · {sphaere}". Never inferred in
+   * the template: the approve flow already resolved it authoritatively.
+   */
+  sphaere: string;
   decidedAt: string;
 }
 

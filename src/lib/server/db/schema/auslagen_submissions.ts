@@ -175,6 +175,12 @@ export const auslagenSubmissions = pgTable(
     submissionNonceUq: uniqueIndex("auslagen_submissions_submission_nonce_uq")
       .on(t.submissionNonce)
       .where(sql`submission_nonce IS NOT NULL`),
+    // Partial UNIQUE: an approved expense belongs to at most ONE submission.
+    // The Werkstatt resolves payout IBAN + AUS-Nr from here, so a second link
+    // would double-count that amount in the reimbursement pool (A-S3).
+    approvedExpenseUq: uniqueIndex("auslagen_submissions_approved_expense_uq")
+      .on(t.approvedExpenseId)
+      .where(sql`approved_expense_id IS NOT NULL`),
     decidedAtIdx: index("auslagen_submissions_decided_at_idx").on(t.decidedAt),
     submittedAtIdx: index("auslagen_submissions_submitted_at_idx").on(
       t.submittedAt,

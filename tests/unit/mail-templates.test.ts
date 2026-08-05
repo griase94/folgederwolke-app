@@ -99,11 +99,11 @@ describe("EingangsMail — brand strip + content", () => {
 
   it("renders body content (greeting, AUS-ID, Betrag, CTA)", async () => {
     const { html } = await renderTemplate("EingangsMail", props);
-    expect(html).toContain("Liebste:r Lea");
+    expect(html).toContain("Liebe:r Lea");
     expect(html).toContain("AUS-2026-042");
     expect(html).toContain("23,50");
     expect(html).toContain("/auslage-status/AUS-2026-042");
-    expect(html).toContain("Mit besten Grüßen");
+    expect(html).toContain("die Finanz-Gschaftler:innen");
   });
 });
 
@@ -111,14 +111,14 @@ describe("EingangsMail — brand strip + content", () => {
 // ErstattungsMail
 // ---------------------------------------------------------------------------
 
-describe("ErstattungsMail — brand strip + content", () => {
+describe("ErstattungsMail — brand strip", () => {
   const props = {
     ...WL_IDENTITY,
     vorname: "Lea",
     ausId: "AUS-2026-042",
     bezeichnung: "Druckerpapier für Wolkenbüro",
     betragCents: 2350,
-    verwendungszweck: "AUS-2026-042 Lea Mustermann",
+    verwendungszweck: "Erstattung AUS-2026-042 Verein X e.V.",
     erstattungsAm: new Date("2026-05-17T12:00:00Z"),
   };
 
@@ -127,21 +127,15 @@ describe("ErstattungsMail — brand strip + content", () => {
     expectBrandStrip(html);
   });
 
-  it("renders body content (AUS-ID, Betrag, Verwendungszweck, Werktage)", async () => {
-    const { html } = await renderTemplate("ErstattungsMail", props);
-    expect(html).toContain("Liebste:r Lea");
-    expect(html).toContain("AUS-2026-042");
-    expect(html).toContain("23,50");
-    expect(html).toContain("AUS-2026-042 Lea Mustermann");
-    expect(html).toContain("Werktagen");
-  });
+  // Body structure + copy moved to mail-auslage-decision.test.ts with the
+  // A-S3.3 redesign — the three decision mails are asserted as one suite there.
 });
 
 // ---------------------------------------------------------------------------
 // RejectionMail
 // ---------------------------------------------------------------------------
 
-describe("RejectionMail — brand strip + content", () => {
+describe("RejectionMail — brand strip", () => {
   const props = {
     ...WL_IDENTITY,
     vorname: "Lea",
@@ -150,6 +144,7 @@ describe("RejectionMail — brand strip + content", () => {
     betragCents: 2350,
     grund: "Beleg fehlt – bitte Quittung als PDF nachreichen.",
     abgelehntAm: new Date("2026-05-18T09:00:00Z"),
+    eingereichtAm: new Date("2026-05-17T09:00:00Z"),
   };
 
   it("uses the brand-strip pattern", async () => {
@@ -157,14 +152,8 @@ describe("RejectionMail — brand strip + content", () => {
     expectBrandStrip(html);
   });
 
-  it("renders rejection content (greeting, AUS-ID, Grund, gentle wording)", async () => {
-    const { html } = await renderTemplate("RejectionMail", props);
-    expect(html).toContain("Liebste:r Lea");
-    expect(html).toContain("AUS-2026-042");
-    expect(html).toContain("Beleg fehlt");
-    // Gentle wording — keeps the door open for resubmission.
-    expect(html).toMatch(/(noch einmal|erneut|korrigiert)/i);
-  });
+  // Body structure + copy moved to mail-auslage-decision.test.ts with the
+  // A-S3.3 redesign — the three decision mails are asserted as one suite there.
 });
 
 // ---------------------------------------------------------------------------

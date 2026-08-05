@@ -309,6 +309,13 @@
       "when": 1785270364456,
       "tag": "0043_welcome_seen_at",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1785838536938,
+      "tag": "0044_auslagen_submission_expense_unique",
+      "breakpoints": true
     }
   ]
 }

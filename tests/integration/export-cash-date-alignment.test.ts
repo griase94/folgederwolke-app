@@ -81,6 +81,7 @@ describe("B3 — GoBD-Z3 + CSV emit the cash (relevanz) date", () => {
       einnahmen: [mkRow({ businessId: `E-${CASH_YEAR}-001` })],
       ausgaben: [mkRow({ businessId: `A-${CASH_YEAR}-001` })],
       spenden: [],
+      beitrags: [],
     });
 
     // Both records carry the cash date as <Datum>; the gebucht_am year must
@@ -129,6 +130,7 @@ describe("B3 — GoBD-Z3 + CSV emit the cash (relevanz) date", () => {
           sphereSnapshot: "ideeller",
         },
       ],
+      beitrags: [],
     });
     const datums = [...xml.matchAll(/<Datum>([^<]*)<\/Datum>/g)].map(
       (m) => m[1],
@@ -294,6 +296,7 @@ describe.skipIf(!dbConfigured)(
         einnahmen: einnahmenRowsWithKategorien,
         ausgaben: ausgabenRowsWithKategorien,
         spenden: [],
+        beitrags: [],
       });
       // Locate our pivot records and assert their Datum == cash date.
       const incBlock = xml.slice(xml.indexOf(`E-${CASH_YEAR}-940001`));
@@ -345,6 +348,7 @@ describe.skipIf(!dbConfigured)(
         einnahmen: einnahmenRowsWithKategorien,
         ausgaben: ausgabenRowsWithKategorien,
         spenden: [],
+        beitrags: [],
       });
       const incBlock = xml.slice(
         xml.indexOf(`E-${BOUNDARY_BERLIN_YEAR}-950001`),

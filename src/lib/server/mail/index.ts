@@ -54,6 +54,20 @@ async function loadTemplate(name: TemplateName) {
 // Subject lines
 // ---------------------------------------------------------------------------
 
+/**
+ * "(36,40 €) " for a subject line, or "" when the prop bag has no usable
+ * amount — subjects are assembled from an untyped record, and a missing value
+ * must drop the clause rather than ship "(NaN €)" into someone's inbox.
+ */
+function amountClause(cents: unknown): string {
+  if (typeof cents !== "number" || !Number.isFinite(cents)) return "";
+  const eur = (cents / 100).toLocaleString("de-DE", {
+    style: "currency",
+    currency: "EUR",
+  });
+  return ` (${eur})`;
+}
+
 export function subjectFor(
   name: TemplateName,
   props: Record<string, unknown>,
@@ -68,17 +82,20 @@ export function subjectFor(
     case "magic_link":
       return `Dein Anmelde-Link für ${vereinName}`;
     case "auslage_eingang": {
-      // Batch digest → plural subject ("Deine 3 Auslagen sind …"); single →
-      // the AUS-id subject.
+      // Amount up front on both variants — the fact that survives the inbox's
+      // ~40-character truncation. Batch digest → plural.
       const items = props.items;
       const n = Array.isArray(items) ? items.length : 0;
-      if (n > 1) return `Deine ${n} Auslagen sind bei uns angekommen`;
-      return `Deine Auslage ${props.ausId ?? ""} ist bei uns angekommen`;
+      if (n > 1)
+        return `Alles drin: ${n} Auslagen${amountClause(props.betragCents)} sind bei uns gelandet`;
+      return `Angekommen: Deine Auslage ${props.ausId ?? ""}${amountClause(props.betragCents)} liegt bei uns`;
     }
+    // The three decision subjects lead with what survives inbox truncation
+    // (~40 chars): the outcome and the amount, not the AUS-id.
     case "auslage_erstattet":
-      return `Deine Erstattung für ${props.ausId ?? ""} ist auf dem Weg`;
+      return `Überwiesen${amountClause(props.betragCents)}: Deine Erstattung ist raus`;
     case "auslage_abgelehnt":
-      return `Zu deiner Auslage ${props.ausId ?? ""}`;
+      return `Kurz zu deiner Auslage ${props.ausId ?? ""} — so klappt's mit der Erstattung`;
     case "beitrag_reminder":
       return `Erinnerung: dein Mitgliedsbeitrag ${props.jahr ?? ""} ist noch offen`;
     case "spende_bescheinigung":
@@ -86,7 +103,7 @@ export function subjectFor(
     case "invoice_versendet":
       return `Rechnung ${props.invoiceNumber ?? ""} von ${vereinName}`;
     case "auslage_approved":
-      return `${props.ausId ?? ""} genehmigt – ${vereinName}`;
+      return `Genehmigt${amountClause(props.betragCents)}: Deine Auslage ${props.ausId ?? ""} ist durch`;
     default:
       return `Nachricht von ${vereinName}`;
   }

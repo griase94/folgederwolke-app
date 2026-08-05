@@ -10,7 +10,7 @@
  * @phase-0
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { getDb } from "$lib/server/db/index.js";
 import { beitragssatzByYear } from "$lib/server/db/schema/beitragssatz.js";
 import { getMemberBeitrag } from "../helpers/queries.js";
@@ -20,6 +20,10 @@ import { markBeitragPaid } from "$lib/server/domain/members-actions.js";
 const TEST_YEAR = 2026;
 
 describe("@phase-0 markBeitragPaid — B1 Berlin-date regression (named-args)", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("stores the caller-provided gezahltAm (Berlin new-year date)", async () => {
     const db = getDb();
     await db
@@ -30,7 +34,15 @@ describe("@phase-0 markBeitragPaid — B1 Berlin-date regression (named-args)", 
     const member = await seedMember({ name: "B1RegressionMember" });
     await seedOpenBeitrag({ memberId: member.id, year: TEST_YEAR });
 
-    // Route action would call berlinYmd() at 23:01 UTC on Dec 31 → "2027-01-01"
+    // Stand at the instant this case is about: 23:01 UTC on Dec 31 is already
+    // 00:01 on Jan 1 in Berlin, so the route's berlinYmd() yields "2027-01-01".
+    // The clock has to actually BE there — since S2 the payment date decides
+    // the Buchungsjahr, and a "2027-01-01" payment judged against a wall clock
+    // still in 2026 is a future booking, which markBeitragPaid rightly refuses.
+    // Only Date is faked; the postgres driver's timers keep running.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-12-31T23:01:00Z"));
+
     await markBeitragPaid({
       memberId: member.id,
       year: TEST_YEAR,

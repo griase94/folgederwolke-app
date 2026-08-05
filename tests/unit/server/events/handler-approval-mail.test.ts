@@ -113,6 +113,7 @@ describe("auslage.approved handler → ApprovalMail dispatch", () => {
       bezeichnung: "Druckerpapier",
       betragCents: 1599,
       kategorie: "Büromaterial",
+      sphaere: "Ideeller Bereich",
       decidedAt: "2026-05-22T03:00:00+02:00",
       decidedByUserId: "admin-1",
       send_attempt: 0,
@@ -131,6 +132,9 @@ describe("auslage.approved handler → ApprovalMail dispatch", () => {
     expect(props.bezeichnung).toBe("Druckerpapier");
     expect(props.betragCents).toBe(1599);
     expect(props.kategorie).toBe("Büromaterial");
+    // The sphere rides along to the mail: the Kategorie line reads
+    // "{Kategorie} · {Sphäre}", and the template must never derive it itself.
+    expect(props.sphaere).toBe("Ideeller Bereich");
   });
 
   it("forwards send_attempt for re-approve-after-reject (P2-B6)", async () => {
@@ -142,6 +146,7 @@ describe("auslage.approved handler → ApprovalMail dispatch", () => {
       bezeichnung: "Druckerpapier",
       betragCents: 1599,
       kategorie: "Büromaterial",
+      sphaere: "Ideeller Bereich",
       decidedAt: "2026-05-22T03:00:00+02:00",
       decidedByUserId: "admin-1",
       send_attempt: 2,
@@ -161,6 +166,7 @@ describe("auslage.approved handler → ApprovalMail dispatch", () => {
       bezeichnung: "Verein-bezahlt expense",
       betragCents: 500,
       kategorie: "Büromaterial",
+      sphaere: "Ideeller Bereich",
       decidedAt: "2026-05-22T03:00:00+02:00",
       decidedByUserId: "admin-1",
       send_attempt: 0,
@@ -182,6 +188,7 @@ describe("auslage.approved handler → ApprovalMail dispatch", () => {
         bezeichnung: "Druckerpapier",
         betragCents: 1599,
         kategorie: "Büromaterial",
+        sphaere: "Ideeller Bereich",
         decidedAt: "2026-05-22T03:00:00+02:00",
         decidedByUserId: "admin-1",
         send_attempt: 0,
