@@ -248,16 +248,15 @@
 							class="hidden text-[11px] font-bold uppercase tracking-wider text-ink-300 md:inline"
 							>Sortieren</span
 						>
-						<!-- Lifted to the toolbar scale (h-11 md:h-10): a 32px segmented
-						     control between 40px controls made the row read as three
-						     scales instead of one line. The segments stay compact
-						     inside that frame. -->
+						<!-- No height override any more: the toolbar scale (h-11 md:h-10)
+						     is the Kit default since SLOT-FELD. The old override stretched
+						     the TRACK to 44px and left the segments at 28px inside it —
+						     a control that looked touch-sized and wasn't. -->
 						<SegmentedControl
 							options={LENS_OPTIONS}
 							value={lens}
 							onChange={onLensChange}
 							ariaLabel="Sortierung"
-							class="h-11 md:h-10"
 							data-testid="feed-lens"
 						/>
 						<CreateMenu />
