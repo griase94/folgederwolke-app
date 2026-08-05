@@ -24,7 +24,6 @@
 		onChange: (value: string) => void;
 		/** Accessible label for the radiogroup. */
 		ariaLabel?: string;
-		size?: "sm" | "default";
 		/**
 		 * `default` — the compact radiogroup used for filters and switches.
 		 * `lens`    — the Werkstatt's recessed-track view switcher (Abnahme #5):
@@ -45,7 +44,6 @@
 		value,
 		onChange,
 		ariaLabel,
-		size = "default",
 		variant = "default",
 		...restProps
 	}: SegmentedControlProps = $props();
@@ -107,7 +105,6 @@
 <div
 	bind:this={ref}
 	data-slot="segmented-control"
-	data-size={size}
 	data-variant={variant}
 	role={variant === "lens" ? "tablist" : "radiogroup"}
 	aria-label={ariaLabel}
@@ -127,7 +124,11 @@
 				// by the padding.
 				"rounded-[14px] border-hairline bg-secondary p-1 text-sm"
 			: "bg-muted/60 border-border/60 ring-foreground/5 ring-1",
-		variant === "default" && (size === "sm" ? "h-7 text-xs" : "h-8 text-sm"),
+		// Row-control canon (§1.5): 44px on mobile, 40px from md — the same
+		// scale as every other control on a toolbar row. `md:min-h-10` is not
+		// optional: a `min-h-11` without it outranks `md:h-10` and the control
+		// stays 44px at desktop (the #167 cta bug).
+		variant === "default" && "h-11 min-h-11 text-sm md:h-10 md:min-h-10",
 		className
 	)}
 	{...restProps}
@@ -150,9 +151,13 @@
 				"focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
 				variant === "lens"
 					? "min-h-11 flex-1 rounded-[10px] px-4 md:min-h-10"
-					: size === "sm"
-						? "h-6 px-2"
-						: "h-7 px-3",
+					: // The pill FILLS the track. It is the visible state, so hit
+						// area and sight area must be the same rectangle — a compact
+						// pill floating in a 44px frame reads as broken and hides
+						// where the tap actually lands. (FilterChips keeps its pill
+						// compact because free-standing chips have no frame that
+						// would make the gap visible; here the frame is right there.)
+						"h-full px-3",
 				selected
 					? "bg-background text-foreground shadow-sm ring-1 ring-foreground/10"
 					: "text-muted-foreground hover:text-foreground"

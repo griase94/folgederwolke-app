@@ -98,7 +98,20 @@
 	let firstTemplateEl = $state<HTMLElement | null>(null);
 
 	const tooShort = $derived(grund.trim().length < GRUND_MIN);
-	const canSubmit = $derived(!loading && !tooShort);
+
+	/**
+	 * `minlength` counts whitespace, the server counts a TRIMMED reason — so five
+	 * spaces clear the HTML rule and still get rejected. Teaching the field the
+	 * server's rule via setCustomValidity keeps the doctrine (button open,
+	 * constraint validation carries the click) AND keeps the truth client-side:
+	 * the browser refuses, names it in German, and focuses the textarea, instead
+	 * of a round-trip that comes back with the same answer.
+	 */
+	$effect(() => {
+		textareaEl?.setCustomValidity(
+			tooShort ? `Bitte mindestens ${GRUND_MIN} Zeichen — Leerzeichen zählen nicht.` : ''
+		);
+	});
 
 	function selectTemplate(key: string): void {
 		selectedKey = key;
@@ -125,10 +138,16 @@
 		grund = REJECT_TEMPLATES[0]!.text;
 	}
 
-	/** Cmd/Ctrl+Enter submits from inside the textarea when the reason is valid. */
+	/**
+	 * Cmd/Ctrl+Enter submits from inside the textarea. It does NOT pre-check the
+	 * reason: `requestSubmit()` runs constraint validation, so a too-short reason
+	 * gets the browser's own focus + message instead of the keystroke vanishing
+	 * without a word (FormFooter doctrine §4 — the same reason the button below
+	 * is no longer disabled for it).
+	 */
 	function onTextareaKeydown(e: KeyboardEvent): void {
 		if (e.key !== 'Enter' || !(e.metaKey || e.ctrlKey)) return;
-		if (!canSubmit) return;
+		if (loading) return;
 		e.preventDefault();
 		(e.currentTarget as HTMLElement).closest('form')?.requestSubmit();
 	}
@@ -140,9 +159,11 @@
 				? `Die Ablehnung wird als Mail an ${empfaengerDisplay || 'die einreichende Person'} verschickt.`
 				: 'Es ist keine E-Mail hinterlegt — die Ablehnung wird nur intern vermerkt.'
 	);
+	// The old wording promised „dann wird ‚Ablehnen' aktiv" — since §4 the button
+	// is ALWAYS active, so that sentence would describe a UI we no longer have.
 	const hintText = $derived(
 		tooShort
-			? `Mindestens ${GRUND_MIN} Zeichen — dann wird „Ablehnen“ aktiv.`
+			? `Mindestens ${GRUND_MIN} Zeichen — kürzer nimmt die Ablehnung nicht an.`
 			: 'Dieser Text landet 1:1 in der Ablehnungs-Mail.'
 	);
 
@@ -281,9 +302,13 @@
 						</button>
 					{/snippet}
 				</Dialog.Close>
+				<!-- FormFooter doctrine (§4): disabled = in flight, never incomplete.
+				     The Grund textarea carries required + minlength, and this form is
+				     not `novalidate`, so constraint validation names the gap on click
+				     instead of the button going mute next to a hint nobody read. -->
 				<button
 					type="submit"
-					disabled={!canSubmit}
+					disabled={loading}
 					data-testid="reject-submit"
 					class="flex h-11 items-center justify-center gap-2 rounded-[10px] border border-transparent bg-severity-critical px-4 text-sm font-semibold text-white transition-colors hover:bg-severity-critical/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 md:h-10"
 				>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { TOOLBAR_CONTROL } from '$lib/components/ui/list-toolbar/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import ProjectList from '$lib/components/admin/projects/ProjectList.svelte';
 	import AddProjectDialog from '$lib/components/admin/projects/AddProjectDialog.svelte';
@@ -78,7 +79,7 @@
 				placeholder="Suchen…"
 				bind:value={searchQuery}
 				aria-label="Projekte suchen"
-				class="border-input focus-visible:ring-ring/50 h-8 w-full rounded-lg border bg-transparent py-1 pl-8 pr-3 text-base focus-visible:outline-none focus-visible:ring-2 sm:text-sm"
+				class={[TOOLBAR_CONTROL, "w-full pl-8"]}
 			/>
 		</div>
 	</div>

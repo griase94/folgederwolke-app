@@ -1,82 +1,79 @@
 /**
- * @phase-7.5 C9 — UX-030: every `<input type="date">` carries `lang="de"`.
+ * @phase-7.5 C9 — UX-030 (SLOT-FELD S5: allow-list → repo-wide ban).
  *
- * The Chrome/Edge native date picker honours the input's `lang` attribute for
- * placeholder formatting. Without it German users see `mm/dd/yyyy` — the
- * single most jarring detail on a German app. This test scans the source
- * tree and fails if any `type="date"` input is missing `lang="de"`.
+ * The Chrome/Edge native date picker formats its placeholder from the input's
+ * `lang`. Without it German users see `mm/dd/yyyy` — the single most jarring
+ * detail on a German app. The original guard fixed that by requiring
+ * `lang="de"` on a HAND-MAINTAINED list of files, plus a second list of files
+ * that had been migrated to the `DateField` primitive.
+ *
+ * Two lists of paths cannot hold: `/app/einstellungen/beitraege` shipped two
+ * native `<input type="date">` for years and appeared on NEITHER list, so the
+ * guard was green while the page showed `mm/dd/yyyy`. SLOT-FELD migrated it and
+ * replaced both lists with the rule the app actually follows:
+ *
+ *   Native date inputs are BANNED. Dates go through `ui/date-field/DateField`,
+ *   which renders a TT.MM.JJJJ text input with an ISO mirror — no browser
+ *   locale involved, no `lang` attribute needed, identical on every engine.
+ *
+ * The only allowed occurrence is inside the primitive itself, where the
+ * `type="date"` string lives in a comment explaining why it is not used.
  */
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// C6-FORM (Night-2 E4) migrated 6 of these files to the DateField primitive
-// (which renders a TT.MM.JJJJ text input — `type="date"` is gone). We keep
-// the lang="de" guard on the files that still ship native `<input type="date">`
-// (transactions/{neu}'s donation + income branches, project dialogs, and a
-// handful of admin-only utilities that aren't on the consumer-migration list).
-const FILES = [
-  "src/lib/components/admin/projects/AddProjectDialog.svelte",
-  "src/lib/components/admin/projects/EditProjectDialog.svelte",
-  "src/lib/components/admin/transactions/TransactionEditForm.svelte",
-  // C2/S3c: AddMemberDialog removed — the consolidated MemberDialog uses the
-  // DateField primitive for both dates (see MIGRATED_FILES), so no member dialog
-  // ships a native <input type="date"> any more.
-  // Phase 8 T6: src/routes/app/transactions/neu/+page.svelte deleted.
-  // The per-tab routes (ausgaben/neu, einnahmen/neu, spenden/neu) have their
-  // own date inputs and should be audited separately if they use native date inputs.
-];
+const ROOT = process.cwd();
+const SRC = join(ROOT, "src");
 
-// Files migrated to DateField under E4 — sanity-checked separately by
-// tests/unit/c6-form-consumers.test.ts. These should NOT have any native
-// `type="date"` inputs left.
-// Phase 6 (Tier C3) retired AddSpendeDialog/EditSpendeDialog with the old
-// /app/transactions/spenden route, so they are no longer in this guard.
-const MIGRATED_FILES = [
-  // Entry-modals redesign migrated ManualImportSheet's native date input to
-  // the DateField primitive (TT.MM.JJJJ) — no native `type="date"` remains.
-  "src/lib/components/admin/inbox/ManualImportSheet.svelte",
-  // final-polish: the Überweisungsliste Erstattungs-Datum migrated from a
-  // native date picker (which showed US MM/DD/YYYY) to the DateField primitive
-  // (TT.MM.JJJJ) — no native `type="date"` remains.
-  "src/routes/app/ausgaben/ueberweisungen/+page.svelte",
-  "src/lib/components/forms/AuslagenForm.svelte",
-  "src/lib/components/admin/invoices/InvoiceForm.svelte",
-  "src/lib/components/admin/members/MemberDialog.svelte",
-];
+/**
+ * The date primitive is the one place the string may appear (in prose, in its
+ * header comment). Everything else in `src/` is a finding.
+ */
+const ALLOWED = ["src/lib/components/ui/date-field/DateField.svelte"];
 
-describe('C9 UX-030 — every type="date" input has lang="de"', () => {
-  for (const path of FILES) {
-    it(`${path}: every date input is lang="de"`, () => {
-      const src = readFileSync(`${process.cwd()}/${path}`, "utf-8");
+function svelteFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const abs = join(dir, entry);
+    if (statSync(abs).isDirectory()) out.push(...svelteFiles(abs));
+    else if (entry.endsWith(".svelte")) out.push(abs);
+  }
+  return out;
+}
 
-      // Find every input tag containing type="date" — match the whole tag
-      // (including multi-line attributes). The regex is intentionally loose
-      // since Svelte attributes can be in any order.
-      const dateInputs = src.match(/<Input\b[^>]*type="date"[^>]*\/?>/gs) ?? [];
-      const rawDateInputs =
-        src.match(/<input\b[^>]*type="date"[^>]*\/?>/gs) ?? [];
-      const all = [...dateInputs, ...rawDateInputs];
+/** Every `<input>`/`<Input>` opening tag carrying `type="date"`. */
+function nativeDateInputs(src: string): string[] {
+  return [
+    ...(src.match(/<Input\b[^>]*type="date"[^>]*\/?>/gs) ?? []),
+    ...(src.match(/<input\b[^>]*type="date"[^>]*\/?>/gs) ?? []),
+  ];
+}
 
-      expect(all.length).toBeGreaterThan(0);
-
-      for (const tag of all) {
-        expect(tag, `missing lang="de" on date input in ${path}`).toMatch(
-          /lang="de"/,
-        );
-      }
-    });
+describe("C9 UX-030 — no native date inputs anywhere in src/", () => {
+  const offenders: { file: string; tags: string[] }[] = [];
+  for (const abs of svelteFiles(SRC)) {
+    const rel = relative(ROOT, abs);
+    if (ALLOWED.includes(rel)) continue;
+    const tags = nativeDateInputs(readFileSync(abs, "utf-8"));
+    if (tags.length) offenders.push({ file: rel, tags });
   }
 
-  // E4 migration guard — these files MUST no longer ship a native
-  // `<input type="date">`. They use DateField for date inputs instead.
-  for (const path of MIGRATED_FILES) {
-    it(`${path}: no native type="date" inputs remain (migrated to DateField)`, () => {
-      const src = readFileSync(`${process.cwd()}/${path}`, "utf-8");
-      const dateInputs = src.match(/<Input\b[^>]*type="date"[^>]*\/?>/gs) ?? [];
-      const rawDateInputs =
-        src.match(/<input\b[^>]*type="date"[^>]*\/?>/gs) ?? [];
-      expect(dateInputs.length + rawDateInputs.length).toBe(0);
-    });
-  }
+  it("every date field goes through the DateField primitive", () => {
+    expect(
+      offenders.map((o) => o.file),
+      'native <input type="date"> found — use $lib/components/ui/date-field/DateField.svelte ' +
+        '(TT.MM.JJJJ + ISO mirror) instead; a `lang="de"` band-aid is not enough',
+    ).toEqual([]);
+  });
+
+  it("the scan actually reaches the source tree (self-test)", () => {
+    // A rule that silently scans nothing is worse than no rule: pin that the
+    // walker sees a realistic number of components and that its detector fires
+    // on a synthetic offender.
+    expect(svelteFiles(SRC).length).toBeGreaterThan(100);
+    expect(nativeDateInputs('<input name="x" type="date" />')).toHaveLength(1);
+    expect(nativeDateInputs('<input name="x" type="text" />')).toHaveLength(0);
+  });
 });

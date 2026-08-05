@@ -41,14 +41,18 @@ test.describe("@aurora-impl-e3 Versand-Pfad", () => {
     await expect(page.getByTestId("invoice-versand-card")).toHaveCount(0);
   });
 
-  test("Kategorie is mandatory on the Rechnungsformular (client gate)", async ({
+  test("Kategorie is mandatory on the Rechnungsformular (gate names it, click jumps to it)", async ({
     page,
   }) => {
     await loginAs(page, "admin");
     await page.goto("/app/rechnungen/new");
 
+    // SLOT-FELD S4 (FormFooter doctrine): the CTA no longer refuses — it
+    // stays clickable and CARRIES the click to the first gap. What must hold
+    // is that no invoice is created and that the gap is named.
     const submit = page.getByRole("button", { name: "Rechnung erstellen" });
-    await expect(submit).toBeDisabled();
+    const gate = page.getByTestId("invoice-gate-line");
+    await expect(submit).toBeEnabled();
 
     // Fill everything EXCEPT the Kategorie — the gate must still hold.
     await page.locator('select[name="customerId"]').selectOption({ index: 1 });
@@ -59,10 +63,15 @@ test.describe("@aurora-impl-e3 Versand-Pfad", () => {
     await page
       .locator('input[name="bezeichnung"]')
       .fill("Beratung Herbstprogramm 2026");
-    await expect(submit).toBeDisabled();
+    await expect(gate).toContainText(/Kategorie/);
 
-    // Pick a Kategorie → the gate clears.
+    await submit.click();
+    await expect(page).toHaveURL(/\/app\/rechnungen\/new/);
+    await expect(page.locator("#kategorieId")).toBeFocused();
+
+    // Pick a Kategorie → the gate clears and the CTA means it.
     await page.locator('select[name="kategorieId"]').selectOption({ index: 1 });
+    await expect(gate).toHaveCount(0);
     await expect(submit).toBeEnabled();
   });
 

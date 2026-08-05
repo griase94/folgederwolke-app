@@ -133,16 +133,21 @@ test.describe("@phase-9 C2-TAX required gates", () => {
     // M4 state-matrix contract: the Beleg redesign replaced the native `required` (a hidden
     // custom-dropzone file input can't surface a focusable validation bubble)
     // with a client+server gate. With every OTHER required field filled, the CTA
-    // stays disabled purely because Beleg is missing, and the footer gate-line
-    // names it. The server 422 for a bypassed submit is proven by the
-    // route-level unit tests in ausgaben-create.server.test.ts.
-    // NOTE: this is the ADMIN entry-modal footer, which still gates by
-    // disabling. The public/member AuslagenForm above no longer does — it
-    // refuses the submit and points at the gap instead (§4).
+    // stays open (SLOT-FELD S4: the FormFooter doctrine now covers the admin
+    // entry modal too — a disabled button can't explain itself), the footer
+    // gate-line names Beleg as the one thing missing, and the click does NOT
+    // book: it stays on the form. The server 422 for a bypassed submit is
+    // proven by the route-level unit tests in ausgaben-create.server.test.ts.
     const submit = page.locator(
       '[data-slot="entry-footer"] button[type="submit"]',
     );
-    await expect(submit).toBeDisabled();
+    await expect(submit).toBeEnabled();
+    await expect(page.locator('[data-slot="entry-gate-line"]')).toContainText(
+      /Beleg/,
+    );
+
+    await submit.click();
+    await expect(page).toHaveURL(/\/app\/ausgaben\/neu/);
     await expect(page.locator('[data-slot="entry-gate-line"]')).toContainText(
       /Beleg/,
     );

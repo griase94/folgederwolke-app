@@ -15,6 +15,9 @@
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { EmptyState } from '$lib/components/ui/empty-state/index.js';
+	import { FieldGroup } from '$lib/components/ui/field-group/index.js';
+	import { FIELD_CLASS } from '$lib/components/ui/field-class/index.js';
+	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 	import Lock from '@lucide/svelte/icons/lock';
 	import Plus from '@lucide/svelte/icons/plus';
 	import type { PageData } from './$types.js';
@@ -124,47 +127,57 @@
 			<input type="hidden" name="mode" value="create" />
 			<h2 class="mb-3 text-sm font-semibold text-foreground">Neuer Beitragssatz</h2>
 			<div class="grid grid-cols-1 gap-3 sm:grid-cols-4">
-				<label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-					Jahr
-					<input
-						name="year"
-						type="number"
-						bind:value={newYear}
-						min={data.currentYear}
-						class="min-h-[44px] rounded-md border border-border bg-background px-3 py-1.5 text-sm tabular-nums dark:bg-input/30"
-					/>
-				</label>
-				<label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-					Betrag (€)
-					<input
-						name="betrag"
-						type="number"
-						step="0.01"
-						min="0"
-						bind:value={newBetrag}
-						aria-label="Betrag"
-						class="min-h-[44px] rounded-md border border-border bg-background px-3 py-1.5 text-sm tabular-nums dark:bg-input/30"
-					/>
-				</label>
-				<label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-					Fällig bis
-					<input
-						name="faelligkeitAt"
-						type="date"
-						bind:value={newFaelligkeit}
-						class="min-h-[44px] rounded-md border border-border bg-background px-3 py-1.5 text-sm tabular-nums dark:bg-input/30"
-					/>
-				</label>
-				<label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-					Beschluss
-					<input
-						name="decisionNote"
-						type="text"
-						bind:value={newBeschluss}
-						placeholder="MV 14.03., TOP 7"
-						class="min-h-[44px] rounded-md border border-border bg-background px-3 py-1.5 text-sm dark:bg-input/30"
-					/>
-				</label>
+				<FieldGroup label="Jahr" for="neu-year">
+					{#snippet children({ describedBy })}
+						<input
+							id="neu-year"
+							name="year"
+							type="number"
+							bind:value={newYear}
+							min={data.currentYear}
+							aria-describedby={describedBy}
+							class="{FIELD_CLASS} tabular-nums"
+						/>
+					{/snippet}
+				</FieldGroup>
+				<FieldGroup label="Betrag (€)" for="neu-betrag">
+					{#snippet children({ describedBy })}
+						<input
+							id="neu-betrag"
+							name="betrag"
+							type="number"
+							step="0.01"
+							min="0"
+							bind:value={newBetrag}
+							aria-describedby={describedBy}
+							class="{FIELD_CLASS} tabular-nums"
+						/>
+					{/snippet}
+				</FieldGroup>
+				<FieldGroup label="Fällig bis" for="neu-faelligkeit">
+					{#snippet children({ describedBy })}
+						<DateField
+							id="neu-faelligkeit"
+							name="faelligkeitAt"
+							value={newFaelligkeit}
+							aria-describedby={describedBy}
+							onchange={(iso) => (newFaelligkeit = iso)}
+						/>
+					{/snippet}
+				</FieldGroup>
+				<FieldGroup label="Beschluss" for="neu-beschluss">
+					{#snippet children({ describedBy })}
+						<input
+							id="neu-beschluss"
+							name="decisionNote"
+							type="text"
+							bind:value={newBeschluss}
+							placeholder="MV 14.03., TOP 7"
+							aria-describedby={describedBy}
+							class={FIELD_CLASS}
+						/>
+					{/snippet}
+				</FieldGroup>
 			</div>
 			<div class="mt-3 flex justify-end gap-2">
 				<Button type="button" variant="ghost" onclick={() => (addingNew = false)}>Abbrechen</Button>
@@ -236,36 +249,47 @@
 									>
 										<input type="hidden" name="mode" value="update" />
 										<input type="hidden" name="year" value={rate.year} />
-										<label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-											Betrag (€)
-											<input
-												name="betrag"
-												type="number"
-												step="0.01"
-												min="0"
-												bind:value={editBetrag}
-												aria-label="Betrag"
-												class="min-h-[44px] w-28 rounded-md border border-border bg-background px-3 py-1.5 text-sm tabular-nums dark:bg-input/30"
-											/>
-										</label>
-										<label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-											Fällig bis
-											<input
-												name="faelligkeitAt"
-												type="date"
-												bind:value={editFaelligkeit}
-												class="min-h-[44px] rounded-md border border-border bg-background px-3 py-1.5 text-sm tabular-nums dark:bg-input/30"
-											/>
-										</label>
-										<label class="flex flex-1 flex-col gap-1 text-xs font-medium text-muted-foreground">
-											Beschluss
-											<input
-												name="decisionNote"
-												type="text"
-												bind:value={editBeschluss}
-												class="min-h-[44px] rounded-md border border-border bg-background px-3 py-1.5 text-sm dark:bg-input/30"
-											/>
-										</label>
+										<FieldGroup
+											class="w-28"
+											label="Betrag (€)"
+											for="edit-betrag-{rate.year}"
+										>
+											{#snippet children({ describedBy })}
+												<input
+													id="edit-betrag-{rate.year}"
+													name="betrag"
+													type="number"
+													step="0.01"
+													min="0"
+													bind:value={editBetrag}
+													aria-describedby={describedBy}
+													class="{FIELD_CLASS} tabular-nums"
+												/>
+											{/snippet}
+										</FieldGroup>
+										<FieldGroup label="Fällig bis" for="edit-faelligkeit-{rate.year}">
+											{#snippet children({ describedBy })}
+												<DateField
+													id="edit-faelligkeit-{rate.year}"
+													name="faelligkeitAt"
+													value={editFaelligkeit}
+													aria-describedby={describedBy}
+													onchange={(iso) => (editFaelligkeit = iso)}
+												/>
+											{/snippet}
+										</FieldGroup>
+										<FieldGroup class="flex-1" label="Beschluss" for="edit-beschluss-{rate.year}">
+											{#snippet children({ describedBy })}
+												<input
+													id="edit-beschluss-{rate.year}"
+													name="decisionNote"
+													type="text"
+													bind:value={editBeschluss}
+													aria-describedby={describedBy}
+													class={FIELD_CLASS}
+												/>
+											{/snippet}
+										</FieldGroup>
 										<div class="flex gap-2">
 											<Button type="button" variant="ghost" onclick={cancelEdit}>Abbrechen</Button>
 											<Button type="submit" disabled={saving}>Speichern</Button>

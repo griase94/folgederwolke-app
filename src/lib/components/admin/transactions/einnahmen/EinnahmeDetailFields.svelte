@@ -14,6 +14,8 @@
    * kommentar).
    */
   import { applyAction, enhance } from "$app/forms";
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Select } from '$lib/components/ui/select/index.js';
   import { toast } from "svelte-sonner";
   import {
     AmountField,
@@ -197,7 +199,7 @@
       name="bezeichnung"
       type="text"
       required
-      maxlength="500"
+      maxlength={500}
       bind:value={bezeichnung}
       list={vorschlaege.length
         ? "einnahme-detail-bezeichnung-vorschlaege"
@@ -246,17 +248,16 @@
       <label for="detail-project" class="text-sm font-medium text-ink-900">
         Projekt <span class="text-xs font-normal text-ink-500">(optional)</span>
       </label>
-      <select
+      <Select
         id="detail-project"
         name="projectId"
         bind:value={projectSel}
-        class={FIELD_CLASS}
       >
         <option value="">— Kein Projekt —</option>
         {#each projects as p (p.id)}
           <option value={p.id}>{p.name}</option>
         {/each}
-      </select>
+      </Select>
     </div>
   {/if}
 
@@ -264,13 +265,13 @@
     <label for="detail-kommentar" class="text-sm font-medium text-ink-900"
       >Kommentar</label
     >
-    <textarea
+    <Textarea
       id="detail-kommentar"
       name="kommentar"
-      rows="3"
-      maxlength="2000"
+      rows={3}
+      maxlength={2000}
       value={kommentar ?? ""}
       class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 sm:text-sm"
-    ></textarea>
+    ></Textarea>
   </div>
 </form>

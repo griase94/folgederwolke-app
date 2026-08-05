@@ -9,6 +9,7 @@
 	 * to the Beitrags-Reminder tokens (single-sourced in beitrag-reminder-copy).
 	 */
 	import { REMINDER_PLACEHOLDERS } from '$lib/domain/beitrag-reminder-copy.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
 
 	let {
 		value = $bindable(''),
@@ -71,13 +72,12 @@
 		</button>
 	</div>
 
-	<textarea
-		bind:this={textarea}
+	<Textarea
+		bind:ref={textarea}
 		bind:value
 		data-testid="{testId}-textarea"
-		rows="4"
-		class="w-full resize-y rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-	></textarea>
+		rows={4}
+	></Textarea>
 
 	<div class="flex flex-wrap items-center gap-1.5" role="group" aria-label="Platzhalter einfügen">
 		{#each placeholders as ph (ph)}

@@ -13,6 +13,8 @@
 -->
 <script lang="ts">
 	import { Input } from '$lib/components/ui/input/index.js';
+	import { FieldGroup } from '$lib/components/ui/field-group/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import type { CustomerView } from '$lib/server/domain/customers.js';
 	import { buildCustomerBriefblock } from '$lib/domain/customers.js';
 
@@ -26,7 +28,11 @@
 		idPrefix: string;
 		values?: CustomerView | null;
 		errors?: Record<string, string[]>;
-		/** Bound to the Name input so the parent can gate its submit CTA. */
+		/**
+		 * Bound to the Name input. Unlike the address fields this one has no
+		 * local `values` seed, so the EDIT dialog must push the prefill in —
+		 * and the ADD dialog reads it back for its success toast.
+		 */
 		name?: string;
 	} = $props();
 
@@ -78,8 +84,6 @@
 		}
 	});
 
-	const textareaClass =
-		'border-input bg-background focus-visible:ring-ring/50 w-full rounded-lg border px-3 py-2 text-base leading-relaxed focus-visible:outline-none focus-visible:ring-2 sm:text-sm aria-invalid:border-destructive aria-invalid:ring-destructive/20';
 </script>
 
 <!-- required-field legend -->
@@ -97,40 +101,39 @@
 </div>
 
 <!-- Name * -->
-<div class="space-y-1.5">
-	<label for="{idPrefix}-name" class="block text-sm font-medium text-ink-700">
-		Name (Firma / Person) <span class="text-severity-critical">*</span>
-	</label>
-	<Input
-		id="{idPrefix}-name"
-		name="name"
-		required
-		bind:value={name}
-		data-testid="{idPrefix}-name-input"
-		placeholder="z. B. Muster GmbH oder Max Mustermann"
-		aria-invalid={!!err('name')}
-		aria-describedby={err('name') ? `${idPrefix}-name-err` : undefined}
-	/>
-	{#if err('name')}
-		<p id="{idPrefix}-name-err" class="text-xs font-medium text-severity-critical">{err('name')}</p>
-	{/if}
-</div>
+<FieldGroup label="Name (Firma / Person)" for="{idPrefix}-name" required error={err('name')}>
+	{#snippet children({ describedBy, invalid })}
+		<Input
+			id="{idPrefix}-name"
+			name="name"
+			required
+			bind:value={name}
+			data-testid="{idPrefix}-name-input"
+			placeholder="z. B. Muster GmbH oder Max Mustermann"
+			aria-describedby={describedBy}
+			aria-invalid={invalid}
+		/>
+	{/snippet}
+</FieldGroup>
 
 <!-- Anrede -->
-<div class="space-y-1.5">
-	<label for="{idPrefix}-anrede" class="block text-sm font-medium text-ink-700">Anrede</label>
-	<Input
-		id="{idPrefix}-anrede"
-		name="anrede"
-		value={values?.anrede ?? ''}
-		placeholder="z. B. „Liebe Maria“"
-		aria-invalid={!!err('anrede')}
-	/>
-	<p class="text-xs text-ink-500">Steht so in Mails: „Liebe Maria“ oder „Sehr geehrte Damen und Herren“.</p>
-	{#if err('anrede')}
-		<p class="text-xs font-medium text-severity-critical">{err('anrede')}</p>
-	{/if}
-</div>
+<FieldGroup
+	label="Anrede"
+	for="{idPrefix}-anrede"
+	hint="Steht so in Mails: „Liebe Maria“ oder „Sehr geehrte Damen und Herren“."
+	error={err('anrede')}
+>
+	{#snippet children({ describedBy, invalid })}
+		<Input
+			id="{idPrefix}-anrede"
+			name="anrede"
+			value={values?.anrede ?? ''}
+			placeholder="z. B. „Liebe Maria“"
+			aria-describedby={describedBy}
+			aria-invalid={invalid}
+		/>
+	{/snippet}
+</FieldGroup>
 
 <!-- Adresse (strukturiert) * + Live-Briefblock. sm:[&_input]:scroll-mb-32 hält
      ein fokussiertes Adressfeld beim Auto-Scroll ÜBER der sticky Preview (sonst
@@ -240,36 +243,40 @@
 </div>
 
 <!-- E-Mail -->
-<div class="space-y-1.5">
-	<label for="{idPrefix}-email" class="block text-sm font-medium text-ink-700">E-Mail</label>
-	<Input
-		id="{idPrefix}-email"
-		name="email"
-		type="email"
-		autocomplete="email"
-		value={values?.email ?? ''}
-		placeholder="rechnung@kunde.de"
-		aria-invalid={!!err('email')}
-		aria-describedby={err('email') ? `${idPrefix}-email-err` : undefined}
-	/>
-	<p class="text-xs text-ink-500">Nötig, um die Rechnung „Per Mail senden“ zu können.</p>
-	{#if err('email')}
-		<p id="{idPrefix}-email-err" class="text-xs font-medium text-severity-critical">{err('email')}</p>
-	{/if}
-</div>
+<FieldGroup
+	label="E-Mail"
+	for="{idPrefix}-email"
+	hint="Nötig, um die Rechnung „Per Mail senden“ zu können."
+	error={err('email')}
+>
+	{#snippet children({ describedBy, invalid })}
+		<Input
+			id="{idPrefix}-email"
+			name="email"
+			type="email"
+			autocomplete="email"
+			value={values?.email ?? ''}
+			placeholder="rechnung@kunde.de"
+			aria-describedby={describedBy}
+			aria-invalid={invalid}
+		/>
+	{/snippet}
+</FieldGroup>
 
 <!-- Notizen -->
-<div class="space-y-1.5">
-	<label for="{idPrefix}-notes" class="block text-sm font-medium text-ink-700">Notizen</label>
-	<textarea
-		id="{idPrefix}-notes"
-		name="notes"
-		rows="2"
-		class={textareaClass}
-		placeholder="Interne Notiz — erscheint nicht auf der Rechnung"
-		>{values?.notes ?? ''}</textarea
-	>
-</div>
+<FieldGroup label="Notizen" for="{idPrefix}-notes">
+	{#snippet children({ describedBy, invalid })}
+		<Textarea
+			id="{idPrefix}-notes"
+			name="notes"
+			rows={2}
+			placeholder="Interne Notiz — erscheint nicht auf der Rechnung"
+			value={values?.notes ?? ''}
+			aria-describedby={describedBy}
+			aria-invalid={invalid}
+		/>
+	{/snippet}
+</FieldGroup>
 
 <!-- sm+: dieselbe Preview STICKY am unteren Rand des Modal-Scroll-Containers
      (Judge-#151 Major-1) — sitzt NACH allen Eingaben, überlappt also kein Feld,

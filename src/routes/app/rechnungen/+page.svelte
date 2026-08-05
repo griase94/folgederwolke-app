@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
+	import { TOOLBAR_CONTROL } from '$lib/components/ui/list-toolbar/index.js';
 	import { page } from '$app/state';
 	import { afterNavigate, replaceState } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
@@ -154,7 +155,7 @@
 				bind:value={searchQuery}
 				aria-label="Rechnungen suchen"
 				data-testid="invoice-search"
-				class="h-10 w-full rounded-lg border border-border bg-card py-1 pl-9 pr-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm"
+				class={[TOOLBAR_CONTROL, "w-full pl-9"]}
 			/>
 		</div>
 	</div>

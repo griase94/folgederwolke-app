@@ -6,6 +6,7 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { Select } from '$lib/components/ui/select/index.js';
+	import DateField from '$lib/components/ui/date-field/DateField.svelte';
 
 	let {
 		open = $bindable(false),
@@ -124,11 +125,11 @@
 			<div class="grid grid-cols-2 gap-3">
 				<div class="space-y-1">
 					<Label for="add-proj-start">Startdatum</Label>
-					<Input id="add-proj-start" name="start_date" type="date" lang="de" />
+					<DateField id="add-proj-start" name="start_date" />
 				</div>
 				<div class="space-y-1">
 					<Label for="add-proj-end">Enddatum</Label>
-					<Input id="add-proj-end" name="end_date" type="date" lang="de" />
+					<DateField id="add-proj-end" name="end_date" />
 				</div>
 			</div>
 

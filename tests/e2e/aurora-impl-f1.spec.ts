@@ -13,6 +13,11 @@ import { loginAs } from "./helpers/sign-in.js";
  *      data-theme (AL-1 blocker): data-theme stays "aurora" and a
  *      gradient-clipped element still resolves a real background-image.
  */
+// Cookies are keyed by host, not port — but a literal port here still rots the
+// day someone runs this in a worktree with its own PORT. Derive it.
+const BASE_URL =
+  process.env["ORIGIN"] ?? `http://127.0.0.1:${process.env["PORT"] ?? "4173"}`;
+
 test.describe("@aurora-impl-f1 F1 foundation", () => {
   test("brand lockup renders the env Verein name (not a hardcode)", async ({
     page,
@@ -63,7 +68,7 @@ test.describe("@aurora-impl-f1 F1 foundation", () => {
     }) => {
       if (mode === "dark") {
         await context.addCookies([
-          { name: "fdw_mode", value: "dark", url: "http://127.0.0.1:4173" },
+          { name: "fdw_mode", value: "dark", url: BASE_URL },
         ]);
       }
       await loginAs(page, "admin");
@@ -113,7 +118,7 @@ test.describe("@aurora-impl-f1 F1 foundation", () => {
     context,
   }) => {
     await context.addCookies([
-      { name: "fdw_mode", value: "dark", url: "http://127.0.0.1:4173" },
+      { name: "fdw_mode", value: "dark", url: BASE_URL },
     ]);
     await loginAs(page, "admin");
     await page.goto("/app/einstellungen");

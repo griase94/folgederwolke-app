@@ -58,6 +58,11 @@ export default [
       ".claude/",
       // Local board/judge scratch (gitignored): probe scripts + shot output.
       ".qa-shots/",
+      // Throwaway verification drivers — same pattern as .gitignore. They are
+      // deleted before every commit, so linting them only produces noise on a
+      // run that happens to catch one mid-flight.
+      "*.local.mjs",
+      "*.local.mts",
     ],
   },
   // Phase 9: restrict @vercel/blob imports to the one allowed adapter file.

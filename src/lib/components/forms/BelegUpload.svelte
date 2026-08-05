@@ -35,6 +35,7 @@
 	 * `idPrefix` so the Begründung label/textarea ids stay unique.
 	 */
 	import { GateLine } from '$lib/components/ui/gate-line/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import { compressIfNeeded } from '$lib/client/file-compress.js';
 	import FileCheckIcon from '@lucide/svelte/icons/file-check';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
@@ -384,18 +385,17 @@
 		<label for={begruendungId} class="text-sm font-medium text-ink-900">
 			Begründung<span class="text-severity-critical" aria-hidden="true">&nbsp;*</span>
 		</label>
-		<textarea
+		<Textarea
 			id={begruendungId}
 			name="begruendung"
 			bind:value={begruendung}
 			oninput={() => onchange?.()}
 			required
-			minlength="5"
-			rows="3"
+			minlength={5}
+			rows={3}
 			data-testid="beleg-verzicht-grund"
 			placeholder="Warum liegt kein Beleg vor? (mindestens 5 Zeichen)"
-			class="w-full rounded-[10px] border border-hairline bg-card px-3 py-2 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 sm:text-sm"
-		></textarea>
+		></Textarea>
 		<p class="text-xs text-ink-500">
 			Ohne Beleg braucht's einen nachvollziehbaren Grund. Er wandert mit ins Prüf-Protokoll.
 		</p>

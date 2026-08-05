@@ -53,6 +53,7 @@
 
 <script lang="ts">
 	import { formatCentsAsEuro } from '$lib/domain/money.js';
+	import { Select } from '$lib/components/ui/select/index.js';
 	import { SPHERES, SPHERE_LABELS, type Sphere } from '$lib/domain/sphere.js';
 	import SphereBadge from '$lib/components/admin/transactions/fields/SphereBadge.svelte';
 	import SortHeader, { type SortColumn, type SortDir } from './SortHeader.svelte';
@@ -205,7 +206,7 @@
 
 			<label class="sel">
 				<span class="sel-lbl">Sphäre</span>
-				<select
+				<Select
 					name="sphere"
 					value={filters.sphere === 'all' ? '' : filters.sphere}
 					onchange={(e) => e.currentTarget.form?.requestSubmit()}
@@ -215,12 +216,12 @@
 					{#each SPHERES as s (s)}
 						<option value={s}>{SPHERE_LABELS[s]}</option>
 					{/each}
-				</select>
+				</Select>
 			</label>
 
 			<label class="sel">
 				<span class="sel-lbl">Kategorie</span>
-				<select
+				<Select
 					name="kategorie"
 					value={kategorieValue}
 					onchange={(e) => e.currentTarget.form?.requestSubmit()}
@@ -231,12 +232,12 @@
 					{#each kategorien as k (k.id)}
 						<option value={k.id}>{k.name}</option>
 					{/each}
-				</select>
+				</Select>
 			</label>
 
 			<label class="sel">
 				<span class="sel-lbl">Projekt</span>
-				<select
+				<Select
 					name="project"
 					value={filters.projectId ?? ''}
 					onchange={(e) => e.currentTarget.form?.requestSubmit()}
@@ -246,7 +247,7 @@
 					{#each projects as p (p.id)}
 						<option value={p.id}>{p.name}</option>
 					{/each}
-				</select>
+				</Select>
 			</label>
 		</form>
 
@@ -465,19 +466,10 @@
 		text-transform: uppercase;
 		color: var(--ink-500);
 	}
-	.sel select {
+	/* Die Select-Anatomie kommt jetzt aus ui/select (SLOT-FELD) — hier bleibt
+	   nur die Mindestbreite, damit die Filterzeile nicht zerfranst. */
+	.sel :global(select) {
 		min-width: 168px;
-		max-width: 100%;
-		padding: 7px 10px;
-		border: 1px solid var(--border);
-		border-radius: 9px;
-		background: var(--card);
-		font-size: 13px;
-		color: var(--ink-900);
-	}
-	.sel select:focus-visible {
-		outline: none;
-		box-shadow: 0 0 0 2px var(--ring);
 	}
 	.toolfoot {
 		display: flex;

@@ -14,6 +14,9 @@
 -->
 <script lang="ts">
 	import { AmountField, DateField as HeroDateField } from '$lib/components/ui/hero-field/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Select } from '$lib/components/ui/select/index.js';
+	import { FieldGroup } from '$lib/components/ui/field-group/index.js';
 	import BelegUpload from '$lib/components/forms/BelegUpload.svelte';
 	import LockedSphereField from '$lib/components/admin/transactions/fields/LockedSphereField.svelte';
 	import DerivedKategorieBadge from './DerivedKategorieBadge.svelte';
@@ -143,9 +146,6 @@
 				: { ok: true, text: 'Alles da.' },
 		);
 	});
-
-	const TEXTAREA_CLASS =
-		'w-full rounded-[10px] border border-hairline bg-card px-3 py-2.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 sm:text-sm';
 </script>
 
 <div class="flex flex-col gap-4">
@@ -156,42 +156,43 @@
 			<!-- Betrag/Wert-Hero + Zuwendungsdatum-Hero (side-by-side even on mobile) -->
 			<div>
 				<div class="grid grid-cols-2 gap-2 sm:gap-3">
-					<div class="flex flex-col gap-1.5">
-						<label for="betrag-display" class="text-sm font-medium text-ink-900">
-							{isSach ? 'Gemeiner Wert (§ 9 BewG)' : 'Betrag'}
-							<span class="text-severity-critical" aria-hidden="true">*</span>
-						</label>
-						<AmountField
-							id="betrag-display"
-							name="betragCents"
-							value={betragSeed}
-							type="spende"
-							sign="plus"
-							aria-invalid={betragError ? true : undefined}
-							onchange={(c) => {
-								betragCents = c;
-								markDirty();
-							}}
-						/>
-						{#if betragError}
-							<p class="text-xs text-severity-critical">{betragError}</p>
-						{/if}
-					</div>
-					<div class="flex flex-col gap-1.5">
-						<label for="zugewendet_am" class="text-sm font-medium text-ink-900">
-							Zuwendungsdatum <span class="text-severity-critical" aria-hidden="true">*</span>
-						</label>
-						<HeroDateField
-							id="zugewendet_am"
-							name="zugewendet_am"
-							value={zugewendetAm}
-							required
-							onchange={(iso) => {
-								zugewendetAm = iso;
-								markDirty();
-							}}
-						/>
-					</div>
+					<FieldGroup
+						label={isSach ? 'Gemeiner Wert (§ 9 BewG)' : 'Betrag'}
+						for="betrag-display"
+						required
+						error={betragError ?? undefined}
+					>
+						{#snippet children({ describedBy, invalid })}
+							<AmountField
+								id="betrag-display"
+								name="betragCents"
+								value={betragSeed}
+								type="spende"
+								sign="plus"
+								aria-invalid={invalid}
+								aria-describedby={describedBy}
+								onchange={(c) => {
+									betragCents = c;
+									markDirty();
+								}}
+							/>
+						{/snippet}
+					</FieldGroup>
+					<FieldGroup label="Zuwendungsdatum" for="zugewendet_am" required>
+						{#snippet children({ describedBy })}
+							<HeroDateField
+								id="zugewendet_am"
+								name="zugewendet_am"
+								value={zugewendetAm}
+								required
+								aria-describedby={describedBy}
+								onchange={(iso) => {
+									zugewendetAm = iso;
+									markDirty();
+								}}
+							/>
+						{/snippet}
+					</FieldGroup>
 				</div>
 				<p class="mt-2 flex items-center gap-1.5 text-xs text-ink-500">
 					<span class="size-1.5 rounded-full bg-type-spende" aria-hidden="true"></span>
@@ -265,27 +266,29 @@
 				<input type="hidden" name="zweckbindung_kind" value={zweckbindungKind} />
 
 				{#if isZweckgebunden}
-					<div class="mt-2 space-y-1">
-						<label for="zweckbindung_text" class="block text-sm font-medium text-ink-900">
-							Zweckbindungs-Text <span class="text-severity-critical" aria-hidden="true">*</span>
-						</label>
-						<p class="text-xs text-muted-foreground">
-							§ 55 AO — der vom Spender benannte Verwendungszweck.
-						</p>
-						<input
-							id="zweckbindung_text"
-							name="zweckbindung_text"
-							type="text"
-							value={v('zweckbindung_text')}
-							oninput={markDirty}
-							required
-							data-testid="zweckbindung-text"
-							class={FIELD_CLASS}
-						/>
-						{#if err('zweckbindung_text')}
-							<p class="text-xs text-severity-critical">{err('zweckbindung_text')}</p>
-						{/if}
-					</div>
+					<FieldGroup
+						class="mt-2"
+						label="Zweckbindungs-Text"
+						for="zweckbindung_text"
+						required
+						hint="§ 55 AO — der vom Spender benannte Verwendungszweck."
+						error={err('zweckbindung_text') ?? undefined}
+					>
+						{#snippet children({ describedBy, invalid })}
+							<input
+								id="zweckbindung_text"
+								name="zweckbindung_text"
+								type="text"
+								value={v('zweckbindung_text')}
+								oninput={markDirty}
+								required
+								aria-invalid={invalid}
+								aria-describedby={describedBy}
+								data-testid="zweckbindung-text"
+								class={FIELD_CLASS}
+							/>
+						{/snippet}
+					</FieldGroup>
 				{/if}
 			</fieldset>
 
@@ -301,47 +304,50 @@
 					Sachspende — Wertermittlung
 				</legend>
 
-					<div class="space-y-1.5">
-						<label for="wertermittlung_methode" class="block text-sm font-medium text-ink-900">
-							Wertermittlungsmethode <span class="text-severity-critical" aria-hidden="true">*</span>
-						</label>
-						<select
-							id="wertermittlung_methode"
-							name="wertermittlung_methode"
-							value={v('wertermittlung_methode')}
-							onchange={markDirty}
-							data-testid="wertermittlung-methode"
-							class={FIELD_CLASS}
-						>
-							<option value="">— wählen —</option>
-							<option value="marktpreis">Marktpreis</option>
-							<option value="kaufbeleg">Kaufbeleg</option>
-							<option value="schaetzung">Schätzung</option>
-							<option value="buchwert">Buchwert</option>
-						</select>
-						{#if err('wertermittlung_methode')}
-							<p class="text-xs text-severity-critical">{err('wertermittlung_methode')}</p>
-						{/if}
-					</div>
+					<FieldGroup
+						label="Wertermittlungsmethode"
+						for="wertermittlung_methode"
+						required
+						error={err('wertermittlung_methode') ?? undefined}
+					>
+						{#snippet children({ describedBy, invalid })}
+							<Select
+								id="wertermittlung_methode"
+								name="wertermittlung_methode"
+								value={v('wertermittlung_methode')}
+								onchange={markDirty}
+								aria-invalid={invalid}
+								aria-describedby={describedBy}
+								data-testid="wertermittlung-methode"
+							>
+								<option value="">— wählen —</option>
+								<option value="marktpreis">Marktpreis</option>
+								<option value="kaufbeleg">Kaufbeleg</option>
+								<option value="schaetzung">Schätzung</option>
+								<option value="buchwert">Buchwert</option>
+							</Select>
+						{/snippet}
+					</FieldGroup>
 
-					<div class="space-y-1.5">
-						<label for="zustand_beschreibung" class="block text-sm font-medium text-ink-900">
-							Beschreibung des Gegenstands (Art, Zustand)
-							<span class="text-severity-critical" aria-hidden="true">*</span>
-						</label>
-						<textarea
-							id="zustand_beschreibung"
-							name="zustand_beschreibung"
-							rows="2"
-							value={v('zustand_beschreibung')}
-							oninput={markDirty}
-							data-testid="zustand-beschreibung"
-							class={TEXTAREA_CLASS}
-						></textarea>
-						{#if err('zustand_beschreibung')}
-							<p class="text-xs text-severity-critical">{err('zustand_beschreibung')}</p>
-						{/if}
-					</div>
+					<FieldGroup
+						label="Beschreibung des Gegenstands (Art, Zustand)"
+						for="zustand_beschreibung"
+						required
+						error={err('zustand_beschreibung') ?? undefined}
+					>
+						{#snippet children({ describedBy, invalid })}
+							<Textarea
+								id="zustand_beschreibung"
+								name="zustand_beschreibung"
+								rows={2}
+								value={v('zustand_beschreibung')}
+								oninput={markDirty}
+								aria-invalid={invalid}
+								aria-describedby={describedBy}
+								data-testid="zustand-beschreibung"
+							></Textarea>
+						{/snippet}
+					</FieldGroup>
 
 					<!-- Herkunftsbeleg (Sachspende) — optional dropzone -->
 					<BelegUpload
@@ -429,18 +435,17 @@
 				</div>
 
 				{#if spenderMode === 'member'}
-					<select
+					<Select
 						name="member_id"
 						bind:value={selectedMemberId}
 						onchange={markDirty}
 						data-testid="spender-member-select"
-						class={FIELD_CLASS}
 					>
 						<option value="">Mitglied auswählen…</option>
 						{#each members as m (m.id)}
 							<option value={m.id}>{m.label}</option>
 						{/each}
-					</select>
+					</Select>
 					{#if selectedMember}
 						<p class="mt-1 text-xs text-muted-foreground" data-testid="member-adresse-autofill">
 							Adresse: {memberAdresse || '— im Mitgliedsprofil hinterlegen —'}
@@ -450,79 +455,86 @@
 					<input type="hidden" name="member_id" value="" />
 					<!-- M8: real labels (the * lives on the label, never in the placeholder). -->
 					<div class="flex flex-col gap-3">
-						<div class="flex flex-col gap-1.5">
-							<label for="spender_name" class="text-sm font-medium text-ink-900">
-								Name <span class="text-severity-critical" aria-hidden="true">*</span>
-							</label>
-							<input
-								id="spender_name"
-								name="spender_name"
-								type="text"
-								placeholder="Name der spendenden Person"
-								bind:value={spenderName}
-								oninput={markDirty}
-								required
-								data-testid="spender-name-input"
-								class={FIELD_CLASS}
-							/>
-							{#if err('spender_name')}
-								<p class="text-xs text-severity-critical">{err('spender_name')}</p>
-							{/if}
-						</div>
-						<div class="flex flex-col gap-1.5">
-							<label for="spender_adresse" class="text-sm font-medium text-ink-900">
-								Anschrift <span class="text-severity-critical" aria-hidden="true">*</span>
-							</label>
-							<input
-								id="spender_adresse"
-								name="spender_adresse"
-								type="text"
-								placeholder="Straße, PLZ und Ort — für die Zuwendungsbestätigung"
-								bind:value={spenderAdresse}
-								oninput={markDirty}
-								required
-								data-testid="spender-adresse-input"
-								class={FIELD_CLASS}
-							/>
-							{#if err('spender_adresse')}
-								<p class="text-xs text-severity-critical">{err('spender_adresse')}</p>
-							{/if}
-						</div>
-						<div class="flex flex-col gap-1.5">
-							<label for="spender_email" class="text-sm font-medium text-ink-900">
-								E-Mail <span class="text-xs font-normal text-muted-foreground">(optional)</span>
-							</label>
-							<input
-								id="spender_email"
-								name="spender_email"
-								type="email"
-								placeholder="name@example.org"
-								bind:value={spenderEmail}
-								oninput={markDirty}
-								class={FIELD_CLASS}
-							/>
-						</div>
+						<FieldGroup
+							label="Name"
+							for="spender_name"
+							required
+							error={err('spender_name') ?? undefined}
+						>
+							{#snippet children({ describedBy, invalid })}
+								<input
+									id="spender_name"
+									name="spender_name"
+									type="text"
+									placeholder="Name der spendenden Person"
+									bind:value={spenderName}
+									oninput={markDirty}
+									required
+									aria-invalid={invalid}
+									aria-describedby={describedBy}
+									data-testid="spender-name-input"
+									class={FIELD_CLASS}
+								/>
+							{/snippet}
+						</FieldGroup>
+						<FieldGroup
+							label="Anschrift"
+							for="spender_adresse"
+							required
+							error={err('spender_adresse') ?? undefined}
+						>
+							{#snippet children({ describedBy, invalid })}
+								<input
+									id="spender_adresse"
+									name="spender_adresse"
+									type="text"
+									placeholder="Straße, PLZ und Ort — für die Zuwendungsbestätigung"
+									bind:value={spenderAdresse}
+									oninput={markDirty}
+									required
+									aria-invalid={invalid}
+									aria-describedby={describedBy}
+									data-testid="spender-adresse-input"
+									class={FIELD_CLASS}
+								/>
+							{/snippet}
+						</FieldGroup>
+						<FieldGroup label="E-Mail" for="spender_email" optional>
+							{#snippet children({ describedBy })}
+								<input
+									id="spender_email"
+									name="spender_email"
+									type="email"
+									placeholder="name@example.org"
+									bind:value={spenderEmail}
+									oninput={markDirty}
+									aria-describedby={describedBy}
+									class={FIELD_CLASS}
+								/>
+							{/snippet}
+						</FieldGroup>
 					</div>
 				{/if}
 			</fieldset>
 
 			<!-- Projekt (optional, Mittelverwendung) -->
 			{#if projects.length}
-				<div class="flex flex-col gap-1.5">
-					<label for="project_id" class="text-sm font-medium text-ink-900">Projekt (optional)</label>
-					<select
-						id="project_id"
-						name="project_id"
-						value={v('project_id')}
-						onchange={markDirty}
-						class={FIELD_CLASS}
-					>
-						<option value="">— Kein Projekt —</option>
-						{#each projects as p (p.id)}
-							<option value={p.id}>{p.name}</option>
-						{/each}
-					</select>
-				</div>
+				<FieldGroup label="Projekt" for="project_id" optional>
+					{#snippet children({ describedBy })}
+						<Select
+							id="project_id"
+							name="project_id"
+							value={v('project_id')}
+							onchange={markDirty}
+							aria-describedby={describedBy}
+						>
+							<option value="">— Kein Projekt —</option>
+							{#each projects as p (p.id)}
+								<option value={p.id}>{p.name}</option>
+							{/each}
+						</Select>
+					{/snippet}
+				</FieldGroup>
 			{/if}
 
 			<!-- Read-only derived-Kategorie badge (NO Kategorie picker). -->

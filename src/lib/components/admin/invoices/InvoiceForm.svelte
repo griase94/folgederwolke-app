@@ -21,6 +21,8 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
+	import { Select } from '$lib/components/ui/select/index.js';
 	import { enhance } from '$app/forms';
 	import { beforeNavigate } from '$app/navigation';
 	import { cn } from '$lib/utils.js';
@@ -232,18 +234,36 @@
 		return errors[field]?.[0] ?? null;
 	}
 
-	// ── CTA gate (color doctrine: disabled = flat neutral, NEVER a
-	// half-transparent brand-pink) ────────────────────────────────────────
+	// ── CTA gate (FormFooter doctrine) ───────────────────────────────────
+	// The gate is an ADVISORY readout, not a lock: the CTA stays clickable
+	// while fields are missing and the click carries the user to the first
+	// gap. A disabled button can only say "no" — this one says which field.
+	// Each gap knows the id of the control it belongs to, so the jump target
+	// is the widget itself (DateField's visible input carries the id; its
+	// name lives on a hidden mirror, which cannot take focus).
+	// Colour doctrine unchanged: disabled = flat neutral, never a
+	// half-transparent brand-pink.
+	type Gap = { label: string; focus: string };
 	const gateMissing = $derived(
 		[
-			!customerId ? 'Kund:in wählen' : null,
-			!leistungsDatum ? 'Leistungsdatum wählen' : null,
-			nettoCents <= 0 ? 'Betrag eintragen' : null,
-			!kategorieId ? 'Kategorie wählen' : null
-		].filter((m): m is string => m !== null)
+			!customerId ? { label: 'Kund:in wählen', focus: 'customerId' } : null,
+			!leistungsDatum ? { label: 'Leistungsdatum wählen', focus: 'leistungsDatum' } : null,
+			nettoCents <= 0 ? { label: 'Betrag eintragen', focus: 'nettoEur' } : null,
+			!kategorieId ? { label: 'Kategorie wählen', focus: 'kategorieId' } : null
+		].filter((m): m is Gap => m !== null)
 	);
-	const gateDisabled = $derived(gateMissing.length > 0);
-	const ctaDisabled = $derived(submitting || gateDisabled);
+	const gateOpen = $derived(gateMissing.length > 0);
+	const ctaDisabled = $derived(submitting);
+
+	function onSubmitClick(e: MouseEvent): void {
+		const first = gateMissing[0];
+		if (!first) return;
+		e.preventDefault();
+		const form = (e.currentTarget as HTMLElement).closest('form');
+		const gap = form?.querySelector<HTMLElement>(`#${CSS.escape(first.focus)}`);
+		gap?.focus();
+		gap?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+	}
 </script>
 
 {#snippet sectionHeader(n: number, title: string)}
@@ -323,19 +343,18 @@
 					<label for="customerId" class="mb-1 block text-[13px] font-semibold text-ink-700"
 						>Kund:in <span class="text-primary-text">*</span></label
 					>
-					<select
+					<Select
 						id="customerId"
 						name="customerId"
 						bind:value={customerId}
 						required
 						aria-invalid={fieldError('customerId') ? 'true' : undefined}
-						class={FIELD}
 					>
 						<option value="">— Kund:in wählen —</option>
 						{#each customers as c (c.id)}
 							<option value={c.id}>{c.name}</option>
 						{/each}
-					</select>
+					</Select>
 					{#if fieldError('customerId')}
 						<p class="mt-1 text-xs font-medium text-severity-critical-text">{fieldError('customerId')}</p>
 					{/if}
@@ -426,8 +445,8 @@
 						name="leistungszeitraum"
 						bind:value={leistungszeitraum}
 							oninput={() => (leistungszeitraumDirty = true)}
-						minlength="3"
-						maxlength="200"
+						minlength={3}
+						maxlength={200}
 						required
 						placeholder="z. B. „Februar 2026"
 						aria-invalid={fieldError('leistungszeitraum') ? 'true' : undefined}
@@ -461,8 +480,8 @@
 						name="bezeichnung"
 						bind:value={bezeichnung}
 						required
-						minlength="5"
-						maxlength="200"
+						minlength={5}
+						maxlength={200}
 						placeholder="z. B. Auftritt 12.05.2026"
 						aria-invalid={fieldError('bezeichnung') ? 'true' : undefined}
 						class={FIELD}
@@ -525,14 +544,14 @@
 				<label for="leistungsBeschreibung" class="mb-1 block text-[13px] font-semibold text-ink-700"
 					>Leistungsbeschreibung (optional)</label
 				>
-				<textarea
+				<Textarea
 					id="leistungsBeschreibung"
 					name="leistungsBeschreibung"
 					bind:value={leistungsBeschreibung}
-					maxlength="2000"
-					rows="3"
+					maxlength={2000}
+					rows={3}
 					class={cn(FIELD, 'h-auto min-h-24 resize-y py-2.5')}
-				></textarea>
+				></Textarea>
 			</div>
 		</div>
 
@@ -547,19 +566,18 @@
 					<label for="kategorieId" class="mb-1 block text-[13px] font-semibold text-ink-700"
 						>Kategorie <span class="text-primary-text">*</span></label
 					>
-					<select
+					<Select
 						id="kategorieId"
 						name="kategorieId"
 						bind:value={kategorieId}
 						required
 						aria-invalid={fieldError('kategorieId') ? 'true' : undefined}
-						class={FIELD}
 					>
 						<option value="" disabled>Kategorie wählen…</option>
 						{#each kategorien as k (k.id)}
 							<option value={k.id}>{k.name}</option>
 						{/each}
-					</select>
+					</Select>
 					{#if fieldError('kategorieId')}
 						<p class="mt-1 text-xs font-medium text-severity-critical-text">{fieldError('kategorieId')}</p>
 					{/if}
@@ -568,12 +586,12 @@
 					<label for="projectId" class="mb-1 block text-[13px] font-semibold text-ink-700"
 						>Projekt (optional)</label
 					>
-					<select id="projectId" name="projectId" bind:value={projectId} class={FIELD}>
+					<Select id="projectId" name="projectId" bind:value={projectId}>
 						<option value="">—</option>
 						{#each projects as p (p.id)}
 							<option value={p.id}>{p.name}</option>
 						{/each}
-					</select>
+					</Select>
 				</div>
 			</div>
 		</div>
@@ -585,7 +603,7 @@
 			data-testid="invoice-footer"
 			class="sticky bottom-0 z-10 -mx-4 flex flex-col gap-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur xl:static xl:mx-0 xl:border-0 xl:bg-transparent xl:px-0 xl:py-0 xl:backdrop-blur-none"
 		>
-			{#if gateDisabled && !submitting}
+			{#if gateOpen && !submitting}
 				<div
 					class="flex items-center gap-1.5 rounded-[10px] border border-[color-mix(in_srgb,var(--sev-warn)_30%,transparent)] bg-severity-warn-tint px-3 py-2 text-xs font-semibold leading-snug text-severity-warn-text"
 					role="status"
@@ -595,7 +613,7 @@
 					<svg class="size-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"
 						><circle cx="12" cy="12" r="10" /><path stroke-linecap="round" d="M12 8v4M12 16h.01" /></svg
 					>
-					Fehlt noch: {gateMissing.join(' · ')}.
+					Fehlt noch: {gateMissing.map((m) => m.label).join(' · ')}.
 				</div>
 			{/if}
 			<div class="flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
@@ -611,14 +629,17 @@
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 				<button
 					type="submit"
+					onclick={onSubmitClick}
 					disabled={ctaDisabled}
 					aria-busy={submitting}
 					data-testid="invoice-submit"
 					class="inline-flex h-11 w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:w-auto {ctaDisabled
 						? 'cursor-not-allowed bg-secondary text-ink-500'
-						: 'bg-type-einnahme text-primary-foreground shadow-sm hover:brightness-105 active:brightness-95 dark:text-background'}"
+						: gateOpen
+							? 'bg-type-einnahme text-primary-foreground opacity-70 shadow-sm dark:text-background'
+							: 'bg-type-einnahme text-primary-foreground shadow-sm hover:brightness-105 active:brightness-95 dark:text-background'}"
 				>
-					{#if !ctaDisabled}
+					{#if !ctaDisabled && !gateOpen}
 						<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" aria-hidden="true"
 							><path stroke-linecap="round" stroke-linejoin="round" d="M20 6L9 17l-5-5" /></svg
 						>

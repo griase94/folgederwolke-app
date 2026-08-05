@@ -267,10 +267,22 @@ test.describe("@phase-2 Überweisungs-Werkstatt — commits through the real UI"
 
     // Click the card, like a person does — the radio itself is sr-only.
     await page.getByTestId("reject-template-sonstiges").click();
-    await expect(page.getByTestId("reject-submit")).toBeDisabled();
+
+    // SLOT-FELD §4: the submit stays open — the refusal happens in the FIELD,
+    // not in a dead button. A click with an empty reason must neither send nor
+    // close the dialog, and the threshold is still named.
+    const submit = page.getByTestId("reject-submit");
+    await expect(submit).toBeEnabled();
     await expect(page.getByTestId("reject-hint")).toContainText(
       "Mindestens 3 Zeichen",
     );
+    await submit.click();
+    await expect(page.getByTestId("reject-dialog")).toBeVisible();
+    expect(
+      await page
+        .getByTestId("reject-grund")
+        .evaluate((el) => (el as HTMLTextAreaElement).checkValidity()),
+    ).toBe(false);
 
     // Escape must close it — and leave the submission decidable.
     await page.keyboard.press("Escape");

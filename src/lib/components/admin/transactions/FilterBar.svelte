@@ -56,6 +56,7 @@
     TOOLBAR_BUTTON as CONTROL_BUTTON,
   } from "$lib/components/ui/list-toolbar/index.js";
   import { TogglePill } from "$lib/components/ui/toggle-pill/index.js";
+  import { CHECKBOX_CLASS } from "$lib/components/ui/field-class/index.js";
   import { parseEuroToCents, formatCentsAsEuro } from "$lib/domain/money.js";
 
   type Option = { value: string; label: string };
@@ -490,6 +491,7 @@
   let views = $state<SavedView[]>([]);
   let viewsOpen = $state(false);
   let newViewName = $state("");
+  let newViewNameEl = $state<HTMLInputElement | null>(null);
 
   $effect(() => {
     // Re-read on open so a just-saved view shows up.
@@ -513,7 +515,13 @@
    */
   function saveCurrentView() {
     const name = newViewName.trim();
-    if (!name) return;
+    // FormFooter doctrine (§4): "Speichern" stays clickable without a name and
+    // sends the caret to the field it wants — a dead button next to an empty
+    // input tells the user nothing about which of the two is the problem.
+    if (!name) {
+      newViewNameEl?.focus();
+      return;
+    }
     saveView(tab, { name, query: serializeFilterState(tab, filterState) });
     newViewName = "";
     views = listViews(tab);
@@ -598,7 +606,7 @@
               >
                 <input
                   type="checkbox"
-                  class="size-4 shrink-0 rounded border-hairline accent-primary"
+                  class={CHECKBOX_CLASS}
                   checked={on}
                   onchange={() => toggleEnum(field.key, opt.value)}
                 />
@@ -828,6 +836,7 @@
             <input
               type="text"
               bind:value={newViewName}
+              bind:this={newViewNameEl}
               placeholder="Aktuelle Filter speichern als…"
               aria-label="Name der Ansicht"
               class="min-w-0 flex-1 {CONTROL}"
@@ -840,8 +849,7 @@
             />
             <button
               type="button"
-              class="{CONTROL_BUTTON} disabled:opacity-40"
-              disabled={newViewName.trim() === ""}
+              class={CONTROL_BUTTON}
               onclick={saveCurrentView}>Speichern</button
             >
           </li>

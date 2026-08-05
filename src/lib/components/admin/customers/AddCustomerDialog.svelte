@@ -26,7 +26,13 @@
 		name = '';
 	}
 
-	const canSubmit = $derived(name.trim().length > 0 && !loading);
+	// FormFooter doctrine (§4): the CTA is disabled only while the POST is in
+	// flight — never for missing fields. The old gate (`name.trim()`) was worse
+	// than no gate: it opened the button on a name alone, while the server also
+	// requires Straße/PLZ/Ort, so "enabled" was a promise the form couldn't
+	// keep. Every required field here carries the native `required` attribute
+	// and this form is NOT `novalidate`, so constraint validation carries the
+	// click to the first gap on its own — no custom handler needed.
 </script>
 
 <Dialog.Root
@@ -114,7 +120,7 @@
 				</Dialog.Close>
 				<Button
 					type="submit"
-					disabled={!canSubmit}
+					disabled={loading}
 					data-testid="add-customer-submit"
 					class={cn(
 						'sm:w-auto',
